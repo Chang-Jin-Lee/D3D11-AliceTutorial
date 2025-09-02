@@ -1,2 +1,44 @@
 # D3D11-AliceTutorial
-Tutorial for D3D for AliceEngine
+Tutorial for D3D AliceEngine
+
+이 저장소는 [DirectX SDK Samples - Direct3D11 Tutorials](https://github.com/walbourn/directx-sdk-samples/tree/main/Direct3D11Tutorials) 을 기반으로  
+학습하면서 이해하기 쉽도록 정리한 튜토리얼 프로젝트입니다.
+
+- 환경: Windows 10 SDK, Visual Studio 2022  
+- 플랫폼: Win32 Desktop (Direct3D 11.0)  
+- 목적: DirectX 11 그래픽스 파이프라인의 기초 학습  
+
+---
+
+## 01. RenderingQuadangle
+- 내용: NDC 좌표계를 기반으로 두 개의 삼각형을 그려 사각형을 렌더링  
+- 주요 구현:
+  - Vertex / Index Buffer 생성
+  - Input Layout 및 Shader 연결
+  - `IASetPrimitiveTopology` 를 이용한 삼각형 리스트 설정
+- 결과: 창 왼쪽 아래 기준으로 화면 중앙에 사각형 출력
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/a44c63b4-0313-4c7d-b98f-03bfcf7abaa0" width="40%" />
+</p>
+
+---
+
+## 주의사항
+- 기존 레거시 DirectX SDK 종속성 제거 → Windows 10 SDK 만으로 동작  
+- 수학 라이브러리: DirectXMath 사용  
+- 셰이더 컴파일: D3DCompileFromFile 사용 (실험/학습 편의 목적)  
+- 텍스처 로딩: DDSTextureLoader (DirectXTK / DirectXTex 기반)  
+
+---
+
+## 참고 자료
+- [Direct3D 11 Tutorials (GitHub)](https://github.com/walbourn/directx-sdk-samples/tree/main/Direct3D11Tutorials)  
+- [MSDN Direct3D 11 Programming Guide](http://msdn.microsoft.com/en-us/library/windows/apps/ff729718.aspx)  
+- [DirectXMath](https://learn.microsoft.com/en-us/windows/win32/dxmath/pg-xnamath-intro)  
+- [DirectXTK](https://github.com/microsoft/DirectXTK) / [DirectXTex](https://github.com/microsoft/DirectXTex)  
+
+---
+
+## 라이선스
+본 튜토리얼 프로젝트는 학습 목적이며, 원본 샘플은 Microsoft가 제공한 [MIT License](https://github.com/walbourn/directx-sdk-samples/blob/main/LICENSE)에 따라 사용됩니다.
