@@ -14,7 +14,7 @@
 			│  ／       │
 			2 ───────── 3
 		
-			indices (list): { 0, 1, 3,  0, 3, 2 }   // 동일 사각형, 분할만 반대
+			indices (list): { 0, 1, 2,  2, 1, 3 }   // 동일 사각형, 분할만 반대
 */
 
 #include "App.h"
@@ -67,6 +67,7 @@ void App::Render()
 
 	m_pDeviceContext->ClearRenderTargetView(m_pRenderTargetView, color);
 
+	// 1 ~ 3 . IA 단계 설정
 	// 정점을 어떻게 이어서 그릴 것인지를 선택하는 부분
 	m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	// 1. 버퍼를 잡아주기
@@ -75,9 +76,11 @@ void App::Render()
 	m_pDeviceContext->IASetInputLayout(m_pInputLayout);
 	// 3. 인덱스 버퍼를 잡아주기
 	m_pDeviceContext->IASetIndexBuffer(m_pIndexBuffer, DXGI_FORMAT_R16_UINT, 0);
-	// 4. 셰이더 잡아주기
+
+	// 4. Vertex Shader 설정
 	m_pDeviceContext->VSSetShader(m_pVertexShader, nullptr, 0);
-	// 5. 픽셀 셰이더 잡아주기
+
+	// 4. Pixel Shader 설정
 	m_pDeviceContext->PSSetShader(m_pPixelShader, nullptr, 0);
 
 	// 6. 그리기
