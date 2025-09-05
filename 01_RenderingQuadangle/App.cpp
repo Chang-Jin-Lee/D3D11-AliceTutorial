@@ -36,32 +36,24 @@ struct VertexInfo
 	VertexInfo(Vector3 pos, Vector4 col) : position(pos), color(col.x, col.y, col.z) {}
 };
 
-App::App(HINSTANCE hInstance) : GameApp(hInstance)
+bool App::OnInitialize()
 {
-
-}
-
-App::~App()
-{
-	UninitScene();
-	UninitD3D();
-}
-
-bool App::Initialize(UINT Width, UINT Height)
-{
-	__super::Initialize(Width, Height);
-
 	if(!InitD3D() || !InitScene()) return false;
 	return true;
 }
 
-void App::Update()
+void App::OnUninitialize()
+{
+	UninitD3D();
+}
+
+void App::OnUpdate()
 {
 
 }
 
 // Render() 함수에 중요한 부분이 다 들어있습니다. 여기를 보면 됩니다
-void App::Render()
+void App::OnRender()
 {
 	float color[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
 

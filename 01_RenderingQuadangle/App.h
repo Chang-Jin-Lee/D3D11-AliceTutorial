@@ -10,9 +10,6 @@ class App :
 	public GameApp
 {
 public:
-	App(HINSTANCE hInstance);
-	~App();
-
 	// 렌더링 파이프라인을 구성하는 필수 객체의 인터페이스 (  뎊스 스텐실 뷰도 있지만 아직 사용하지 않는다.)
 	ID3D11Device* m_pDevice = nullptr;						// 디바이스	
 	ID3D11DeviceContext* m_pDeviceContext = nullptr;		// 즉시 디바이스 컨텍스트
@@ -29,9 +26,10 @@ public:
 	ID3D11Buffer* m_pIndexBuffer = nullptr;			// 버텍스 버퍼.
 	int m_nIndices = 0;								// 인덱스 개수.
 
-	virtual bool Initialize(UINT Width, UINT Height);
-	virtual void Update();
-	virtual void Render();
+	bool OnInitialize() override;
+	void OnUninitialize() override;
+	void OnUpdate() override;
+	void OnRender() override;
 
 	bool InitD3D();
 	void UninitD3D();

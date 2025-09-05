@@ -65,19 +65,10 @@ LONG WINAPI CustomExceptionHandler(EXCEPTION_POINTERS* pExceptionPointers)
 	return EXCEPTION_EXECUTE_HANDLER;
 }
 
-GameApp::GameApp(HINSTANCE hInstance)
-	:m_hInstance(hInstance), m_szWindowClass(L"DefaultWindowCalss"), m_szTitle(L"GameApp"), m_ClientWidth(1024), m_ClientHeight(768)
+GameApp::GameApp()
+	: m_szWindowClass(L"DefaultWindowCalss"), m_szTitle(L"GameApp"), m_ClientWidth(1024), m_ClientHeight(768)
 {
 	GameApp::m_pInstance = this;
-	m_wcex.hInstance = hInstance;
-	m_wcex.cbSize = sizeof(WNDCLASSEX);
-	m_wcex.style = CS_HREDRAW | CS_VREDRAW;
-	m_wcex.lpfnWndProc = DefaultWndProc;
-	m_wcex.cbClsExtra = 0;
-	m_wcex.cbWndExtra = 0;
-	m_wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
-	m_wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-	m_wcex.lpszClassName = m_szWindowClass;
 }
 
 GameApp::~GameApp()
@@ -86,18 +77,15 @@ GameApp::~GameApp()
 }
 
 
-bool GameApp::Initialize(UINT Width, UINT Height)
+bool GameApp::Initialize()
 {
 	SetUnhandledExceptionFilter(CustomExceptionHandler);
-
-	m_ClientWidth = Width;
-	m_ClientHeight = Height;
 
 	// 등록
 	RegisterClassExW(&m_wcex);
 
 	// 원하는 크기가 조정되어 리턴
-	RECT rcClient = { 0, 0, (LONG)Width, (LONG)Height };
+	RECT rcClient = { 0, 0, (LONG)m_ClientWidth, (LONG)m_ClientHeight };
 	AdjustWindowRect(&rcClient, WS_OVERLAPPEDWINDOW, FALSE);
 
 	//생성
@@ -117,30 +105,61 @@ bool GameApp::Initialize(UINT Width, UINT Height)
 
 	m_currentTime = m_previousTime = (float)GetTickCount64() / 1000.0f;
 	m_Input.Initialize(m_hWnd,this);
+
+	if (!OnInitialize())
+		return false;
+
 	return true;
 }
 
-bool GameApp::Run()
+void GameApp::Uninitialize()
 {
-	// PeekMessage 메세지가 있으면 true,없으면 false
-	while (TRUE)
-	{
-		if (PeekMessage(&m_msg, NULL, 0, 0, PM_REMOVE))
-		{
-			if (m_msg.message == WM_QUIT)
-				break;
+	OnUninitialize();
+}
 
-			//윈도우 메시지 처리 
-			TranslateMessage(&m_msg); // 키입력관련 메시지 변환  WM_KEYDOWN -> WM_CHAR
-			DispatchMessage(&m_msg);
-		}
-		else
-		{			
-			Update();			
+bool GameApp::Run(HINSTANCE hInstance)
+{
+	m_wcex.hInstance = hInstance;
+	m_wcex.cbSize = sizeof(WNDCLASSEX);
+	m_wcex.style = CS_HREDRAW | CS_VREDRAW;
+	m_wcex.lpfnWndProc = DefaultWndProc;
+	m_wcex.cbClsExtra = 0;
+	m_wcex.cbWndExtra = 0;
+	m_wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
+	m_wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+	m_wcex.lpszClassName = m_szWindowClass;
+
+	// PeekMessage 메세지가 있으면 true,없으면 false
+	try
+	{
+		if (!Initialize())
+			return false;
+
+		// PeekMessage 메세지가 있으면 true,없으면 false
+		while (TRUE)
+		{
+			if (PeekMessage(&m_msg, NULL, 0, 0, PM_REMOVE))
+			{
+				if (m_msg.message == WM_QUIT)
+					break;
+
+				//윈도우 메시지 처리 
+				TranslateMessage(&m_msg); // 키입력관련 메시지 변환  WM_KEYDOWN -> WM_CHAR
+				DispatchMessage(&m_msg);
+			}
+
+
+			Update();
 			Render();
+
 		}
 	}
-	return 0;
+	catch (const std::exception& e)
+	{
+		::MessageBoxA(NULL, e.what(), "Exception", MB_OK);
+	}
+	Uninitialize();
+	return true;
 }
 
 
@@ -150,6 +169,13 @@ void GameApp::Update()
 	m_Timer.Tick();
 	m_Input.Update(m_Timer.DeltaTime());
 	m_Camera.Update(m_Timer.DeltaTime());
+
+	OnUpdate();
+}
+
+void GameApp::Render()
+{
+	OnRender();
 }
 
 void GameApp::OnInputProcess(const Keyboard::State& KeyState, const Keyboard::KeyboardStateTracker& KeyTracker, const Mouse::State& MouseState, const Mouse::ButtonStateTracker& MouseTracker)
