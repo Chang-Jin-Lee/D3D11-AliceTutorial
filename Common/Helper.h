@@ -100,38 +100,49 @@ void SAFE_DELETE(T* p)
 }
 
 
-LPCWSTR GetComErrorString(HRESULT hr);
+LPCWSTR GetComErrorString(HRESULT hr); 
+std::string GetComErrorStringA(HRESULT hr);
 
-
+void CheckDXGIDebug();
 
 
 
 // Helper class for COM exceptions
-class com_exception : public std::exception
-{
-public:
-	com_exception(HRESULT hr) : result(hr) {}
+class com_exception : public std::exception {
+	HRESULT m_hr;
+	const char* m_file;
+	int m_line;
+	const char* m_func;
+	std::string m_msg;
 
-	const char* what() const noexcept override
+public:
+	com_exception(HRESULT hr, const char* file, int line, const char* func)
+		: m_hr(hr), m_file(file), m_line(line), m_func(func)
 	{
-		static char s_str[64] = {};
-		sprintf_s(s_str, "Failure with HRESULT of %08X",
-			static_cast<unsigned int>(result));
-		return s_str;
+		char buf[512];
+		sprintf_s(buf, "COM call failed. hr=0x%08X\n%s\nFile: %s\nLine: %d\nFunc: %s",
+			hr, GetComErrorStringA(hr).c_str(), file, line, func);
+		m_msg = buf;
 	}
 
-private:
-	HRESULT result;
+	HRESULT hr()   const noexcept { return m_hr; }
+	const char* file() const noexcept { return m_file; }
+	int line()    const noexcept { return m_line; }
+	const char* func() const noexcept { return m_func; }
+
+	const char* what() const noexcept override {
+		return m_msg.c_str();
+	}
 };
 
 // Helper utility converts D3D API failures into exceptions.
-inline void HR_T(HRESULT hr)
+inline void HR_T_Impl(HRESULT hr, const char* file, int line, const char* func)
 {
-	if (FAILED(hr))
-	{
-		throw com_exception(hr);
+	if (FAILED(hr)) {
+		throw com_exception(hr, file, line, func);
 	}
 }
+#define HR_T(hr) HR_T_Impl((hr), __FILE__, __LINE__, __func__)
 
 
 //--------------------------------------------------------------------------------------
