@@ -1,20 +1,37 @@
 /*
-* @brief : d3d11로 정사각형을 그리는 예제입니다
+* @brief : d3d11로 큐브를 그리는 예제입니다
 * @details :
 * 
-		- NDC는 다음처럼 만들었습니다.
-			Normalized Device Coordinates (NDC)
-			x: left=-1  center=0  right=+1
-			y: bottom=-1 center=0  top=+1
+		-  큐브를 만듭니다
+			//    5________ 6
+			//    /|      /|
+			//   /_|_____/ |
+			//  1|4|_ _ 2|_|7
+			//   | /     | /
+			//   |/______|/
+			//  0       3
 
-		- 삼각형 두개로 사각형을 그립니다
-			0 ───────── 1
-			│        ／ │
-			│     ／    │
-			│  ／       │
-			2 ───────── 3
-		
-			indices (list): { 0, 1, 2,  2, 1, 3 }   // 동일 사각형, 분할만 반대
+		- 인덱스 배열은 다음을 참고하세요
+		 DWORD indices[] = {
+		// 앞쪽
+		0, 1, 2,
+		2, 3, 0,
+		// 왼쪽
+		4, 5, 1,
+		1, 0, 4,
+		// 맨 위
+		1, 5, 6,
+		6, 2, 1,
+		// 뒤쪽에
+		7, 6, 5,
+		5, 4, 7,
+		// 오른쪽
+		3, 2, 6,
+		6, 7, 3,
+		// 맨 아래
+		4, 0, 3,
+		3, 7, 4
+		};
 */
 
 #include "App.h"
@@ -24,21 +41,14 @@
 #pragma comment (lib, "d3d11.lib")
 #pragma comment(lib,"d3dcompiler.lib")
 
-// vertex structure
-struct VertexInfo
-{
-	// 정점의 위치, 색상 정보
-	Vector3 position;
-	Vector3 color;
-	
-	VertexInfo(float x, float y, float z, float r, float g, float b) : position(x, y, z), color(r, g, b){}
-	VertexInfo(Vector3 pos) : position(pos) {}
-	VertexInfo(Vector3 pos, Vector4 col) : position(pos), color(col.x, col.y, col.z) {}
-};
-
 bool App::OnInitialize()
 {
-	if(!InitD3D() || !InitScene()) return false;
+	if(!InitD3D()) return false;
+
+	if (!InitEffect()) return false;
+
+	if(!InitScene()) return false;
+
 	return true;
 }
 
@@ -49,33 +59,48 @@ void App::OnUninitialize()
 
 void App::OnUpdate(const float& dt)
 {
+	static float phi = 0.0f, theta = 0.0f;
+	phi += 0.3f * dt, theta += 0.37f * dt;
+	//m_CBuffer.world = XMMatrixTranspose(XMMatrixRotationX(phi) * XMMatrixRotationY(theta));
+	m_CBuffer.world = XMMatrixTranspose(XMMatrixRotationY(theta));
+	// 상수 버퍼를 업데이트하여 큐브를 돌립니다
 
+	D3D11_MAPPED_SUBRESOURCE mappedData;
+	HR_T(m_pDeviceContext->Map(m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedData));
+	memcpy_s(mappedData.pData, sizeof(m_CBuffer), &m_CBuffer, sizeof(m_CBuffer));
+	m_pDeviceContext->Unmap(m_pConstantBuffer, 0);
 }
 
 // Render() 함수에 중요한 부분이 다 들어있습니다. 여기를 보면 됩니다
 void App::OnRender()
 {
 	float color[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+	UINT stride = sizeof(VertexPosColor);	// 바이트 수
+	UINT offset = 0;
 
 	m_pDeviceContext->ClearRenderTargetView(m_pRenderTargetView, color);
+	//m_pDeviceContext->ClearDepthStencilView(m_pDepthStencilView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
 
 	// 1 ~ 3 . IA 단계 설정
 	// 정점을 어떻게 이어서 그릴 것인지를 선택하는 부분
 	m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	// 1. 버퍼를 잡아주기
-	m_pDeviceContext->IASetVertexBuffers(0, 1, &m_pVertexBuffer, &m_VertextBufferStride, &m_VertextBufferOffset);
+	m_pDeviceContext->IASetVertexBuffers(0, 1, &m_pVertexBuffer, &stride, &offset);
 	// 2. 입력 레이아웃을 잡아주기
 	m_pDeviceContext->IASetInputLayout(m_pInputLayout);
 	// 3. 인덱스 버퍼를 잡아주기
-	m_pDeviceContext->IASetIndexBuffer(m_pIndexBuffer, DXGI_FORMAT_R16_UINT, 0);
+	m_pDeviceContext->IASetIndexBuffer(m_pIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
 
 	// 4. Vertex Shader 설정
 	m_pDeviceContext->VSSetShader(m_pVertexShader, nullptr, 0);
 
-	// 4. Pixel Shader 설정
+	// 5. Constant Buffer 설정
+	m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_pConstantBuffer);
+
+	// 6. Pixel Shader 설정
 	m_pDeviceContext->PSSetShader(m_pPixelShader, nullptr, 0);
 
-	// 6. 그리기
+	// 7. 그리기
 	m_pDeviceContext->DrawIndexed(m_nIndices, 0, 0);
 
 	m_pSwapChain->Present(0, 0);
@@ -196,25 +221,110 @@ bool App::InitScene()
 	*   - Stride/Offset : IASetVertexBuffers용 파라미터
 	*   - 주의 : VertexInfo(color=Vec3), 셰이더/InputLayout의 COLOR 형식 일치 필요
 	*/
-	VertexInfo vertices[] =
+	VertexPosColor vertices[] =
 	{
-		VertexInfo(Vector3(-0.5f,  0.5f, 0.5f), Vector4(1.0f, 0.0f, 1.0f, 1.0f)),
-		VertexInfo(Vector3(0.5f,  0.5f, 0.5f), Vector4(0.0f, 1.0f, 0.0f, 1.0f)),
-		VertexInfo(Vector3(-0.5f, -0.5f, 0.5f), Vector4(1.0f, 0.2f, 1.0f, 1.0f)),
-		VertexInfo(Vector3(0.5f, -0.5f, 0.5f), Vector4(0.0f, 0.6f, 1.0f, 1.0f))
+		{ XMFLOAT3(-1.0f, -1.0f, -1.0f), XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f) },
+		{ XMFLOAT3(-1.0f, 1.0f, -1.0f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f) },
+		{ XMFLOAT3(1.0f, 1.0f, -1.0f), XMFLOAT4(1.0f, 1.0f, 0.0f, 1.0f) },
+		{ XMFLOAT3(1.0f, -1.0f, -1.0f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f) },
+		{ XMFLOAT3(-1.0f, -1.0f, 1.0f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f) },
+		{ XMFLOAT3(-1.0f, 1.0f, 1.0f), XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f) },
+		{ XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f) },
+		{ XMFLOAT3(1.0f, -1.0f, 1.0f), XMFLOAT4(0.0f, 1.0f, 1.0f, 1.0f) }
 	};
 
 	D3D11_BUFFER_DESC vbDesc = {};
-	vbDesc.ByteWidth = sizeof(VertexInfo) * ARRAYSIZE(vertices);
+	ZeroMemory(&vbDesc, sizeof(vbDesc));			// vbDesc에 0으로 전체 메모리 영역을 초기화 시킵니다
+	vbDesc.ByteWidth = sizeof vertices;				// 배열 전체의 바이트 크기를 바로 반환합니다
 	vbDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
 	vbDesc.Usage = D3D11_USAGE_DEFAULT;
+
 	D3D11_SUBRESOURCE_DATA vbData = {};
-	vbData.pSysMem = vertices;	// 배열 데이터 할당.
+	ZeroMemory(&vbData, sizeof(vbData));
+	vbData.pSysMem = vertices;						// 배열 데이터 할당.
 	HR_T(m_pDevice->CreateBuffer(&vbDesc, &vbData, &m_pVertexBuffer));
-	m_VertextBufferStride = sizeof(VertexInfo);		// 버텍스 버퍼 정보
-	m_VertextBufferOffset = 0;
 
 
+	/*
+	* @brief  인덱스 버퍼(Index Buffer) 생성
+	* @details
+	*   - indices: 정점 재사용용 (사각형 = 삼각형 2개 = 인덱스 6개)
+	*   - WORD 타입 → DXGI_FORMAT_R16_UINT 사용 예정
+	*   - ByteWidth : 전체 인덱스 배열 크기
+	*   - BindFlags : D3D11_BIND_INDEX_BUFFER
+	*   - Usage     : DEFAULT (GPU 일반 접근)
+	*   - 이 코드의 결과: m_pIndexBuffer 생성, m_nIndices에 개수 저장
+	*/
+	DWORD indices[] = {
+		// 앞쪽
+		0, 1, 2,
+		2, 3, 0,
+		// 왼쪽
+		4, 5, 1,
+		1, 0, 4,
+		// 맨 위
+		1, 5, 6,
+		6, 2, 1,
+		// 뒤쪽에
+		7, 6, 5,
+		5, 4, 7,
+		// 오른쪽
+		3, 2, 6,
+		6, 7, 3,
+		// 맨 아래
+		4, 0, 3,
+		3, 7, 4
+	};
+	D3D11_BUFFER_DESC ibDesc = {};
+	ZeroMemory(&ibDesc, sizeof(ibDesc));
+	m_nIndices = ARRAYSIZE(indices);	// 인덱스 개수 저장.
+	ibDesc.ByteWidth = sizeof indices;
+	ibDesc.BindFlags = D3D11_BIND_INDEX_BUFFER;
+	ibDesc.Usage = D3D11_USAGE_DEFAULT;
+
+	D3D11_SUBRESOURCE_DATA ibData = {};
+	ibData.pSysMem = indices;
+	HR_T(m_pDevice->CreateBuffer(&ibDesc, &ibData, &m_pIndexBuffer));
+
+
+	// ******************
+	// 상수 버퍼 설정
+	//
+	D3D11_BUFFER_DESC cbd;
+	ZeroMemory(&cbd, sizeof(cbd));
+	cbd.Usage = D3D11_USAGE_DYNAMIC;
+	cbd.ByteWidth = sizeof(ConstantBuffer);
+	cbd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	cbd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+	// 초기 데이터를 사용하지 않고 새로운 상수 버퍼를 만듭니다
+	HR_T(m_pDevice->CreateBuffer(&cbd, nullptr, &m_pConstantBuffer));
+
+
+	m_CBuffer.world = XMMatrixIdentity();	// 단위 매트릭스의 조기는 그 자체입니다
+
+	m_CBuffer.view = XMMatrixTranspose(XMMatrixLookAtLH(
+		XMVectorSet(0.0f, 0.0f, -5.0f, 0.0f),
+		XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f),
+		XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f)
+	));
+	m_CBuffer.proj = XMMatrixTranspose(XMMatrixPerspectiveFovLH(XM_PIDIV2, AspectRatio(), 1.0f, 1000.0f));
+
+
+	return true;
+}
+
+void App::UninitScene()
+{
+	SAFE_RELEASE(m_pVertexBuffer);
+	SAFE_RELEASE(m_pIndexBuffer);
+	SAFE_RELEASE(m_pInputLayout);
+	SAFE_RELEASE(m_pVertexShader);
+	SAFE_RELEASE(m_pPixelShader);
+}
+
+bool App::InitEffect()
+{
+	// Vertex Shader -------------------------------------
 	/*
 	* @brief  VS 입력 시그니처에 맞춰 InputLayout 생성
 	* @details
@@ -224,7 +334,7 @@ bool App::InitScene()
 	*   - VS 바이트코드(CompileShaderFromFile)로 시그니처 매칭 후 CreateInputLayout
 	*/
 	D3D11_INPUT_ELEMENT_DESC layout[] = // 입력 레이아웃.
-	{   
+	{
 		// 포맷 { SemanticName , SemanticIndex , Format , InputSlot , AlignedByteOffset , InputSlotClass , InstanceDataStepRate	}
 		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 0,  D3D11_INPUT_PER_VERTEX_DATA, 0 },
 		{ "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 }
@@ -233,7 +343,6 @@ bool App::InitScene()
 	HR_T(CompileShaderFromFile(L"BasicVertexShader.hlsl", "main", "vs_4_0", &vertexShaderBuffer));
 	HR_T(m_pDevice->CreateInputLayout(layout, ARRAYSIZE(layout),
 		vertexShaderBuffer->GetBufferPointer(), vertexShaderBuffer->GetBufferSize(), &m_pInputLayout));
-
 
 	/*
 	* @brief  VS 바이트코드로 Vertex Shader 생성 및 컴파일 버퍼 해제
@@ -247,31 +356,7 @@ bool App::InitScene()
 	SAFE_RELEASE(vertexShaderBuffer);	// 컴파일 버퍼 해제
 
 
-	/*
-	* @brief  인덱스 버퍼(Index Buffer) 생성
-	* @details
-	*   - indices: 정점 재사용용 (사각형 = 삼각형 2개 = 인덱스 6개)
-	*   - WORD 타입 → DXGI_FORMAT_R16_UINT 사용 예정
-	*   - ByteWidth : 전체 인덱스 배열 크기
-	*   - BindFlags : D3D11_BIND_INDEX_BUFFER
-	*   - Usage     : DEFAULT (GPU 일반 접근)
-	*   - 이 코드의 결과: m_pIndexBuffer 생성, m_nIndices에 개수 저장
-	*/
-	WORD indices[] =
-	{
-		0, 1, 2,
-		2, 1, 3
-	};
-	m_nIndices = ARRAYSIZE(indices);	// 인덱스 개수 저장.
-	D3D11_BUFFER_DESC ibDesc = {};
-	ibDesc.ByteWidth = sizeof(WORD) * ARRAYSIZE(indices);
-	ibDesc.BindFlags = D3D11_BIND_INDEX_BUFFER;
-	ibDesc.Usage = D3D11_USAGE_DEFAULT;
-	D3D11_SUBRESOURCE_DATA ibData = {};
-	ibData.pSysMem = indices;
-	HR_T(m_pDevice->CreateBuffer(&ibDesc, &ibData, &m_pIndexBuffer));
-
-
+	// Pixel Shader -------------------------------------
 	/*
 	* @brief  PS 바이트코드로 Pixel Shader 생성 및 컴파일 버퍼 해제
 	* @details
@@ -285,13 +370,4 @@ bool App::InitScene()
 		pixelShaderBuffer->GetBufferSize(), NULL, &m_pPixelShader));
 	SAFE_RELEASE(pixelShaderBuffer);	// 픽셀 셰이더 버퍼 더이상 필요없음
 	return true;
-}
-
-void App::UninitScene()
-{
-	SAFE_RELEASE(m_pVertexBuffer);
-	SAFE_RELEASE(m_pIndexBuffer);
-	SAFE_RELEASE(m_pInputLayout);
-	SAFE_RELEASE(m_pVertexShader);
-	SAFE_RELEASE(m_pPixelShader);
 }

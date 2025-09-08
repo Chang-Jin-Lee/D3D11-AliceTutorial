@@ -3,12 +3,27 @@
 #include "../Common/GameApp.h"
 #include <d3d11.h>
 #include <directxtk/SimpleMath.h>
+#include <vector>
 using namespace DirectX::SimpleMath;
-
 
 class App :
 	public GameApp
 {
+public:
+	struct VertexPosColor
+	{
+		DirectX::XMFLOAT3 pos;
+		DirectX::XMFLOAT4 color;
+		static const D3D11_INPUT_ELEMENT_DESC inputLayout[2];
+	};
+
+	struct ConstantBuffer
+	{
+		DirectX::XMMATRIX world;
+		DirectX::XMMATRIX view;
+		DirectX::XMMATRIX proj;
+	};
+
 public:
 	// 렌더링 파이프라인을 구성하는 필수 객체의 인터페이스 (  뎊스 스텐실 뷰도 있지만 아직 사용하지 않는다.)
 	ID3D11Device* m_pDevice = nullptr;						// 디바이스	
@@ -26,6 +41,11 @@ public:
 	ID3D11Buffer* m_pIndexBuffer = nullptr;			// 버텍스 버퍼.
 	int m_nIndices = 0;								// 인덱스 개수.
 
+	ID3D11Buffer* m_pConstantBuffer;				// 상수 버퍼
+	ConstantBuffer m_CBuffer;                       // GPU 상수 버퍼를 수정하는 데 사용되는 변수
+	std::vector<ConstantBuffer> m_CBuffers;
+	ID3D11DepthStencilView* m_pDepthStencilView;    // 깊이 템플릿
+
 	bool OnInitialize() override;
 	void OnUninitialize() override;
 	void OnUpdate(const float& dt) override;
@@ -34,7 +54,10 @@ public:
 	bool InitD3D();
 	void UninitD3D();
 
-	bool InitScene();		// 쉐이더,버텍스,인덱스
+	bool InitScene();								// 쉐이더,버텍스,인덱스
 	void UninitScene();
+
+private:
+	bool InitEffect();								// 쉐이더를 읽어오는 함수는 따로 구현
 };
 

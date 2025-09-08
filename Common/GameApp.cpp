@@ -129,6 +129,8 @@ bool GameApp::Run(HINSTANCE hInstance)
 	m_wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
 	m_wcex.lpszClassName = m_szWindowClass;
 
+	m_Timer.Reset();
+
 	// PeekMessage 메세지가 있으면 true,없으면 false
 	try
 	{
@@ -148,7 +150,6 @@ bool GameApp::Run(HINSTANCE hInstance)
 				DispatchMessage(&m_msg);
 			}
 
-
 			Update();
 			Render();
 
@@ -163,14 +164,13 @@ bool GameApp::Run(HINSTANCE hInstance)
 }
 
 
-
 void GameApp::Update()
 {
 	m_Timer.Tick();
 	m_Input.Update(m_Timer.DeltaTime());
 	m_Camera.Update(m_Timer.DeltaTime());
 
-	OnUpdate();
+	OnUpdate(m_Timer.DeltaTime());
 }
 
 void GameApp::Render()
@@ -225,4 +225,9 @@ LRESULT CALLBACK GameApp::WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 		return DefWindowProc(hWnd, message, wParam, lParam);
 	}
 	return 0;
+}
+
+float GameApp::AspectRatio() const
+{
+	return static_cast<float>(m_ClientWidth) / m_ClientHeight;
 }

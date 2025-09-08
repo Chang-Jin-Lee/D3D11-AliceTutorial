@@ -7,6 +7,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Common", "Common\Common.vcx
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "01_RenderingQuadangle", "01_RenderingQuadangle\01_RenderingQuadangle.vcxproj", "{AFD07354-09F1-4F80-93C6-8D16EEAC6D7D}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "02_RenderingCube", "02_RenderingCube\02_RenderingCube.vcxproj", "{3BC61C23-5239-4575-8FF2-768FBE3A9724}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -31,6 +33,14 @@ Global
 		{AFD07354-09F1-4F80-93C6-8D16EEAC6D7D}.Release|x64.Build.0 = Release|x64
 		{AFD07354-09F1-4F80-93C6-8D16EEAC6D7D}.Release|x86.ActiveCfg = Release|Win32
 		{AFD07354-09F1-4F80-93C6-8D16EEAC6D7D}.Release|x86.Build.0 = Release|Win32
+		{3BC61C23-5239-4575-8FF2-768FBE3A9724}.Debug|x64.ActiveCfg = Debug|x64
+		{3BC61C23-5239-4575-8FF2-768FBE3A9724}.Debug|x64.Build.0 = Debug|x64
+		{3BC61C23-5239-4575-8FF2-768FBE3A9724}.Debug|x86.ActiveCfg = Debug|Win32
+		{3BC61C23-5239-4575-8FF2-768FBE3A9724}.Debug|x86.Build.0 = Debug|Win32
+		{3BC61C23-5239-4575-8FF2-768FBE3A9724}.Release|x64.ActiveCfg = Release|x64
+		{3BC61C23-5239-4575-8FF2-768FBE3A9724}.Release|x64.Build.0 = Release|x64
+		{3BC61C23-5239-4575-8FF2-768FBE3A9724}.Release|x86.ActiveCfg = Release|Win32
+		{3BC61C23-5239-4575-8FF2-768FBE3A9724}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
