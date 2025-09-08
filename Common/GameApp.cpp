@@ -183,6 +183,8 @@ void GameApp::OnInputProcess(const Keyboard::State& KeyState, const Keyboard::Ke
 	m_Camera.OnInputProcess(KeyState,KeyTracker,MouseState, MouseTracker);
 }
 
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
 //
 //  ÇÔ¼ö: WndProc(HWND, UINT, WPARAM, LPARAM)
 //
@@ -192,6 +194,8 @@ void GameApp::OnInputProcess(const Keyboard::State& KeyState, const Keyboard::Ke
 //
 LRESULT CALLBACK GameApp::WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
+	if (ImGui_ImplWin32_WndProcHandler(hWnd, message, wParam, lParam))
+		return true;
 
 	switch (message)
 	{
