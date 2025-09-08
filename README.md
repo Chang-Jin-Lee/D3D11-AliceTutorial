@@ -19,7 +19,7 @@ Tutorial for D3D AliceEngine
 - 결과: 창 왼쪽 아래 기준으로 화면 중앙에 사각형 출력
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/a44c63b4-0313-4c7d-b98f-03bfcf7abaa0" width="40%" />
+  <img src="https://github.com/user-attachments/assets/a44c63b4-0313-4c7d-b98f-03bfcf7abaa0" width="50%" />
 </p>
 
 ## 02. RenderingCube
@@ -31,7 +31,7 @@ Tutorial for D3D AliceEngine
 - 결과: 화면에 큐브 1개가 렌더링됨
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/0cde58dd-97c3-43be-abc9-021bc4bc3165" width="40%" />
+  <img src="https://github.com/user-attachments/assets/0cde58dd-97c3-43be-abc9-021bc4bc3165" width="50%" />
 </p>
 
 ---
@@ -47,7 +47,7 @@ Tutorial for D3D AliceEngine
 - 결과: 계층 변환과 깊이 테스트가 올바르게 동작하는 다중 메쉬 장면
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/c8260ecb-9408-4313-8b99-7c4ed71c7ae3" width="40%" />
+  <img src="https://github.com/user-attachments/assets/c8260ecb-9408-4313-8b99-7c4ed71c7ae3" width="50%" />
 </p>
 
 ---
@@ -62,7 +62,7 @@ Tutorial for D3D AliceEngine
 - 결과: 각 면에 다른 이미지를 가진 텍스처 큐브 렌더링
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/f341bbb1-f09a-425c-b605-99392074e557" width="40%" />
+  <img src="https://github.com/user-attachments/assets/f341bbb1-f09a-425c-b605-99392074e557" width="50%" />
 </p>
 
 ---
