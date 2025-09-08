@@ -45,7 +45,7 @@ bool App::OnInitialize()
 {
 	if(!InitD3D()) return false;
 
-	if (!InitEffect()) return false;
+	if(!InitEffect()) return false;
 
 	if(!InitScene()) return false;
 
