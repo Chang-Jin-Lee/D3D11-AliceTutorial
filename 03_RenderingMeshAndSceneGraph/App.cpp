@@ -59,16 +59,24 @@ void App::OnUninitialize()
 
 void App::OnUpdate(const float& dt)
 {
-	static float th0 = 0, th1 = 0, ph1 = 0;
-	th0 += 0.37f * dt; th1 += 0.37f * dt; ph1 += 0.3f * dt;
+	static float t0 = 0.0f, t1 = 0.0f, t2 = 0.0f;
+	t0 += 0.6f * dt;   // 부모(루트) Yaw 속도
+	t1 += 1.0f * dt;   // 두번째 메쉬(자식1) Yaw 속도 (루트와 다르게)
+	t2 += 1.2f * dt;   // 세번째 메쉬(자식2) 공전 속도
 
-	// 0번
-	m_CBuffers[0].world = XMMatrixTranspose(
-		XMMatrixRotationY(th0) * XMMatrixTranslation(-2.0f, 0.0f, 0.0f));
+	// 로컬 변환 정의 (간단 Scene Graph)
+	XMMATRIX local0 = XMMatrixRotationY(t0) * XMMatrixTranslation(-1.5f, 0.0f, 0.0f); // 루트
+	XMMATRIX local1 = XMMatrixRotationY(t1) * XMMatrixTranslation(8.0f, 0.0f, 0.0f);  // 자식1 (루트 기준 상대)
+	XMMATRIX local2 = XMMatrixRotationY(t2) * XMMatrixTranslation(3.0f, 0.0f, 0.0f);  // 자식2: 자식1을 중심으로 공전
 
-	// 1번
-	m_CBuffers[1].world = XMMatrixTranspose(
-		XMMatrixRotationX(ph1) * XMMatrixRotationY(th1) * XMMatrixTranslation(2.0f, 0.0f, 0.0f));
+	// 부모-자식 계층 world 계산: world = local * parentWorld
+	XMMATRIX world0 = local0;                 // 루트
+	XMMATRIX world1 = local1 * world0;        // 자식1
+	XMMATRIX world2 = local2 * world1;        // 자식2 (자식1 주변 공전)
+
+	m_CBuffers[0].world = XMMatrixTranspose(world0);
+	m_CBuffers[1].world = XMMatrixTranspose(world1);
+	m_CBuffers[2].world = XMMatrixTranspose(world2);
 }
 
 // Render() 함수에 중요한 부분이 다 들어있습니다. 여기를 보면 됩니다
@@ -79,7 +87,7 @@ void App::OnRender()
 	UINT offset = 0;
 
 	m_pDeviceContext->ClearRenderTargetView(m_pRenderTargetView, color);
-	//m_pDeviceContext->ClearDepthStencilView(m_pDepthStencilView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
+	m_pDeviceContext->ClearDepthStencilView(m_pDepthStencilView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
 
 	// 1 ~ 3 . IA 단계 설정
 	// 정점을 어떻게 이어서 그릴 것인지를 선택하는 부분
@@ -111,8 +119,6 @@ void App::OnRender()
 		// 7. 그리기
 		m_pDeviceContext->DrawIndexed(m_nIndices, 0, 0);
 	}
-
-	
 
 	m_pSwapChain->Present(0, 0);
 }
@@ -180,7 +186,37 @@ bool App::InitD3D()
 	HR_T(m_pSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&pBackBufferTexture));
 	HR_T(m_pDevice->CreateRenderTargetView(pBackBufferTexture, NULL, &m_pRenderTargetView));
 	SAFE_RELEASE(pBackBufferTexture);
-	m_pDeviceContext->OMSetRenderTargets(1, &m_pRenderTargetView, NULL);
+
+	// 깊이 스텐실 텍스처/뷰 생성
+	D3D11_TEXTURE2D_DESC dsDesc = {};
+	dsDesc.Width = m_ClientWidth;
+	dsDesc.Height = m_ClientHeight;
+	dsDesc.MipLevels = 1;
+	dsDesc.ArraySize = 1;
+	dsDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	dsDesc.SampleDesc.Count = swapDesc.SampleDesc.Count;
+	dsDesc.SampleDesc.Quality = swapDesc.SampleDesc.Quality;
+	dsDesc.Usage = D3D11_USAGE_DEFAULT;
+	dsDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+	dsDesc.CPUAccessFlags = 0;
+	dsDesc.MiscFlags = 0;
+
+	ID3D11Texture2D* pDepthStencil = nullptr;
+	HR_T(m_pDevice->CreateTexture2D(&dsDesc, nullptr, &pDepthStencil));
+	HR_T(m_pDevice->CreateDepthStencilView(pDepthStencil, nullptr, &m_pDepthStencilView));
+	SAFE_RELEASE(pDepthStencil);
+
+	// DepthStencilState 생성 및 설정
+	D3D11_DEPTH_STENCIL_DESC dssDesc = {};
+	dssDesc.DepthEnable = TRUE;
+	dssDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+	dssDesc.DepthFunc = D3D11_COMPARISON_LESS;
+	dssDesc.StencilEnable = FALSE;
+	HR_T(m_pDevice->CreateDepthStencilState(&dssDesc, &m_pDepthStencilState));
+	m_pDeviceContext->OMSetDepthStencilState(m_pDepthStencilState, 0);
+
+	// 렌더 타겟/DSV 바인딩
+	m_pDeviceContext->OMSetRenderTargets(1, &m_pRenderTargetView, m_pDepthStencilView);
 
 	/*
 	* @brief  뷰포트(Viewport) 설정
@@ -204,6 +240,8 @@ bool App::InitD3D()
 
 void App::UninitD3D()
 {
+	SAFE_RELEASE(m_pDepthStencilState);
+	SAFE_RELEASE(m_pDepthStencilView);
 	SAFE_RELEASE(m_pRenderTargetView);
 	SAFE_RELEASE(m_pDeviceContext);
 	SAFE_RELEASE(m_pSwapChain);
@@ -310,29 +348,21 @@ bool App::InitScene()
 	// 초기 데이터를 사용하지 않고 새로운 상수 버퍼를 만듭니다
 	HR_T(m_pDevice->CreateBuffer(&cbd, nullptr, &m_pConstantBuffer));
 
-	ConstantBuffer m_CBuffer;
-	m_CBuffer.world = XMMatrixIdentity();	// 단위 매트릭스의 조기는 그 자체입니다
-
-	m_CBuffer.view = XMMatrixTranspose(XMMatrixLookAtLH(
-		XMVectorSet(0.0f, 0.0f, -5.0f, 0.0f),
+	// 공통 카메라(View/Proj)로 3개의 상수 버퍼 엔트리를 준비합니다
+	ConstantBuffer base;
+	base.world = XMMatrixIdentity();
+	base.view = XMMatrixTranspose(XMMatrixLookAtLH(
+		XMVectorSet(0.0f, 5.0f, -15.0f, 0.0f),
 		XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f),
 		XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f)
 	));
-	m_CBuffer.proj = XMMatrixTranspose(XMMatrixPerspectiveFovLH(XM_PIDIV2, AspectRatio(), 1.0f, 1000.0f));
+	base.proj = XMMatrixTranspose(XMMatrixPerspectiveFovLH(XM_PIDIV2, AspectRatio(), 1.0f, 1000.0f));
 
-	m_CBuffers.push_back(m_CBuffer);
-
-	ConstantBuffer m_CBuffer2;
-	m_CBuffer2.world = XMMatrixIdentity();	// 단위 매트릭스의 조기는 그 자체입니다
-
-	m_CBuffer2.view = XMMatrixTranspose(XMMatrixLookAtLH(
-		XMVectorSet(0.0f, 3.0f, -5.0f, 0.0f),
-		XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f),
-		XMVectorSet(0.0f, 0.5f, 0.0f, 0.0f)
-	));
-	m_CBuffer2.proj = XMMatrixTranspose(XMMatrixPerspectiveFovLH(XM_PIDIV2, AspectRatio(), 1.0f, 1000.0f));
-
-	m_CBuffers.push_back(m_CBuffer2);
+	m_CBuffers.clear();
+	m_CBuffers.reserve(3);
+	m_CBuffers.push_back(base);
+	m_CBuffers.push_back(base);
+	m_CBuffers.push_back(base);
 
 	return true;
 }

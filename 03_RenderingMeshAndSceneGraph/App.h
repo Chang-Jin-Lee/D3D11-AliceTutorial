@@ -45,6 +45,7 @@ public:
 	//ConstantBuffer m_CBuffer;                       // GPU 상수 버퍼를 수정하는 데 사용되는 변수
 	std::vector<ConstantBuffer> m_CBuffers;
 	ID3D11DepthStencilView* m_pDepthStencilView;    // 깊이 템플릿
+	ID3D11DepthStencilState* m_pDepthStencilState = nullptr;	// 깊이 스텐실 상태
 
 	bool OnInitialize() override;
 	void OnUninitialize() override;
