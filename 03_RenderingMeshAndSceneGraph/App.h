@@ -4,6 +4,14 @@
 #include <d3d11.h>
 #include <directxtk/SimpleMath.h>
 #include <vector>
+
+#include <dxgi1_4.h>
+#include <wrl/client.h>
+#include <imgui.h>
+#include <imgui_impl_win32.h>
+#include <imgui_impl_dx11.h>
+#include <Psapi.h>
+
 using namespace DirectX::SimpleMath;
 
 class App :
@@ -46,6 +54,15 @@ public:
 	std::vector<ConstantBuffer> m_CBuffers;
 	ID3D11DepthStencilView* m_pDepthStencilView;    // 깊이 템플릿
 	ID3D11DepthStencilState* m_pDepthStencilState = nullptr;	// 깊이 스텐실 상태
+
+	// ImGui 컨트롤 상태 변수
+	DirectX::XMFLOAT3 m_RootPos = { -1.5f, 0.0f, 0.0f };
+	DirectX::XMFLOAT3 m_Child1Offset = { 8.0f, 0.0f, 0.0f };
+	DirectX::XMFLOAT3 m_Child2Offset = { 3.0f, 0.0f, 0.0f };
+	DirectX::XMFLOAT3 m_CameraPos = { 0.0f, 5.0f, -15.0f };
+	float m_CameraFovDeg = 90.0f;
+	float m_CameraNear = 1.0f;
+	float m_CameraFar = 1000.0f;
 
 	bool OnInitialize() override;
 	void OnUninitialize() override;

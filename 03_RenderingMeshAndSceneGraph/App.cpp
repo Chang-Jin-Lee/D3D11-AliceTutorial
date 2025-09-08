@@ -49,11 +49,23 @@ bool App::OnInitialize()
 
 	if(!InitScene()) return false;
 
+	// ImGui 초기화
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
+	ImGui::StyleColorsDark();
+	ImGui_ImplWin32_Init(m_hWnd);
+	ImGui_ImplDX11_Init(m_pDevice, m_pDeviceContext);
+
 	return true;
 }
 
 void App::OnUninitialize()
 {
+	// ImGui 종료
+	ImGui_ImplDX11_Shutdown();
+	ImGui_ImplWin32_Shutdown();
+	ImGui::DestroyContext();
+
 	UninitD3D();
 }
 
@@ -65,18 +77,32 @@ void App::OnUpdate(const float& dt)
 	t2 += 1.2f * dt;   // 세번째 메쉬(자식2) 공전 속도
 
 	// 로컬 변환 정의 (간단 Scene Graph)
-	XMMATRIX local0 = XMMatrixRotationY(t0) * XMMatrixTranslation(-1.5f, 0.0f, 0.0f); // 루트
-	XMMATRIX local1 = XMMatrixRotationY(t1) * XMMatrixTranslation(8.0f, 0.0f, 0.0f);  // 자식1 (루트 기준 상대)
-	XMMATRIX local2 = XMMatrixRotationY(t2) * XMMatrixTranslation(3.0f, 0.0f, 0.0f);  // 자식2: 자식1을 중심으로 공전
+	XMMATRIX local0 = XMMatrixRotationY(t0) * XMMatrixTranslation(m_RootPos.x, m_RootPos.y, m_RootPos.z); // 루트
+	XMMATRIX local1 = XMMatrixRotationY(t1) * XMMatrixTranslation(m_Child1Offset.x, m_Child1Offset.y, m_Child1Offset.z);  // 자식1 (루트 기준 상대)
+	XMMATRIX local2 = XMMatrixRotationY(t2) * XMMatrixTranslation(m_Child2Offset.x, m_Child2Offset.y, m_Child2Offset.z);  // 자식2: 자식1을 중심으로 공전
 
 	// 부모-자식 계층 world 계산: world = local * parentWorld
 	XMMATRIX world0 = local0;                 // 루트
 	XMMATRIX world1 = local1 * world0;        // 자식1
 	XMMATRIX world2 = local2 * world1;        // 자식2 (자식1 주변 공전)
 
+	// View/Proj도 UI값 반영 (매 프레임)
+	XMMATRIX view = XMMatrixTranspose(XMMatrixLookAtLH(
+		XMVectorSet(m_CameraPos.x, m_CameraPos.y, m_CameraPos.z, 0.0f),
+		XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f),
+		XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f)));
+	float fovRad = XMConvertToRadians(m_CameraFovDeg);
+	XMMATRIX proj = XMMatrixTranspose(XMMatrixPerspectiveFovLH(fovRad, AspectRatio(), m_CameraNear, m_CameraFar));
+
 	m_CBuffers[0].world = XMMatrixTranspose(world0);
+	m_CBuffers[0].view = view;
+	m_CBuffers[0].proj = proj;
 	m_CBuffers[1].world = XMMatrixTranspose(world1);
+	m_CBuffers[1].view = view;
+	m_CBuffers[1].proj = proj;
 	m_CBuffers[2].world = XMMatrixTranspose(world2);
+	m_CBuffers[2].view = view;
+	m_CBuffers[2].proj = proj;
 }
 
 // Render() 함수에 중요한 부분이 다 들어있습니다. 여기를 보면 됩니다
@@ -91,24 +117,23 @@ void App::OnRender()
 
 	// 1 ~ 3 . IA 단계 설정
 	// 정점을 어떻게 이어서 그릴 것인지를 선택하는 부분
-	m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	// 1. 버퍼를 잡아주기
-	m_pDeviceContext->IASetVertexBuffers(0, 1, &m_pVertexBuffer, &stride, &offset);
 	// 2. 입력 레이아웃을 잡아주기
-	m_pDeviceContext->IASetInputLayout(m_pInputLayout);
 	// 3. 인덱스 버퍼를 잡아주기
+	m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	m_pDeviceContext->IASetVertexBuffers(0, 1, &m_pVertexBuffer, &stride, &offset);
+	m_pDeviceContext->IASetInputLayout(m_pInputLayout);
 	m_pDeviceContext->IASetIndexBuffer(m_pIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
 
 	// 4. Vertex Shader 설정
 	m_pDeviceContext->VSSetShader(m_pVertexShader, nullptr, 0);
-
 	// 5. Pixel Shader 설정
 	m_pDeviceContext->PSSetShader(m_pPixelShader, nullptr, 0);
 
 	// 6. Constant Buffer 설정
+	// 7. 그리기
 	for (auto m_CBuffer : m_CBuffers)
 	{
-		//m_pDeviceContext->UpdateSubresource(m_pConstantBuffer, 0, NULL, &m_CBuffer, 0, 0);
 		D3D11_MAPPED_SUBRESOURCE mapped{};
 		HR_T(m_pDeviceContext->Map(m_pConstantBuffer, 0,
 			D3D11_MAP_WRITE_DISCARD, 0, &mapped));
@@ -116,9 +141,30 @@ void App::OnRender()
 		m_pDeviceContext->Unmap(m_pConstantBuffer, 0);
 
 		m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_pConstantBuffer);
-		// 7. 그리기
 		m_pDeviceContext->DrawIndexed(m_nIndices, 0, 0);
 	}
+
+	// ImGui 프레임 및 UI 렌더링
+	ImGui_ImplDX11_NewFrame();
+	ImGui_ImplWin32_NewFrame();
+	ImGui::NewFrame();
+
+	if (ImGui::Begin("Controls"))
+	{
+		ImGui::Text("Mesh Transforms");
+		ImGui::DragFloat3("Root Pos (x,y,z)", &m_RootPos.x, 0.1f);
+		ImGui::DragFloat3("Child1 Offset (x,y,z)", &m_Child1Offset.x, 0.1f);
+		ImGui::DragFloat3("Child2 Offset (x,y,z)", &m_Child2Offset.x, 0.1f);
+		ImGui::Separator();
+		ImGui::Text("Camera");
+		ImGui::DragFloat3("Camera Pos (x,y,z)", &m_CameraPos.x, 0.1f);
+		ImGui::SliderFloat("Camera FOV (deg)", &m_CameraFovDeg, 30.0f, 120.0f);
+		ImGui::DragFloatRange2("Near/Far", &m_CameraNear, &m_CameraFar, 0.1f, 0.01f, 5000.0f, "Near: %.2f", "Far: %.2f");
+	}
+	ImGui::End();
+
+	ImGui::Render();
+	ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 
 	m_pSwapChain->Present(0, 0);
 }
@@ -352,11 +398,12 @@ bool App::InitScene()
 	ConstantBuffer base;
 	base.world = XMMatrixIdentity();
 	base.view = XMMatrixTranspose(XMMatrixLookAtLH(
-		XMVectorSet(0.0f, 5.0f, -15.0f, 0.0f),
+		XMVectorSet(m_CameraPos.x, m_CameraPos.y, m_CameraPos.z, 0.0f),
 		XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f),
 		XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f)
 	));
-	base.proj = XMMatrixTranspose(XMMatrixPerspectiveFovLH(XM_PIDIV2, AspectRatio(), 1.0f, 1000.0f));
+	float fovRad = XMConvertToRadians(m_CameraFovDeg);
+	base.proj = XMMatrixTranspose(XMMatrixPerspectiveFovLH(fovRad, AspectRatio(), m_CameraNear, m_CameraFar));
 
 	m_CBuffers.clear();
 	m_CBuffers.reserve(3);
