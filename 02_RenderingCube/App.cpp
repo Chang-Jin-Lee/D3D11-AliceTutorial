@@ -94,11 +94,11 @@ void App::OnRender()
 	// 4. Vertex Shader 설정
 	m_pDeviceContext->VSSetShader(m_pVertexShader, nullptr, 0);
 
-	// 5. Constant Buffer 설정
-	m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_pConstantBuffer);
-
-	// 6. Pixel Shader 설정
+	// 5. Pixel Shader 설정
 	m_pDeviceContext->PSSetShader(m_pPixelShader, nullptr, 0);
+
+	// 6. Constant Buffer 설정
+	m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_pConstantBuffer);
 
 	// 7. 그리기
 	m_pDeviceContext->DrawIndexed(m_nIndices, 0, 0);
