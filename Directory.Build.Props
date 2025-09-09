@@ -2,7 +2,7 @@
   <!-- ==== 경로/트리플릿 공통 설정 ==== -->
   <PropertyGroup>
     <!-- vcpkg 루트 경로: 필요시 본인 경로로 수정 -->
-    <VcpkgRoot>D:\Github\vcpkg</VcpkgRoot>
+    <VcpkgRoot>D:\vcpkg</VcpkgRoot>
     
     <TripletStatic>x64-windows-static-md</TripletStatic>
     <TripletDynamic>x64-windows</TripletDynamic>
