@@ -89,7 +89,7 @@ void App::OnUpdate(const float& dt)
 	// View/Proj도 UI값 반영 (매 프레임)
 	XMMATRIX view = XMMatrixTranspose(XMMatrixLookAtLH(
 		XMVectorSet(m_CameraPos.x, m_CameraPos.y, m_CameraPos.z, 0.0f),
-		XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f),
+		XMVectorSet(m_CameraPos.x + 0.0f, m_CameraPos.y + 0.0f, m_CameraPos.z + 1.0f, 0.0f),
 		XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f)));
 	float fovRad = XMConvertToRadians(m_CameraFovDeg);
 	XMMATRIX proj = XMMatrixTranspose(XMMatrixPerspectiveFovLH(fovRad, AspectRatio(), m_CameraNear, m_CameraFar));
@@ -399,7 +399,7 @@ bool App::InitScene()
 	base.world = XMMatrixIdentity();
 	base.view = XMMatrixTranspose(XMMatrixLookAtLH(
 		XMVectorSet(m_CameraPos.x, m_CameraPos.y, m_CameraPos.z, 0.0f),
-		XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f),
+		XMVectorSet(m_CameraPos.x + 0.0f, m_CameraPos.y + 0.0f, m_CameraPos.z + 1.0f, 0.0f),
 		XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f)
 	));
 	float fovRad = XMConvertToRadians(m_CameraFovDeg);
