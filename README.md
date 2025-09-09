@@ -19,7 +19,7 @@ Tutorial for D3D AliceEngine
 - 결과: 창 왼쪽 아래 기준으로 화면 중앙에 사각형 출력
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/a44c63b4-0313-4c7d-b98f-03bfcf7abaa0" width="50%" />
+  <img src="https://github.com/user-attachments/assets/a44c63b4-0313-4c7d-b98f-03bfcf7abaa0" width="60%" />
 </p>
 
 ---
@@ -33,7 +33,7 @@ Tutorial for D3D AliceEngine
 - 결과: 화면에 큐브 1개가 렌더링됨
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/0cde58dd-97c3-43be-abc9-021bc4bc3165" width="50%" />
+  <img src="https://github.com/user-attachments/assets/0cde58dd-97c3-43be-abc9-021bc4bc3165" width="60%" />
 </p>
 
 ---
@@ -49,7 +49,7 @@ Tutorial for D3D AliceEngine
 - 결과: 계층 변환과 깊이 테스트가 올바르게 동작하는 다중 메쉬 장면
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/c8260ecb-9408-4313-8b99-7c4ed71c7ae3" width="50%" />
+  <img src="https://github.com/user-attachments/assets/c8260ecb-9408-4313-8b99-7c4ed71c7ae3" width="60%" />
 </p>
 
 ---
@@ -64,7 +64,7 @@ Tutorial for D3D AliceEngine
 - 결과: 각 면에 다른 이미지를 가진 텍스처 큐브 렌더링
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/f341bbb1-f09a-425c-b605-99392074e557" width="50%" />
+  <img src="https://github.com/user-attachments/assets/f341bbb1-f09a-425c-b605-99392074e557" width="60%" />
 </p>
 
 ---
@@ -81,7 +81,7 @@ Tutorial for D3D AliceEngine
 - 결과: 머티리얼/텍스처가 적용된 FBX 메시 렌더링
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/ef96322a-786c-411d-b5f6-5e76377455da" width="50%" />
+  <img src="https://github.com/user-attachments/assets/ef96322a-786c-411d-b5f6-5e76377455da" width="60%" />
 </p>
 
 
@@ -98,7 +98,7 @@ Tutorial for D3D AliceEngine
 - 결과: 화면에 PMX A-포즈 캐릭터 실루엣 표시
   
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/e2de8438-8e10-4c28-a28b-ed25736a5756" width="50%" />
+  <img src="https://github.com/user-attachments/assets/e2de8438-8e10-4c28-a28b-ed25736a5756" width="60%" />
 </p>
 
 ---
@@ -117,11 +117,24 @@ Tutorial for D3D AliceEngine
 - 리소스 예시: `Resource/Nikke-Alice/`, 텍스처 폴더 `Resource/Nikke-Alice/Alice.fbm/`
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/4ffe5d7c-6063-42f7-a9b2-7d3be574ffa0" width="50%" />
+  <img src="https://github.com/user-attachments/assets/4ffe5d7c-6063-42f7-a9b2-7d3be574ffa0" width="60%" />
 </p>
 
 ---
 
+## 08. ImGui System Info (08_ImguiSystemInfo)
+- 내용: ImGui로 시스템 정보와 간단한 이미지 뷰어(파일 열기 포함)를 구현한 예제
+- 주요 구현:
+  - System Info: FPS(1초 갱신), GPU/CPU, RAM/VRAM 표시
+  - Controls: Hanako/Yuuka 기본 이미지 크기 조절, 종횡비 고정/해제, Fit To Window/512/Fit Image, 파일 열기(탐색기)
+  - 이미지 뷰어: Hanako/Yuuka 고정 슬롯 + 외부 파일 전용 슬롯(Loaded Image)
+- 프로젝트: `08_ImguiSystemInfo/`
+  
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/a01532ac-eaaf-40c7-87d4-bb810bebbbfb" width="60%" />
+</p>
+
+---
 
 ## 주의사항
 - 기존 레거시 DirectX SDK 종속성 제거 → Windows 10 SDK 만으로 동작  
