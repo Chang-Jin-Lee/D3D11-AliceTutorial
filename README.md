@@ -117,7 +117,7 @@ Tutorial for D3D AliceEngine
 - 리소스 예시: `Resource/Nikke-Alice/`, 텍스처 폴더 `Resource/Nikke-Alice/Alice.fbm/`
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/b882c3a4-fad9-45f6-b4ab-a5f8e397c787" width="50%" />
+  <img src="https://github.com/user-attachments/assets/4ffe5d7c-6063-42f7-a9b2-7d3be574ffa0" width="50%" />
 </p>
 
 ---
