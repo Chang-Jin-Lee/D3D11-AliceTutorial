@@ -1,17 +1,23 @@
 /*
-* @brief : PMX 텍스쳐 렌더 예제 (머티리얼 DIFFUSE 적용)
+* @brief : 08_ImguiSystemInfo - ImGui 기반 시스템 정보/입력/이미지 뷰어 예제
 * @details :
-*   - 무엇을 하는가
-*     · PMX를 읽어서, 머티리얼의 DIFFUSE 텍스쳐를 찾아서, 픽셀 셰이더에서 샘플링해 그린다
-*   - 어떻게 처리하는가
-*     · 경로: PMX 파일 위치를 기준으로 상대경로를 풀고, 실패하면 같은 폴더의 "Alice.fbm/" 폴더에서 다시 찾는다
-*     · 임베디드: "*0" 같은 형식이면 aiTexture에서 직접 읽어 메모리로 텍스쳐를 만든다
-*     · 서브셋: 머티리얼 인덱스별로 인덱스 범위를 저장해, 렌더 때 해당 텍스쳐를 바인딩하고 부분 그리기를 한다
-*     · 셰이더: VS는 TEXCOORD를 넘기고, PS는 tex0.Sample(samp0, uv)로 실제 텍스쳐를 샘플한다
-*   - 기본 세팅
-*     · Cull None, Depth Enable(LESS), 선형 필터 샘플러, 텍스쳐 없을 땐 1x1 흰색 폴백
+*   - 목적 : Direct3D 11 + ImGui로 간단한 시스템 정보 패널과 이미지 뷰어를 구성하는 최소 예제
+*   - 주요 기능 :
+*     · System Info 창: FPS, GPU/CPU, RAM/VRAM 실시간 표시
+*     · Controls 창: 이미지 표시/사이즈(고정/맞춤), 파일 열기(탐색기)로 외부 이미지 로드
+*     · 이미지 뷰어: Hanako/Yuuka 고정 슬롯 + 외부 파일 전용 슬롯(Loaded Image)
+*       - Lock Aspect, Fit To Window, Fit 512, Fit Image
+*       - 이미지 우하단 리사이즈 핸들, Ctrl+드래그(전체 영역) 리사이즈
+*     · 오류/안내 오버레이: 중앙 빨간 배경으로 3초간 메시지 표시
+*   - 학습 포인트 :
+*     · D3D11 기본 초기화 + RTV/뷰포트 설정 + 스왑체인 Present
+*     · ImGui 프레임 라이프사이클(NewFrame → RenderDrawData)
+*     · WIC/DDSTextureLoader를 활용한 텍스처 SRV 로딩과 사이즈 조회
+*     · Win32 OPENFILENAME으로 파일 탐색기 열기
 */
 
+// @brief : 필수 포함 및 링크
+// @details : D3D11/ImGui/파일대화상자 사용을 위한 헤더와 라이브러리 지정
 #include "App.h"
 #include "../Common/Helper.h"
 #include "../Common/InputSystem.h"
@@ -25,7 +31,8 @@
 #pragma comment (lib, "d3d11.lib")
 #pragma comment(lib,"d3dcompiler.lib")
 
-// 텍스쳐 로드 + 크기 조회 헬퍼
+// @brief : 텍스처 로드와 크기 조회
+// @details : 파일 존재 확인 → SRV 생성 → 2D 텍스처 desc로 가로/세로 픽셀 추출
 static bool LoadTextureSRVAndSize(ID3D11Device* device, const std::wstring& path,
 	ID3D11ShaderResourceView** outSRV, ImVec2* outSize)
 {
@@ -46,6 +53,8 @@ static bool LoadTextureSRVAndSize(ID3D11Device* device, const std::wstring& path
 	return true;
 }
 
+// @brief : 단일 경로 로드 시도
+// @details : 폴백 없이 단일 경로만 확인해 SRV/사이즈를 채운다
 static bool TryLoadTextureWithFallbacks(ID3D11Device* device, const std::wstring& path,
 	ID3D11ShaderResourceView** outSRV, ImVec2* outSize)
 {
@@ -53,6 +62,8 @@ static bool TryLoadTextureWithFallbacks(ID3D11Device* device, const std::wstring
 	return false;
 }
 
+// @brief : Windows 파일 열기 대화상자
+// @details : png/jpg/jpeg/bmp/dds 필터, 성공 시 전체 경로를 반환
 static bool OpenFileDialogImage(std::wstring& outPath)
 {
 	wchar_t file[1024] = {0};
@@ -157,6 +168,7 @@ void App::OnUninitialize()
 	// 텍스쳐 해제
 	SAFE_RELEASE(m_TexHanakoSRV);
 	SAFE_RELEASE(m_TexYuukaSRV);
+	SAFE_RELEASE(m_LoadedSRV);
 
 	UninitD3D();
 }
@@ -296,43 +308,8 @@ void App::OnRender()
 
 	if (ImGui::Begin("Controls"))
 	{
-		ImGui::Text("Mesh Transforms");
-		ImGui::DragFloat3("Root Pos (x,y,z)", &m_RootPos.x, 0.1f);
-		ImGui::Separator();
-		ImGui::Text("Camera");
-		ImGui::DragFloat3("Camera Pos (x,y,z)", &m_CameraPos.x, 0.1f);
-		ImGui::SliderFloat("Camera FOV (deg)", &m_CameraFovDeg, 30.0f, 120.0f);
-		ImGui::DragFloatRange2("Near/Far", &m_CameraNear, &m_CameraFar, 0.1f, 0.01f, 5000.0f, "Near: %.2f", "Far: %.2f");
-		ImGui::Spacing();
-
-		// LoadTexture 버튼
-		ImGui::Separator();
-		ImGui::Spacing();
-		if (ImGui::Button("LoadTexture"))
-		{
-			std::wstring path;
-			if (OpenFileDialogImage(path))
-			{
-				ID3D11ShaderResourceView* srv = nullptr; ImVec2 size(0, 0);
-				if (LoadTextureSRVAndSize(m_pDevice, path, &srv, &size))
-				{
-					SAFE_RELEASE(m_LoadedSRV);
-					m_LoadedSRV = srv; m_LoadedSize = size; m_LoadedDrawSize = ImVec2(512, 512);
-					m_ShowLoaded = true; m_LoadedFitToWindow = false; m_LoadedLockAR = true;
-					// 제목은 파일명으로
-					char fname[260] = {};
-					_wsplitpath_s(path.c_str(), nullptr, 0, nullptr, 0, (wchar_t*)fname, 0, nullptr, 0); // not safe due to types, skip.
-					m_LoadedTitle = "Loaded Image";
-				}
-				else
-				{
-					m_NoticeText = "띄울 수 없습니다 (이미지 파일이 아님)";
-					m_NoticeTimeLeft = 3.0f;
-				}
-			}
-		}
-
 		// Images controls
+		ImGui::Separator();
 		ImGui::Text("Images");
 		ImGui::Checkbox("Show Hanako", &m_ShowHanako); ImGui::SameLine(); ImGui::Checkbox("LockAR##hanako", &m_HanakoLockAR);
 		ImGui::DragFloat2("Hanako Size", &m_HanakoDrawSize.x, 1.0f, 32.0f, 4096.0f, "%.0f");
@@ -342,6 +319,29 @@ void App::OnRender()
 		ImGui::DragFloat2("Yuuka Size", &m_YuukaDrawSize.x, 1.0f, 32.0f, 4096.0f, "%.0f");
 		ImGui::SameLine(); if (ImGui::Button("Fit 512##yuuka")) m_YuukaDrawSize = ImVec2(512,512);
 		ImGui::SameLine(); if (ImGui::Button("Fit Image##yuuka")) m_YuukaDrawSize = m_TexYuukaSize;
+
+		// Controls 맨 아래: LoadTexture 버튼
+		ImGui::Separator();
+		if (ImGui::Button("LoadTexture"))
+		{
+			std::wstring path;
+			if (OpenFileDialogImage(path))
+			{
+				ID3D11ShaderResourceView* srv = nullptr; ImVec2 size(0,0);
+				if (LoadTextureSRVAndSize(m_pDevice, path, &srv, &size))
+				{
+					SAFE_RELEASE(m_LoadedSRV);
+					m_LoadedSRV = srv; m_LoadedSize = size; m_LoadedDrawSize = ImVec2(512,512);
+					m_ShowLoaded = true; m_LoadedFitToWindow = false; m_LoadedLockAR = true;
+					m_LoadedTitle = "Loaded Image";
+				}
+				else
+				{
+					m_NoticeText = "띄울 수 없습니다 (이미지 파일이 아님)";
+					m_NoticeTimeLeft = 3.0f;
+				}
+			}
+		}
 	}
 	ImGui::End();
 
