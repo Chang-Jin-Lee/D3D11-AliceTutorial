@@ -16,7 +16,7 @@ Tutorial for D3D AliceEngine
   - Vertex / Index Buffer 생성
   - Input Layout 및 Shader 연결
   - `IASetPrimitiveTopology` 를 이용한 삼각형 리스트 설정
-- 결과: 창 왼쪽 아래 기준으로 화면 중앙에 사각형 출력
+- 결과: 화면 중앙에 사각형 출력
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/a44c63b4-0313-4c7d-b98f-03bfcf7abaa0" width="60%" />
