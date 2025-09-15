@@ -21,6 +21,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "07_pmxTexture", "07_pmxText
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "08_ImguiSystemInfo", "08_ImguiSystemInfo\08_ImguiSystemInfo.vcxproj", "{4802A511-C5C7-455B-9F85-FFFAEE99E5FE}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "09_Lighting", "09_Lighting\09_Lighting.vcxproj", "{4A75D11F-42F6-4782-AD92-06E3082F0EC1}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -101,6 +103,14 @@ Global
 		{4802A511-C5C7-455B-9F85-FFFAEE99E5FE}.Release|x64.Build.0 = Release|x64
 		{4802A511-C5C7-455B-9F85-FFFAEE99E5FE}.Release|x86.ActiveCfg = Release|Win32
 		{4802A511-C5C7-455B-9F85-FFFAEE99E5FE}.Release|x86.Build.0 = Release|Win32
+		{4A75D11F-42F6-4782-AD92-06E3082F0EC1}.Debug|x64.ActiveCfg = Debug|x64
+		{4A75D11F-42F6-4782-AD92-06E3082F0EC1}.Debug|x64.Build.0 = Debug|x64
+		{4A75D11F-42F6-4782-AD92-06E3082F0EC1}.Debug|x86.ActiveCfg = Debug|Win32
+		{4A75D11F-42F6-4782-AD92-06E3082F0EC1}.Debug|x86.Build.0 = Debug|Win32
+		{4A75D11F-42F6-4782-AD92-06E3082F0EC1}.Release|x64.ActiveCfg = Release|x64
+		{4A75D11F-42F6-4782-AD92-06E3082F0EC1}.Release|x64.Build.0 = Release|x64
+		{4A75D11F-42F6-4782-AD92-06E3082F0EC1}.Release|x86.ActiveCfg = Release|Win32
+		{4A75D11F-42F6-4782-AD92-06E3082F0EC1}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
