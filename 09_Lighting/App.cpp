@@ -1,37 +1,39 @@
 /*
-* @brief : d3d11로 큐브를 그리는 예제입니다
+* @brief : d3d11로 큐브를 비추는 라이팅 예제입니다
 * @details :
 * 
-		-  큐브를 만듭니다
-			//    5________ 6
-			//    /|      /|
-			//   /_|_____/ |
-			//  1|4|_ _ 2|_|7
-			//   | /     | /
-			//   |/______|/
-			//  0       3
-
-		- 인덱스 배열은 다음을 참고하세요
-		 DWORD indices[] = {
-		// 앞쪽
-		0, 1, 2,
-		2, 3, 0,
-		// 왼쪽
-		4, 5, 1,
-		1, 0, 4,
-		// 맨 위
-		1, 5, 6,
-		6, 2, 1,
-		// 뒤쪽에
-		7, 6, 5,
-		5, 4, 7,
-		// 오른쪽
-		3, 2, 6,
-		6, 7, 3,
-		// 맨 아래
-		4, 0, 3,
-		3, 7, 4
-		};
+*     1) Normal이 포함된 정점(Vertex)으로 큐브를 구성하고,
+*     2) VertexShader에서 Local Normal을 World Normal로 변환,
+*     3) PixelShader에서 Directional Light와 Normal로 디퓨즈 음영 처리,
+*     4) 상수버퍼를 하나(b0)만 사용하여 VS/PS 공용 데이터 관리,
+*     5) ImGui로 Light(Color/Direction/Position)과 큐브 회전(Yaw/Pitch) 제어,
+*     6) 디버그용 라이트 위치 마커(작은 흰색 큐브) 출력.
+*
+*   - 파이프라인 구성
+*     IA: POSITION(float3), NORMAL(float3), COLOR(float4) 입력 레이아웃
+*     VS: posW, normalW 계산 (g_World, g_WorldInvTranspose 사용), 클립공간 변환
+*     PS: baseColor * (ambient + diffuse)로 단순 조명, g_Pad 토글로 디버그 컬러
+*     CB: ConstantBuffer(b0) 단일. world/view/proj/worldInvTranspose/dirLight/eyePos/pad 포함
+*
+*   - 상수버퍼
+*     world/view/proj: 프레임별 업데이트
+*     worldInvTranspose: XMMatrixTranspose(XMMatrixInverse(...))로 계산
+*     dirLight: ImGui 입력 반영 (color, direction 정규화)
+*     eyePos: 카메라 위치
+*     pad: 디버그 토글 (1.0=보라색, 2.0=흰색 마커)
+*
+*   - ImGui
+*     Mesh: Root Pos, Yaw(deg), Pitch(deg)
+*     Camera: Position, FOV, Near/Far
+*     Light: Color(RGB), Direction(x,y,z), Position(x,y,z)
+*
+*   - 디버그 마커
+*     라이트 위치를 표시하는 작은 큐브(스케일 0.2). 상수버퍼 pad=2.0으로 PS에서 흰색 큐브 강제 출력
+*
+*   - 주의사항
+*     1) 인덱스 버퍼 포맷과 DXGI_FORMAT(R32_UINT/R16_UINT) 일치
+*     2) 입력 레이아웃과 정점 구조체, VS 입력 시그니처 정합성 유지
+*     3) 행렬 전치 규약(HLSL 열-주도) 일치: CPU에서 Transpose 포함 업데이트
 */
 
 #include "App.h"
