@@ -490,6 +490,16 @@ void App::OnRender()
 
 	if (ImGui::Begin("Controls"))
 	{
+		// SkyBox 선택
+		{
+			int cur = (m_SkyBoxChoice == SkyBoxChoice::Hanako) ? 0 : 1;
+			const char* items[] = { "Hanako.dds", "cubemap.dds" };
+			if (ImGui::Combo("SkyBox Choice", &cur, items, IM_ARRAYSIZE(items)))
+			{
+				m_SkyBoxChoice = (cur == 0) ? SkyBoxChoice::Hanako : SkyBoxChoice::CubeMap;
+				m_pTextureSRV = (m_SkyBoxChoice == SkyBoxChoice::Hanako) ? m_pSkyHanakoSRV : m_pSkyCubeMapSRV;
+			}
+		}
 		ImGui::Text("Mesh Transforms");
 		ImGui::Checkbox("Rotate Cube", &g_RotateCube);
 		ImGui::DragFloat3("Root Pos (x,y,z)", &m_cubePos.x, 0.1f);
@@ -780,12 +790,14 @@ bool App::InitScene()
 	// 단일 상수 버퍼 생성 (VS/PS 공용, b0)
 	HR_T(m_pDevice->CreateBuffer(&cbd, nullptr, &m_pConstantBuffer));
 
-	// ***********************************************************************************************
+		// ***********************************************************************************************
 	// 스카이 박스 큐브 설정
 	StaticMeshData skyBoxCubeData = StaticMesh::CreateBox(XMFLOAT4(1, 1, 1, 1));
-	HR_T(CreateDDSTextureFromFile(m_pDevice, L"../Resource/Hanako.dds", nullptr, &m_pTextureSRV));
-	//HR_T(CreateDDSTextureFromFile(m_pDevice, L"../Resource/cubemap.dds", nullptr, &m_pTextureSRV));
-
+	HR_T(CreateDDSTextureFromFile(m_pDevice, L"..\\Resource\\Hanako.dds", nullptr, &m_pSkyHanakoSRV));
+	HR_T(CreateDDSTextureFromFile(m_pDevice, L"..\\Resource\\cubemap.dds", nullptr, &m_pSkyCubeMapSRV));
+	m_SkyBoxChoice = SkyBoxChoice::CubeMap;
+	m_pTextureSRV = m_pSkyCubeMapSRV;
+	
 	// 샘플러 생성
 	D3D11_SAMPLER_DESC sampDesc = {};
 	sampDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
@@ -827,6 +839,9 @@ void App::UninitScene()
 	SAFE_RELEASE(m_pSkyBoxInputLayout);
 	SAFE_RELEASE(m_pSkyBoxVertexShader);
 	SAFE_RELEASE(m_pSkyBoxPixelShader);
+
+	SAFE_RELEASE(m_pSkyHanakoSRV);
+	SAFE_RELEASE(m_pSkyCubeMapSRV);
 }
 
 bool App::InitBasicEffect()
