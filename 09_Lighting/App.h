@@ -84,6 +84,7 @@ public:
 
 	ID3D11Buffer* m_pConstantBuffer = nullptr; 				// 상수 버퍼 (단일)
 	ConstantBuffer m_ConstantBuffer; 						// CPU-side 상수 버퍼 데이터
+	ID3D11Buffer* m_pLineVertexBuffer = nullptr; 			// 라이트 방향 표시용 라인 VB
 
 	ID3D11DepthStencilView* m_pDepthStencilView; 	// 깊이 스텐실 뷰
 	ID3D11DepthStencilState* m_pDepthStencilState = nullptr;  	// 깊이 스텐실 상태
