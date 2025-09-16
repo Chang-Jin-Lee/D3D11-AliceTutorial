@@ -75,6 +75,13 @@ public:
 	ID3D11VertexShader* m_pVertexShader = nullptr; 	// 정점 셰이더
 	ID3D11PixelShader* m_pPixelShader = nullptr; 	// 픽셀 셰이더(조명)	
 	ID3D11PixelShader* m_pPixelShaderSolid = nullptr; 	// 픽셀 셰이더(마커용 흰색)
+
+	ID3D11SamplerState* m_pSamplerState = nullptr;
+	ID3D11VertexShader* m_pSkyBoxVertexShader = nullptr; 	// 스카이박스 정점 셰이더
+	ID3D11PixelShader* m_pSkyBoxPixelShader = nullptr; 	// 스카이박스 픽셀 셰이더(조명)	
+	ID3D11InputLayout* m_pSkyBoxInputLayout = nullptr; 	// 스카이박스 입력 레이아웃
+	ID3D11ShaderResourceView* m_pTextureSRV = nullptr;
+
 	ID3D11InputLayout* m_pInputLayout = nullptr; 	// 입력 레이아웃
 	ID3D11Buffer* m_pVertexBuffer = nullptr; 		// 버텍스 버퍼
 	UINT m_VertextBufferStride = 0; 					// 버텍스 하나의 크기
@@ -125,6 +132,7 @@ public:
 	DirectX::XMFLOAT3 m_LightDirection = { 0.0f, -1.0f, 1.0f }; // 라이트 방향(UI)
 	DirectX::XMFLOAT3 m_LightColorRGB = { 1.0f, 1.0f, 1.0f };   // 라이트 색(UI)
 	DirectX::XMFLOAT3 m_LightPosition = { 0.0f, 0.0f, 3.0f };   // 라이트 위치(마커용)
+	DirectX::XMFLOAT3 m_CameraForward = { 0.0f, 0.0f, 1.0f };   // 카메라 앞방향(스카이박스용)
 
 	ConstantBuffer m_baseProjection; // 기본 카메라/월드 캐시
 
@@ -143,6 +151,7 @@ public:
 	void UninitScene();
 
 private:
-	bool InitEffect(); 							// 쉐이더를 읽어오는 함수는 따로 구현
+	bool InitBasicEffect(); 							// 쉐이더를 읽어오는 함수는 따로 구현
+	bool InitSkyBoxEffect();
 };
 

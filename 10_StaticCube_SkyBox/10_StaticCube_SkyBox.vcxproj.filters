@@ -24,12 +24,21 @@
     <None Include="10_Shared.fxh">
       <Filter>Shaders</Filter>
     </None>
+    <None Include="10_SkyBox.hlsli">
+      <Filter>Shaders</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="10_BasicPS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
     <FxCompile Include="10_BasicVS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="10_SkyBoxVS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="10_SkyBoxPS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
   </ItemGroup>

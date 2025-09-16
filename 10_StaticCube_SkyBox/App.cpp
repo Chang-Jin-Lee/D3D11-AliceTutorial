@@ -40,9 +40,11 @@
 #include "../Common/Helper.h"
 #include <d3dcompiler.h>
 #include <directxtk/WICTextureLoader.h>
+#include <directxtk/DDSTextureLoader.h>
 #include <thread>
 #include <filesystem>
 #include <algorithm>
+#include "../Common/StaticMesh.h"
 
 static bool g_RotateCube = true; // ImGui 토글: 큐브 자동 회전 on/off
 
@@ -71,11 +73,17 @@ static bool LoadTextureSRVAndSize(ID3D11Device* device, const std::wstring& path
 
 bool App::OnInitialize()
 {
-	if(!InitD3D()) return false;
+	if(!InitD3D()) 
+		return false;
 
-	if (!InitEffect()) return false;
+	if (!InitBasicEffect()) 
+		return false;
 
-	if(!InitScene()) return false;
+	if (!InitSkyBoxEffect()) 
+		return false;
+
+	if(!InitScene()) 
+		return false;
 
 	// ImGui 초기화
 	IMGUI_CHECKVERSION();
@@ -163,7 +171,7 @@ void App::OnUpdate(const float& dt)
 		XMMATRIX local0 = rotPitch * rotYaw * XMMatrixTranslation(m_cubePos.x, m_cubePos.y, m_cubePos.z); // 루트
 	XMMATRIX world0 = local0; // 루트
 
-	XMFLOAT3 camForward3 = { 0.0f, 0.0f, 1.0f };
+	XMFLOAT3 camForward3 = m_CameraForward;
 	static float sYaw = 0.0f, sPitch = 0.0f;
 	ImGuiIO& io = ImGui::GetIO();
 	bool rmbDown = ImGui::IsMouseDown(ImGuiMouseButton_Right) && !io.WantCaptureMouse;
@@ -199,6 +207,7 @@ void App::OnUpdate(const float& dt)
 	}
 	XMStoreFloat3(&m_cameraPos, posV);
 	XMStoreFloat3(&camForward3, forward);
+	m_CameraForward = camForward3;
 
 	// View/Proj도 UI값 반영 (매 프레임)
 	XMMATRIX view = XMMatrixTranspose(XMMatrixLookAtLH(
@@ -399,6 +408,81 @@ void App::OnRender()
 		m_pDeviceContext->Draw(2, 0);
 	}
 
+
+	// SkyBox 렌더링 (상태 보존/복구)
+	{
+		ID3D11RasterizerState* prevRS = nullptr;
+		ID3D11DepthStencilState* prevDS = nullptr; UINT prevRef = 0;
+		m_pDeviceContext->RSGetState(&prevRS);
+		m_pDeviceContext->OMGetDepthStencilState(&prevDS, &prevRef);
+
+		static ID3D11DepthStencilState* dsSky = nullptr;
+		if (!dsSky)
+		{
+			D3D11_DEPTH_STENCIL_DESC dsd{};
+			dsd.DepthEnable = TRUE;
+			dsd.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+			dsd.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
+			dsd.StencilEnable = FALSE;
+			HR_T(m_pDevice->CreateDepthStencilState(&dsd, &dsSky));
+		}
+		m_pDeviceContext->OMSetDepthStencilState(dsSky, 0);
+
+		static ID3D11RasterizerState* rsSky = nullptr;
+		if (!rsSky)
+		{
+			D3D11_RASTERIZER_DESC rd{};
+			rd.FillMode = D3D11_FILL_SOLID;
+			rd.CullMode = D3D11_CULL_FRONT;         // 내부면만 보이게
+			rd.FrontCounterClockwise = true;        // CCW를 Front로 간주
+			rd.DepthClipEnable = TRUE;
+			HR_T(m_pDevice->CreateRasterizerState(&rd, &rsSky));
+		}
+		m_pDeviceContext->RSSetState(rsSky);
+
+		// 스카이박스 WVP: world=I, view=translation 제거, proj=일반(Projt) + Z-Flip 보정
+		XMMATRIX viewT = m_baseProjection.view; // transposed view
+		XMMATRIX view  = XMMatrixTranspose(viewT);
+		view.r[3] = XMVectorSet(0.0f, 0.0f, 0.0f, XMVectorGetW(view.r[3]));
+		XMMATRIX viewNoTransT = XMMatrixTranspose(view);
+		XMMATRIX flipZ_T = XMMatrixTranspose(XMMatrixScaling(1.0f, 1.0f, -1.0f));
+		XMMATRIX projT = m_baseProjection.proj;
+		XMMATRIX wvpT = XMMatrixMultiply(XMMatrixMultiply(projT, viewNoTransT), flipZ_T);
+		// 단일 CB(b0) 사용: SkyBox VS가 사용하는 g_WorldViewProj 위치(선두 64바이트)에만 wvpT를 써준다
+		{
+			D3D11_MAPPED_SUBRESOURCE mapped{};
+			HR_T(m_pDeviceContext->Map(m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped));
+			memcpy_s(mapped.pData, sizeof(XMMATRIX), &wvpT, sizeof(XMMATRIX));
+			m_pDeviceContext->Unmap(m_pConstantBuffer, 0);
+		}
+		m_pDeviceContext->IASetInputLayout(m_pSkyBoxInputLayout);
+		m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+		m_pDeviceContext->IASetVertexBuffers(0, 1, &m_pVertexBuffer, &stride, &offset);
+		m_pDeviceContext->IASetIndexBuffer(m_pIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
+		m_pDeviceContext->VSSetShader(m_pSkyBoxVertexShader, nullptr, 0);
+		m_pDeviceContext->PSSetShader(m_pSkyBoxPixelShader, nullptr, 0);
+		static ID3D11SamplerState* skySamp = nullptr;
+		if (!skySamp)
+		{
+			D3D11_SAMPLER_DESC sd{};
+			sd.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+			sd.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
+			sd.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+			sd.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+			sd.MaxLOD = D3D11_FLOAT32_MAX;
+			HR_T(m_pDevice->CreateSamplerState(&sd, &skySamp));
+		}
+		m_pDeviceContext->PSSetSamplers(0, 1, &skySamp);
+		m_pDeviceContext->PSSetShaderResources(0, 1, &m_pTextureSRV);
+		m_pDeviceContext->DrawIndexed(m_nIndices, 0, 0);
+
+		// 상태 복구
+		m_pDeviceContext->OMSetDepthStencilState(prevDS, prevRef);
+		m_pDeviceContext->RSSetState(prevRS);
+		SAFE_RELEASE(prevDS);
+		SAFE_RELEASE(prevRS);
+	}
+
 	// ImGui 프레임 및 UI 렌더링
 	ImGui_ImplDX11_NewFrame();
 	ImGui_ImplWin32_NewFrame();
@@ -423,7 +507,6 @@ void App::OnRender()
 		ImGui::DragFloat3("Light Pos", &m_LightPosition.x, 0.1f);
 	}
 	ImGui::End();
-
 
 	if (m_TexHanakoSRV)
 	{
@@ -652,110 +735,40 @@ bool App::InitScene()
 	//HRESULT hr = 0;
 	ID3D10Blob* errorMessage = nullptr;	 // 에러 메시지를 저장할 버퍼.
 
-	/*
-	* @brief  정점(Vertex) 배열을 GPU 버퍼로 생성
-	* @details
-	*   - ByteWidth : 정점 전체 크기(정점 크기 × 개수)
-	*   - BindFlags : D3D11_BIND_VERTEX_BUFFER
-	*   - Usage     : DEFAULT (일반적 용도)
-	*   - 초기 데이터 : vbData.pSysMem = vertices
-	*   - Stride/Offset : IASetVertexBuffers용 파라미터
-	*   - 주의 : VertexInfo(color=Vec3), 셰이더/InputLayout의 COLOR 형식 일치 필요
-	*/
+	// ***********************************************************************************************
+	// 큐브설정
 	// 24개 정점 (각 면 4개) + 텍스처 좌표
 	XMFLOAT4 hardColor = XMFLOAT4(0.0f, 1.0f, 1.0f, 1.0f);
-	m_VertextBufferStride = sizeof(LightVertex);
+	m_VertextBufferStride = sizeof(VertexData);
 	m_VertextBufferOffset = 0;
-	// z = -1  (앞면)   법선 (0,0,-1)
-	LightVertex vertices[] =
-	{
-		// Front (z = -1)
-		{ XMFLOAT3(-1,-1,-1), XMFLOAT3(0, 0,-1), hardColor },
-		{ XMFLOAT3(-1, 1,-1), XMFLOAT3(0, 0,-1), hardColor },
-		{ XMFLOAT3(1, 1,-1), XMFLOAT3(0, 0,-1), hardColor },
-		{ XMFLOAT3(1,-1,-1), XMFLOAT3(0, 0,-1), hardColor },
-
-		// Left (x = -1)      법선 (-1,0,0)
-		{ XMFLOAT3(-1,-1, 1), XMFLOAT3(-1, 0, 0), hardColor },
-		{ XMFLOAT3(-1, 1, 1), XMFLOAT3(-1, 0, 0), hardColor },
-		{ XMFLOAT3(-1, 1,-1), XMFLOAT3(-1, 0, 0), hardColor },
-		{ XMFLOAT3(-1,-1,-1), XMFLOAT3(-1, 0, 0), hardColor },
-
-		// Top (y = +1)       법선 (0,1,0)
-		{ XMFLOAT3(-1, 1,-1), XMFLOAT3(0, 1, 0), hardColor },
-		{ XMFLOAT3(-1, 1, 1), XMFLOAT3(0, 1, 0), hardColor },
-		{ XMFLOAT3(1, 1, 1), XMFLOAT3(0, 1, 0), hardColor },
-		{ XMFLOAT3(1, 1,-1), XMFLOAT3(0, 1, 0), hardColor },
-
-		// Back (z = +1)      법선 (0,0,1)
-		{ XMFLOAT3(1,-1, 1), XMFLOAT3(0, 0, 1), hardColor },
-		{ XMFLOAT3(1, 1, 1), XMFLOAT3(0, 0, 1), hardColor },
-		{ XMFLOAT3(-1, 1, 1), XMFLOAT3(0, 0, 1), hardColor },
-		{ XMFLOAT3(-1,-1, 1), XMFLOAT3(0, 0, 1), hardColor },
-
-		// Right (x = +1)     법선 (1,0,0)
-		{ XMFLOAT3(1,-1,-1), XMFLOAT3(1, 0, 0), hardColor },
-		{ XMFLOAT3(1, 1,-1), XMFLOAT3(1, 0, 0), hardColor },
-		{ XMFLOAT3(1, 1, 1), XMFLOAT3(1, 0, 0), hardColor },
-		{ XMFLOAT3(1,-1, 1), XMFLOAT3(1, 0, 0), hardColor },
-
-		// Bottom (y = -1)    법선 (0,-1,0)
-		{ XMFLOAT3(-1,-1, 1), XMFLOAT3(0,-1, 0), hardColor },
-		{ XMFLOAT3(-1,-1,-1), XMFLOAT3(0,-1, 0), hardColor },
-		{ XMFLOAT3(1,-1,-1), XMFLOAT3(0,-1, 0), hardColor },
-		{ XMFLOAT3(1,-1, 1), XMFLOAT3(0,-1, 0), hardColor },
-	};
-
+	// ***********************************************************************************************
+	// 작은 큐브 데이터 설정
+	// 정점 넣는 것과 인덱스 버퍼 값을 넣는것은 CreateBox 함수 안에 있습니다
+	StaticMeshData cubeData = StaticMesh::CreateBox(XMFLOAT4(1, 1, 1, 1));
 
 	D3D11_BUFFER_DESC vbDesc = {};
 	ZeroMemory(&vbDesc, sizeof(vbDesc));			// vbDesc에 0으로 전체 메모리 영역을 초기화 시킵니다
-	vbDesc.ByteWidth = sizeof vertices;				// 배열 전체의 바이트 크기를 바로 반환합니다
+	vbDesc.ByteWidth = sizeof(VertexData) * cubeData.vertices.size();				// 배열 전체의 바이트 크기를 바로 반환합니다
 	vbDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
 	vbDesc.Usage = D3D11_USAGE_DEFAULT;
 
 	D3D11_SUBRESOURCE_DATA vbData = {};
 	ZeroMemory(&vbData, sizeof(vbData));
-	vbData.pSysMem = vertices;						// 배열 데이터 할당.
+	vbData.pSysMem = cubeData.vertices.data();						// 배열 데이터 할당.
 	HR_T(m_pDevice->CreateBuffer(&vbDesc, &vbData, &m_pVertexBuffer));
 
-
-	/*
-	* @brief  인덱스 버퍼(Index Buffer) 생성
-	* @details
-	*   - indices: 정점 재사용용 (사각형 = 삼각형 2개 = 인덱스 6개)
-	*   - WORD 타입 → DXGI_FORMAT_R16_UINT 사용 예정
-	*   - ByteWidth : 전체 인덱스 배열 크기
-	*   - BindFlags : D3D11_BIND_INDEX_BUFFER
-	*   - Usage     : DEFAULT (GPU 일반 접근)
-	*   - 이 코드의 결과: m_pIndexBuffer 생성, m_nIndices에 개수 저장
-	*/
-	DWORD indices[] = {
-		// 앞면 (0~3)
-		0,1,2, 2,3,0,
-		// 왼쪽 (4~7)
-		4,5,6, 6,7,4,
-		// 위 (8~11)
-		8,9,10, 10,11,8,
-		// 뒤 (12~15)
-		12,13,14, 14,15,12,
-		// 오른쪽 (16~19)
-		16,17,18, 18,19,16,
-		// 아래 (20~23)
-		20,21,22, 22,23,20
-	};
 	D3D11_BUFFER_DESC ibDesc = {};
 	ZeroMemory(&ibDesc, sizeof(ibDesc));
-	m_nIndices = ARRAYSIZE(indices);	// 인덱스 개수 저장.
-	ibDesc.ByteWidth = sizeof indices;
+	m_nIndices = cubeData.indices.size();	// 인덱스 개수 저장.
+	ibDesc.ByteWidth = sizeof(DWORD) * cubeData.indices.size();
 	ibDesc.BindFlags = D3D11_BIND_INDEX_BUFFER;
 	ibDesc.Usage = D3D11_USAGE_DEFAULT;
 
 	D3D11_SUBRESOURCE_DATA ibData = {};
-	ibData.pSysMem = indices;
+	ibData.pSysMem = cubeData.indices.data();
 	HR_T(m_pDevice->CreateBuffer(&ibDesc, &ibData, &m_pIndexBuffer));
 
-
-	// ******************
+	// ***********************************************************************************************
 	// 상수 버퍼 설정
 	//
 	D3D11_BUFFER_DESC cbd;
@@ -767,6 +780,23 @@ bool App::InitScene()
 	// 단일 상수 버퍼 생성 (VS/PS 공용, b0)
 	HR_T(m_pDevice->CreateBuffer(&cbd, nullptr, &m_pConstantBuffer));
 
+	// ***********************************************************************************************
+	// 스카이 박스 큐브 설정
+	StaticMeshData skyBoxCubeData = StaticMesh::CreateBox(XMFLOAT4(1, 1, 1, 1));
+	HR_T(CreateDDSTextureFromFile(m_pDevice, L"../Resource/Hanako.dds", nullptr, &m_pTextureSRV));
+	//HR_T(CreateDDSTextureFromFile(m_pDevice, L"../Resource/cubemap.dds", nullptr, &m_pTextureSRV));
+
+	// 샘플러 생성
+	D3D11_SAMPLER_DESC sampDesc = {};
+	sampDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+	sampDesc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
+	sampDesc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
+	sampDesc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+	sampDesc.MaxLOD = D3D11_FLOAT32_MAX;
+	HR_T(m_pDevice->CreateSamplerState(&sampDesc, &m_pSamplerState));
+
+	// ***********************************************************************************************
+	// 카메라 설정
 	// 공통 카메라(View/Proj)로 3개의 상수 버퍼 엔트리를 준비합니다
 	m_baseProjection.world = XMMatrixIdentity();
 	m_baseProjection.view = XMMatrixTranspose(XMMatrixLookAtLH(
@@ -774,6 +804,7 @@ bool App::InitScene()
 		XMVectorSet(m_cameraPos.x + 0.0f, m_cameraPos.y + 0.0f, m_cameraPos.z + 1.0f, 0.0f),
 		XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f)
 	));
+
 	float fovRad = XMConvertToRadians(m_CameraFovDeg);
 	m_baseProjection.proj = XMMatrixTranspose(XMMatrixPerspectiveFovLH(fovRad, AspectRatio(), m_CameraNear, m_CameraFar));
 	m_baseProjection.worldInvTranspose = XMMatrixInverse(nullptr, XMMatrixTranspose(m_baseProjection.world));
@@ -792,9 +823,13 @@ void App::UninitScene()
 	SAFE_RELEASE(m_pVertexShader);
 	SAFE_RELEASE(m_pPixelShader);
 	SAFE_RELEASE(m_pConstantBuffer);
+
+	SAFE_RELEASE(m_pSkyBoxInputLayout);
+	SAFE_RELEASE(m_pSkyBoxVertexShader);
+	SAFE_RELEASE(m_pSkyBoxPixelShader);
 }
 
-bool App::InitEffect()
+bool App::InitBasicEffect()
 {
 	// Vertex Shader -------------------------------------
 	/*
@@ -834,6 +869,30 @@ bool App::InitEffect()
 	HR_T(CompileShaderFromFile(L"10_BasicPS.hlsl", "main", "ps_4_0", &pixelShaderBuffer));
 	HR_T(m_pDevice->CreatePixelShader(pixelShaderBuffer->GetBufferPointer(),
 		pixelShaderBuffer->GetBufferSize(), NULL, &m_pPixelShader));
+	SAFE_RELEASE(pixelShaderBuffer);	// 픽셀 셰이더 버퍼 더이상 필요없음
+	return true;
+}
+
+bool App::InitSkyBoxEffect()
+{
+	D3D11_INPUT_ELEMENT_DESC layout[] = // 입력 레이아웃.
+	{
+		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 0,  D3D11_INPUT_PER_VERTEX_DATA, 0 },
+	};
+
+	ID3D10Blob* vertexShaderBuffer = nullptr;
+	HR_T(CompileShaderFromFile(L"10_SkyBoxVS.hlsl", "VS", "vs_4_0", &vertexShaderBuffer));
+	HR_T(m_pDevice->CreateInputLayout(layout, ARRAYSIZE(layout),
+		vertexShaderBuffer->GetBufferPointer(), vertexShaderBuffer->GetBufferSize(), &m_pSkyBoxInputLayout));
+
+	HR_T(m_pDevice->CreateVertexShader(vertexShaderBuffer->GetBufferPointer(),
+		vertexShaderBuffer->GetBufferSize(), NULL, &m_pSkyBoxVertexShader));
+	SAFE_RELEASE(vertexShaderBuffer);	// 컴파일 버퍼 해제
+
+	ID3D10Blob* pixelShaderBuffer = nullptr;
+	HR_T(CompileShaderFromFile(L"10_SkyboxPS.hlsl", "PS", "ps_4_0", &pixelShaderBuffer));
+	HR_T(m_pDevice->CreatePixelShader(pixelShaderBuffer->GetBufferPointer(),
+		pixelShaderBuffer->GetBufferSize(), NULL, &m_pSkyBoxPixelShader));
 	SAFE_RELEASE(pixelShaderBuffer);	// 픽셀 셰이더 버퍼 더이상 필요없음
 	return true;
 }

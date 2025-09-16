@@ -17,7 +17,7 @@ float4 main(VertexOut pIn) : SV_Target
         return float4(1.0f, 0.0f, 0.0f, 1.0f);
     }
 
-    float3 baseColor = float3(1.0, 1.0, 1.0);
+    float3 baseColor = float3(1.0, 0.7, 1.0);
     pIn.normalW = normalize(pIn.normalW);
     float saturatedDir = saturate(dot(g_DirLight.direction.xyz, pIn.normalW));
     
