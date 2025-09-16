@@ -12,6 +12,9 @@
 #include <imgui_impl_dx11.h>
 #include <Psapi.h>
 #include <string>
+#include <map>
+
+class MinimalUserModel; // App.cpp에 구현
 
 using namespace DirectX::SimpleMath;
 
@@ -66,6 +69,23 @@ public:
 	ID3D11ShaderResourceView* m_pTextureSRVs[6] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
 	Microsoft::WRL::ComPtr<IDXGIAdapter3> m_Adapter3; // VRAM 조회용
 	SIZE_T m_VideoMemoryTotal = 0; // 총 VRAM 바이트
+
+	// Live2D 간단 렌더(텍스처 미리보기 용)
+	std::wstring m_L2DModelJsonPath; // 선택한 model3.json 전체 경로
+	bool m_L2DRequested = false;     // 사용자가 파일을 선택했는지
+	bool m_L2DReady = false;         // Live2D Core/Framework 준비 여부
+	std::string m_L2DStatus;         // 간단 상태 텍스트
+	std::vector<ID3D11ShaderResourceView*> m_L2DTexSRVs; // 모델 텍스처들
+	std::vector<ImVec2> m_L2DTexSizes;                   // 텍스처 크기(px)
+	bool m_ShowL2DWindow = true;                         // Live2D 미리보기 창 on/off
+
+	// Live2D 실제 모델/렌더 상태
+	MinimalUserModel* m_L2D = nullptr;                   // 모델 핸들
+	bool m_L2DLoaded = false;                            // 모델 로드 여부
+	int m_L2DMotionGroupIndex = 0;                       // UI: 그룹 선택
+	int m_L2DMotionIndex = 0;                            // UI: 그룹 내 모션 선택
+	std::vector<std::string> m_L2DMotionGroups;          // 그룹 이름 캐시
+	bool m_ShowL2DInfo = true;                           // Live2D 정보창 on/off
 
 	// 시스템 정보 (표시용)
 	std::wstring m_GPUName;

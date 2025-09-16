@@ -39,6 +39,202 @@
 #include <d3dcompiler.h>
 #include <directxtk/WICTextureLoader.h>
 #include <thread>
+#include <commdlg.h>
+#include <filesystem>
+#include <Rendering/D3D11/CubismRenderer_D3D11.hpp>
+#include <CubismFramework.hpp>
+#include <ICubismAllocator.hpp>
+#include <CubismModelSettingJson.hpp>
+#include <Id/CubismIdManager.hpp>
+#include <Motion/CubismMotionManager.hpp>
+#include <Motion/CubismMotion.hpp>
+#include <Motion/CubismMotionQueueEntry.hpp>
+#include <Physics/CubismPhysics.hpp>
+#include <Model/CubismUserModel.hpp>
+#include <Model/CubismModel.hpp>
+#include <malloc.h>
+#include <cstdio>
+#include <string>
+
+using namespace Live2D::Cubism::Framework;
+
+// CubismFramework 파일 로더/해제 함수
+static csmByte* CF_LoadFile(std::string path, csmSizeInt* outSize)
+{
+    if (outSize) *outSize = 0;
+    if (path.empty()) return nullptr;
+    FILE* f = nullptr; fopen_s(&f, path.c_str(), "rb");
+    if (!f) return nullptr;
+    fseek(f, 0, SEEK_END);
+    long sz = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (sz <= 0) { fclose(f); return nullptr; }
+    csmByte* data = (csmByte*)malloc((size_t)sz);
+    if (!data) { fclose(f); return nullptr; }
+    size_t rd = fread(data, 1, (size_t)sz, f);
+    fclose(f);
+    if (rd != (size_t)sz) { free(data); return nullptr; }
+    if (outSize) *outSize = (csmSizeInt)sz;
+    return data;
+}
+
+static void CF_ReleaseBytes(csmByte* bytes)
+{
+    if (bytes) free(bytes);
+}
+
+// 최소 Allocator
+class MinimalAllocator : public ICubismAllocator
+{
+public:
+	void* Allocate(const csmSizeType size) override { return malloc(size); }
+	void Deallocate(void* memory) override { free(memory); }
+	void* AllocateAligned(const csmSizeType size, const csmUint32 alignment) override {
+		return _aligned_malloc(size, alignment);
+	}
+	void DeallocateAligned(void* alignedMemory) override { _aligned_free(alignedMemory); }
+};
+
+static MinimalAllocator g_alloc;
+
+// 최소 UserModel: 모델 로드/모션/드로우 제공
+class MinimalUserModel : public CubismUserModel
+{
+public:
+	std::string baseDir;
+	std::unique_ptr<CubismModelSettingJson> setting;
+	std::vector<std::string> motionGroups;
+	std::map<std::string, ACubismMotion*> motions; // 로드된 모션 캐시
+	float userTimeSeconds = 0.0f;
+
+	~MinimalUserModel() override
+	{
+		for (auto& kv : motions) { if (kv.second) ACubismMotion::Delete(kv.second); }
+		motions.clear();
+	}
+
+	bool LoadFromModel3(const std::wstring& model3Path)
+	{
+		std::string spath(model3Path.begin(), model3Path.end());
+		auto pos = spath.find_last_of("/\\");
+		baseDir = (pos==std::string::npos) ? std::string() : spath.substr(0,pos+1);
+		// 읽기
+		FILE* fp = nullptr; fopen_s(&fp, spath.c_str(), "rb"); if(!fp) return false;
+		fseek(fp, 0, SEEK_END); long sz = ftell(fp); fseek(fp, 0, SEEK_SET);
+		std::vector<uint8_t> buf(sz); fread(buf.data(),1,sz,fp); fclose(fp);
+		setting.reset(new CubismModelSettingJson(buf.data(), (csmSizeInt)buf.size()));
+		// moc3
+		{
+			std::string moc = baseDir + setting->GetModelFileName();
+			FILE* fpm=nullptr; fopen_s(&fpm, moc.c_str(), "rb"); if(!fpm) return false;
+			fseek(fpm,0,SEEK_END); long msz = ftell(fpm); fseek(fpm,0,SEEK_SET);
+			std::vector<uint8_t> mb(msz); fread(mb.data(),1,msz,fpm); fclose(fpm);
+			LoadModel(mb.data(), (csmSizeInt)mb.size());
+		}
+		// physics(optional)
+		if (const char* phys = setting->GetPhysicsFileName()) if (*phys){
+			std::string p = baseDir + phys; FILE* f=nullptr; fopen_s(&f,p.c_str(),"rb"); if(f){ fseek(f,0,SEEK_END); long s=ftell(f); fseek(f,0,SEEK_SET); std::vector<uint8_t> b(s); fread(b.data(),1,s,f); fclose(f); LoadPhysics(b.data(),(csmSizeInt)b.size()); }}
+		// pose(optional)
+		if (const char* pose = setting->GetPoseFileName()) if (*pose){
+			std::string p = baseDir + pose; FILE* f=nullptr; fopen_s(&f,p.c_str(),"rb"); if(f){ fseek(f,0,SEEK_END); long s=ftell(f); fseek(f,0,SEEK_SET); std::vector<uint8_t> b(s); fread(b.data(),1,s,f); fclose(f); LoadPose(b.data(),(csmSizeInt)b.size()); }}
+		// motions group 이름 수집
+		int gcount = setting->GetMotionGroupCount();
+		motionGroups.clear();
+		for(int gi=0; gi<gcount; ++gi){ motionGroups.push_back(setting->GetMotionGroupName(gi)); }
+		CreateRenderer();
+		return true;
+	}
+
+	bool LoadAndBindTextures(ID3D11Device* dev)
+	{
+		auto* r = GetRenderer<Rendering::CubismRenderer_D3D11>();
+		if(!r) return false;
+		int bound = 0;
+		for (int i=0;i<setting->GetTextureCount();++i){
+			const char* tf = setting->GetTextureFileName(i); if(!tf||!*tf) continue;
+			std::wstring w = std::wstring(baseDir.begin(), baseDir.end()) + std::wstring(tf, tf+strlen(tf));
+			Microsoft::WRL::ComPtr<ID3D11Resource> res;
+			Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> srv;
+			if (SUCCEEDED(CreateWICTextureFromFile(dev, w.c_str(), res.GetAddressOf(), srv.GetAddressOf())))
+			{
+				r->BindTexture(i, srv.Get());
+				++bound;
+			}
+		}
+		return bound>0;
+	}
+
+	// 간단 업데이트: 모션만 갱신하고 모델 업데이트
+	void ModelParamUpdate()
+	{
+		float dt = ImGui::GetIO().DeltaTime;
+		if (dt <= 0.0f) dt = 1.0f/60.0f;
+		userTimeSeconds += dt;
+		if (!GetModel()) return;
+		GetModel()->LoadParameters();
+		if (_motionManager)
+		{
+			_motionManager->UpdateMotion(GetModel(), dt);
+		}
+		GetModel()->SaveParameters();
+		GetModel()->Update();
+	}
+
+	// 모션 시작
+	Csm::CubismMotionQueueEntryHandle StartMotion(const char* group, int no, int priority)
+	{
+		if (!setting) return Csm::InvalidMotionQueueEntryHandleValue;
+		int count = setting->GetMotionCount(group);
+		if (no < 0 || no >= count) return Csm::InvalidMotionQueueEntryHandleValue;
+		if (_motionManager)
+		{
+			if (priority == 3) { _motionManager->SetReservePriority(priority); }
+			else if (!_motionManager->ReserveMotion(priority)) { return Csm::InvalidMotionQueueEntryHandleValue; }
+		}
+		std::string key = std::string(group) + "_" + std::to_string(no);
+		ACubismMotion* motion = nullptr;
+		auto it = motions.find(key);
+		if (it != motions.end()) { motion = it->second; }
+		else
+		{
+			const char* file = setting->GetMotionFileName(group, no);
+			std::string path = baseDir + (file ? file : "");
+			FILE* f=nullptr; fopen_s(&f, path.c_str(), "rb"); if (!f) return Csm::InvalidMotionQueueEntryHandleValue;
+			fseek(f,0,SEEK_END); long sz = ftell(f); fseek(f,0,SEEK_SET);
+			std::vector<uint8_t> buf(sz); fread(buf.data(),1,sz,f); fclose(f);
+			motion = LoadMotion(
+				buf.data(),
+				(csmSizeInt)buf.size(),
+				nullptr,                 // name
+				nullptr,                 // FinishedMotionCallback
+				nullptr,                 // BeganMotionCallback
+				setting.get(),           // ICubismModelSetting*
+				group,                   // group
+				no,                      // index
+				false                    // shouldCheckMotionConsistency
+			);
+			if (motion) motions[key] = motion;
+		}
+		if (!_motionManager || !motion) return Csm::InvalidMotionQueueEntryHandleValue;
+		return _motionManager->StartMotionPriority(motion, false, priority);
+	}
+
+	void DrawModelD3D11(ID3D11Device* dev, ID3D11DeviceContext* ctx, int vpw, int vph)
+	{
+		// 매 프레임 간단 파라미터 업데이트
+		ModelParamUpdate();
+		Rendering::CubismRenderer_D3D11::StartFrame(dev, ctx, (csmUint32)vpw, (csmUint32)vph);
+		// StartFrame이 s_context/viewport를 설정한 뒤에 기본 렌더 상태를 세팅
+		Rendering::CubismRenderer_D3D11::SetDefaultRenderState();
+		CubismMatrix44 proj; proj.LoadIdentity();
+		if (GetModel()->GetCanvasWidth() > 1.0f && vpw < vph){ GetModelMatrix()->SetWidth(2.0f); proj.Scale(1.0f, (float)vpw/(float)vph);} else { proj.Scale((float)vph/(float)vpw, 1.0f);} 
+		GetRenderer<Rendering::CubismRenderer_D3D11>()->SetMvpMatrix(&proj);
+		// Anisotropy 최소 1로 설정 (0이면 샘플러 생성 시 유효하지 않아 예외 발생)
+		GetRenderer<Rendering::CubismRenderer_D3D11>()->SetAnisotropy(1.0f);
+		GetRenderer<Rendering::CubismRenderer_D3D11>()->DrawModel();
+		Rendering::CubismRenderer_D3D11::EndFrame(dev);
+	}
+};
 
 #pragma comment (lib, "d3d11.lib")
 #pragma comment(lib,"d3dcompiler.lib")
@@ -57,6 +253,21 @@ bool App::OnInitialize()
 	ImGui::StyleColorsDark();
 	ImGui_ImplWin32_Init(m_hWnd);
 	ImGui_ImplDX11_Init(m_pDevice, m_pDeviceContext);
+
+	// Live2D Framework 초기화 (Core 링크 필요)
+	{
+		CubismFramework::Option opt{};
+		opt.LogFunction = nullptr;
+		opt.LoggingLevel = CubismFramework::Option::LogLevel_Verbose;
+		opt.LoadFileFunction = CF_LoadFile;
+		opt.ReleaseBytesFunction = CF_ReleaseBytes;
+		CubismFramework::StartUp(&g_alloc, &opt);
+		CubismFramework::Initialize();
+		Rendering::CubismRenderer_D3D11::InitializeConstantSettings(1, m_pDevice);
+		// D3D11 셰이더 생성 (필수)
+		Rendering::CubismRenderer_D3D11::GenerateShader(m_pDevice);
+		m_L2DReady = true; m_L2DStatus = "Live2D 초기화 완료";
+	}
 
 	// 시스템 정보 수집 (GPU)
 	{
@@ -118,6 +329,10 @@ void App::OnUninitialize()
 	ImGui_ImplDX11_Shutdown();
 	ImGui_ImplWin32_Shutdown();
 	ImGui::DestroyContext();
+	// Live2D 종료
+	delete m_L2D; m_L2D=nullptr; m_L2DLoaded=false;
+	Rendering::CubismRenderer_D3D11::DeleteRenderStateManager();
+	CubismFramework::Dispose();
 
 	UninitD3D();
 }
@@ -249,8 +464,144 @@ void App::OnRender()
 		ImGui::DragFloat3("Camera Pos (x,y,z)", &m_CameraPos.x, 0.1f);
 		ImGui::SliderFloat("Camera FOV (deg)", &m_CameraFovDeg, 30.0f, 120.0f);
 		ImGui::DragFloatRange2("Near/Far", &m_CameraNear, &m_CameraFar, 0.1f, 0.01f, 5000.0f, "Near: %.2f", "Far: %.2f");
+
+		// Live2D: model3.json 선택 및 상태 표시
+		ImGui::Separator();
+		ImGui::TextUnformatted("Live2D");
+		if (ImGui::Button("Open model3.json"))
+		{
+			wchar_t file[1024] = {0};
+			OPENFILENAMEW ofn{}; ofn.lStructSize = sizeof(ofn);
+			ofn.hwndOwner = m_hWnd;
+			ofn.lpstrFilter = L"Live2D Model (*.model3.json)\0*.model3.json\0All Files\0*.*\0\0";
+			ofn.lpstrFile = file; ofn.nMaxFile = 1024; ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
+			if (GetOpenFileNameW(&ofn))
+			{
+				m_L2DModelJsonPath = file; m_L2DRequested = true; m_L2DStatus = "선택됨";
+				for (auto* p : m_L2DTexSRVs) { SAFE_RELEASE(p); }
+				m_L2DTexSRVs.clear(); m_L2DTexSizes.clear();
+				// 실제 모델 로드
+				if (m_L2DReady)
+				{
+					delete m_L2D; m_L2D=nullptr; m_L2DLoaded=false; m_L2DMotionGroups.clear();
+					m_L2D = new MinimalUserModel();
+					if (m_L2D->LoadFromModel3(m_L2DModelJsonPath) && m_L2D->LoadAndBindTextures(m_pDevice))
+					{
+						m_L2DLoaded = true; m_L2DStatus = "모델 로드 완료";
+						m_L2DMotionGroups = m_L2D->motionGroups;
+						// 마스크 렌더 타깃 보장: 크기/정밀도 설정
+						if (auto* r = m_L2D->GetRenderer<Rendering::CubismRenderer_D3D11>())
+						{
+							r->UseHighPrecisionMask(false);
+							r->SetClippingMaskBufferSize(256.0f, 256.0f);
+							// 마스크용 오프스크린 버퍼 미리 생성 (백버퍼셋=0)
+							int rtc = r->GetRenderTextureCount();
+							for (int i = 0; i < rtc; ++i)
+							{
+								r->GetMaskBuffer(0, i)->CreateOffscreenSurface(m_pDevice, 256, 256);
+							}
+						}
+					}
+					else { m_L2DStatus = "모델 로드 실패"; }
+				}
+			}
+		}
+		if (!m_L2DModelJsonPath.empty()) { ImGui::Text("Model: %ls", m_L2DModelJsonPath.c_str()); }
+		ImGui::Text("Status: %s", m_L2DStatus.empty() ? "-" : m_L2DStatus.c_str());
 	}
 	ImGui::End();
+
+	// Live2D: 렌더 및 정보 패널
+	if (m_L2DLoaded && m_L2D && m_ShowL2DInfo)
+	{
+		ImGui::SetNextWindowSize(ImVec2(520, 600), ImGuiCond_Once);
+		if (ImGui::Begin("Live2D Model Info", &m_ShowL2DInfo))
+		{
+			CubismModel* model = m_L2D->GetModel();
+			int parts = model->GetPartCount();
+			int params = model->GetParameterCount();
+			int draws = model->GetDrawableCount();
+			ImGui::Text("Parts: %d, Parameters: %d, Drawables: %d", parts, params, draws);
+			ImGui::Separator();
+			// 모션 그룹/아이템
+			if (!m_L2DMotionGroups.empty())
+			{
+				ImGui::Text("Motion Groups: %d", (int)m_L2DMotionGroups.size());
+				for (size_t i=0;i<m_L2DMotionGroups.size();++i)
+				{
+					ImGui::PushID((int)i);
+					ImGui::TextUnformatted(m_L2DMotionGroups[i].c_str());
+					int cnt = m_L2D->setting->GetMotionCount(m_L2DMotionGroups[i].c_str());
+					ImGui::SameLine(); ImGui::Text("(%d)", cnt);
+					for (int mi=0; mi<cnt; ++mi)
+					{
+						ImGui::SameLine();
+						if (ImGui::Button(("Play "+std::to_string(mi)).c_str()))
+						{
+							m_L2D->StartMotion(m_L2DMotionGroups[i].c_str(), mi, 2);
+						}
+					}
+					ImGui::PopID();
+				}
+			}
+			ImGui::Separator();
+			if (ImGui::TreeNode("Parameters"))
+			{
+				for (int i=0;i<params;++i)
+				{
+					auto id = model->GetParameterId(i);
+					float v = model->GetParameterValue(i);
+					float mn = model->GetParameterMinimumValue(i);
+					float mx = model->GetParameterMaximumValue(i);
+					ImGui::PushID(i);
+					ImGui::SliderFloat(id->GetString().GetRawString(), &v, mn, mx);
+					model->SetParameterValue(i, v);
+					ImGui::PopID();
+				}
+				ImGui::TreePop();
+			}
+			if (ImGui::TreeNode("Parts"))
+			{
+				for (int i=0;i<parts;++i)
+				{
+					auto id = model->GetPartId(i);
+					float op = model->GetPartOpacity(i);
+					ImGui::PushID(10000+i);
+					ImGui::SliderFloat(id->GetString().GetRawString(), &op, 0.0f, 1.0f);
+					model->SetPartOpacity(i, op);
+					ImGui::PopID();
+				}
+				ImGui::TreePop();
+			}
+		}
+		ImGui::End();
+	}
+
+	// 기존 이미지/시스템 창 렌더 이후, Live2D 모델 그리기
+	if (m_L2DLoaded && m_L2D)
+	{
+		m_L2D->ModelParamUpdate(); // 모션/블링크/물리 등 업데이트 포함
+		m_L2D->DrawModelD3D11(m_pDevice, m_pDeviceContext, m_ClientWidth, m_ClientHeight);
+	}
+
+	// Live2D 텍스처 미리보기 창
+	if (m_ShowL2DWindow && !m_L2DTexSRVs.empty())
+	{
+		ImGui::SetNextWindowSize(ImVec2(520, 560), ImGuiCond_Once);
+		if (ImGui::Begin("Live2D Textures", &m_ShowL2DWindow))
+		{
+			for (size_t i = 0; i < m_L2DTexSRVs.size(); ++i)
+			{
+				ImGui::Separator();
+				ImGui::Text("Tex %u (%.0fx%.0f)", (unsigned)i, m_L2DTexSizes[i].x, m_L2DTexSizes[i].y);
+				ImVec2 draw = m_L2DTexSizes[i];
+				float maxW = ImGui::GetContentRegionAvail().x;
+				if (draw.x > maxW && draw.x > 0) { float s = maxW / draw.x; draw.x *= s; draw.y *= s; }
+				ImGui::Image((ImTextureID)m_L2DTexSRVs[i], draw);
+			}
+		}
+		ImGui::End();
+	}
 
 	// 좌하단: Cube Description
 	{
