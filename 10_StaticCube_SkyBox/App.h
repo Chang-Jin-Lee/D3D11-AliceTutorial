@@ -81,7 +81,12 @@ public:
 	ID3D11PixelShader* m_pSkyBoxPixelShader = nullptr; 	// 스카이박스 픽셀 셰이더(조명)	
 	ID3D11InputLayout* m_pSkyBoxInputLayout = nullptr; 	// 스카이박스 입력 레이아웃
 	ID3D11ShaderResourceView* m_pTextureSRV = nullptr;
-
+	// SkyBox 선택: Hanako.dds / cubemap.dds
+	enum class SkyBoxChoice { Hanako = 0, CubeMap = 1 };
+	SkyBoxChoice m_SkyBoxChoice = SkyBoxChoice::Hanako;
+	ID3D11ShaderResourceView* m_pSkyHanakoSRV = nullptr;
+	ID3D11ShaderResourceView* m_pSkyCubeMapSRV = nullptr;
+	
 	ID3D11InputLayout* m_pInputLayout = nullptr; 	// 입력 레이아웃
 	ID3D11Buffer* m_pVertexBuffer = nullptr; 		// 버텍스 버퍼
 	UINT m_VertextBufferStride = 0; 					// 버텍스 하나의 크기
