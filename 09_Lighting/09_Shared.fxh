@@ -9,7 +9,7 @@
         struct VertexIn : float3 normalL : NORMAL; 추가 -> 정점 노말 벡터
         struct VertexOut : float3 posW : TEXCOORD0; 추가 -> 월드 공간에서의 위치
 */
-#include <LightingHelper.hlsli>
+#include "09_LightingHelper.hlsli"
 
 cbuffer ConstantBuffer : register(b0)
 {

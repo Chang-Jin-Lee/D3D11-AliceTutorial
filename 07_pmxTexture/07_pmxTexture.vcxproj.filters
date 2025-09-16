@@ -31,22 +31,14 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="BasicPixelShader.hlsl">
+    <CopyFileToFolders Include="07_Shared.fxh">
       <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="BasicVertexShader.hlsl">
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="07_TexPixelShader.hlsl">
       <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="TexPixelShader.hlsl">
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="07_TexVertexShader.hlsl">
       <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="TexVertexShader.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="Shared.fxh">
-      <Filter>Shaders</Filter>
-    </None>
+    </CopyFileToFolders>
   </ItemGroup>
 </Project>

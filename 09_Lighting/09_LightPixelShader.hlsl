@@ -1,9 +1,9 @@
-#include <shared.fxh>
+#include "09_shared.fxh"
 
 // 픽셀 셰이더(쉐이더/셰이더)
 float4 main(VertexOut pIn) : SV_TARGET
 {
-    // 디버그: g_Pad == 1 -> 보라색, g_Pad == 2 -> 흰색 마커
+    // 디버그: g_Pad == 1 -> 보라색, g_Pad == 2 -> 흰색 마커, g_Pad == 3 -> 빨간색 라인
     if (abs(g_Pad - 1.0f) < 1e-3)
     {
         return float4(1.0f, 0.0f, 1.0f, 1.0f);
@@ -11,6 +11,10 @@ float4 main(VertexOut pIn) : SV_TARGET
     if (abs(g_Pad - 2.0f) < 1e-3)
     {
         return float4(1.0f, 1.0f, 1.0f, 1.0f);
+    }
+    if (abs(g_Pad - 3.0f) < 1e-3)
+    {
+        return float4(1.0f, 0.0f, 0.0f, 1.0f);
     }
 
     float3 baseColor = float3(0.9, 0.6, 0.2);

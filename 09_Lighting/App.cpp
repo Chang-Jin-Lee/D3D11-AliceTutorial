@@ -44,6 +44,8 @@
 #include <filesystem>
 #include <algorithm>
 
+static bool g_RotateCube = true; // ImGui 토글: 큐브 자동 회전 on/off
+
 #pragma comment (lib, "d3d11.lib")
 #pragma comment(lib,"d3dcompiler.lib")
 
@@ -151,27 +153,64 @@ void App::OnUninitialize()
 void App::OnUpdate(const float& dt)
 {
 	static float t0 = 0.0f;
-	t0 += 0.6f * dt;   // 부모(루트) Yaw 속도
+	if (g_RotateCube) t0 += 0.6f * dt;   // 부모(루트) Yaw 속도 (토글)
 
 	// 로컬 변환 정의 (간단 Scene Graph)
 	m_YawDeg += 45.0f * dt; // Yaw 회전 (UI로 조절 가능)
 	m_YawDeg = std::fmod(m_YawDeg + 180.0f, 360.0f) - 180.0f;
 	XMMATRIX rotYaw   = XMMatrixRotationY(XMConvertToRadians(m_YawDeg));
 	XMMATRIX rotPitch = XMMatrixRotationX(XMConvertToRadians(m_PitchDeg));
-	XMMATRIX local0 = rotPitch * rotYaw * XMMatrixTranslation(m_cubePos.x, m_cubePos.y, m_cubePos.z); // 루트
+		XMMATRIX local0 = rotPitch * rotYaw * XMMatrixTranslation(m_cubePos.x, m_cubePos.y, m_cubePos.z); // 루트
 	XMMATRIX world0 = local0; // 루트
+
+	XMFLOAT3 camForward3 = { 0.0f, 0.0f, 1.0f };
+	static float sYaw = 0.0f, sPitch = 0.0f;
+	ImGuiIO& io = ImGui::GetIO();
+	bool rmbDown = ImGui::IsMouseDown(ImGuiMouseButton_Right) && !io.WantCaptureMouse;
+	float d1 = 0.0f, d2 = 0.0f, d3 = 0.0f;
+	if (rmbDown && !io.WantCaptureKeyboard)
+	{
+		if (ImGui::IsKeyDown(ImGuiKey_W)) d1 += dt;
+		if (ImGui::IsKeyDown(ImGuiKey_S)) d1 -= dt;
+		if (ImGui::IsKeyDown(ImGuiKey_A)) d2 -= dt;
+		if (ImGui::IsKeyDown(ImGuiKey_D)) d2 += dt;
+		if (ImGui::IsKeyDown(ImGuiKey_E)) d3 += dt;
+		if (ImGui::IsKeyDown(ImGuiKey_Q)) d3 -= dt;
+	}
+
+	if (rmbDown)
+	{
+		float rotSpeed = 0.005f;
+		sYaw   += io.MouseDelta.x * rotSpeed;
+		sPitch += -io.MouseDelta.y * rotSpeed;
+		float limit = XMConvertToRadians(89.0f);
+		sPitch = min(max(sPitch, -limit), limit);
+	}
+	XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+	XMVECTOR forward = XMVector3Normalize(XMVectorSet(cosf(sPitch) * sinf(sYaw), sinf(sPitch), cosf(sPitch) * cosf(sYaw), 0.0f));
+	XMVECTOR right = XMVector3Normalize(XMVector3Cross(up, forward));
+	XMVECTOR posV = XMVectorSet(m_cameraPos.x, m_cameraPos.y, m_cameraPos.z, 0.0f);
+	float moveSpeed = 5.0f;
+	if (rmbDown)
+	{
+		posV = XMVectorAdd(posV, XMVectorScale(forward, d1 * moveSpeed));
+		posV = XMVectorAdd(posV, XMVectorScale(right,   d2 * moveSpeed));
+		posV = XMVectorAdd(posV, XMVectorScale(up,      d3 * moveSpeed));
+	}
+	XMStoreFloat3(&m_cameraPos, posV);
+	XMStoreFloat3(&camForward3, forward);
 
 	// View/Proj도 UI값 반영 (매 프레임)
 	XMMATRIX view = XMMatrixTranspose(XMMatrixLookAtLH(
 		XMVectorSet(m_cameraPos.x, m_cameraPos.y, m_cameraPos.z, 0.0f),
-		XMVectorSet(m_cameraPos.x + 0.0f, m_cameraPos.y + 0.0f, m_cameraPos.z + 1.0f, 0.0f),
+		XMVectorAdd(XMVectorSet(m_cameraPos.x, m_cameraPos.y, m_cameraPos.z, 0.0f), XMVector3Normalize(XMVectorSet(camForward3.x, camForward3.y, camForward3.z, 0.0f))),
 		XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f)));
 	float fovRad = XMConvertToRadians(m_CameraFovDeg);
 	XMMATRIX proj = XMMatrixTranspose(XMMatrixPerspectiveFovLH(fovRad, AspectRatio(), m_CameraNear, m_CameraFar));
-
 	m_baseProjection.world = XMMatrixTranspose(world0);
 	m_baseProjection.view = view;
 	m_baseProjection.proj = proj;
+
 	m_baseProjection.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(world0)));
 	{
 		XMFLOAT3 dir = m_LightDirection;
@@ -290,9 +329,8 @@ void App::OnRender()
 		ConstantBuffer marker = m_ConstantBuffer;
 		XMFLOAT3 dir = m_LightDirection;
 		XMVECTOR v = XMVector3Normalize(XMLoadFloat3(&dir));
-		XMVECTOR pos = XMVectorScale(v, 3.0f); // 원점에서 라이트 방향으로 일정 거리
 		XMMATRIX S = XMMatrixScaling(0.2f, 0.2f, 0.2f);
-		XMMATRIX T = XMMatrixTranslationFromVector(pos);
+		XMMATRIX T = XMMatrixTranslation(m_LightPosition.x, m_LightPosition.y, m_LightPosition.z);
 		marker.world = XMMatrixTranspose(S * T);
 		// 월드 인버스 전치 갱신
 		marker.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(S * T)));
@@ -309,6 +347,58 @@ void App::OnRender()
 		m_pDeviceContext->DrawIndexed(m_nIndices, 0, 0);
 	}
 
+	// 라이트 방향 표시 라인 그리기(빨간색)
+	{
+		struct LineV { XMFLOAT3 pos; XMFLOAT3 normal; XMFLOAT4 color; };
+		LineV line[2] = {};
+		XMFLOAT3 dir = m_LightDirection;
+		XMVECTOR vdir = XMVector3Normalize(XMLoadFloat3(&dir));
+		XMVECTOR p0 = XMLoadFloat3(&m_LightPosition);
+		XMVECTOR p1 = XMVectorAdd(p0, XMVectorScale(vdir, 2.0f));
+		XMStoreFloat3(&line[0].pos, p0);
+		XMStoreFloat3(&line[1].pos, p1);
+		line[0].normal = XMFLOAT3(0,1,0);
+		line[1].normal = XMFLOAT3(0,1,0);
+		line[0].color = XMFLOAT4(1,0,0,1);
+		line[1].color = XMFLOAT4(1,0,0,1);
+
+		if (!m_pLineVertexBuffer)
+		{
+			D3D11_BUFFER_DESC bd{};
+			bd.ByteWidth = sizeof(line);
+			bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+			bd.Usage = D3D11_USAGE_DYNAMIC;
+			bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+			HR_T(m_pDevice->CreateBuffer(&bd, nullptr, &m_pLineVertexBuffer));
+		}
+		{
+			D3D11_MAPPED_SUBRESOURCE mapped;
+			HR_T(m_pDeviceContext->Map(m_pLineVertexBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped));
+			memcpy_s(mapped.pData, sizeof(line), line, sizeof(line));
+			m_pDeviceContext->Unmap(m_pLineVertexBuffer, 0);
+		}
+
+		UINT lstride = sizeof(LineV);
+		UINT loffset = 0;
+		m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_LINELIST);
+		m_pDeviceContext->IASetVertexBuffers(0, 1, &m_pLineVertexBuffer, &lstride, &loffset);
+		m_pDeviceContext->IASetInputLayout(m_pInputLayout);
+		// 뷰/투영만 적용된 월드(단위행렬) 사용, pad=3.0 -> 빨간색 라인 출력
+		ConstantBuffer lineCB = m_ConstantBuffer;
+		lineCB.world = XMMatrixTranspose(XMMatrixIdentity());
+		lineCB.worldInvTranspose = XMMatrixIdentity();
+		lineCB.pad = 3.0f;
+		D3D11_MAPPED_SUBRESOURCE mappedLine;
+		HR_T(m_pDeviceContext->Map(m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedLine));
+		memcpy_s(mappedLine.pData, sizeof(ConstantBuffer), &lineCB, sizeof(ConstantBuffer));
+		m_pDeviceContext->Unmap(m_pConstantBuffer, 0);
+		m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_pConstantBuffer);
+		m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_pConstantBuffer);
+		m_pDeviceContext->VSSetShader(m_pVertexShader, nullptr, 0);
+		m_pDeviceContext->PSSetShader(m_pPixelShader, nullptr, 0);
+		m_pDeviceContext->Draw(2, 0);
+	}
+
 	// ImGui 프레임 및 UI 렌더링
 	ImGui_ImplDX11_NewFrame();
 	ImGui_ImplWin32_NewFrame();
@@ -317,6 +407,7 @@ void App::OnRender()
 	if (ImGui::Begin("Controls"))
 	{
 		ImGui::Text("Mesh Transforms");
+		ImGui::Checkbox("Rotate Cube", &g_RotateCube);
 		ImGui::DragFloat3("Root Pos (x,y,z)", &m_cubePos.x, 0.1f);
 		ImGui::SliderFloat("Yaw (deg)", &m_YawDeg, -180.0f, 180.0f);
 		ImGui::SliderFloat("Pitch (deg)", &m_PitchDeg, -89.9f, 89.9f);
@@ -329,6 +420,7 @@ void App::OnRender()
 		ImGui::Text("Light");
 		ImGui::ColorEdit3("Light Color", &m_LightColorRGB.x);
 		ImGui::DragFloat3("Light Dir", &m_LightDirection.x, 0.05f);
+		ImGui::DragFloat3("Light Pos", &m_LightPosition.x, 0.1f);
 	}
 	ImGui::End();
 
@@ -710,7 +802,7 @@ bool App::InitEffect()
 	};
 
 	ID3D10Blob* vertexShaderBuffer = nullptr;
-	HR_T(CompileShaderFromFile(L"LightVertexShader.hlsl", "main", "vs_4_0", &vertexShaderBuffer));
+	HR_T(CompileShaderFromFile(L"09_LightVertexShader.hlsl", "main", "vs_4_0", &vertexShaderBuffer));
 	HR_T(m_pDevice->CreateInputLayout(layout, ARRAYSIZE(layout),
 		vertexShaderBuffer->GetBufferPointer(), vertexShaderBuffer->GetBufferSize(), &m_pInputLayout));
 
@@ -728,7 +820,7 @@ bool App::InitEffect()
 
 	// Pixel Shader -------------------------------------
 	ID3D10Blob* pixelShaderBuffer = nullptr;
-	HR_T(CompileShaderFromFile(L"LightPixelShader.hlsl", "main", "ps_4_0", &pixelShaderBuffer));
+	HR_T(CompileShaderFromFile(L"09_LightPixelShader.hlsl", "main", "ps_4_0", &pixelShaderBuffer));
 	HR_T(m_pDevice->CreatePixelShader(pixelShaderBuffer->GetBufferPointer(),
 		pixelShaderBuffer->GetBufferSize(), NULL, &m_pPixelShader));
 	SAFE_RELEASE(pixelShaderBuffer);	// 픽셀 셰이더 버퍼 더이상 필요없음

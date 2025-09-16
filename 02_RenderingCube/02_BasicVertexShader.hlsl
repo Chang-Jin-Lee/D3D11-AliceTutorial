@@ -1,4 +1,4 @@
-#include <shared.fxh>
+#include "02_shared.fxh"
 // 정점 셰이더.
 VertexOut main(VertexIn vIn)
 {
