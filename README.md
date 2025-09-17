@@ -167,7 +167,10 @@ Tutorial for D3D AliceEngine
   - 카메라 연동: RMB 회전 시 전체 방향에서 정상 표시, 위치는 무한원처럼 보이도록 처리(V의 평행이동 제거)
   - 참고: 큐브맵 레이아웃에 따라 `Fz`를 `Fx = diag(-1,1,1)`로 교체 가능
 
-<img width="1282" height="1000" alt="스크린샷 2025-09-16 190808" src="https://github.com/user-attachments/assets/73ea4304-b38d-4e57-a4c3-d788636263de" />
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/73ea4304-b38d-4e57-a4c3-d788636263de" width="60%" />
+</p>
+
 
 ---
 
