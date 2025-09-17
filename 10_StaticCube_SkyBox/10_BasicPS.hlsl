@@ -18,10 +18,13 @@ float4 main(VertexOut pIn) : SV_Target
     }
 
     float3 baseColor = float3(1.0, 0.7, 1.0);
-    pIn.normalW = normalize(pIn.normalW);
-    float saturatedDir = saturate(dot(g_DirLight.direction.xyz, pIn.normalW));
+    // 월드 기준 램버트: L은 광원→표면 방향의 반대이므로 -direction 사용
+    float3 eyeVec = normalize(g_EyePosW - pIn.posW);
+
+    float3 lightVec = -g_DirLight.direction;
+    float diffuseFactor = saturate(dot(lightVec, pIn.normalW));
     
-    float3 lit = g_DirLight.color.rgb + g_DirLight.color.rgb * saturatedDir;
+    float3 lit = 0.1 * g_DirLight.color.rgb + diffuseFactor * g_DirLight.color.rgb;
     float3 litColor = baseColor * lit;
     
     return float4(litColor, 1.0f);
