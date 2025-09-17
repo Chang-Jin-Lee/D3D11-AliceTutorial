@@ -23,6 +23,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "08_ImguiSystemInfo", "08_Im
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "09_Live2D", "09_Live2D\09_Live2D.vcxproj", "{85991ACA-3026-4A96-95B0-627D212DD068}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "11_Live2D", "11_Live2D\11_Live2D.vcxproj", "{FB9CB096-3C4E-4C79-9586-1C51C4C6766B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -111,6 +113,14 @@ Global
 		{85991ACA-3026-4A96-95B0-627D212DD068}.Release|x64.Build.0 = Release|x64
 		{85991ACA-3026-4A96-95B0-627D212DD068}.Release|x86.ActiveCfg = Release|Win32
 		{85991ACA-3026-4A96-95B0-627D212DD068}.Release|x86.Build.0 = Release|Win32
+		{FB9CB096-3C4E-4C79-9586-1C51C4C6766B}.Debug|x64.ActiveCfg = Debug|x64
+		{FB9CB096-3C4E-4C79-9586-1C51C4C6766B}.Debug|x64.Build.0 = Debug|x64
+		{FB9CB096-3C4E-4C79-9586-1C51C4C6766B}.Debug|x86.ActiveCfg = Debug|Win32
+		{FB9CB096-3C4E-4C79-9586-1C51C4C6766B}.Debug|x86.Build.0 = Debug|Win32
+		{FB9CB096-3C4E-4C79-9586-1C51C4C6766B}.Release|x64.ActiveCfg = Release|x64
+		{FB9CB096-3C4E-4C79-9586-1C51C4C6766B}.Release|x64.Build.0 = Release|x64
+		{FB9CB096-3C4E-4C79-9586-1C51C4C6766B}.Release|x86.ActiveCfg = Release|Win32
+		{FB9CB096-3C4E-4C79-9586-1C51C4C6766B}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
