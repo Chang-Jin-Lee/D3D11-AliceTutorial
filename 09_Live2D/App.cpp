@@ -106,6 +106,8 @@ public:
 	std::vector<std::string> motionGroups;
 	std::map<std::string, ACubismMotion*> motions; // 로드된 모션 캐시
 	float userTimeSeconds = 0.0f;
+    // Live2D 렌더러는 BindTexture 시 SRV의 참조를 증가시키지 않으므로, 수명 유지를 위해 여기서 소유한다
+    std::vector<Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>> textureSRVs;
 
 	~MinimalUserModel() override
 	{
@@ -150,6 +152,8 @@ public:
 		auto* r = GetRenderer<Rendering::CubismRenderer_D3D11>();
 		if(!r) return false;
 		int bound = 0;
+        textureSRVs.clear();
+        if (setting) { textureSRVs.reserve(setting->GetTextureCount()); }
 		for (int i=0;i<setting->GetTextureCount();++i){
 			const char* tf = setting->GetTextureFileName(i); if(!tf||!*tf) continue;
 			std::wstring w = std::wstring(baseDir.begin(), baseDir.end()) + std::wstring(tf, tf+strlen(tf));
@@ -158,6 +162,8 @@ public:
 			if (SUCCEEDED(CreateWICTextureFromFile(dev, w.c_str(), res.GetAddressOf(), srv.GetAddressOf())))
 			{
 				r->BindTexture(i, srv.Get());
+                // 수명 유지: 렌더 종료까지 해제되지 않도록 보관
+                textureSRVs.push_back(srv);
 				++bound;
 			}
 		}
