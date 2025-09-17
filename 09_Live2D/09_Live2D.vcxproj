@@ -137,13 +137,13 @@
       <PreprocessorDefinitions>_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>..\Common;d:\Github\D3D11-AliceTutorial\CubismSdkForNative-5-r.4.1\Framework\src;d:\Github\D3D11-AliceTutorial\CubismSdkForNative-5-r.4.1\Core\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\Common;$(SolutionDir)third_party\CubismSdkForNative-5-r.4.1\Framework\src;$(SolutionDir)third_party\CubismSdkForNative-5-r.4.1\Core\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>d:\Github\D3D11-AliceTutorial\CubismSdkForNative-5-r.4.1\Core\lib\windows\x86_64\143;d:\Github\D3D11-AliceTutorial\CubismSdkForNative-5-r.4.1\Samples\D3D11\Demo\proj.d3d11.cmake\build\proj_msvc2022_x64_mt\Framework\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>Framework.lib;Live2DCubismCore_MTd.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SolutionDir)third_party\CubismSdkForNative-5-r.4.1\Core\lib\windows\x86_64\143;$(SolutionDir)third_party\CubismSdkForNative-5-r.4.1\Samples\D3D11\Demo\proj.d3d11.cmake\build\proj_msvc2022_x64_mt\Framework\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>Live2DFramework.lib;Live2DCubismCore_MTd.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -154,13 +154,13 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>..\Common;d:\Github\D3D11-AliceTutorial\CubismSdkForNative-5-r.4.1\Framework\src;d:\Github\D3D11-AliceTutorial\CubismSdkForNative-5-r.4.1\Core\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\Common;$(SolutionDir)third_party\CubismSdkForNative-5-r.4.1\Framework\src;$(SolutionDir)third_party\CubismSdkForNative-5-r.4.1\Core\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>d:\Github\D3D11-AliceTutorial\CubismSdkForNative-5-r.4.1\Core\lib\windows\x86_64\143;d:\Github\D3D11-AliceTutorial\CubismSdkForNative-5-r.4.1\Samples\D3D11\Demo\proj.d3d11.cmake\build\proj_msvc2022_x64_mt\Framework\Release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>Framework.lib;Live2DCubismCore_MT.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SolutionDir)third_party\CubismSdkForNative-5-r.4.1\Core\lib\windows\x86_64\143;$(SolutionDir)third_party\CubismSdkForNative-5-r.4.1\Samples\D3D11\Demo\proj.d3d11.cmake\build\proj_msvc2022_x64_mt\Framework\Release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>Live2DFramework.lib;Live2DCubismCore_MT.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
