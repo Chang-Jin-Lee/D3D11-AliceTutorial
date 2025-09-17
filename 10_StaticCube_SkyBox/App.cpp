@@ -160,11 +160,9 @@ void App::OnUninitialize()
 
 void App::OnUpdate(const float& dt)
 {
-	static float t0 = 0.0f;
-	if (g_RotateCube) t0 += 0.6f * dt;   // 부모(루트) Yaw 속도 (토글)
-
 	// 로컬 변환 정의 (간단 Scene Graph)
-	m_YawDeg += 45.0f * dt; // Yaw 회전 (UI로 조절 가능)
+	if(g_RotateCube)
+		m_YawDeg += 45.0f * dt; // Yaw 회전 (UI로 조절 가능)
 	m_YawDeg = std::fmod(m_YawDeg + 180.0f, 360.0f) - 180.0f;
 	XMMATRIX rotYaw   = XMMatrixRotationY(XMConvertToRadians(m_YawDeg));
 	XMMATRIX rotPitch = XMMatrixRotationX(XMConvertToRadians(m_PitchDeg));
