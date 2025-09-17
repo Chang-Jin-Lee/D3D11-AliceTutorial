@@ -1,4 +1,4 @@
-#include "10_shared.fxh"
+#include "09_shared.fxh"
 // ¡§¡° ºŒ¿Ã¥ı
 VertexOut main(VertexIn vIn)
 {
