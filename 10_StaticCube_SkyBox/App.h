@@ -112,6 +112,11 @@ public:
 	ImVec2 m_HanakoDrawSize = ImVec2(128, 128);
 	ImVec2 m_TexHanakoSize = ImVec2(0, 0);
 
+	// 스카이박스 큐브맵 면 SRV들 (0:+X,1:-X,2:+Y,3:-Y,4:+Z,5:-Z)
+	// ImGui에서 현재 카메라가 보고 있는 스카이 박스의 이미지를 그려주기 위한 변수들
+	ID3D11ShaderResourceView* m_pSkyFaceSRV[6] = {};
+	ImVec2 m_SkyFaceSize = ImVec2(0, 0);
+
 	// 시스템 정보 (표시용)
 	std::wstring m_GPUName;
 	std::wstring m_CPUName;
@@ -158,5 +163,8 @@ public:
 private:
 	bool InitBasicEffect(); 							// 쉐이더를 읽어오는 함수는 따로 구현
 	bool InitSkyBoxEffect();
+
+	// 큐브맵 면 SRV 준비/정리 및 면 선택 계산
+	void PrepareSkyFaceSRVs();
 };
 
