@@ -1,4 +1,12 @@
 ## 07. PMX Texture (07_pmxTexture)
+
+- 이미지를 클릭하면 이동합니다
+
+| [유튜브](https://www.youtube.com/watch?v=JmdBz3NbKB0) | [블로그](https://velog.io/@whoamicj/DX11PMX-07pmxTexture-PMX-%ED%85%8D%EC%8A%A4%EC%B3%90-%EB%A7%A4%ED%95%91) |
+|---|---|
+| <div align="center">[<img src="https://github.com/user-attachments/assets/61db3fbf-0c80-4796-99eb-8e6f7454bae2" width="450"/>](https://www.youtube.com/watch?v=JmdBz3NbKB0)<br/></div> | <div align="center">[<img src="https://github.com/user-attachments/assets/ecd85288-7fd2-46ac-9fba-d52edfa123ee" width="230"/>](https://velog.io/@whoamicj/DX11PMX-07pmxTexture-PMX-%ED%85%8D%EC%8A%A4%EC%B3%90-%EB%A7%A4%ED%95%91)<br/></div> |
+
+
 - 내용: PMX 모델에 텍스쳐 매핑을 완성한 예제
 - 주요 구현:
   - 머티리얼 DIFFUSE 텍스쳐 로딩: 외부 경로 + `Alice.fbm/` 폴더 폴백, 임베디드(`*0`) 텍스쳐 처리
@@ -13,4 +21,5 @@
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/4ffe5d7c-6063-42f7-a9b2-7d3be574ffa0" width="60%" />
+  <img src="https://github.com/user-attachments/assets/ecd85288-7fd2-46ac-9fba-d52edfa123ee" width="60%" />
 </p>
