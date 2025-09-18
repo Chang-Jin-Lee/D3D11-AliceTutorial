@@ -1,8 +1,10 @@
 ## 11. Live2D (11_Live2D)
 
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/3ac3d5cd-45b5-4ab1-be59-a25456c0ee9b" width="60%" />
-</p>
+- 이미지를 클릭하면 이동합니다
+
+| [유튜브](https://www.youtube.com/watch?v=rGQOzdTvPmI) | [블로그](https://velog.io/@whoamicj/DX11Live2D-11Live2D-Live2D-CubismSDK) |
+|---|---|
+| <div align="center">[<img src="https://github.com/user-attachments/assets/323fa6c2-260b-4fba-aac5-e6db4bfdd04c" width="450"/>](https://www.youtube.com/watch?v=rGQOzdTvPmI)<br/></div> | <div align="center">[<img src="https://github.com/user-attachments/assets/602b0e58-c75f-444b-8b06-f4076d497e1f" width="230"/>](https://velog.io/@whoamicj/DX11Live2D-11Live2D-Live2D-CubismSDK)<br/></div> |
 
 - 내용: D3D11 + Live2D Cubism 데모. model3.json 로드, 텍스처 바인딩, 마스크 처리, 모션 재생, ImGui 제어 구현.
 - 참고: SDK 경로 설정이 가장 어렵습니다. Framework.lib, src 등의 경로를 잘 보고 설정하세요.
@@ -34,3 +36,8 @@
   2) 모션: Group 선택 → 리스트/슬라이더로 모션 선택 → Play
   3) 외부 모션 추가: “Add Motion JSON...” 클릭 → `*.motion3.json` 선택(auto/extra에 반영)
   4) Parameters/Parts에서 슬라이더로 실시간 조정(이름/인덱스 표시)
+ 
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/3ac3d5cd-45b5-4ab1-be59-a25456c0ee9b" width="60%" />
+</p>
