@@ -71,6 +71,47 @@ static bool LoadTextureSRVAndSize(ID3D11Device* device, const std::wstring& path
 	return true;
 }
 
+
+void App::PrepareSkyFaceSRVs()
+{
+	// 다른 스카이박스로 바꿀 수도 있으니 해제하고 다시 로드
+	for (int i = 0; i < 6; ++i) SAFE_RELEASE(m_pSkyFaceSRV[i]);
+    m_SkyFaceSize = ImVec2(0, 0);
+    if (!m_pTextureSRV) return;
+
+	Microsoft::WRL::ComPtr<ID3D11Resource> res;
+    m_pTextureSRV->GetResource(res.GetAddressOf());
+    if (!res) return;
+
+	// 파괴됐는지 안됐는지 판단을 위해 Comptr이 필요하다
+	Microsoft::WRL::ComPtr<ID3D11Texture2D> tex2D;
+	HR_T(res.As(&tex2D));
+
+    D3D11_TEXTURE2D_DESC desc{};
+    tex2D->GetDesc(&desc);
+    // 큐브맵은 6개의 array slice를 가짐. (여러 큐브면 6의 배수)
+    if ((desc.ArraySize < 6)) return;
+
+    // 크기 기록 (mip0 기준)
+    m_SkyFaceSize = ImVec2((float)desc.Width, (float)desc.Height);
+
+    for (UINT face = 0; face < 6; ++face)
+    {
+        D3D11_SHADER_RESOURCE_VIEW_DESC sd{};
+        sd.Format = desc.Format;
+        sd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DARRAY;
+        sd.Texture2DArray.MostDetailedMip = 0;
+        sd.Texture2DArray.MipLevels = desc.MipLevels;
+        sd.Texture2DArray.FirstArraySlice = face;
+        sd.Texture2DArray.ArraySize = 1;
+        ID3D11ShaderResourceView* faceSRV = nullptr;
+        if (SUCCEEDED(m_pDevice->CreateShaderResourceView(tex2D.Get(), &sd, &faceSRV)))
+        {
+            m_pSkyFaceSRV[face] = faceSRV;
+        }
+    }
+}
+
 bool App::OnInitialize()
 {
 	if(!InitD3D()) 
@@ -92,7 +133,9 @@ bool App::OnInitialize()
 	ImGui_ImplWin32_Init(m_hWnd);
 	ImGui_ImplDX11_Init(m_pDevice, m_pDeviceContext);
 
-	LoadTextureSRVAndSize(m_pDevice, L"..\\Resource\\Hanako.png", &m_TexHanakoSRV, &m_TexHanakoSize);
+    // Hanako.png는 디버그용이었으나, 이제 스카이박스 현재 면을 그릴 예정
+    // 초기 스카이박스 면 SRV들을 준비한다
+    PrepareSkyFaceSRVs();
 
 	// 시스템 정보 수집 (GPU)
 	{
@@ -496,6 +539,7 @@ void App::OnRender()
 			{
 				m_SkyBoxChoice = (cur == 0) ? SkyBoxChoice::Hanako : SkyBoxChoice::CubeMap;
 				m_pTextureSRV = (m_SkyBoxChoice == SkyBoxChoice::Hanako) ? m_pSkyHanakoSRV : m_pSkyCubeMapSRV;
+				PrepareSkyFaceSRVs();
 			}
 		}
 		ImGui::Text("Mesh Transforms");
@@ -516,41 +560,43 @@ void App::OnRender()
 	}
 	ImGui::End();
 
-	if (m_TexHanakoSRV)
+	// 현재 카메라 포워드 기준 스카이박스 면 이미지를 표시
 	{
-		ImGui::SetNextWindowPos(ImVec2(810, 210), ImGuiCond_Once);
-		ImGui::SetNextWindowSize(ImVec2(m_HanakoDrawSize.x + 50, m_HanakoDrawSize.y + 80), ImGuiCond_Once);
-		if (ImGui::Begin("Hanako"))
+		int face = 0;
+		using namespace DirectX;
+    	XMVECTOR f = XMLoadFloat3(&m_CameraForward);
+    	XMVECTOR fn = XMVector3Normalize(f);
+    	XMFLOAT3 v; XMStoreFloat3(&v, fn);
+    	float ax = fabsf(v.x), ay = fabsf(v.y), az = fabsf(v.z);
+    	if (ax >= ay && ax >= az) face = (v.x >= 0.0f) ? 0 : 1; // +X / -X
+    	else if (ay >= ax && ay >= az) face = (v.y >= 0.0f) ? 2 : 3; // +Y / -Y
+    	else face =  (v.z >= 0.0f) ? 4 : 5;     // +Z / -Z
+
+		ID3D11ShaderResourceView* faceSRV = (face >= 0 && face < 6) ? m_pSkyFaceSRV[face] : nullptr;
+		if (faceSRV)
 		{
-			// 스크롤 없이, 내부 가용 공간에 '맞춰서' 표시
-			ImGui::BeginChild("HanakoView", ImVec2(0, 0), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-
-			const ImVec2 tex = (m_HanakoDrawSize.x > 0 && m_HanakoDrawSize.y > 0) ? m_HanakoDrawSize : m_TexHanakoSize;
-			ImVec2 avail = ImGui::GetContentRegionAvail();
-
-			// 가로/세로 비율 유지하며 최대 크기 산출
-			float sx = (tex.x > 0.f) ? (avail.x / tex.x) : 1.f;
-			float sy = (tex.y > 0.f) ? (avail.y / tex.y) : 1.f;
-			float scale = (sx > 0.f && sy > 0.f) ? min(sx, sy) : 1.f;
-
-			ImVec2 draw = ImVec2(tex.x * scale, tex.y * scale);
-
-			// 중앙 정렬
-			ImVec2 start = ImGui::GetCursorPos();
-			ImVec2 offset = ImVec2((avail.x - draw.x) * 0.5f, (avail.y - draw.y) * 0.5f);
-			ImGui::SetCursorPos(start + offset);
-
-			// 이미지
-			ImGui::Image((ImTextureID)m_TexHanakoSRV, draw);
-
-			// 얇은 액자 테두리(선택)
-			ImVec2 r0 = ImGui::GetItemRectMin();
-			ImVec2 r1 = ImGui::GetItemRectMax();
-			ImGui::GetWindowDrawList()->AddRect(r0 - ImVec2(2, 2), r1 + ImVec2(2, 2), IM_COL32(255, 255, 255, 160), 8.0f, 0, 2.0f);
-
-			ImGui::EndChild();
+			ImGui::SetNextWindowPos(ImVec2(810, 210), ImGuiCond_Once);
+			ImGui::SetNextWindowSize(ImVec2(m_HanakoDrawSize.x + 50, m_HanakoDrawSize.y + 80), ImGuiCond_Once);
+			if (ImGui::Begin("Skybox Face"))
+			{
+				ImGui::BeginChild("SkyFaceView", ImVec2(0, 0), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+				const ImVec2 tex = (m_HanakoDrawSize.x > 0 && m_HanakoDrawSize.y > 0) ? m_HanakoDrawSize : m_SkyFaceSize;
+				ImVec2 avail = ImGui::GetContentRegionAvail();
+				float sx = (tex.x > 0.f) ? (avail.x / tex.x) : 1.f;
+				float sy = (tex.y > 0.f) ? (avail.y / tex.y) : 1.f;
+				float scale = (sx > 0.f && sy > 0.f) ? min(sx, sy) : 1.f;
+				ImVec2 draw = ImVec2(tex.x * scale, tex.y * scale);
+				ImVec2 start = ImGui::GetCursorPos();
+				ImVec2 offset = ImVec2((avail.x - draw.x) * 0.5f, (avail.y - draw.y) * 0.5f);
+				ImGui::SetCursorPos(start + offset);
+				ImGui::Image((ImTextureID)faceSRV, draw);
+				ImVec2 r0 = ImGui::GetItemRectMin();
+				ImVec2 r1 = ImGui::GetItemRectMax();
+				ImGui::GetWindowDrawList()->AddRect(r0 - ImVec2(2, 2), r1 + ImVec2(2, 2), IM_COL32(255, 255, 255, 160), 8.0f, 0, 2.0f);
+				ImGui::EndChild();
+			}
+			ImGui::End();
 		}
-		ImGui::End();
 	}
 
 
@@ -791,8 +837,8 @@ bool App::InitScene()
 		// ***********************************************************************************************
 	// 스카이 박스 큐브 설정
 	StaticMeshData skyBoxCubeData = StaticMesh::CreateBox(XMFLOAT4(1, 1, 1, 1));
-	HR_T(CreateDDSTextureFromFile(m_pDevice, L"..\\Resource\\Hanako.dds", nullptr, &m_pSkyHanakoSRV));
-	HR_T(CreateDDSTextureFromFile(m_pDevice, L"..\\Resource\\cubemap.dds", nullptr, &m_pSkyCubeMapSRV));
+    HR_T(CreateDDSTextureFromFile(m_pDevice, L"..\\Resource\\Hanako.dds", nullptr, &m_pSkyHanakoSRV));
+    HR_T(CreateDDSTextureFromFile(m_pDevice, L"..\\Resource\\cubemap.dds", nullptr, &m_pSkyCubeMapSRV));
 	m_SkyBoxChoice = SkyBoxChoice::CubeMap;
 	m_pTextureSRV = m_pSkyCubeMapSRV;
 	
@@ -840,6 +886,8 @@ void App::UninitScene()
 
 	SAFE_RELEASE(m_pSkyHanakoSRV);
 	SAFE_RELEASE(m_pSkyCubeMapSRV);
+
+    for (int i = 0; i < 6; ++i) SAFE_RELEASE(m_pSkyFaceSRV[i]);
 }
 
 bool App::InitBasicEffect()
