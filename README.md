@@ -8,8 +8,11 @@ Tutorial for D3D AliceEngine
 - 플랫폼: Win32 Desktop (Direct3D 11.0)  
 - 목적: DirectX 11 그래픽스 파이프라인의 기초 학습
 
+| [유튜브](https://www.youtube.com/playlist?list=PLbPdrhrt0AJgCSKYyzjAjHwpQ_Yt4uBMx) | [블로그](https://velog.io/@whoamicj/series/DirectX11) |
+|---|---|
+| <div align="center">[<img src="https://github.com/user-attachments/assets/3aafc53e-d6ae-492d-8680-b240c19f1f92" width="450"/>](https://www.youtube.com/playlist?list=PLbPdrhrt0AJgCSKYyzjAjHwpQ_Yt4uBMx)<br/></div> | <div align="center">[<img src="https://github.com/user-attachments/assets/64a50e8e-5580-4e76-97d1-b500f9c5a8a2" width="230"/>](https://velog.io/@whoamicj/series/DirectX11)<br/></div> |
 
-### 바로가기
+### 프로젝트 바로가기
 
 - 이미지를 클릭하면 해당 디렉토리로 이동합니다
 
