@@ -296,8 +296,7 @@ void App::OnRender()
 	m_ConstantBuffer.proj  = m_baseProjection.proj;
 	{
 		// worldInvTranspose 계산 (CPU에서는 실제 world로 역/전치 후, HLSL 프리트랜스포즈 규약에 맞게 저장)
-		auto worldActual = XMMatrixTranspose(m_baseProjection.world);
-		auto invWorldActual = XMMatrixInverse(nullptr, worldActual);
+		auto invWorldActual = XMMatrixInverse(nullptr, m_baseProjection.world);
 		m_ConstantBuffer.worldInvTranspose = XMMatrixTranspose(invWorldActual);
 	}
 	// 간단 기본 광원/카메라 (UI 반영)
