@@ -346,9 +346,9 @@ void App::OnRender()
 	m_ConstantBuffer.proj  = m_baseProjection.proj;
 	{
 		// worldInvTranspose 계산 (CPU에서는 실제 world로 역/전치 후, HLSL 프리트랜스포즈 규약에 맞게 저장)
-		auto worldActual = XMMatrixTranspose(m_baseProjection.world);
-		auto invWorldActual = XMMatrixInverse(nullptr, worldActual);
-		m_ConstantBuffer.worldInvTranspose = XMMatrixTranspose(invWorldActual);
+		// 비균등 스케일을 해결한 코드
+		auto invWorlNormal = XMMatrixInverse(nullptr, m_baseProjection.world);
+		m_ConstantBuffer.worldInvTranspose = XMMatrixTranspose(invWorlNormal);
 	}
 	// 간단 기본 광원/카메라 (UI 반영)
 	{
@@ -482,6 +482,7 @@ void App::OnRender()
 		m_pDeviceContext->RSSetState(rsSky);
 
 		// 스카이박스 WVP: world=I, view=translation 제거, proj=일반(Projt) + Z-Flip 보정
+		// 여기서 z축 반전해서 넘긴다음 쉐이더에서 한번 더 반전
 		XMMATRIX viewT = m_baseProjection.view; // transposed view
 		XMMATRIX view  = XMMatrixTranspose(viewT);
 		view.r[3] = XMVectorSet(0.0f, 0.0f, 0.0f, XMVectorGetW(view.r[3]));
