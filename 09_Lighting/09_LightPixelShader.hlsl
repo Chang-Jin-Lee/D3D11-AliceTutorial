@@ -1,4 +1,4 @@
-#include "10_shared.fxh"
+#include "09_shared.fxh"
 
 // «»ºø ºŒ¿Ã¥ı(Ω¶¿Ã¥ı/ºŒ¿Ã¥ı)
 float4 main(VertexOut pIn) : SV_Target

@@ -1,4 +1,4 @@
-#include "10_shared.fxh"
+#include "09_shared.fxh"
 // ¡§¡° ºŒ¿Ã¥ı
 VertexOut main(VertexIn vIn)
 {
@@ -9,7 +9,7 @@ VertexOut main(VertexIn vIn)
     vOut.posH = mul(vOut.posH, g_Proj);
     vOut.posW = posW.xyz;
 
-    vOut.normalW = normalize(mul(vIn.normalL, (float3x3) g_World));
+    vOut.normalW = normalize(mul(vIn.normalL, (float3x3) g_WorldInvTranspose));
     vOut.color = vIn.color;
     
     return vOut;
