@@ -474,22 +474,20 @@ void App::OnRender()
 		{
 			D3D11_RASTERIZER_DESC rd{};
 			rd.FillMode = D3D11_FILL_SOLID;
-			rd.CullMode = D3D11_CULL_FRONT;         // 내부면만 보이게
-			rd.FrontCounterClockwise = true;        // CCW를 Front로 간주
+			rd.CullMode = D3D11_CULL_NONE;         // 내부면만 보이게 끄기
+			rd.FrontCounterClockwise = false;        // CCW를 Front로 간주
 			rd.DepthClipEnable = TRUE;
 			HR_T(m_pDevice->CreateRasterizerState(&rd, &rsSky));
 		}
 		m_pDeviceContext->RSSetState(rsSky);
 
-		// 스카이박스 WVP: world=I, view=translation 제거, proj=일반(Projt) + Z-Flip 보정
-		// 여기서 z축 반전해서 넘긴다음 쉐이더에서 한번 더 반전
+		// 스카이박스 WVP: world=I, view=translation 제거, proj=일반(Projt)
 		XMMATRIX viewT = m_baseProjection.view; // transposed view
 		XMMATRIX view  = XMMatrixTranspose(viewT);
 		view.r[3] = XMVectorSet(0.0f, 0.0f, 0.0f, XMVectorGetW(view.r[3]));
 		XMMATRIX viewNoTransT = XMMatrixTranspose(view);
-		XMMATRIX flipZ_T = XMMatrixTranspose(XMMatrixScaling(1.0f, 1.0f, -1.0f));
 		XMMATRIX projT = m_baseProjection.proj;
-		XMMATRIX wvpT = XMMatrixMultiply(XMMatrixMultiply(projT, viewNoTransT), flipZ_T);
+		XMMATRIX wvpT = XMMatrixMultiply(projT, viewNoTransT);
 		// 단일 CB(b0) 사용: SkyBox VS가 사용하는 g_WorldViewProj 위치(선두 64바이트)에만 wvpT를 써준다
 		{
 			D3D11_MAPPED_SUBRESOURCE mapped{};
