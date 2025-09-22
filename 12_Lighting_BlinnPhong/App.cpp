@@ -15,8 +15,6 @@
 #include <algorithm>
 #include "../Common/StaticMesh.h"
 
-static bool g_RotateCube = true; // ImGui 토글: 큐브 자동 회전 on/off
-
 #pragma comment (lib, "d3d11.lib")
 #pragma comment(lib,"d3dcompiler.lib")
 
@@ -173,7 +171,7 @@ void App::OnUninitialize()
 void App::OnUpdate(const float& dt)
 {
 	// 로컬 변환 정의 (간단 Scene Graph)
-	if(g_RotateCube)
+	if(m_RotateCube)
 		m_YawDeg += 45.0f * dt; // Yaw 회전 (UI로 조절 가능)
 	m_YawDeg = std::fmod(m_YawDeg + 180.0f, 360.0f) - 180.0f;
 	XMMATRIX rotYaw   = XMMatrixRotationY(XMConvertToRadians(m_YawDeg));
@@ -527,7 +525,7 @@ void App::OnRender()
 			}
 		}
 		ImGui::Text("Mesh Transforms");
-		ImGui::Checkbox("Rotate Cube", &g_RotateCube);
+		ImGui::Checkbox("Rotate Cube", &m_RotateCube);
 		ImGui::SliderFloat("Cube Scale", &m_CubeScale, 0.1f, 10.0f);
 		ImGui::DragFloat3("Root Pos (x,y,z)", &m_cubePos.x, 0.1f);
 		ImGui::SliderFloat("Yaw (deg)", &m_YawDeg, -180.0f, 180.0f);
