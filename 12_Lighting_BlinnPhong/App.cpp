@@ -183,8 +183,8 @@ void App::OnUpdate(const float& dt)
 	m_baseProjection.pad = 0.0f;
 
 	// 머티리얼을 기본 캐시에 반영해 둔다
-	m_baseProjection.material.ambient = XMFLOAT4(m_MaterialAmbientRGB.x, m_MaterialAmbientRGB.y, m_MaterialAmbientRGB.z, 1.0f);
-	m_baseProjection.material.diffuse = XMFLOAT4(m_MaterialDiffuseRGB.x, m_MaterialDiffuseRGB.y, m_MaterialDiffuseRGB.z, 1.0f);
+	m_baseProjection.material.ambient = m_MaterialAmbientRGB;
+	m_baseProjection.material.diffuse = m_MaterialDiffuseRGB;
 	m_baseProjection.material.specular = XMFLOAT4(m_MaterialSpecularRGB.x, m_MaterialSpecularRGB.y, m_MaterialSpecularRGB.z, m_MaterialShininess);
 	m_baseProjection.material.reflect = XMFLOAT4(0,0,0,0);
 
@@ -247,8 +247,8 @@ void App::OnRender()
 	m_ConstantBuffer.eyePos = m_cameraPos;
 	m_ConstantBuffer.pad = 0.0f;
 	// 머티리얼 채우기
-	m_ConstantBuffer.material.ambient = XMFLOAT4(m_MaterialAmbientRGB.x, m_MaterialAmbientRGB.y, m_MaterialAmbientRGB.z, 1.0f);
-	m_ConstantBuffer.material.diffuse = XMFLOAT4(m_MaterialDiffuseRGB.x, m_MaterialDiffuseRGB.y, m_MaterialDiffuseRGB.z, 1.0f);
+	m_ConstantBuffer.material.ambient = m_MaterialAmbientRGB;
+	m_ConstantBuffer.material.diffuse = m_MaterialDiffuseRGB;
 	m_ConstantBuffer.material.specular = XMFLOAT4(m_MaterialSpecularRGB.x, m_MaterialSpecularRGB.y, m_MaterialSpecularRGB.z, m_MaterialShininess);
 	m_ConstantBuffer.material.reflect = XMFLOAT4(0,0,0,0);
 
@@ -444,7 +444,7 @@ void App::OnRender()
 		ImGui::Text("Mesh Transforms");
 		ImGui::Checkbox("Rotate Cube", &m_RotateCube);
 		ImGui::SliderFloat("Cube Scale", &m_CubeScale, 0.1f, 10.0f);
-		ImGui::DragFloat3("Cube Pos (x,y,z)", &m_cubePos.x, 0.1f);
+		ImGui::DragFloat3("Root Pos (x,y,z)", &m_cubePos.x, 0.1f);
 		ImGui::SliderFloat("Yaw (deg)", &m_YawDeg, -180.0f, 180.0f);
 		ImGui::SliderFloat("Pitch (deg)", &m_PitchDeg, -89.9f, 89.9f);
 		ImGui::Separator();
@@ -456,14 +456,14 @@ void App::OnRender()
 		ImGui::Text("Light");
 		ImGui::ColorEdit3("Light Dir Color (deprecated)", &m_LightColorRGB.x);
 		ImGui::DragFloat3("Light Dir", &m_LightDirection.x, 0.05f);
-		ImGui::ColorEdit4("Light Ambient", &m_LightAmbient.x);
-		ImGui::ColorEdit4("Light Diffuse", &m_LightDiffuse.x);
-		ImGui::ColorEdit4("Light Specular", &m_LightSpecular.x);
+		ImGui::ColorEdit4("Ambient", &m_LightAmbient.x);
+		ImGui::ColorEdit4("Diffuse", &m_LightDiffuse.x);
+		ImGui::ColorEdit4("Specular", &m_LightSpecular.x);
 		ImGui::Separator();
 		ImGui::Text("Material");
-		ImGui::ColorEdit3("Ambient (ka)", &m_MaterialAmbientRGB.x);
-		ImGui::ColorEdit3("Diffuse (kd)", &m_MaterialDiffuseRGB.x);
-		ImGui::ColorEdit3("Specular (ks)", &m_MaterialSpecularRGB.x);
+		ImGui::ColorEdit4("Ambient (ka)", &m_MaterialAmbientRGB.x);
+		ImGui::ColorEdit4("Diffuse (kd)", &m_MaterialDiffuseRGB.x);
+		ImGui::ColorEdit4("Specular (ks)", &m_MaterialSpecularRGB.x);
 		ImGui::SliderFloat("Shininess (alpha)", &m_MaterialShininess, 1.0f, 256.0f);
 	}
 	ImGui::End();

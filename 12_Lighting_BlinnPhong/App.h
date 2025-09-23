@@ -135,7 +135,7 @@ public:
 	float m_PitchDeg = 0.0f;									// 큐브 Pitch
 	DirectX::XMFLOAT3 m_LightDirection = { 0.0f, 0.0f, 1.0f }; // 라이트 방향(UI)
 	DirectX::XMFLOAT3 m_LightColorRGB = { 1.0f, 1.0f, 1.0f };   // 라이트 색(UI)
-	DirectX::XMFLOAT4 m_LightAmbient = { 1.0f, 1.0f, 1.0f, 1.0f };   // 라이트 색(UI)
+	DirectX::XMFLOAT4 m_LightAmbient = { 0.03f, 0.03f, 0.03f, 0.1f };   // 라이트 색(UI)
 	DirectX::XMFLOAT4 m_LightDiffuse = { 1.0f, 1.0f, 1.0f, 1.0f };   // 라이트 색(UI)
 	DirectX::XMFLOAT4 m_LightSpecular = { 1.0f, 1.0f, 1.0f, 1.0f };   // 라이트 색(UI)
 	DirectX::XMFLOAT3 m_LightPosition = { 4.0f, 4.0f, 0.0f };   // 라이트 위치(마커용)
@@ -144,9 +144,9 @@ public:
 	ConstantBuffer m_baseProjection;							// 기본 카메라/월드 캐시
 
 	// Material parameters (ImGui)
-	DirectX::XMFLOAT3 m_MaterialAmbientRGB = { 0.2f, 0.2f, 0.2f };
-	DirectX::XMFLOAT3 m_MaterialDiffuseRGB = { 1.0f, 1.0f, 1.0f };
-	DirectX::XMFLOAT3 m_MaterialSpecularRGB = { 1.0f, 1.0f, 1.0f };
+	DirectX::XMFLOAT4 m_MaterialAmbientRGB = { 1.0f, 1.0f, 1.0f, 1.0f };
+	DirectX::XMFLOAT4 m_MaterialDiffuseRGB = { 1.0f, 1.0f, 1.0f, 1.0f };
+	DirectX::XMFLOAT4 m_MaterialSpecularRGB = { 1.0f, 1.0f, 1.0f, 1.0f };
 	float m_MaterialShininess = 32.0f;	// g_Material.specular.w
 
 	// Cube scale to better visualize specular highlights
