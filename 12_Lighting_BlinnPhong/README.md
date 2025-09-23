@@ -1,4 +1,4 @@
-## 12. Blinn Phone (12_Lighting_BlinnPhong)
+## 12. Blinn Phong (12_Lighting_BlinnPhong)
 - 내용 : Blinn Phone 쉐이더를 사용한 라이팅 예제입니다
 - 주요 구현
   - Material은 `ambient`, `diffuse`, `specular`, `reflect`를 가지고 있음
