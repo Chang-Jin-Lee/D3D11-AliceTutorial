@@ -15,14 +15,14 @@
 
 using namespace DirectX::SimpleMath;
 
-// 방향성 라이트
+// 방향 라이트
 struct DirectionalLight
 {
-	DirectX::XMFLOAT4 ambient;
-	DirectX::XMFLOAT4 diffuse;
-	DirectX::XMFLOAT4 specular;
-	DirectX::XMFLOAT3 direction;  // 라이트 방향 (정규화 권장)
-	float pad; // HLSL cbuffer 16바이트 정렬용 패딩
+	DirectX::XMFLOAT4 ambient;									// 환경광
+	DirectX::XMFLOAT4 diffuse;									// 확산 반사광, 난반사
+	DirectX::XMFLOAT4 specular;									// 직접 반사광
+	DirectX::XMFLOAT3 direction;								// 라이트 방향
+	float pad;													// HLSL cbuffer 16바이트 정렬용 패딩
 };
 
 // 물질의 재질
@@ -52,58 +52,59 @@ public:
 	// VS/PS 공용 상수버퍼(b0)
 	struct ConstantBuffer
 	{
-		DirectX::XMMATRIX world;               // 월드 행렬(전치로 저장)
-		DirectX::XMMATRIX view;                // 뷰 행렬(전치로 저장)
-		DirectX::XMMATRIX proj;                // 프로젝션 행렬(전치로 저장)
-		DirectX::XMMATRIX worldInvTranspose;   // (World^-1)^T
+		DirectX::XMMATRIX world;								// 월드 행렬(전치로 저장)
+		DirectX::XMMATRIX view;									// 뷰 행렬(전치로 저장)
+		DirectX::XMMATRIX proj;									// 프로젝션 행렬(전치로 저장)
+		DirectX::XMMATRIX worldInvTranspose;					// (World^-1)^T (비균등 스케일)
 
-		Material material;						// 재질
-		DirectionalLight dirLight;             // 방향성 라이트(색/방향)
-		DirectX::XMFLOAT3 eyePos;              // 카메라 위치
-		float pad;                             // 디버그 토글 등에 사용
+		Material material;										// 재질
+		DirectionalLight dirLight;								// 방향성 라이트(색/방향)
+		DirectX::XMFLOAT3 eyePos;								// 카메라 위치
+		float pad;												// 디버그 토글 등에 사용
 	};
 
 public:
 	// 필수 D3D 객체
-	ID3D11Device* m_pDevice = nullptr; 						// 디바이스	
-	ID3D11DeviceContext* m_pDeviceContext = nullptr; 		// 즉시 디바이스 컨텍스트
+	ID3D11Device* m_pDevice = nullptr; 							// 디바이스	
+	ID3D11DeviceContext* m_pDeviceContext = nullptr; 			// 즉시 디바이스 컨텍스트
 	IDXGISwapChain* m_pSwapChain = nullptr; 					// 스왑체인
-	ID3D11RenderTargetView* m_pRenderTargetView = nullptr; 	// 렌더 타겟뷰
+	ID3D11RenderTargetView* m_pRenderTargetView = nullptr; 		// 렌더 타겟뷰
 
 	// 파이프라인 리소스
-	ID3D11VertexShader* m_pVertexShader = nullptr; 	// 정점 셰이더
-	ID3D11PixelShader* m_pPixelShader = nullptr; 	// 픽셀 셰이더(조명)	
-	ID3D11PixelShader* m_pPixelShaderSolid = nullptr; 	// 픽셀 셰이더(마커용 흰색)
+	ID3D11VertexShader* m_pVertexShader = nullptr; 				// 정점 셰이더
+	ID3D11PixelShader* m_pPixelShader = nullptr; 				// 픽셀 셰이더(조명)	
+	ID3D11PixelShader* m_pPixelShaderSolid = nullptr; 			// 픽셀 셰이더(마커용 흰색)
 
 	ID3D11SamplerState* m_pSamplerState = nullptr;
-	ID3D11VertexShader* m_pSkyBoxVertexShader = nullptr; 	// 스카이박스 정점 셰이더
-	ID3D11PixelShader* m_pSkyBoxPixelShader = nullptr; 	// 스카이박스 픽셀 셰이더(조명)	
-	ID3D11InputLayout* m_pSkyBoxInputLayout = nullptr; 	// 스카이박스 입력 레이아웃
+	ID3D11VertexShader* m_pSkyBoxVertexShader = nullptr; 		// 스카이박스 정점 셰이더
+	ID3D11PixelShader* m_pSkyBoxPixelShader = nullptr; 			// 스카이박스 픽셀 셰이더(조명)	
+	ID3D11InputLayout* m_pSkyBoxInputLayout = nullptr; 			// 스카이박스 입력 레이아웃
 	ID3D11ShaderResourceView* m_pTextureSRV = nullptr;
+
 	// SkyBox 선택: Hanako.dds / cubemap.dds
 	enum class SkyBoxChoice { Hanako = 0, CubeMap = 1 };
 	SkyBoxChoice m_SkyBoxChoice = SkyBoxChoice::Hanako;
 	ID3D11ShaderResourceView* m_pSkyHanakoSRV = nullptr;
 	ID3D11ShaderResourceView* m_pSkyCubeMapSRV = nullptr;
 	
-	ID3D11InputLayout* m_pInputLayout = nullptr; 	// 입력 레이아웃
-	ID3D11Buffer* m_pVertexBuffer = nullptr; 		// 버텍스 버퍼
-	UINT m_VertextBufferStride = 0; 					// 버텍스 하나의 크기
-	UINT m_VertextBufferOffset = 0; 					// 버텍스 버퍼 오프셋
-	ID3D11Buffer* m_pIndexBuffer = nullptr; 			// 인덱스 버퍼
-	int m_nIndices = 0; 								// 인덱스 개수
+	ID3D11InputLayout* m_pInputLayout = nullptr; 				// 입력 레이아웃
+	ID3D11Buffer* m_pVertexBuffer = nullptr; 					// 버텍스 버퍼
+	UINT m_VertextBufferStride = 0; 							// 버텍스 하나의 크기
+	UINT m_VertextBufferOffset = 0; 							// 버텍스 버퍼 오프셋
+	ID3D11Buffer* m_pIndexBuffer = nullptr; 					// 인덱스 버퍼
+	int m_nIndices = 0; 										// 인덱스 개수
 
-	ID3D11Buffer* m_pConstantBuffer = nullptr; 				// 상수 버퍼 (단일)
-	ConstantBuffer m_ConstantBuffer; 						// CPU-side 상수 버퍼 데이터
-	ID3D11Buffer* m_pLineVertexBuffer = nullptr; 			// 라이트 방향 표시용 라인 VB
+	ID3D11Buffer* m_pConstantBuffer = nullptr; 					// 상수 버퍼 (단일)
+	ConstantBuffer m_ConstantBuffer; 							// CPU-side 상수 버퍼 데이터
+	ID3D11Buffer* m_pLineVertexBuffer = nullptr; 				// 라이트 방향 표시용 라인 VB
 
-	ID3D11DepthStencilView* m_pDepthStencilView; 	// 깊이 스텐실 뷰
+	ID3D11DepthStencilView* m_pDepthStencilView; 				// 깊이 스텐실 뷰
 	ID3D11DepthStencilState* m_pDepthStencilState = nullptr;  	// 깊이 스텐실 상태
-	Microsoft::WRL::ComPtr<IDXGIAdapter3> m_Adapter3; // VRAM 조회용
-	SIZE_T m_VideoMemoryTotal = 0; // 총 VRAM 바이트
+	Microsoft::WRL::ComPtr<IDXGIAdapter3> m_Adapter3;			// VRAM 조회용
+	SIZE_T m_VideoMemoryTotal = 0;								// 총 VRAM 바이트
 
-	ID3D11RasterizerState*  RSNoCull;			            // 레스터 라이저 상태 : 백 클리핑 모드 없음
-	ID3D11RasterizerState* RSCullClockWise;					// 레스터 라이저 상태 : 시계 방향 자르기 모드
+	ID3D11RasterizerState*  RSNoCull;							// 레스터 라이저 상태 : 백 클리핑 모드 없음
+	ID3D11RasterizerState* RSCullClockWise;						// 레스터 라이저 상태 : 시계 방향 자르기 모드
 
 	// 이미지 디버그/데모용 텍스처 (Hanako)
 	ID3D11ShaderResourceView* m_TexHanakoSRV = nullptr;
@@ -130,27 +131,27 @@ public:
 	ULONGLONG m_RamAvail = 0;
 
 	// ImGui 컨트롤 상태 변수
-	DirectX::XMFLOAT3 m_cubePos = { -0.0f, 0.0f, 0.0f }; // 루트 위치
-	DirectX::XMFLOAT3 m_cameraPos = { 0.0f, 0.0f, -10.0f }; // 카메라 위치
-	float m_CameraFovDeg = 90.0f;   // FOV(deg)
-	float m_CameraNear = 1.0f;      // Near
-	float m_CameraFar = 1000.0f;    // Far
+	DirectX::XMFLOAT3 m_cubePos = { -0.0f, 0.0f, 0.0f };		// 큐브 루트 위치
+	DirectX::XMFLOAT3 m_cameraPos = { 0.0f, 0.0f, -10.0f };		// 카메라 위치
+	float m_CameraFovDeg = 90.0f;								// FOV(deg)
+	float m_CameraNear = 1.0f;									// Near
+	float m_CameraFar = 1000.0f;								// Far
 
-	bool m_RotateCube = false;		// ImGui 토글: 큐브 자동 회전 on/off
-	float m_YawDeg = 0.0f;          // 큐브 Yaw
-	float m_PitchDeg = 0.0f;        // 큐브 Pitch
+	bool m_RotateCube = false;									// ImGui 토글: 큐브 자동 회전 on/off
+	float m_YawDeg = 0.0f;										// 큐브 Yaw
+	float m_PitchDeg = 0.0f;									// 큐브 Pitch
 	DirectX::XMFLOAT3 m_LightDirection = { 0.0f, -1.0f, 1.0f }; // 라이트 방향(UI)
 	DirectX::XMFLOAT3 m_LightColorRGB = { 1.0f, 1.0f, 1.0f };   // 라이트 색(UI)
 	DirectX::XMFLOAT3 m_LightPosition = { 4.0f, 4.0f, 0.0f };   // 라이트 위치(마커용)
 	DirectX::XMFLOAT3 m_CameraForward = { 0.0f, 0.0f, 1.0f };   // 카메라 앞방향(스카이박스용)
 
-	ConstantBuffer m_baseProjection; // 기본 카메라/월드 캐시
+	ConstantBuffer m_baseProjection;							// 기본 카메라/월드 캐시
 
 	// Material parameters (ImGui)
 	DirectX::XMFLOAT3 m_MaterialAmbientRGB = { 0.2f, 0.2f, 0.2f };
 	DirectX::XMFLOAT3 m_MaterialDiffuseRGB = { 1.0f, 1.0f, 1.0f };
 	DirectX::XMFLOAT3 m_MaterialSpecularRGB = { 1.0f, 1.0f, 1.0f };
-	float m_MaterialShininess = 32.0f; // g_Material.specular.w
+	float m_MaterialShininess = 32.0f;	// g_Material.specular.w
 
 	// Cube scale to better visualize specular highlights
 	float m_CubeScale = 2.0f;
@@ -166,11 +167,13 @@ public:
 	void UninitD3D();
 
 	// 리소스 생성/파괴
-	bool InitScene(); 							// 쉐이더,버텍스,인덱스
+	// 쉐이더,버텍스,인덱스
+	bool InitScene(); 											
 	void UninitScene();
 
 private:
-	bool InitBasicEffect(); 							// 쉐이더를 읽어오는 함수는 따로 구현
+	// 쉐이더를 읽어오는 함수는 따로 구현
+	bool InitBasicEffect(); 									
 	bool InitSkyBoxEffect();
 
 	// 큐브맵 면 SRV 준비/정리 및 면 선택 계산
