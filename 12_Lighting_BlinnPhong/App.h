@@ -141,7 +141,7 @@ public:
 	float m_PitchDeg = 0.0f;        // 큐브 Pitch
 	DirectX::XMFLOAT3 m_LightDirection = { 0.0f, -1.0f, 1.0f }; // 라이트 방향(UI)
 	DirectX::XMFLOAT3 m_LightColorRGB = { 1.0f, 1.0f, 1.0f };   // 라이트 색(UI)
-	DirectX::XMFLOAT3 m_LightPosition = { 0.0f, 0.0f, 3.0f };   // 라이트 위치(마커용)
+	DirectX::XMFLOAT3 m_LightPosition = { 4.0f, 4.0f, 0.0f };   // 라이트 위치(마커용)
 	DirectX::XMFLOAT3 m_CameraForward = { 0.0f, 0.0f, 1.0f };   // 카메라 앞방향(스카이박스용)
 
 	ConstantBuffer m_baseProjection; // 기본 카메라/월드 캐시

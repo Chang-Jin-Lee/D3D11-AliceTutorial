@@ -642,23 +642,8 @@ bool App::InitD3D()
 	swapDesc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 	swapDesc.BufferDesc.Width = m_ClientWidth;
 	swapDesc.BufferDesc.Height = m_ClientHeight;
-
-	// DXGI_RATIONAL? 
-	// - 주사율을 위한 것
-	// DXGI_RATIONAL 구조체는 유리수(분수) 값을 표현하기 위한 구조체
-	// RefreshRate = Numerator / Denominator
-	// 주사율(Refresh Rate, Hz 단위)을 지정합니다
-	// 즉 밑의 두 줄은 60 / 1 = 60 → 60Hz를 의미합니다
-	// 샘플 코드에서 60으로 두는 이유는 보편적인 60Hz 모니터 환경에 맞추기 위해서 입니다
 	swapDesc.BufferDesc.RefreshRate.Numerator = 60;
 	swapDesc.BufferDesc.RefreshRate.Denominator = 1;
-
-	// DXGI_SAMPLE_DESC?
-	// - 멀티샘플링(Multi-Sampling Anti-Aliasing, MSAA) 설정을 위한 것
-	// 한 픽셀을 몇 번 샘플링할 것인지 지정합니다
-	// 즉, MSAA의 샘플 개수를 뜻합니다
-	// Count가 1이면 멀티샘플링을 사용하지 않음을 의미합니다
-	// 계단현상과 관련되어 있으니 잘 확인해볼 것!
 	swapDesc.SampleDesc.Count = 1;
 	swapDesc.SampleDesc.Quality = 0;
 
@@ -887,14 +872,6 @@ void App::UninitScene()
 bool App::InitBasicEffect()
 {
 	// Vertex Shader -------------------------------------
-	/*
-	* @brief  VS 입력 시그니처에 맞춰 InputLayout 생성
-	* @details
-	*   - POSITION: float3, COLOR: float4 (구조체/셰이더와 형식·오프셋 일치 필수)
-	*   - InputSlot=0, Per-Vertex 데이터
-	*   - D3D11_APPEND_ALIGNED_ELEMENT로 COLOR 오프셋 자동 계산
-	*   - VS 바이트코드(CompileShaderFromFile)로 시그니처 매칭 후 CreateInputLayout
-	*/
 	D3D11_INPUT_ELEMENT_DESC layout[] = // 입력 레이아웃.
 	{
 		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 0,  D3D11_INPUT_PER_VERTEX_DATA, 0 },
@@ -907,13 +884,6 @@ bool App::InitBasicEffect()
 	HR_T(m_pDevice->CreateInputLayout(layout, ARRAYSIZE(layout),
 		vertexShaderBuffer->GetBufferPointer(), vertexShaderBuffer->GetBufferSize(), &m_pInputLayout));
 
-	/*
-	* @brief  VS 바이트코드로 Vertex Shader 생성 및 컴파일 버퍼 해제
-	* @details
-	*   - CreateVertexShader: 컴파일된 바이트코드(pointer/size)로 VS 객체 생성
-	*   - ClassLinkage 미사용(NULL)
-	*   - 생성 후, 더 이상 필요 없는 vertexShaderBuffer는 해제
-	*/
 	HR_T(m_pDevice->CreateVertexShader(vertexShaderBuffer->GetBufferPointer(),
 		vertexShaderBuffer->GetBufferSize(), NULL, &m_pVertexShader));
 	SAFE_RELEASE(vertexShaderBuffer);	// 컴파일 버퍼 해제
@@ -930,6 +900,7 @@ bool App::InitBasicEffect()
 
 bool App::InitSkyBoxEffect()
 {
+	// Vertex Shader -------------------------------------
 	D3D11_INPUT_ELEMENT_DESC layout[] = // 입력 레이아웃.
 	{
 		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 0,  D3D11_INPUT_PER_VERTEX_DATA, 0 },
@@ -944,6 +915,7 @@ bool App::InitSkyBoxEffect()
 		vertexShaderBuffer->GetBufferSize(), NULL, &m_pSkyBoxVertexShader));
 	SAFE_RELEASE(vertexShaderBuffer);	// 컴파일 버퍼 해제
 
+	// Pixel Shader -------------------------------------
 	ID3D10Blob* pixelShaderBuffer = nullptr;
 	HR_T(CompileShaderFromFile(L"12_SkyboxPS.hlsl", "PS", "ps_4_0", &pixelShaderBuffer));
 	HR_T(m_pDevice->CreatePixelShader(pixelShaderBuffer->GetBufferPointer(),
