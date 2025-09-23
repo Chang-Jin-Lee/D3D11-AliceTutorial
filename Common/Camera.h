@@ -11,9 +11,8 @@ public:
 	Camera();
 
 	// Euler rotation in radians: (pitch=x, yaw=y, roll=z)
-	XMFLOAT3 m_Rotation; 						// z(Roll) is used for roll
-	XMFLOAT3 m_PositionInitial = { 0, 0, -30 };
-	XMFLOAT3 m_Position;
+	XMFLOAT3 m_Rotation{0,0,0}; 						// z(Roll) is used for roll
+	XMFLOAT3 m_Position{0,0,-10};
 	XMFLOAT4X4 m_World; 						// Row-major world matrix storage
 	XMFLOAT3 m_InputVector; 					// Accumulated move input (normalized per frame)
 
