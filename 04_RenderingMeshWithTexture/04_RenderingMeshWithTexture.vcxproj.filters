@@ -31,10 +31,10 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <CopyFileToFolders Include="04_BasicPixelShader.hlsl">
+    <CopyFileToFolders Include="04_TexPixelShader.hlsl">
       <Filter>Shaders</Filter>
     </CopyFileToFolders>
-    <CopyFileToFolders Include="04_BasicVertexShader.hlsl">
+    <CopyFileToFolders Include="04_TexVertexShader.hlsl">
       <Filter>Shaders</Filter>
     </CopyFileToFolders>
     <CopyFileToFolders Include="04_Shared.fxh">
