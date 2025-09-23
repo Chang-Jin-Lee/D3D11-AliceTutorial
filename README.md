@@ -30,7 +30,7 @@ Tutorial for D3D AliceEngine
 
 | 13. LineRenderer_AxisDebug |
 |---|
-| <div align="center">[<img src="https://github.com/user-attachments/assets/9bb70f93-463a-42bf-8cde-800651215fd4" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/09_Lighting)<br/> LineRenderer demo</div> |
+| <div align="center">[<img src="https://github.com/user-attachments/assets/9bb70f93-463a-42bf-8cde-800651215fd4" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/13_LineRenderer_AxisDebug)<br/> LineRenderer demo</div> |
 
 ---
 
