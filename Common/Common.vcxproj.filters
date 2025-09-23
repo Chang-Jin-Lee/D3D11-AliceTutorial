@@ -39,6 +39,12 @@
     <ClInclude Include="StaticMesh.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
+    <ClInclude Include="Skybox.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="SystemInfomation.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Common.cpp">
@@ -63,6 +69,12 @@
       <Filter>소스 파일</Filter>
     </ClCompile>
     <ClCompile Include="StaticMesh.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Skybox.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="SystemInfomation.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
   </ItemGroup>

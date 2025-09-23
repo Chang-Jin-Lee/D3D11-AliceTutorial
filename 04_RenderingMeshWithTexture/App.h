@@ -58,7 +58,6 @@ public:
 	int m_nIndices = 0;								// 인덱스 개수.
 
 	ID3D11Buffer* m_pConstantBuffer;				// 상수 버퍼
-	//ConstantBuffer m_CBuffer;                       // GPU 상수 버퍼를 수정하는 데 사용되는 변수
 	std::vector<ConstantBuffer> m_CBuffers;
 	ID3D11DepthStencilView* m_pDepthStencilView;    // 깊이 템플릿
 	ID3D11DepthStencilState* m_pDepthStencilState = nullptr;	// 깊이 스텐실 상태

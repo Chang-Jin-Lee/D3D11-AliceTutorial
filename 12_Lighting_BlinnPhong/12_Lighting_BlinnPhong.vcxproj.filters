@@ -14,8 +14,33 @@
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
     <Filter Include="Shaders">
-      <UniqueIdentifier>{829ea130-53e7-4a26-8c1e-67bd150a11ef}</UniqueIdentifier>
+      <UniqueIdentifier>{1390b934-4d12-4085-991d-ec0c546d6fc8}</UniqueIdentifier>
     </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="12_BasicPS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="12_BasicVS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="12_SkyBoxPS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="12_SkyBoxVS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="12_LightingHelper.hlsli">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="12_Shared.fxh">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="12_SkyBox.hlsli">
+      <Filter>Shaders</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="App.cpp">
@@ -29,16 +54,5 @@
     <ClInclude Include="App.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
-  </ItemGroup>
-  <ItemGroup>
-    <CopyFileToFolders Include="04_TexPixelShader.hlsl">
-      <Filter>Shaders</Filter>
-    </CopyFileToFolders>
-    <CopyFileToFolders Include="04_TexVertexShader.hlsl">
-      <Filter>Shaders</Filter>
-    </CopyFileToFolders>
-    <CopyFileToFolders Include="04_Shared.fxh">
-      <Filter>Shaders</Filter>
-    </CopyFileToFolders>
   </ItemGroup>
 </Project>
