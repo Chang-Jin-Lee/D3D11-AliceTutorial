@@ -40,6 +40,20 @@ XMVECTOR Camera::GetRightXM() const
 	return right;
 }
 
+XMVECTOR Camera::GetUpXM() const
+{
+    XMMATRIX W = LoadRowMajor(m_World);
+    XMVECTOR up = XMVector3Normalize(W.r[1]);
+    return up;
+}
+
+XMFLOAT3 Camera::GetUp() const
+{
+    XMFLOAT3 u{};
+    XMStoreFloat3(&u, GetUpXM());
+    return u;
+}
+
 XMFLOAT3 Camera::GetForward() const
 {
 	XMFLOAT3 f{};
@@ -58,7 +72,7 @@ void Camera::Reset()
 {
 	StoreRowMajor(m_World, XMMatrixIdentity());
 	m_Rotation = XMFLOAT3(0.0f, 0.0f, 0.0f);
-	m_Position = XMFLOAT3(0.0f, 0.0f, -30.0f);
+	m_Position = XMFLOAT3(0.0f, 0.0f, -8.0f);
 	m_InputVector = XMFLOAT3(0.0f, 0.0f, 0.0f);
 }
 
@@ -89,6 +103,42 @@ XMMATRIX Camera::GetViewMatrixXM() const
 	XMVECTOR target = XMVectorAdd(eye, forward);
 	XMVECTOR up = XMVector3Normalize(W.r[1]);
 	return XMMatrixLookAtLH(eye, target, up);
+}
+
+void Camera::UpdateFromUI(bool rightMouseDown,
+    float mouseDeltaX,
+    float mouseDeltaY,
+    bool keyW,
+    bool keyS,
+    bool keyA,
+    bool keyD,
+    bool keyE,
+    bool keyQ,
+    float deltaTimeSeconds)
+{
+    // Mouse look when RMB held
+    if (rightMouseDown)
+    {
+        AddYaw(mouseDeltaX * m_RotationSpeed);
+        // Drag up -> look up
+        AddPitch(mouseDeltaY * m_RotationSpeed);
+    }
+
+    // WASD + EQ movement in local space
+    XMFLOAT3 fwd = GetForward();
+    XMFLOAT3 right = GetRight();
+    XMMATRIX W = LoadRowMajor(m_World);
+    XMFLOAT3 up; XMStoreFloat3(&up, XMVector3Normalize(W.r[1]));
+
+    if (keyW) AddInputVector(fwd);
+    if (keyS) { XMFLOAT3 v{-fwd.x, -fwd.y, -fwd.z}; AddInputVector(v); }
+    if (keyA) { XMFLOAT3 v{-right.x, -right.y, -right.z}; AddInputVector(v); }
+    if (keyD) AddInputVector(right);
+    // E = Up, Q = Down
+    if (keyE) AddInputVector(up);
+    if (keyQ) { XMFLOAT3 v{-up.x, -up.y, -up.z}; AddInputVector(v); }
+
+    Update(deltaTimeSeconds);
 }
 
 void Camera::AddInputVector(const XMFLOAT3& input)
@@ -152,18 +202,18 @@ void Camera::OnInputProcess(const Keyboard::State& KeyState, const Keyboard::Key
 		AddInputVector(right);
 	}
 
-	if (KeyState.IsKeyDown(DirectX::Keyboard::Keys::E))
-	{
-		XMMATRIX W = LoadRowMajor(m_World);
-		XMFLOAT3 down; XMStoreFloat3(&down, XMVectorNegate(W.r[1]));
-		AddInputVector(down);
-	}
-	else if (KeyState.IsKeyDown(DirectX::Keyboard::Keys::Q))
-	{
-		XMMATRIX W = LoadRowMajor(m_World);
-		XMFLOAT3 up; XMStoreFloat3(&up, W.r[1]);
-		AddInputVector(up);
-	}
+    if (KeyState.IsKeyDown(DirectX::Keyboard::Keys::E))
+    {
+        XMMATRIX W = LoadRowMajor(m_World);
+        XMFLOAT3 up; XMStoreFloat3(&up, W.r[1]);
+        AddInputVector(up);
+    }
+    else if (KeyState.IsKeyDown(DirectX::Keyboard::Keys::Q))
+    {
+        XMMATRIX W = LoadRowMajor(m_World);
+        XMFLOAT3 down; XMStoreFloat3(&down, XMVectorNegate(W.r[1]));
+        AddInputVector(down);
+    }
 
 	if (KeyState.IsKeyDown(DirectX::Keyboard::Keys::F1))
 	{
@@ -179,13 +229,14 @@ void Camera::OnInputProcess(const Keyboard::State& KeyState, const Keyboard::Key
 	}
 
 	InputSystem::Instance->m_Mouse->SetMode(MouseState.rightButton ? Mouse::MODE_RELATIVE : Mouse::MODE_ABSOLUTE);
-	if (MouseState.positionMode == Mouse::MODE_RELATIVE)
-	{
-		XMFLOAT3 delta{ float(MouseState.x), float(MouseState.y), 0.f };
-		XMFLOAT3 rad{ delta.x * m_RotationSpeed, delta.y * m_RotationSpeed, 0.f };
-		AddPitch(-rad.y); // invert Y like FPS cams
-		AddYaw(rad.x);
-	}
+    if (MouseState.positionMode == Mouse::MODE_RELATIVE)
+    {
+        XMFLOAT3 delta{ float(MouseState.x), float(MouseState.y), 0.f };
+        XMFLOAT3 rad{ delta.x * m_RotationSpeed, delta.y * m_RotationSpeed, 0.f };
+        // Drag up -> look up
+        AddPitch(rad.y);
+        AddYaw(rad.x);
+    }
 }
 
 void Camera::SetFrustum(float fovYRad, float aspect, float nearZ, float farZ)

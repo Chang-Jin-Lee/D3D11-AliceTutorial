@@ -32,6 +32,20 @@ public:
 	XMVECTOR GetRightXM() const;
 	XMFLOAT3 GetForward() const;
 	XMFLOAT3 GetRight() const;
+	XMVECTOR GetUpXM() const;
+	XMFLOAT3 GetUp() const;
+
+	// Update camera using simple UI-style inputs (e.g., ImGui booleans and mouse deltas)
+	void UpdateFromUI(bool rightMouseDown,
+		float mouseDeltaX,
+		float mouseDeltaY,
+		bool keyW,
+		bool keyS,
+		bool keyA,
+		bool keyD,
+		bool keyE,
+		bool keyQ,
+		float deltaTimeSeconds);
 
 	void Reset();
 	void Update(float elapsedTime);

@@ -9,7 +9,7 @@
         struct VertexIn : float3 normalL : NORMAL; 추가 -> 정점 노말 벡터
         struct VertexOut : float3 posW : TEXCOORD0; 추가 -> 월드 공간에서의 위치
 */
-#include "12_LightingHelper.hlsli"
+#include "13_LightingHelper.hlsli"
 
 Texture2D g_DiffuseMap : register(t0);
 TextureCube g_TexCube : register(t1);
