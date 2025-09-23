@@ -173,9 +173,9 @@ void App::OnUpdate(const float& dt)
 		XMVECTOR v = XMVector3Normalize(XMLoadFloat3(&dir));
 		XMStoreFloat3(&dir, v);
 		// DirectionalLight 필드 직접 대입
-		m_baseProjection.dirLight.ambient = DirectX::XMFLOAT4(0,0,0,1);
-		m_baseProjection.dirLight.diffuse = DirectX::XMFLOAT4(m_LightColorRGB.x, m_LightColorRGB.y, m_LightColorRGB.z, 1.0f);
-		m_baseProjection.dirLight.specular = DirectX::XMFLOAT4(m_LightColorRGB.x, m_LightColorRGB.y, m_LightColorRGB.z, 1.0f);
+		m_baseProjection.dirLight.ambient = m_LightAmbient;
+		m_baseProjection.dirLight.diffuse = m_LightDiffuse;
+		m_baseProjection.dirLight.specular = m_LightSpecular;
 		m_baseProjection.dirLight.direction = dir;
 		m_baseProjection.dirLight.pad = 0.0f;
 	}
@@ -238,9 +238,9 @@ void App::OnRender()
 		XMVECTOR v = XMVector3Normalize(XMLoadFloat3(&dir));
 		XMStoreFloat3(&dir, v);
 		// DirectionalLight 필드 직접 대입
-		m_ConstantBuffer.dirLight.ambient = DirectX::XMFLOAT4(0,0,0,1);
-		m_ConstantBuffer.dirLight.diffuse = DirectX::XMFLOAT4(m_LightColorRGB.x, m_LightColorRGB.y, m_LightColorRGB.z, 1.0f);
-		m_ConstantBuffer.dirLight.specular = DirectX::XMFLOAT4(m_LightColorRGB.x, m_LightColorRGB.y, m_LightColorRGB.z, 1.0f);
+		m_ConstantBuffer.dirLight.ambient = m_LightAmbient;
+		m_ConstantBuffer.dirLight.diffuse = m_LightDiffuse;
+		m_ConstantBuffer.dirLight.specular = m_LightSpecular;
 		m_ConstantBuffer.dirLight.direction = dir;
 		m_ConstantBuffer.dirLight.pad = 0.0f;
 	}
@@ -444,7 +444,7 @@ void App::OnRender()
 		ImGui::Text("Mesh Transforms");
 		ImGui::Checkbox("Rotate Cube", &m_RotateCube);
 		ImGui::SliderFloat("Cube Scale", &m_CubeScale, 0.1f, 10.0f);
-		ImGui::DragFloat3("Root Pos (x,y,z)", &m_cubePos.x, 0.1f);
+		ImGui::DragFloat3("Cube Pos (x,y,z)", &m_cubePos.x, 0.1f);
 		ImGui::SliderFloat("Yaw (deg)", &m_YawDeg, -180.0f, 180.0f);
 		ImGui::SliderFloat("Pitch (deg)", &m_PitchDeg, -89.9f, 89.9f);
 		ImGui::Separator();
@@ -454,8 +454,11 @@ void App::OnRender()
 		ImGui::DragFloatRange2("Near/Far", &m_CameraNear, &m_CameraFar, 0.1f, 0.01f, 5000.0f, "Near: %.2f", "Far: %.2f");
 		ImGui::Separator();
 		ImGui::Text("Light");
-		ImGui::ColorEdit3("Light Color", &m_LightColorRGB.x);
+		ImGui::ColorEdit3("Light Dir Color (deprecated)", &m_LightColorRGB.x);
 		ImGui::DragFloat3("Light Dir", &m_LightDirection.x, 0.05f);
+		ImGui::ColorEdit4("Light Ambient", &m_LightAmbient.x);
+		ImGui::ColorEdit4("Light Diffuse", &m_LightDiffuse.x);
+		ImGui::ColorEdit4("Light Specular", &m_LightSpecular.x);
 		ImGui::Separator();
 		ImGui::Text("Material");
 		ImGui::ColorEdit3("Ambient (ka)", &m_MaterialAmbientRGB.x);

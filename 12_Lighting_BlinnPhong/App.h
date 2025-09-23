@@ -125,7 +125,7 @@ public:
 	SystemInfomation m_SystemInfo;
 	Camera m_camera;											// 카메라
 	DirectX::XMFLOAT3 m_cubePos = { 0.0f, 0.0f, 0.0f };			// 큐브 루트 위치
-	DirectX::XMFLOAT3 m_cameraPos = { 0.0f, 0.0f, -10.0f };		// 카메라 위치
+	DirectX::XMFLOAT3 m_cameraPos = { 0.0f, 0.0f, -6.0f };		// 카메라 위치
 	float m_CameraFovDeg = 90.0f;								// FOV(deg)
 	float m_CameraNear = 1.0f;									// Near
 	float m_CameraFar = 1000.0f;								// Far
@@ -135,6 +135,9 @@ public:
 	float m_PitchDeg = 0.0f;									// 큐브 Pitch
 	DirectX::XMFLOAT3 m_LightDirection = { 0.0f, 0.0f, 1.0f }; // 라이트 방향(UI)
 	DirectX::XMFLOAT3 m_LightColorRGB = { 1.0f, 1.0f, 1.0f };   // 라이트 색(UI)
+	DirectX::XMFLOAT4 m_LightAmbient = { 1.0f, 1.0f, 1.0f, 1.0f };   // 라이트 색(UI)
+	DirectX::XMFLOAT4 m_LightDiffuse = { 1.0f, 1.0f, 1.0f, 1.0f };   // 라이트 색(UI)
+	DirectX::XMFLOAT4 m_LightSpecular = { 1.0f, 1.0f, 1.0f, 1.0f };   // 라이트 색(UI)
 	DirectX::XMFLOAT3 m_LightPosition = { 4.0f, 4.0f, 0.0f };   // 라이트 위치(마커용)
 	DirectX::XMFLOAT3 m_CameraForward = { 0.0f, 0.0f, 1.0f };   // 카메라 앞방향(스카이박스용)
 
