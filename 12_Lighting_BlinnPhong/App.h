@@ -12,6 +12,7 @@
 #include <imgui_impl_dx11.h>
 #include <Psapi.h>
 #include <string>
+#include "../Common/SystemInfomation.h"
 
 using namespace DirectX::SimpleMath;
 
@@ -76,6 +77,7 @@ public:
 	ID3D11PixelShader* m_pPixelShaderSolid = nullptr; 			// 픽셀 셰이더(마커용 흰색)
 
 	ID3D11SamplerState* m_pSamplerState = nullptr;
+	ID3D11BlendState* m_pAlphaBlendState = nullptr; 					// 알파 블렌딩 상태
 	ID3D11VertexShader* m_pSkyBoxVertexShader = nullptr; 		// 스카이박스 정점 셰이더
 	ID3D11PixelShader* m_pSkyBoxPixelShader = nullptr; 			// 스카이박스 픽셀 셰이더(조명)	
 	ID3D11InputLayout* m_pSkyBoxInputLayout = nullptr; 			// 스카이박스 입력 레이아웃
@@ -95,13 +97,12 @@ public:
 	int m_nIndices = 0; 										// 인덱스 개수
 
 	ID3D11Buffer* m_pConstantBuffer = nullptr; 					// 상수 버퍼 (단일)
+	std::vector<ConstantBuffer> m_CBuffers;						// 텍스쳐들 그리기 위한 상수 버퍼 캐시
 	ConstantBuffer m_ConstantBuffer; 							// CPU-side 상수 버퍼 데이터
 	ID3D11Buffer* m_pLineVertexBuffer = nullptr; 				// 라이트 방향 표시용 라인 VB
 
 	ID3D11DepthStencilView* m_pDepthStencilView; 				// 깊이 스텐실 뷰
 	ID3D11DepthStencilState* m_pDepthStencilState = nullptr;  	// 깊이 스텐실 상태
-	Microsoft::WRL::ComPtr<IDXGIAdapter3> m_Adapter3;			// VRAM 조회용
-	SIZE_T m_VideoMemoryTotal = 0;								// 총 VRAM 바이트
 
 	ID3D11RasterizerState*  RSNoCull;							// 레스터 라이저 상태 : 백 클리핑 모드 없음
 	ID3D11RasterizerState* RSCullClockWise;						// 레스터 라이저 상태 : 시계 방향 자르기 모드
@@ -117,21 +118,13 @@ public:
 	ID3D11ShaderResourceView* m_pSkyFaceSRV[6] = {};
 	ImVec2 m_SkyFaceSize = ImVec2(0, 0);
 
-	// 시스템 정보 (표시용)
-	std::wstring m_GPUName;
-	std::wstring m_CPUName;
-	UINT m_CPUCores = 0;
-	// FPS 출력 캐시
-	float m_LastFps = 0.0f;
-	float m_FpsAccum = 0.0f;
-	float m_FpsTimer = 0.0f;
-
-	// 시스템 메모리(바이트)
-	ULONGLONG m_RamTotal = 0;
-	ULONGLONG m_RamAvail = 0;
+	// 텍스쳐 
+	ID3D11ShaderResourceView* m_pCubeTextureSRVs[6] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
 
 	// ImGui 컨트롤 상태 변수
-	DirectX::XMFLOAT3 m_cubePos = { -0.0f, 0.0f, 0.0f };		// 큐브 루트 위치
+	SystemInfomation m_SystemInfo;
+	Camera m_camera;											// 카메라
+	DirectX::XMFLOAT3 m_cubePos = { 0.0f, 0.0f, 0.0f };			// 큐브 루트 위치
 	DirectX::XMFLOAT3 m_cameraPos = { 0.0f, 0.0f, -10.0f };		// 카메라 위치
 	float m_CameraFovDeg = 90.0f;								// FOV(deg)
 	float m_CameraNear = 1.0f;									// Near
@@ -140,7 +133,7 @@ public:
 	bool m_RotateCube = false;									// ImGui 토글: 큐브 자동 회전 on/off
 	float m_YawDeg = 0.0f;										// 큐브 Yaw
 	float m_PitchDeg = 0.0f;									// 큐브 Pitch
-	DirectX::XMFLOAT3 m_LightDirection = { 0.0f, -1.0f, 1.0f }; // 라이트 방향(UI)
+	DirectX::XMFLOAT3 m_LightDirection = { 0.0f, 0.0f, 1.0f }; // 라이트 방향(UI)
 	DirectX::XMFLOAT3 m_LightColorRGB = { 1.0f, 1.0f, 1.0f };   // 라이트 색(UI)
 	DirectX::XMFLOAT3 m_LightPosition = { 4.0f, 4.0f, 0.0f };   // 라이트 위치(마커용)
 	DirectX::XMFLOAT3 m_CameraForward = { 0.0f, 0.0f, 1.0f };   // 카메라 앞방향(스카이박스용)
@@ -170,6 +163,12 @@ public:
 	// 쉐이더,버텍스,인덱스
 	bool InitScene(); 											
 	void UninitScene();
+
+	// 텍스쳐 관련
+	bool InitTexture();
+
+	//ImGui 관련
+	bool InitImGui();
 
 private:
 	// 쉐이더를 읽어오는 함수는 따로 구현
