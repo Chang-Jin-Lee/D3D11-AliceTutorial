@@ -42,4 +42,5 @@ struct VertexOut
     float3 posW   : TEXCOORD0;    // 월드에서의 위치
     float3 normalW: TEXCOORD1;    // 월드의 노말 벡터의 방향
     float2 tex    : TEXCOORD2;
+    float4 color  : COLOR;
 };

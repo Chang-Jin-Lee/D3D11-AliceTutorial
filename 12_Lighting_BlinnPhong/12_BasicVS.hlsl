@@ -11,6 +11,7 @@ VertexOut main(VertexIn vIn)
 
     vOut.normalW = normalize(mul(vIn.normalL, (float3x3) g_WorldInvTranspose));
     vOut.tex = vIn.tex;
+    vOut.color = vIn.color;
     
     return vOut;
 }

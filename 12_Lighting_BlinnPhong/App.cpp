@@ -14,6 +14,8 @@
 #include <filesystem>
 #include <algorithm>
 #include "../Common/StaticMesh.h"
+#include "../Common/LineRenderer.h"
+#include "../Common/Skybox.h"
 
 #pragma comment (lib, "d3d11.lib")
 #pragma comment(lib,"d3dcompiler.lib")
@@ -79,6 +81,20 @@ void App::PrepareSkyFaceSRVs()
     }
 }
 
+void App::ChangeSkyboxDDS(const wchar_t* ddsPath)
+{
+    if (m_Skybox)
+    {
+        if (m_Skybox->ChangeDDS(m_pDevice, ddsPath))
+        {
+            // also set for face view and PS binding
+            m_pTextureSRV = m_Skybox->GetTexture();
+            PrepareSkyFaceSRVs();
+            wcscpy_s(m_CurrentSkyboxPath, ddsPath);
+        }
+    }
+}
+
 bool App::OnInitialize()
 {
 	if(!InitD3D()) return false;
@@ -110,83 +126,55 @@ void App::OnUpdate(const float& dt)
 {
 	// 로컬 변환 정의 (간단 Scene Graph)
 	if(m_RotateCube)
-		m_YawDeg += 45.0f * dt; // Yaw 회전 (UI로 조절 가능)
-	m_YawDeg = std::fmod(m_YawDeg + 180.0f, 360.0f) - 180.0f;
-	XMMATRIX rotYaw   = XMMatrixRotationY(XMConvertToRadians(m_YawDeg));
-	XMMATRIX rotPitch = XMMatrixRotationX(XMConvertToRadians(m_PitchDeg));
+	{
+		// 큐브 Yaw(도)를 초당 45도 회전
+		m_cubeRotation.y += 45.0f * dt;
+		// -180~180 래핑
+		m_cubeRotation.y = std::fmod(m_cubeRotation.y + 180.0f, 360.0f) - 180.0f;
+	}
+	// 큐브 고유 회전값 사용 (Yaw/Pitch/Roll, deg -> rad)
+	XMMATRIX rotYaw   = XMMatrixRotationY(XMConvertToRadians(m_cubeRotation.y));
+	XMMATRIX rotPitch = XMMatrixRotationX(XMConvertToRadians(m_cubeRotation.x));
+	XMMATRIX rotRoll  = XMMatrixRotationZ(XMConvertToRadians(m_cubeRotation.z));
 	XMMATRIX S = XMMatrixScaling(m_CubeScale, m_CubeScale, m_CubeScale);
-	XMMATRIX local0 = S * rotPitch * rotYaw * XMMatrixTranslation(m_cubePos.x, m_cubePos.y, m_cubePos.z); // 루트
+	XMMATRIX local0 = S * rotPitch * rotYaw * rotRoll * XMMatrixTranslation(m_cubePos.x, m_cubePos.y, m_cubePos.z); // 루트
 	XMMATRIX world0 = local0; // 루트
 
-	XMFLOAT3 camForward3 = m_CameraForward;
-	static float sYaw = 0.0f, sPitch = 0.0f;
+	// Camera update via Camera class (RMB look + WASD/E/Q movement)
 	ImGuiIO& io = ImGui::GetIO();
 	bool rmbDown = ImGui::IsMouseDown(ImGuiMouseButton_Right) && !io.WantCaptureMouse;
-	float d1 = 0.0f, d2 = 0.0f, d3 = 0.0f;
-	if (rmbDown && !io.WantCaptureKeyboard)
-	{
-		if (ImGui::IsKeyDown(ImGuiKey_W)) d1 += dt;
-		if (ImGui::IsKeyDown(ImGuiKey_S)) d1 -= dt;
-		if (ImGui::IsKeyDown(ImGuiKey_A)) d2 -= dt;
-		if (ImGui::IsKeyDown(ImGuiKey_D)) d2 += dt;
-		if (ImGui::IsKeyDown(ImGuiKey_E)) d3 += dt;
-		if (ImGui::IsKeyDown(ImGuiKey_Q)) d3 -= dt;
-	}
+	bool keyW = ImGui::IsKeyDown(ImGuiKey_W);
+	bool keyS = ImGui::IsKeyDown(ImGuiKey_S);
+	bool keyA = ImGui::IsKeyDown(ImGuiKey_A);
+	bool keyD = ImGui::IsKeyDown(ImGuiKey_D);
+	bool keyE = ImGui::IsKeyDown(ImGuiKey_E);
+	bool keyQ = ImGui::IsKeyDown(ImGuiKey_Q);
+	m_camera.UpdateFromUI(rmbDown && !io.WantCaptureKeyboard, io.MouseDelta.x, io.MouseDelta.y, keyW, keyS, keyA, keyD, keyE, keyQ, dt);
 
-	if (rmbDown)
-	{
-		float rotSpeed = 0.005f;
-		sYaw   += io.MouseDelta.x * rotSpeed;
-		sPitch += -io.MouseDelta.y * rotSpeed;
-		float limit = XMConvertToRadians(89.0f);
-		sPitch = min(max(sPitch, -limit), limit);
-	}
-	XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
-	XMVECTOR forward = XMVector3Normalize(XMVectorSet(cosf(sPitch) * sinf(sYaw), sinf(sPitch), cosf(sPitch) * cosf(sYaw), 0.0f));
-	XMVECTOR right = XMVector3Normalize(XMVector3Cross(up, forward));
-	XMVECTOR posV = XMVectorSet(m_cameraPos.x, m_cameraPos.y, m_cameraPos.z, 0.0f);
-	float moveSpeed = 5.0f;
-	if (rmbDown)
-	{
-		posV = XMVectorAdd(posV, XMVectorScale(forward, d1 * moveSpeed));
-		posV = XMVectorAdd(posV, XMVectorScale(right,   d2 * moveSpeed));
-		posV = XMVectorAdd(posV, XMVectorScale(up,      d3 * moveSpeed));
-	}
-	XMStoreFloat3(&m_cameraPos, posV);
-	XMStoreFloat3(&camForward3, forward);
-	m_CameraForward = camForward3;
+	XMFLOAT3 camForward3 = m_camera.GetForward();
 
-	// View/Proj도 UI값 반영 (매 프레임)
-	XMMATRIX view = XMMatrixTranspose(XMMatrixLookAtLH(
-		XMVectorSet(m_cameraPos.x, m_cameraPos.y, m_cameraPos.z, 0.0f),
-		XMVectorAdd(XMVectorSet(m_cameraPos.x, m_cameraPos.y, m_cameraPos.z, 0.0f), XMVector3Normalize(XMVectorSet(camForward3.x, camForward3.y, camForward3.z, 0.0f))),
-		XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f)));
-	float fovRad = XMConvertToRadians(m_CameraFovDeg);
-	XMMATRIX proj = XMMatrixTranspose(XMMatrixPerspectiveFovLH(fovRad, AspectRatio(), m_CameraNear, m_CameraFar));
+	// View/Proj from Camera
+	XMMATRIX view = XMMatrixTranspose(m_camera.GetViewMatrixXM());
+	XMMATRIX proj = XMMatrixTranspose(m_camera.GetProjMatrixXM());
 	m_baseProjection.world = XMMatrixTranspose(world0);
 	m_baseProjection.view = view;
 	m_baseProjection.proj = proj;
 
 	m_baseProjection.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(world0)));
 	{
-		XMFLOAT3 dir = m_LightDirection;
+		XMFLOAT3 dir = m_DirLight.direction;
 		XMVECTOR v = XMVector3Normalize(XMLoadFloat3(&dir));
 		XMStoreFloat3(&dir, v);
-		// DirectionalLight 필드 직접 대입
-		m_baseProjection.dirLight.ambient = m_LightAmbient;
-		m_baseProjection.dirLight.diffuse = m_LightDiffuse;
-		m_baseProjection.dirLight.specular = m_LightSpecular;
+		// DirectionalLight 필드 대입 (정규화된 방향)
+		m_baseProjection.dirLight = m_DirLight;
 		m_baseProjection.dirLight.direction = dir;
 		m_baseProjection.dirLight.pad = 0.0f;
 	}
-	m_baseProjection.eyePos = m_cameraPos;
+	m_baseProjection.eyePos = m_camera.GetPosition();
 	m_baseProjection.pad = 0.0f;
 
 	// 머티리얼을 기본 캐시에 반영해 둔다
-	m_baseProjection.material.ambient = m_MaterialAmbientRGB;
-	m_baseProjection.material.diffuse = m_MaterialDiffuseRGB;
-	m_baseProjection.material.specular = XMFLOAT4(m_MaterialSpecularRGB.x, m_MaterialSpecularRGB.y, m_MaterialSpecularRGB.z, m_MaterialShininess);
-	m_baseProjection.material.reflect = XMFLOAT4(0,0,0,0);
+	m_baseProjection.material = m_Material;
 
 	m_SystemInfo.Tick(dt);
 }
@@ -234,23 +222,18 @@ void App::OnRender()
 	}
 	// 간단 기본 광원/카메라 (UI 반영)
 	{
-		XMFLOAT3 dir = m_LightDirection;
+		XMFLOAT3 dir = m_DirLight.direction;
 		XMVECTOR v = XMVector3Normalize(XMLoadFloat3(&dir));
 		XMStoreFloat3(&dir, v);
-		// DirectionalLight 필드 직접 대입
-		m_ConstantBuffer.dirLight.ambient = m_LightAmbient;
-		m_ConstantBuffer.dirLight.diffuse = m_LightDiffuse;
-		m_ConstantBuffer.dirLight.specular = m_LightSpecular;
+		// DirectionalLight 필드 대입 (정규화된 방향)
+		m_ConstantBuffer.dirLight = m_DirLight;
 		m_ConstantBuffer.dirLight.direction = dir;
 		m_ConstantBuffer.dirLight.pad = 0.0f;
 	}
-	m_ConstantBuffer.eyePos = m_cameraPos;
+	m_ConstantBuffer.eyePos = m_camera.GetPosition();
 	m_ConstantBuffer.pad = 0.0f;
 	// 머티리얼 채우기
-	m_ConstantBuffer.material.ambient = m_MaterialAmbientRGB;
-	m_ConstantBuffer.material.diffuse = m_MaterialDiffuseRGB;
-	m_ConstantBuffer.material.specular = XMFLOAT4(m_MaterialSpecularRGB.x, m_MaterialSpecularRGB.y, m_MaterialSpecularRGB.z, m_MaterialShininess);
-	m_ConstantBuffer.material.reflect = XMFLOAT4(0,0,0,0);
+	m_ConstantBuffer.material = m_Material;
 
 	D3D11_MAPPED_SUBRESOURCE mappedData;
 	HR_T(m_pDeviceContext->Map(m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedData));
@@ -277,15 +260,10 @@ void App::OnRender()
 	// 라이트 위치 마커 큐브 그리기 (작은 스케일, 흰색)
 	{
 		ConstantBuffer marker = m_ConstantBuffer;
-		XMFLOAT3 dir = m_LightDirection;
-		XMVECTOR v = XMVector3Normalize(XMLoadFloat3(&dir));
-		XMMATRIX S = XMMatrixScaling(0.2f, 0.2f, 0.2f);
+		XMMATRIX S = XMMatrixScaling(1.0f, 1.0f, 1.0f);
 		XMMATRIX T = XMMatrixTranslation(m_LightPosition.x, m_LightPosition.y, m_LightPosition.z);
 		marker.world = XMMatrixTranspose(S * T);
-		// 월드 인버스 전치 갱신
 		marker.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(S * T)));
-		// 흰색 마커 강제
-		//marker.dirLight.color = XMFLOAT4(1,1,1,1);
 		marker.pad = 2.0f; // PS에서 흰색 출력 토글
 
 		D3D11_MAPPED_SUBRESOURCE mapped;
@@ -294,46 +272,19 @@ void App::OnRender()
 		m_pDeviceContext->Unmap(m_pConstantBuffer, 0);
 		m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_pConstantBuffer);
 		m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_pConstantBuffer);
-		m_pDeviceContext->DrawIndexed(m_nIndices, 0, 0);
+
+		UINT dbgStride = sizeof(VertexData);
+		UINT dbgOffset = 0;
+		m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+		m_pDeviceContext->IASetVertexBuffers(0, 1, &m_pDebugBoxVB, &dbgStride, &dbgOffset);
+		m_pDeviceContext->IASetInputLayout(m_pInputLayout);
+		m_pDeviceContext->IASetIndexBuffer(m_pDebugBoxIB, DXGI_FORMAT_R32_UINT, 0);
+		m_pDeviceContext->DrawIndexed(m_DebugBoxIndexCount, 0, 0);
 	}
 
 	// 라이트 방향 표시 라인 그리기(빨간색)
 	{
-		struct LineV { XMFLOAT3 pos; XMFLOAT3 normal; XMFLOAT4 color; };
-		LineV line[2] = {};
-		XMFLOAT3 dir = m_LightDirection;
-		XMVECTOR vdir = XMVector3Normalize(XMLoadFloat3(&dir));
-		XMVECTOR p0 = XMLoadFloat3(&m_LightPosition);
-		XMVECTOR p1 = XMVectorAdd(p0, XMVectorScale(vdir, 2.0f));
-		XMStoreFloat3(&line[0].pos, p0);
-		XMStoreFloat3(&line[1].pos, p1);
-		line[0].normal = XMFLOAT3(0,1,0);
-		line[1].normal = XMFLOAT3(0,1,0);
-		line[0].color = XMFLOAT4(1,0,0,1);
-		line[1].color = XMFLOAT4(1,0,0,1);
-
-		if (!m_pLineVertexBuffer)
-		{
-			D3D11_BUFFER_DESC bd{};
-			bd.ByteWidth = sizeof(line);
-			bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-			bd.Usage = D3D11_USAGE_DYNAMIC;
-			bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-			HR_T(m_pDevice->CreateBuffer(&bd, nullptr, &m_pLineVertexBuffer));
-		}
-		{
-			D3D11_MAPPED_SUBRESOURCE mapped;
-			HR_T(m_pDeviceContext->Map(m_pLineVertexBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped));
-			memcpy_s(mapped.pData, sizeof(line), line, sizeof(line));
-			m_pDeviceContext->Unmap(m_pLineVertexBuffer, 0);
-		}
-
-		UINT lstride = sizeof(LineV);
-		UINT loffset = 0;
-		m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_LINELIST);
-		m_pDeviceContext->IASetVertexBuffers(0, 1, &m_pLineVertexBuffer, &lstride, &loffset);
-		m_pDeviceContext->IASetInputLayout(m_pInputLayout);
-		// 뷰/투영만 적용된 월드(단위행렬) 사용, pad=3.0 -> 빨간색 라인 출력
+		// pad=3.0은 라인 디버그에 이용.
 		ConstantBuffer lineCB = m_ConstantBuffer;
 		lineCB.world = XMMatrixTranspose(XMMatrixIdentity());
 		lineCB.worldInvTranspose = XMMatrixIdentity();
@@ -344,83 +295,39 @@ void App::OnRender()
 		m_pDeviceContext->Unmap(m_pConstantBuffer, 0);
 		m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_pConstantBuffer);
 		m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_pConstantBuffer);
-		m_pDeviceContext->VSSetShader(m_pVertexShader, nullptr, 0);
-		m_pDeviceContext->PSSetShader(m_pPixelShader, nullptr, 0);
-		m_pDeviceContext->Draw(2, 0);
+
+		// light direction (red)
+		m_LineRenderer->DrawLightDirection(m_pDeviceContext, m_LightPosition, m_DirLight.direction, 2.0f, m_pInputLayout, m_pVertexShader, m_pPixelShader, m_pConstantBuffer);
+		// symmetric axes centered at origin for better grid feel
+		m_LineRenderer->DrawAxesSymmetric(m_pDeviceContext, 100.0f, m_pInputLayout, m_pVertexShader, m_pPixelShader, m_pConstantBuffer);
 	}
 
 
 	// SkyBox 렌더링 (상태 보존/복구)
 	{
-		ID3D11RasterizerState* prevRS = nullptr;
-		ID3D11DepthStencilState* prevDS = nullptr; UINT prevRef = 0;
-		m_pDeviceContext->RSGetState(&prevRS);
-		m_pDeviceContext->OMGetDepthStencilState(&prevDS, &prevRef);
+		UINT stride = m_VertextBufferStride;
+		UINT offset = m_VertextBufferOffset;
+		m_Skybox->Render(m_pDeviceContext, m_pVertexBuffer, m_pIndexBuffer, m_nIndices, stride, offset, m_baseProjection.view, m_baseProjection.proj);
+	}
 
-		static ID3D11DepthStencilState* dsSky = nullptr;
-		if (!dsSky)
-		{
-			D3D11_DEPTH_STENCIL_DESC dsd{};
-			dsd.DepthEnable = TRUE;
-			dsd.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
-			dsd.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
-			dsd.StencilEnable = FALSE;
-			HR_T(m_pDevice->CreateDepthStencilState(&dsd, &dsSky));
-		}
-		m_pDeviceContext->OMSetDepthStencilState(dsSky, 0);
+	// 화면 오버레이 축(NDC)에 작게 표시
+	{
+		// pad=3 설정 정점색으로 출력되도록
+		ConstantBuffer overlayCB = m_ConstantBuffer;
+		overlayCB.world = XMMatrixTranspose(XMMatrixIdentity());
+		overlayCB.view = XMMatrixTranspose(XMMatrixIdentity());
+		overlayCB.proj = XMMatrixTranspose(XMMatrixIdentity());
+		overlayCB.worldInvTranspose = XMMatrixIdentity();
+		overlayCB.pad = 3.0f;
+		D3D11_MAPPED_SUBRESOURCE mapped;
+		HR_T(m_pDeviceContext->Map(m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped));
+		memcpy_s(mapped.pData, sizeof(ConstantBuffer), &overlayCB, sizeof(ConstantBuffer));
+		m_pDeviceContext->Unmap(m_pConstantBuffer, 0);
+		m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_pConstantBuffer);
+		m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_pConstantBuffer);
 
-		static ID3D11RasterizerState* rsSky = nullptr;
-		if (!rsSky)
-		{
-			D3D11_RASTERIZER_DESC rd{};
-			rd.FillMode = D3D11_FILL_SOLID;
-			rd.CullMode = D3D11_CULL_NONE;         // 내부면만 보이게 끄기
-			rd.FrontCounterClockwise = false;        // CCW를 Front로 간주
-			rd.DepthClipEnable = TRUE;
-			HR_T(m_pDevice->CreateRasterizerState(&rd, &rsSky));
-		}
-		m_pDeviceContext->RSSetState(rsSky);
-
-		// 스카이박스 WVP: world=I, view=translation 제거, proj=일반(Projt)
-		XMMATRIX viewT = m_baseProjection.view; // transposed view
-		XMMATRIX view  = XMMatrixTranspose(viewT);
-		view.r[3] = XMVectorSet(0.0f, 0.0f, 0.0f, XMVectorGetW(view.r[3]));
-		XMMATRIX viewNoTransT = XMMatrixTranspose(view);
-		XMMATRIX projT = m_baseProjection.proj;
-		XMMATRIX wvpT = XMMatrixMultiply(projT, viewNoTransT);
-		// 단일 CB(b0) 사용: SkyBox VS가 사용하는 g_WorldViewProj 위치(선두 64바이트)에만 wvpT를 써준다
-		{
-			D3D11_MAPPED_SUBRESOURCE mapped{};
-			HR_T(m_pDeviceContext->Map(m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped));
-			memcpy_s(mapped.pData, sizeof(XMMATRIX), &wvpT, sizeof(XMMATRIX));
-			m_pDeviceContext->Unmap(m_pConstantBuffer, 0);
-		}
-		m_pDeviceContext->IASetInputLayout(m_pSkyBoxInputLayout);
-		m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-		m_pDeviceContext->IASetVertexBuffers(0, 1, &m_pVertexBuffer, &stride, &offset);
-		m_pDeviceContext->IASetIndexBuffer(m_pIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
-		m_pDeviceContext->VSSetShader(m_pSkyBoxVertexShader, nullptr, 0);
-		m_pDeviceContext->PSSetShader(m_pSkyBoxPixelShader, nullptr, 0);
-		static ID3D11SamplerState* skySamp = nullptr;
-		if (!skySamp)
-		{
-			D3D11_SAMPLER_DESC sd{};
-			sd.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
-			sd.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
-			sd.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
-			sd.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
-			sd.MaxLOD = D3D11_FLOAT32_MAX;
-			HR_T(m_pDevice->CreateSamplerState(&sd, &skySamp));
-		}
-		m_pDeviceContext->PSSetSamplers(0, 1, &skySamp);
-		m_pDeviceContext->PSSetShaderResources(0, 1, &m_pTextureSRV);
-		m_pDeviceContext->DrawIndexed(m_nIndices, 0, 0);
-
-		// 상태 복구
-		m_pDeviceContext->OMSetDepthStencilState(prevDS, prevRef);
-		m_pDeviceContext->RSSetState(prevRS);
-		SAFE_RELEASE(prevDS);
-		SAFE_RELEASE(prevRS);
+		// 좌상단 작은 축 표시
+		m_LineRenderer->DrawAxesOverlay(m_pDeviceContext, XMMatrixTranspose(m_baseProjection.view), DirectX::XMFLOAT2(-0.9f, 0.85f), 0.08f, m_pInputLayout, m_pVertexShader, m_pPixelShader, m_pConstantBuffer);
 	}
 
 	// ImGui 프레임 및 UI 렌더링
@@ -437,34 +344,52 @@ void App::OnRender()
 			if (ImGui::Combo("SkyBox Choice", &cur, items, IM_ARRAYSIZE(items)))
 			{
 				m_SkyBoxChoice = (cur == 0) ? SkyBoxChoice::Hanako : SkyBoxChoice::CubeMap;
-				m_pTextureSRV = (m_SkyBoxChoice == SkyBoxChoice::Hanako) ? m_pSkyHanakoSRV : m_pSkyCubeMapSRV;
-				PrepareSkyFaceSRVs();
+				const wchar_t* path = (m_SkyBoxChoice == SkyBoxChoice::Hanako) ? L"..\\Resource\\Hanako.dds" : L"..\\Resource\\cubemap.dds";
+				ChangeSkyboxDDS(path);
 			}
 		}
 		ImGui::Text("Mesh Transforms");
 		ImGui::Checkbox("Rotate Cube", &m_RotateCube);
 		ImGui::SliderFloat("Cube Scale", &m_CubeScale, 0.1f, 10.0f);
-		ImGui::DragFloat3("Root Pos (x,y,z)", &m_cubePos.x, 0.1f);
-		ImGui::SliderFloat("Yaw (deg)", &m_YawDeg, -180.0f, 180.0f);
-		ImGui::SliderFloat("Pitch (deg)", &m_PitchDeg, -89.9f, 89.9f);
+		ImGui::DragFloat3("Cube Pos (x,y,z)", &m_cubePos.x, 0.1f);
+		// 큐브 회전(도) 편집
+		ImGui::DragFloat3("Cube Rotation (deg)", &m_cubeRotation.x, 1.0f, -360.0f, 360.0f, "%.1f");
 		ImGui::Separator();
 		ImGui::Text("Camera");
-		ImGui::DragFloat3("Camera Pos (x,y,z)", &m_cameraPos.x, 0.1f);
-		ImGui::SliderFloat("Camera FOV (deg)", &m_CameraFovDeg, 30.0f, 120.0f);
-		ImGui::DragFloatRange2("Near/Far", &m_CameraNear, &m_CameraFar, 0.1f, 0.01f, 5000.0f, "Near: %.2f", "Far: %.2f");
+		{
+			if (ImGui::Button("Reset"))
+			{
+				m_camera.Reset();
+			}
+			DirectX::XMFLOAT3 pos = m_camera.GetPosition();
+			if (ImGui::DragFloat3("Camera Pos (x,y,z)", &pos.x, 0.1f))
+			{
+				m_camera.SetPosition(pos);
+			}
+			float fovDeg = XMConvertToDegrees(m_camera.GetFovYRad());
+			if (ImGui::SliderFloat("Camera FOV (deg)", &fovDeg, 30.0f, 120.0f))
+			{
+				m_camera.SetFrustum(XMConvertToRadians(fovDeg), AspectRatio(), m_camera.GetNearZ(), m_camera.GetFarZ());
+			}
+			float nearZ = m_camera.GetNearZ();
+			float farZ  = m_camera.GetFarZ();
+			if (ImGui::DragFloatRange2("Near/Far", &nearZ, &farZ, 0.1f, 0.01f, 5000.0f, "Near: %.2f", "Far: %.2f"))
+			{
+				m_camera.SetFrustum(m_camera.GetFovYRad(), AspectRatio(), nearZ, farZ);
+			}
+		}
 		ImGui::Separator();
 		ImGui::Text("Light");
-		ImGui::ColorEdit3("Light Dir Color (deprecated)", &m_LightColorRGB.x);
-		ImGui::DragFloat3("Light Dir", &m_LightDirection.x, 0.05f);
-		ImGui::ColorEdit4("Ambient", &m_LightAmbient.x);
-		ImGui::ColorEdit4("Diffuse", &m_LightDiffuse.x);
-		ImGui::ColorEdit4("Specular", &m_LightSpecular.x);
+		ImGui::DragFloat3("Light Direction", &m_DirLight.direction.x, 0.05f);
+		ImGui::ColorEdit4("Ambient", &m_DirLight.ambient.x);
+		ImGui::ColorEdit4("Diffuse", &m_DirLight.diffuse.x);
+		ImGui::ColorEdit4("Specular", &m_DirLight.specular.x);
 		ImGui::Separator();
 		ImGui::Text("Material");
-		ImGui::ColorEdit4("Ambient (ka)", &m_MaterialAmbientRGB.x);
-		ImGui::ColorEdit4("Diffuse (kd)", &m_MaterialDiffuseRGB.x);
-		ImGui::ColorEdit4("Specular (ks)", &m_MaterialSpecularRGB.x);
-		ImGui::SliderFloat("Shininess (alpha)", &m_MaterialShininess, 1.0f, 256.0f);
+		ImGui::ColorEdit4("Ambient (ka)", &m_Material.ambient.x);
+		ImGui::ColorEdit4("Diffuse (kd)", &m_Material.diffuse.x);
+		ImGui::ColorEdit4("Specular (ks)", &m_Material.specular.x);
+		ImGui::SliderFloat("Shininess (alpha)", &m_Material.specular.w, 1.0f, 256.0f);
 	}
 	ImGui::End();
 
@@ -472,7 +397,8 @@ void App::OnRender()
 	{
 		int face = 0;
 		using namespace DirectX;
-    	XMVECTOR f = XMLoadFloat3(&m_CameraForward);
+		XMFLOAT3 fwd = m_camera.GetForward();
+    	XMVECTOR f = XMLoadFloat3(&fwd);
     	XMVECTOR fn = XMVector3Normalize(f);
     	XMFLOAT3 v; XMStoreFloat3(&v, fn);
     	float ax = fabsf(v.x), ay = fabsf(v.y), az = fabsf(v.z);
@@ -712,14 +638,10 @@ bool App::InitScene()
 	// 카메라 설정
 	// 공통 카메라(View/Proj)로 3개의 상수 버퍼 엔트리를 준비합니다
 	m_baseProjection.world = XMMatrixIdentity();
-	m_baseProjection.view = XMMatrixTranspose(XMMatrixLookAtLH(
-		XMVectorSet(m_cameraPos.x, m_cameraPos.y, m_cameraPos.z, 0.0f),
-		XMVectorSet(m_cameraPos.x + 0.0f, m_cameraPos.y + 0.0f, m_cameraPos.z + 1.0f, 0.0f),
-		XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f)
-	));
-
-	float fovRad = XMConvertToRadians(m_CameraFovDeg);
-	m_baseProjection.proj = XMMatrixTranspose(XMMatrixPerspectiveFovLH(fovRad, AspectRatio(), m_CameraNear, m_CameraFar));
+	// Set camera initial frustum using window aspect
+	m_camera.SetFrustum(XMConvertToRadians(90.0f), AspectRatio(), 1.0f, 1000.0f);
+	m_baseProjection.view = XMMatrixTranspose(m_camera.GetViewMatrixXM());
+	m_baseProjection.proj = XMMatrixTranspose(m_camera.GetProjMatrixXM());
 	m_baseProjection.worldInvTranspose = XMMatrixInverse(nullptr, XMMatrixTranspose(m_baseProjection.world));
 	// DirectionalLight 초기값 필드 대입
 	m_baseProjection.dirLight.ambient = DirectX::XMFLOAT4(0,0,0,1);
@@ -727,8 +649,22 @@ bool App::InitScene()
 	m_baseProjection.dirLight.specular = DirectX::XMFLOAT4(1,1,1,1);
 	m_baseProjection.dirLight.direction = DirectX::XMFLOAT3(0,-1,1);
 	m_baseProjection.dirLight.pad = 0.0f;
-	m_baseProjection.eyePos = m_cameraPos;
+	m_baseProjection.eyePos = m_camera.GetPosition();
 	m_baseProjection.pad = 0.0f;
+
+	// ***********************************************************************************************
+	// 유틸 초기화: 라인 렌더러, 스카이박스, 디버그 박스
+	if (!m_LineRenderer) m_LineRenderer = new LineRenderer();
+	m_LineRenderer->Initialize(m_pDevice);
+
+	// Skybox: 기존 Hanako를 기본으로 초기화 (선호 DDS를 설정)
+	if (!m_Skybox) m_Skybox = new Skybox();
+	// Skybox는 이미 CreateDDSTextureFromFile로 SRV가 생성되어 있으므로, 여기선 현재 선택된 SRV를 사용하도록 Initialize는 경로 기반 대신 스킵할 수 있습니다.
+	// 간편화를 위해 cubemap.dds로 초기화
+	m_Skybox->Initialize(m_pDevice, m_CurrentSkyboxPath, m_pSkyBoxVertexShader, m_pSkyBoxPixelShader, m_pSkyBoxInputLayout, m_pConstantBuffer);
+
+	// Debug box buffers for light position marker
+	StaticMesh::CreateDebugBoxBuffers(m_pDevice, XMFLOAT4(1,1,1,1), 0.2f, &m_pDebugBoxVB, &m_pDebugBoxIB, &m_DebugBoxIndexCount);
 
 	return true;
 }
@@ -751,6 +687,11 @@ void App::UninitScene()
 
 	for (int i = 0; i < 6; ++i) SAFE_RELEASE(m_pCubeTextureSRVs[i]);
     for (int i = 0; i < 6; ++i) SAFE_RELEASE(m_pSkyFaceSRV[i]);
+
+    SAFE_RELEASE(m_pDebugBoxVB);
+    SAFE_RELEASE(m_pDebugBoxIB);
+    if (m_LineRenderer) { m_LineRenderer->Release(); delete m_LineRenderer; m_LineRenderer = nullptr; }
+    if (m_Skybox) { m_Skybox->Release(); delete m_Skybox; m_Skybox = nullptr; }
 }
 
 bool App::InitTexture()

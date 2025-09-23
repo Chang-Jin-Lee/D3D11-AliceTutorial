@@ -101,6 +101,14 @@ public:
 	ConstantBuffer m_ConstantBuffer; 							// CPU-side 상수 버퍼 데이터
 	ID3D11Buffer* m_pLineVertexBuffer = nullptr; 				// 라이트 방향 표시용 라인 VB
 
+    // 분리된 유틸들
+    class LineRenderer* m_LineRenderer = nullptr;           // 선/좌표축 렌더러
+    class Skybox* m_Skybox = nullptr;                       // 스카이박스
+    // 디버그 박스 버퍼
+    ID3D11Buffer* m_pDebugBoxVB = nullptr;
+    ID3D11Buffer* m_pDebugBoxIB = nullptr;
+    int m_DebugBoxIndexCount = 0;
+
 	ID3D11DepthStencilView* m_pDepthStencilView; 				// 깊이 스텐실 뷰
 	ID3D11DepthStencilState* m_pDepthStencilState = nullptr;  	// 깊이 스텐실 상태
 
@@ -118,36 +126,38 @@ public:
 	ID3D11ShaderResourceView* m_pSkyFaceSRV[6] = {};
 	ImVec2 m_SkyFaceSize = ImVec2(0, 0);
 
+	// Skybox current dds (path)
+	wchar_t m_CurrentSkyboxPath[260] = L"..\\Resource\\cubemap.dds";
+
 	// 텍스쳐 
 	ID3D11ShaderResourceView* m_pCubeTextureSRVs[6] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
 
 	// ImGui 컨트롤 상태 변수
 	SystemInfomation m_SystemInfo;
-	Camera m_camera;											// 카메라
+	Camera m_camera;								// 카메라
 	DirectX::XMFLOAT3 m_cubePos = { 0.0f, 0.0f, 0.0f };			// 큐브 루트 위치
-	DirectX::XMFLOAT3 m_cameraPos = { 0.0f, 0.0f, -6.0f };		// 카메라 위치
-	float m_CameraFovDeg = 90.0f;								// FOV(deg)
-	float m_CameraNear = 1.0f;									// Near
-	float m_CameraFar = 1000.0f;								// Far
+	DirectX::XMFLOAT3 m_cubeRotation = { 0.0f, 0.0f, 0.0f };	// 큐브 회전(Yaw/Pitch/Roll, deg)
+	bool m_RotateCube = false;								// ImGui 토글: 큐브 자동 회전 on/off
 
-	bool m_RotateCube = false;									// ImGui 토글: 큐브 자동 회전 on/off
-	float m_YawDeg = 0.0f;										// 큐브 Yaw
-	float m_PitchDeg = 0.0f;									// 큐브 Pitch
-	DirectX::XMFLOAT3 m_LightDirection = { 0.0f, 0.0f, 1.0f }; // 라이트 방향(UI)
-	DirectX::XMFLOAT3 m_LightColorRGB = { 1.0f, 1.0f, 1.0f };   // 라이트 색(UI)
-	DirectX::XMFLOAT4 m_LightAmbient = { 0.03f, 0.03f, 0.03f, 0.1f };   // 라이트 색(UI)
-	DirectX::XMFLOAT4 m_LightDiffuse = { 1.0f, 1.0f, 1.0f, 1.0f };   // 라이트 색(UI)
-	DirectX::XMFLOAT4 m_LightSpecular = { 1.0f, 1.0f, 1.0f, 1.0f };   // 라이트 색(UI)
+	// DirectionalLight
+	DirectionalLight m_DirLight = {
+		/*ambient*/ { 0.03f, 0.03f, 0.03f, 0.1f },
+		/*diffuse*/ { 1.0f, 1.0f, 1.0f, 1.0f },
+		/*specular*/{ 1.0f, 1.0f, 1.0f, 1.0f },
+		/*direction*/{ 0.0f, 0.0f, 1.0f },
+		/*pad*/ 0.0f
+	};
+	// Material
+	Material m_Material = {
+		/*ambient*/ { 1.0f, 1.0f, 1.0f, 1.0f },
+		/*diffuse*/ { 1.0f, 1.0f, 1.0f, 1.0f },
+		/*specular*/{ 1.0f, 1.0f, 1.0f, 32.0f }, // w = shininess
+		/*reflect*/ { 0.0f, 0.0f, 0.0f, 0.0f }
+	};
+
 	DirectX::XMFLOAT3 m_LightPosition = { 4.0f, 4.0f, 0.0f };   // 라이트 위치(마커용)
-	DirectX::XMFLOAT3 m_CameraForward = { 0.0f, 0.0f, 1.0f };   // 카메라 앞방향(스카이박스용)
 
-	ConstantBuffer m_baseProjection;							// 기본 카메라/월드 캐시
-
-	// Material parameters (ImGui)
-	DirectX::XMFLOAT4 m_MaterialAmbientRGB = { 1.0f, 1.0f, 1.0f, 1.0f };
-	DirectX::XMFLOAT4 m_MaterialDiffuseRGB = { 1.0f, 1.0f, 1.0f, 1.0f };
-	DirectX::XMFLOAT4 m_MaterialSpecularRGB = { 1.0f, 1.0f, 1.0f, 1.0f };
-	float m_MaterialShininess = 32.0f;	// g_Material.specular.w
+	ConstantBuffer m_baseProjection;								// 기본 카메라/월드 캐시
 
 	// Cube scale to better visualize specular highlights
 	float m_CubeScale = 2.0f;
@@ -180,5 +190,7 @@ private:
 
 	// 큐브맵 면 SRV 준비/정리 및 면 선택 계산
 	void PrepareSkyFaceSRVs();
+	// Skybox change helper
+	void ChangeSkyboxDDS(const wchar_t* ddsPath);
 };
 

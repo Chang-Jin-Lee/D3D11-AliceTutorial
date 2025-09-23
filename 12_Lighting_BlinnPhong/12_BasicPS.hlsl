@@ -14,7 +14,8 @@ float4 main(VertexOut pIn) : SV_Target
     }
     if (abs(g_Pad - 3.0f) < 1e-3)
     {
-        return float4(1.0f, 0.0f, 0.0f, 1.0f);
+        // Use vertex color to allow RGB axes via LineRenderer
+        return pIn.color;
     }
 
     float4 textureColor = g_DiffuseMap.Sample(g_Sam, pIn.tex);
