@@ -11,6 +11,10 @@
 */
 #include "12_LightingHelper.hlsli"
 
+Texture2D g_DiffuseMap : register(t0);
+TextureCube g_TexCube : register(t1);
+SamplerState g_Sam : register(s0);
+
 cbuffer ConstantBuffer : register(b0)
 {
     matrix g_World;                     //   매트릭스는 float4x4로 대체 될 수 있습니다. 행이 없으면 매트릭스는 기본적으로 열 매트릭스로 기본값을 얻습니다.
@@ -26,15 +30,16 @@ cbuffer ConstantBuffer : register(b0)
 
 struct VertexIn
 {
-    float3 posL : POSITION;
-    float3 normalL : NORMAL;    // 이번 프로젝트에선 Normal이 추가됩니다.
-    float4 color : COLOR;
+    float3 posL   : POSITION;
+    float3 normalL: NORMAL;    // 이번 프로젝트에선 Normal이 추가됩니다.
+    float2 tex    : TEXCOORD;  // 2D UV
+    float4 color  : COLOR;
 };
 
 struct VertexOut
 {
-    float4 posH : SV_POSITION;
-    float3 posW : TEXCOORD0;    // 월드에서의 위치
-    float3 normalW : TEXCOORD1; // 월드의 노말 벡터의 방향
-    float4 color : COLOR;
+    float4 posH   : SV_POSITION;
+    float3 posW   : TEXCOORD0;    // 월드에서의 위치
+    float3 normalW: TEXCOORD1;    // 월드의 노말 벡터의 방향
+    float2 tex    : TEXCOORD2;
 };

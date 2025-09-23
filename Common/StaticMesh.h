@@ -5,6 +5,7 @@ struct VertexData
 	DirectX::XMFLOAT3 vertices;
 	DirectX::XMFLOAT3 normals;
 	DirectX::XMFLOAT4 colors;
+	DirectX::XMFLOAT2 texcoord;
 	static const D3D11_INPUT_ELEMENT_DESC inputLayout[3];
 };
 
@@ -19,5 +20,7 @@ class StaticMesh
 public:
 	// 정적으로 박스를 만드는 코드입니다
 	static StaticMeshData CreateBox(const XMFLOAT4& color,float width = 2, float height = 2, float depth = 2);
+	static void AssignMemory(ID3D11Device*& m_pDevice, ID3D11Buffer*& m_pVertexBuffer, StaticMeshData& meshData);
+	static void AssignIndexMemory(ID3D11Device*& m_pDevice, ID3D11Buffer*& m_pIndexBuffer, StaticMeshData& meshData, int& m_nIndices);
 };
 

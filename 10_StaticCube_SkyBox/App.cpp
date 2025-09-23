@@ -835,7 +835,6 @@ bool App::InitScene()
 
 		// ***********************************************************************************************
 	// 스카이 박스 큐브 설정
-	StaticMeshData skyBoxCubeData = StaticMesh::CreateBox(XMFLOAT4(1, 1, 1, 1));
     HR_T(CreateDDSTextureFromFile(m_pDevice, L"..\\Resource\\Hanako.dds", nullptr, &m_pSkyHanakoSRV));
     HR_T(CreateDDSTextureFromFile(m_pDevice, L"..\\Resource\\cubemap.dds", nullptr, &m_pSkyCubeMapSRV));
 	m_SkyBoxChoice = SkyBoxChoice::CubeMap;

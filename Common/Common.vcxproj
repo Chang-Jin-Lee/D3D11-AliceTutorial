@@ -143,7 +143,9 @@
     <ClInclude Include="Helper.h" />
     <ClInclude Include="InputSystem.h" />
     <ClInclude Include="pch.h" />
+    <ClInclude Include="Skybox.h" />
     <ClInclude Include="StaticMesh.h" />
+    <ClInclude Include="SystemInfomation.h" />
     <ClInclude Include="TimeSystem.h" />
   </ItemGroup>
   <ItemGroup>
@@ -158,7 +160,9 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="Skybox.cpp" />
     <ClCompile Include="StaticMesh.cpp" />
+    <ClCompile Include="SystemInfomation.cpp" />
     <ClCompile Include="TimeSystem.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

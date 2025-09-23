@@ -81,79 +81,17 @@ void App::PrepareSkyFaceSRVs()
 
 bool App::OnInitialize()
 {
-	if(!InitD3D()) 
-		return false;
+	if(!InitD3D()) return false;
 
-	if (!InitBasicEffect()) 
-		return false;
+	if(!InitBasicEffect()) return false;
+	if(!InitSkyBoxEffect()) return false;
 
-	if (!InitSkyBoxEffect()) 
-		return false;
+	if(!InitScene()) return false;
+	if(!InitImGui()) return false;
 
-	if(!InitScene()) 
-		return false;
+	if (!InitTexture()) return false;
 
-	// ImGui 초기화
-	IMGUI_CHECKVERSION();
-	ImGui::CreateContext();
-	ImGui::StyleColorsDark();
-	ImGui_ImplWin32_Init(m_hWnd);
-	ImGui_ImplDX11_Init(m_pDevice, m_pDeviceContext);
-
-    // Hanako.png는 디버그용이었으나, 이제 스카이박스 현재 면을 그릴 예정
-    // 초기 스카이박스 면 SRV들을 준비한다
-    PrepareSkyFaceSRVs();
-
-	// 시스템 정보 수집 (GPU)
-	{
-		Microsoft::WRL::ComPtr<IDXGIDevice> dxgiDevice;
-		if (SUCCEEDED(m_pDevice->QueryInterface(IID_PPV_ARGS(dxgiDevice.GetAddressOf()))))
-		{
-			Microsoft::WRL::ComPtr<IDXGIAdapter> adapter;
-			if (SUCCEEDED(dxgiDevice->GetAdapter(adapter.GetAddressOf())))
-			{
-				DXGI_ADAPTER_DESC desc{};
-				if (SUCCEEDED(adapter->GetDesc(&desc)))
-				{
-					m_GPUName = desc.Description;
-				}
-				adapter.As(&m_Adapter3);
-				if (m_Adapter3)
-				{
-					DXGI_QUERY_VIDEO_MEMORY_INFO memInfo{};
-					if (SUCCEEDED(m_Adapter3->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &memInfo)))
-					{
-						m_VideoMemoryTotal = memInfo.Budget; // 사용 가능 예산을 총량 근사로 사용
-					}
-				}
-			}
-		}
-	}
-
-	// 시스템 정보 수집 (CPU)
-	{
-		wchar_t cpuName[128] = L"";
-		DWORD size = sizeof(cpuName);
-		HKEY hKey;
-		if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0", 0, KEY_READ, &hKey) == ERROR_SUCCESS)
-		{
-			DWORD type = 0;
-			RegQueryValueExW(hKey, L"ProcessorNameString", nullptr, &type, reinterpret_cast<LPBYTE>(cpuName), &size);
-			RegCloseKey(hKey);
-		}
-		m_CPUName = cpuName;
-		m_CPUCores = std::thread::hardware_concurrency();
-	}
-
-	// 시스템 메모리 총량/가용량 초기화
-	{
-		MEMORYSTATUSEX ms{ sizeof(MEMORYSTATUSEX) };
-		if (GlobalMemoryStatusEx(&ms))
-		{
-			m_RamTotal = ms.ullTotalPhys;
-			m_RamAvail = ms.ullAvailPhys;
-		}
-	}
+	if (!m_SystemInfo.InitSysInfomation(m_pDevice)) return false;
 
 	return true;
 }
@@ -235,9 +173,9 @@ void App::OnUpdate(const float& dt)
 		XMVECTOR v = XMVector3Normalize(XMLoadFloat3(&dir));
 		XMStoreFloat3(&dir, v);
 		// DirectionalLight 필드 직접 대입
-		m_baseProjection.dirLight.ambient = DirectX::XMFLOAT4(0,0,0,1);
-		m_baseProjection.dirLight.diffuse = DirectX::XMFLOAT4(m_LightColorRGB.x, m_LightColorRGB.y, m_LightColorRGB.z, 1.0f);
-		m_baseProjection.dirLight.specular = DirectX::XMFLOAT4(m_LightColorRGB.x, m_LightColorRGB.y, m_LightColorRGB.z, 1.0f);
+		m_baseProjection.dirLight.ambient = m_LightAmbient;
+		m_baseProjection.dirLight.diffuse = m_LightDiffuse;
+		m_baseProjection.dirLight.specular = m_LightSpecular;
 		m_baseProjection.dirLight.direction = dir;
 		m_baseProjection.dirLight.pad = 0.0f;
 	}
@@ -245,40 +183,12 @@ void App::OnUpdate(const float& dt)
 	m_baseProjection.pad = 0.0f;
 
 	// 머티리얼을 기본 캐시에 반영해 둔다
-	m_baseProjection.material.ambient = XMFLOAT4(m_MaterialAmbientRGB.x, m_MaterialAmbientRGB.y, m_MaterialAmbientRGB.z, 1.0f);
-	m_baseProjection.material.diffuse = XMFLOAT4(m_MaterialDiffuseRGB.x, m_MaterialDiffuseRGB.y, m_MaterialDiffuseRGB.z, 1.0f);
+	m_baseProjection.material.ambient = m_MaterialAmbientRGB;
+	m_baseProjection.material.diffuse = m_MaterialDiffuseRGB;
 	m_baseProjection.material.specular = XMFLOAT4(m_MaterialSpecularRGB.x, m_MaterialSpecularRGB.y, m_MaterialSpecularRGB.z, m_MaterialShininess);
 	m_baseProjection.material.reflect = XMFLOAT4(0,0,0,0);
 
-	// FPS 1초 업데이트
-	m_FpsTimer += dt;
-	if (m_FpsTimer >= 1.0f)
-	{
-		m_LastFps = 1.0f / dt; // 간단히 최근 프레임의 역수 사용
-		m_FpsTimer = 0.0f;
-	}
-
-	// 시스템 메모리 가용량 갱신
-	{
-		MEMORYSTATUSEX ms{ sizeof(MEMORYSTATUSEX) };
-		if (GlobalMemoryStatusEx(&ms))
-		{
-			m_RamTotal = ms.ullTotalPhys;
-			m_RamAvail = ms.ullAvailPhys;
-		}
-	}
-
-	// VRAM 사용량 갱신 (가능한 경우)
-	if (m_Adapter3)
-	{
-		DXGI_QUERY_VIDEO_MEMORY_INFO memInfo{};
-		if (SUCCEEDED(m_Adapter3->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &memInfo)))
-		{
-			// Budget은 사용 가능 한도, CurrentUsage는 현재 사용량
-			m_VideoMemoryTotal = memInfo.Budget;
-			// 사용량은 memInfo.CurrentUsage를 직접 사용, 표시 시 변환
-		}
-	}
+	m_SystemInfo.Tick(dt);
 }
 
 inline ImVec2 operator+(const ImVec2& lhs, const ImVec2& rhs)
@@ -310,13 +220,9 @@ void App::OnRender()
 	m_pDeviceContext->IASetInputLayout(m_pInputLayout);
 	m_pDeviceContext->IASetIndexBuffer(m_pIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
 
-	// 4. Vertex Shader 설정
 	m_pDeviceContext->VSSetShader(m_pVertexShader, nullptr, 0);
-	// 5. Pixel Shader 설정
 	m_pDeviceContext->PSSetShader(m_pPixelShader, nullptr, 0);
 
-	// 6. Constant Buffer 설정 (단일 GlobalCB, b0)
-	// 프레임별 상수값 준비
 	m_ConstantBuffer.world = m_baseProjection.world;
 	m_ConstantBuffer.view  = m_baseProjection.view;
 	m_ConstantBuffer.proj  = m_baseProjection.proj;
@@ -332,17 +238,17 @@ void App::OnRender()
 		XMVECTOR v = XMVector3Normalize(XMLoadFloat3(&dir));
 		XMStoreFloat3(&dir, v);
 		// DirectionalLight 필드 직접 대입
-		m_ConstantBuffer.dirLight.ambient = DirectX::XMFLOAT4(0,0,0,1);
-		m_ConstantBuffer.dirLight.diffuse = DirectX::XMFLOAT4(m_LightColorRGB.x, m_LightColorRGB.y, m_LightColorRGB.z, 1.0f);
-		m_ConstantBuffer.dirLight.specular = DirectX::XMFLOAT4(m_LightColorRGB.x, m_LightColorRGB.y, m_LightColorRGB.z, 1.0f);
+		m_ConstantBuffer.dirLight.ambient = m_LightAmbient;
+		m_ConstantBuffer.dirLight.diffuse = m_LightDiffuse;
+		m_ConstantBuffer.dirLight.specular = m_LightSpecular;
 		m_ConstantBuffer.dirLight.direction = dir;
 		m_ConstantBuffer.dirLight.pad = 0.0f;
 	}
 	m_ConstantBuffer.eyePos = m_cameraPos;
 	m_ConstantBuffer.pad = 0.0f;
 	// 머티리얼 채우기
-	m_ConstantBuffer.material.ambient = XMFLOAT4(m_MaterialAmbientRGB.x, m_MaterialAmbientRGB.y, m_MaterialAmbientRGB.z, 1.0f);
-	m_ConstantBuffer.material.diffuse = XMFLOAT4(m_MaterialDiffuseRGB.x, m_MaterialDiffuseRGB.y, m_MaterialDiffuseRGB.z, 1.0f);
+	m_ConstantBuffer.material.ambient = m_MaterialAmbientRGB;
+	m_ConstantBuffer.material.diffuse = m_MaterialDiffuseRGB;
 	m_ConstantBuffer.material.specular = XMFLOAT4(m_MaterialSpecularRGB.x, m_MaterialSpecularRGB.y, m_MaterialSpecularRGB.z, m_MaterialShininess);
 	m_ConstantBuffer.material.reflect = XMFLOAT4(0,0,0,0);
 
@@ -353,9 +259,20 @@ void App::OnRender()
 
 	m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_pConstantBuffer);
 	m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_pConstantBuffer);
+	m_pDeviceContext->PSSetSamplers(0, 1, &m_pSamplerState);
 
-	// 7. 그리기
-	m_pDeviceContext->DrawIndexed(m_nIndices, 0, 0);
+	// PNG 알파 반영: 블렌딩 ON
+	FLOAT blendFactor[4] = { 0,0,0,0 };
+	UINT sampleMask = 0xFFFFFFFF;
+	m_pDeviceContext->OMSetBlendState(m_pAlphaBlendState, blendFactor, sampleMask);
+	for (int face = 0; face < 6; ++face)
+	{
+		ID3D11ShaderResourceView* srv = m_pCubeTextureSRVs[face];
+		m_pDeviceContext->PSSetShaderResources(0, 1, &srv);
+		m_pDeviceContext->DrawIndexed(6, face * 6, 0);
+	}
+	// 필요 시: 블렌딩 OFF로 복구
+	m_pDeviceContext->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
 
 	// 라이트 위치 마커 큐브 그리기 (작은 스케일, 흰색)
 	{
@@ -537,14 +454,16 @@ void App::OnRender()
 		ImGui::DragFloatRange2("Near/Far", &m_CameraNear, &m_CameraFar, 0.1f, 0.01f, 5000.0f, "Near: %.2f", "Far: %.2f");
 		ImGui::Separator();
 		ImGui::Text("Light");
-		ImGui::ColorEdit3("Light Color", &m_LightColorRGB.x);
+		ImGui::ColorEdit3("Light Dir Color (deprecated)", &m_LightColorRGB.x);
 		ImGui::DragFloat3("Light Dir", &m_LightDirection.x, 0.05f);
-		ImGui::DragFloat3("Light Pos", &m_LightPosition.x, 0.1f);
+		ImGui::ColorEdit4("Ambient", &m_LightAmbient.x);
+		ImGui::ColorEdit4("Diffuse", &m_LightDiffuse.x);
+		ImGui::ColorEdit4("Specular", &m_LightSpecular.x);
 		ImGui::Separator();
 		ImGui::Text("Material");
-		ImGui::ColorEdit3("Ambient (ka)", &m_MaterialAmbientRGB.x);
-		ImGui::ColorEdit3("Diffuse (kd)", &m_MaterialDiffuseRGB.x);
-		ImGui::ColorEdit3("Specular (ks)", &m_MaterialSpecularRGB.x);
+		ImGui::ColorEdit4("Ambient (ka)", &m_MaterialAmbientRGB.x);
+		ImGui::ColorEdit4("Diffuse (kd)", &m_MaterialDiffuseRGB.x);
+		ImGui::ColorEdit4("Specular (ks)", &m_MaterialSpecularRGB.x);
 		ImGui::SliderFloat("Shininess (alpha)", &m_MaterialShininess, 1.0f, 256.0f);
 	}
 	ImGui::End();
@@ -589,39 +508,7 @@ void App::OnRender()
 	}
 
 
-	// 우상단: 시스템 정보(FPS/GPU/CPU)
-	{
-		ImGuiIO& io = ImGui::GetIO();
-		ImVec2 size(420.0f, 180.0f);
-		ImVec2 pos(io.DisplaySize.x - size.x - 10.0f, 10.0f);
-		ImGui::SetNextWindowPos(pos, ImGuiCond_Always);
-		ImGui::SetNextWindowSize(size, ImGuiCond_Always);
-		ImGuiWindowFlags flags = ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse;
-		if (ImGui::Begin("System Info", nullptr, flags))
-		{
-			ImGui::Text("FPS : %.1f", m_LastFps);
-			ImGui::Separator();
-			ImGui::Text("GPU : %ls", m_GPUName.c_str());
-			ImGui::Text("CPU : %ls (%u cores)", m_CPUName.c_str(), m_CPUCores);
-			ImGui::Separator();
-			// RAM
-			double ramTotalGB = (double)m_RamTotal / (1024.0 * 1024.0 * 1024.0);
-			double ramUsedGB = (double)(m_RamTotal - m_RamAvail) / (1024.0 * 1024.0 * 1024.0);
-			ImGui::Text("RAM : %.2f GB / %.2f GB", ramUsedGB, ramTotalGB);
-			// VRAM (Budget/Usage가 제공되는 경우)
-			if (m_Adapter3)
-			{
-				DXGI_QUERY_VIDEO_MEMORY_INFO memInfo{};
-				if (SUCCEEDED(m_Adapter3->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &memInfo)))
-				{
-					double vramBudgetGB = (double)memInfo.Budget / (1024.0 * 1024.0 * 1024.0);
-					double vramUsageGB = (double)memInfo.CurrentUsage / (1024.0 * 1024.0 * 1024.0);
-					ImGui::Text("VRAM : %.2f GB / %.2f GB", vramUsageGB, vramBudgetGB);
-				}
-			}
-		}
-		ImGui::End();
-	}
+	m_SystemInfo.RenderUI();
 
 	ImGui::Render();
 	ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
@@ -737,6 +624,23 @@ bool App::InitD3D()
 	rasterizerDesc.FrontCounterClockwise = true;
 	HR_T(m_pDevice->CreateRasterizerState(&rasterizerDesc, &RSCullClockWise));
 
+	// 알파 블렌딩 상태 생성 (SrcAlpha/InvSrcAlpha)
+	{
+		D3D11_BLEND_DESC bd{};
+		bd.AlphaToCoverageEnable = FALSE;
+		bd.IndependentBlendEnable = FALSE;
+		D3D11_RENDER_TARGET_BLEND_DESC& rt = bd.RenderTarget[0];
+		rt.BlendEnable = TRUE;
+		rt.SrcBlend = D3D11_BLEND_SRC_ALPHA;
+		rt.DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+		rt.BlendOp = D3D11_BLEND_OP_ADD;
+		rt.SrcBlendAlpha = D3D11_BLEND_ONE;
+		rt.DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
+		rt.BlendOpAlpha = D3D11_BLEND_OP_ADD;
+		rt.RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+		HR_T(m_pDevice->CreateBlendState(&bd, &m_pAlphaBlendState));
+	}
+ 
 	return true;
 }
 
@@ -745,6 +649,7 @@ void App::UninitD3D()
 	SAFE_RELEASE(m_pDepthStencilState);
 	SAFE_RELEASE(m_pDepthStencilView);
 	SAFE_RELEASE(m_pRenderTargetView);
+	SAFE_RELEASE(m_pAlphaBlendState);
 	SAFE_RELEASE(m_pDeviceContext);
 	SAFE_RELEASE(m_pSwapChain);
 	SAFE_RELEASE(m_pDevice);
@@ -766,35 +671,14 @@ bool App::InitScene()
 	// ***********************************************************************************************
 	// 큐브설정
 	// 24개 정점 (각 면 4개) + 텍스처 좌표
-	XMFLOAT4 hardColor = XMFLOAT4(0.0f, 1.0f, 1.0f, 1.0f);
 	m_VertextBufferStride = sizeof(VertexData);
 	m_VertextBufferOffset = 0;
 	// ***********************************************************************************************
 	// 작은 큐브 데이터 설정
 	// 정점 넣는 것과 인덱스 버퍼 값을 넣는것은 CreateBox 함수 안에 있습니다
 	StaticMeshData cubeData = StaticMesh::CreateBox(XMFLOAT4(1, 1, 1, 1));
-
-	D3D11_BUFFER_DESC vbDesc = {};
-	ZeroMemory(&vbDesc, sizeof(vbDesc));			// vbDesc에 0으로 전체 메모리 영역을 초기화 시킵니다
-	vbDesc.ByteWidth = sizeof(VertexData) * cubeData.vertices.size();				// 배열 전체의 바이트 크기를 바로 반환합니다
-	vbDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-	vbDesc.Usage = D3D11_USAGE_DEFAULT;
-
-	D3D11_SUBRESOURCE_DATA vbData = {};
-	ZeroMemory(&vbData, sizeof(vbData));
-	vbData.pSysMem = cubeData.vertices.data();						// 배열 데이터 할당.
-	HR_T(m_pDevice->CreateBuffer(&vbDesc, &vbData, &m_pVertexBuffer));
-
-	D3D11_BUFFER_DESC ibDesc = {};
-	ZeroMemory(&ibDesc, sizeof(ibDesc));
-	m_nIndices = cubeData.indices.size();	// 인덱스 개수 저장.
-	ibDesc.ByteWidth = sizeof(DWORD) * cubeData.indices.size();
-	ibDesc.BindFlags = D3D11_BIND_INDEX_BUFFER;
-	ibDesc.Usage = D3D11_USAGE_DEFAULT;
-
-	D3D11_SUBRESOURCE_DATA ibData = {};
-	ibData.pSysMem = cubeData.indices.data();
-	HR_T(m_pDevice->CreateBuffer(&ibDesc, &ibData, &m_pIndexBuffer));
+	StaticMesh::AssignMemory(m_pDevice, m_pVertexBuffer, cubeData);
+	StaticMesh::AssignIndexMemory(m_pDevice, m_pIndexBuffer, cubeData, m_nIndices);
 
 	// ***********************************************************************************************
 	// 상수 버퍼 설정
@@ -810,7 +694,6 @@ bool App::InitScene()
 
 		// ***********************************************************************************************
 	// 스카이 박스 큐브 설정
-	StaticMeshData skyBoxCubeData = StaticMesh::CreateBox(XMFLOAT4(1, 1, 1, 1));
     HR_T(CreateDDSTextureFromFile(m_pDevice, L"..\\Resource\\Hanako.dds", nullptr, &m_pSkyHanakoSRV));
     HR_T(CreateDDSTextureFromFile(m_pDevice, L"..\\Resource\\cubemap.dds", nullptr, &m_pSkyCubeMapSRV));
 	m_SkyBoxChoice = SkyBoxChoice::CubeMap;
@@ -866,7 +749,35 @@ void App::UninitScene()
 	SAFE_RELEASE(m_pSkyHanakoSRV);
 	SAFE_RELEASE(m_pSkyCubeMapSRV);
 
+	for (int i = 0; i < 6; ++i) SAFE_RELEASE(m_pCubeTextureSRVs[i]);
     for (int i = 0; i < 6; ++i) SAFE_RELEASE(m_pSkyFaceSRV[i]);
+}
+
+bool App::InitTexture()
+{
+	PrepareSkyFaceSRVs();
+
+	const wchar_t* facePaths[6] = {
+		//L"front.png", L"left.png", L"top.png", L"back.png", L"right.png", L"bottom.png"
+		L"../Resource/Hanako.png", L"../Resource/Hanako.png", L"../Resource/Hanako.png", L"../Resource/Hanako.png", L"../Resource/Hanako.png", L"../Resource/Hanako.png"
+	};
+	for (int i = 0; i < 6; ++i)
+	{
+		Microsoft::WRL::ComPtr<ID3D11Resource> res;
+		HR_T(CreateWICTextureFromFile(m_pDevice, facePaths[i], res.GetAddressOf(), &m_pCubeTextureSRVs[i]));
+	}
+	return true;
+}
+
+bool App::InitImGui()
+{
+	// ImGui 초기화
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
+	ImGui::StyleColorsDark();
+	ImGui_ImplWin32_Init(m_hWnd);
+	ImGui_ImplDX11_Init(m_pDevice, m_pDeviceContext);
+	return true;
 }
 
 bool App::InitBasicEffect()
@@ -877,6 +788,7 @@ bool App::InitBasicEffect()
 		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 0,  D3D11_INPUT_PER_VERTEX_DATA, 0 },
 		{ "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT,    0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 		{ "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,        0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 }
 	};
 
 	ID3D10Blob* vertexShaderBuffer = nullptr;

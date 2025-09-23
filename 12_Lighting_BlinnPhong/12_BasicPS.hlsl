@@ -17,24 +17,26 @@ float4 main(VertexOut pIn) : SV_Target
         return float4(1.0f, 0.0f, 0.0f, 1.0f);
     }
 
-    float3 lightVec = -g_DirLight.direction;
-    float3 eyeVec = normalize(g_EyePosW - pIn.posW);
-    float4 ambient, diffuse, specular;
-    ambient = diffuse = specular = float4(0.0f, 0.0f, 0.0f, 0.0f); // 초기화 
+    float4 textureColor = g_DiffuseMap.Sample(g_Sam, pIn.tex);
 
-    // ambient
-    ambient = g_Material.ambient * g_DirLight.ambient; // 환경광
+    float3 normal = normalize(pIn.normalW);
+    float3 light = normalize(-g_DirLight.direction);
+    float3 eye = normalize(g_EyePosW - pIn.posW);
+    float3 half = normalize(light + eye);
 
-    // diffuse
-    float3 H = normalize(lightVec + eyeVec); // 반사 벡터, 일단은 중간 벡터로 대체
-    float specularScalar = diffuse = pow(saturate(dot(pIn.normalW, H)), g_Material.specular.w); // 광택 계산
-    diffuse = specularScalar * g_DirLight.diffuse;
+    float theta = saturate(dot(normal, light));
+    float specularScalar = pow(max(dot(normal, half), 0.0f), g_Material.specular.w) * saturate(sign(theta));
 
-    // specular
-    specular = specularScalar * g_Material.specular * g_DirLight.specular;
-    
-    float4 litColor = pIn.color * (ambient + diffuse) + specular;
-    litColor.a = g_Material.diffuse.a * pIn.color.a;
-    
+    // ambient/diffuse/specular
+    float4 ambient  = g_Material.ambient * g_DirLight.ambient;
+    float4 diffuse  = theta * g_DirLight.diffuse;
+    float4 specular = specularScalar * g_Material.specular * g_DirLight.specular;
+
+    // kd = texture * material.diffuse
+    float4 kd = textureColor * g_Material.diffuse;
+
+    float4 litColor = kd * (ambient + diffuse) + specular;
+    litColor.a = kd.a * g_Material.diffuse.a;
+
     return litColor;
 }

@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "StaticMesh.h"
 #include <vector>
+#include "Helper.h"
+#include <d3d11.h>
 
 // 박스를 만드는 코드
 StaticMeshData StaticMesh::CreateBox(const XMFLOAT4& color, float width, float height, float depth)
@@ -28,40 +30,41 @@ StaticMeshData StaticMesh::CreateBox(const XMFLOAT4& color, float width, float h
 	*/
 
 	// 정점 24개 Front, Left, Top, Back, Right, Bottom (6면 * 4점씩)
-	staticMeshData.vertices.push_back({ XMFLOAT3(-w2,-h2,-d2), XMFLOAT3(0, 0,-1), color });
-	staticMeshData.vertices.push_back({ XMFLOAT3(-w2, h2,-d2), XMFLOAT3(0, 0,-1), color });
-	staticMeshData.vertices.push_back({ XMFLOAT3(w2, h2,-d2), XMFLOAT3(0, 0,-1), color });
-	staticMeshData.vertices.push_back({ XMFLOAT3(w2,-h2,-d2), XMFLOAT3(0, 0,-1), color });
+	// Front (N = (0,0,-1))
+	staticMeshData.vertices.push_back({ XMFLOAT3(-w2,-h2,-d2), XMFLOAT3(0, 0,-1), color, XMFLOAT2(0.0f, 1.0f) });
+	staticMeshData.vertices.push_back({ XMFLOAT3(-w2, h2,-d2), XMFLOAT3(0, 0,-1), color, XMFLOAT2(0.0f, 0.0f) });
+	staticMeshData.vertices.push_back({ XMFLOAT3(w2, h2,-d2),  XMFLOAT3(0, 0,-1), color, XMFLOAT2(1.0f, 0.0f) });
+	staticMeshData.vertices.push_back({ XMFLOAT3(w2,-h2,-d2),  XMFLOAT3(0, 0,-1), color, XMFLOAT2(1.0f, 1.0f) });
 
 	// Left (x = -w2), N = (-1,0,0)
-	staticMeshData.vertices.push_back({ XMFLOAT3(-w2,-h2, d2), XMFLOAT3(-1, 0, 0), color });
-	staticMeshData.vertices.push_back({ XMFLOAT3(-w2, h2, d2), XMFLOAT3(-1, 0, 0), color });
-	staticMeshData.vertices.push_back({ XMFLOAT3(-w2, h2,-d2), XMFLOAT3(-1, 0, 0), color });
-	staticMeshData.vertices.push_back({ XMFLOAT3(-w2,-h2,-d2), XMFLOAT3(-1, 0, 0), color });
+	staticMeshData.vertices.push_back({ XMFLOAT3(-w2,-h2, d2), XMFLOAT3(-1, 0, 0), color, XMFLOAT2(0.0f, 1.0f) });
+	staticMeshData.vertices.push_back({ XMFLOAT3(-w2, h2, d2), XMFLOAT3(-1, 0, 0), color, XMFLOAT2(0.0f, 0.0f) });
+	staticMeshData.vertices.push_back({ XMFLOAT3(-w2, h2,-d2), XMFLOAT3(-1, 0, 0), color, XMFLOAT2(1.0f, 0.0f) });
+	staticMeshData.vertices.push_back({ XMFLOAT3(-w2,-h2,-d2), XMFLOAT3(-1, 0, 0), color, XMFLOAT2(1.0f, 1.0f) });
 
 	// Top (y = +h2), N = (0,1,0)
-	staticMeshData.vertices.push_back({ XMFLOAT3(-w2, h2,-d2), XMFLOAT3(0, 1, 0), color });
-	staticMeshData.vertices.push_back({ XMFLOAT3(-w2, h2, d2), XMFLOAT3(0, 1, 0), color });
-	staticMeshData.vertices.push_back({ XMFLOAT3(w2, h2, d2), XMFLOAT3(0, 1, 0), color });
-	staticMeshData.vertices.push_back({ XMFLOAT3(w2, h2,-d2), XMFLOAT3(0, 1, 0), color });
+	staticMeshData.vertices.push_back({ XMFLOAT3(-w2, h2,-d2), XMFLOAT3(0, 1, 0), color, XMFLOAT2(0.0f, 1.0f) });
+	staticMeshData.vertices.push_back({ XMFLOAT3(-w2, h2, d2), XMFLOAT3(0, 1, 0), color, XMFLOAT2(0.0f, 0.0f) });
+	staticMeshData.vertices.push_back({ XMFLOAT3(w2, h2, d2),  XMFLOAT3(0, 1, 0), color, XMFLOAT2(1.0f, 0.0f) });
+	staticMeshData.vertices.push_back({ XMFLOAT3(w2, h2,-d2),  XMFLOAT3(0, 1, 0), color, XMFLOAT2(1.0f, 1.0f) });
 
 	// Back (z = +d2), N = (0,0,1)
-	staticMeshData.vertices.push_back({ XMFLOAT3(w2,-h2, d2), XMFLOAT3(0, 0, 1), color });
-	staticMeshData.vertices.push_back({ XMFLOAT3(w2, h2, d2), XMFLOAT3(0, 0, 1), color });
-	staticMeshData.vertices.push_back({ XMFLOAT3(-w2, h2, d2), XMFLOAT3(0, 0, 1), color });
-	staticMeshData.vertices.push_back({ XMFLOAT3(-w2,-h2, d2), XMFLOAT3(0, 0, 1), color });
+	staticMeshData.vertices.push_back({ XMFLOAT3(w2,-h2, d2),  XMFLOAT3(0, 0, 1), color, XMFLOAT2(0.0f, 1.0f) });
+	staticMeshData.vertices.push_back({ XMFLOAT3(w2, h2, d2),  XMFLOAT3(0, 0, 1), color, XMFLOAT2(0.0f, 0.0f) });
+	staticMeshData.vertices.push_back({ XMFLOAT3(-w2, h2, d2), XMFLOAT3(0, 0, 1), color, XMFLOAT2(1.0f, 0.0f) });
+	staticMeshData.vertices.push_back({ XMFLOAT3(-w2,-h2, d2), XMFLOAT3(0, 0, 1), color, XMFLOAT2(1.0f, 1.0f) });
 
 	// Right (x = +w2), N = (1,0,0)
-	staticMeshData.vertices.push_back({ XMFLOAT3(w2,-h2,-d2), XMFLOAT3(1, 0, 0), color });
-	staticMeshData.vertices.push_back({ XMFLOAT3(w2, h2,-d2), XMFLOAT3(1, 0, 0), color });
-	staticMeshData.vertices.push_back({ XMFLOAT3(w2, h2, d2), XMFLOAT3(1, 0, 0), color });
-	staticMeshData.vertices.push_back({ XMFLOAT3(w2,-h2, d2), XMFLOAT3(1, 0, 0), color });
+	staticMeshData.vertices.push_back({ XMFLOAT3(w2,-h2,-d2), XMFLOAT3(1, 0, 0), color, XMFLOAT2(0.0f, 1.0f) });
+	staticMeshData.vertices.push_back({ XMFLOAT3(w2, h2,-d2),  XMFLOAT3(1, 0, 0), color, XMFLOAT2(0.0f, 0.0f) });
+	staticMeshData.vertices.push_back({ XMFLOAT3(w2, h2, d2),  XMFLOAT3(1, 0, 0), color, XMFLOAT2(1.0f, 0.0f) });
+	staticMeshData.vertices.push_back({ XMFLOAT3(w2,-h2, d2),  XMFLOAT3(1, 0, 0), color, XMFLOAT2(1.0f, 1.0f) });
 
 	// Bottom (y = -h2), N = (0,-1,0)
-	staticMeshData.vertices.push_back({ XMFLOAT3(-w2,-h2, d2), XMFLOAT3(0,-1, 0), color });
-	staticMeshData.vertices.push_back({ XMFLOAT3(-w2,-h2,-d2), XMFLOAT3(0,-1, 0), color });
-	staticMeshData.vertices.push_back({ XMFLOAT3(w2,-h2,-d2), XMFLOAT3(0,-1, 0), color });
-	staticMeshData.vertices.push_back({ XMFLOAT3(w2,-h2, d2), XMFLOAT3(0,-1, 0), color });
+	staticMeshData.vertices.push_back({ XMFLOAT3(-w2,-h2, d2), XMFLOAT3(0,-1, 0), color, XMFLOAT2(0.0f, 1.0f) });
+	staticMeshData.vertices.push_back({ XMFLOAT3(-w2,-h2,-d2), XMFLOAT3(0,-1, 0), color, XMFLOAT2(0.0f, 0.0f) });
+	staticMeshData.vertices.push_back({ XMFLOAT3(w2,-h2,-d2),  XMFLOAT3(0,-1, 0), color, XMFLOAT2(1.0f, 0.0f) });
+	staticMeshData.vertices.push_back({ XMFLOAT3(w2,-h2, d2),  XMFLOAT3(0,-1, 0), color, XMFLOAT2(1.0f, 1.0f) });
 
 	/*
 	* @brief  인덱스 버퍼(Index Buffer) 생성
@@ -84,4 +87,32 @@ StaticMeshData StaticMesh::CreateBox(const XMFLOAT4& color, float width, float h
 	};
 
 	return staticMeshData;
+}
+
+void StaticMesh::AssignMemory(ID3D11Device*& m_pDevice, ID3D11Buffer*& m_pVertexBuffer, StaticMeshData& meshData)
+{
+	D3D11_BUFFER_DESC vbDesc = {};
+	ZeroMemory(&vbDesc, sizeof(vbDesc));											// vbDesc에 0으로 전체 메모리 영역을 초기화 시킵니다
+	vbDesc.ByteWidth = sizeof(VertexData) * meshData.vertices.size();				// 배열 전체의 바이트 크기를 바로 반환합니다
+	vbDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+	vbDesc.Usage = D3D11_USAGE_DEFAULT;
+
+	D3D11_SUBRESOURCE_DATA vbData = {};
+	ZeroMemory(&vbData, sizeof(vbData));
+	vbData.pSysMem = meshData.vertices.data();										// 배열 데이터 할당.
+	HR_T(m_pDevice->CreateBuffer(&vbDesc, &vbData, &m_pVertexBuffer));
+}
+
+void StaticMesh::AssignIndexMemory(ID3D11Device*& m_pDevice, ID3D11Buffer*& m_pIndexBuffer, StaticMeshData& meshData, int& m_nIndices)
+{
+	D3D11_BUFFER_DESC ibDesc = {};
+	ZeroMemory(&ibDesc, sizeof(ibDesc));
+	m_nIndices = meshData.indices.size();	// 인덱스 개수 저장.
+	ibDesc.ByteWidth = sizeof(DWORD) * meshData.indices.size();
+	ibDesc.BindFlags = D3D11_BIND_INDEX_BUFFER;
+	ibDesc.Usage = D3D11_USAGE_DEFAULT;
+
+	D3D11_SUBRESOURCE_DATA ibData = {};
+	ibData.pSysMem = meshData.indices.data();
+	HR_T(m_pDevice->CreateBuffer(&ibDesc, &ibData, &m_pIndexBuffer));
 }
