@@ -19,6 +19,11 @@ float4 main(VertexOut pIn) : SV_Target
     }
 
     float4 textureColor = g_DiffuseMap.Sample(g_Sam, pIn.tex);
+    // 알파 값을 반영합니다.
+    // 텍스처 알파가 낮으면 픽셀을 제거해서 투명하게 만듭니다
+    // 깊이를 미기록해서 뒤 배경/스카이박스가 보이도록 합니다
+    float alphaTex = textureColor.a * g_Material.diffuse.a;
+    clip(alphaTex - 0.1f);
 
     float3 normal = normalize(pIn.normalW);
     float3 light = normalize(-g_DirLight.direction);
@@ -49,14 +54,19 @@ float4 main(VertexOut pIn) : SV_Target
 
     float4 litColor = kd * (ambient + diffuse) + specular;
 
-    // 환경 반사: 큐브맵 샘플 후 머티리얼 reflect와 곱해 합성
     /*
         @details :
-            PBR 경로에선 반사 기여는 Fresnel(F_schlick)과 에너지 보존 하에 가중
+            환경 반사(러프니스): reflect.a를 러프니스로 보고 mip 바이어스로 변환해서 단일 샘플로 만듭니다
+            - prefiltered env + LOD (여기선 SampleBias로 간단화)로 접근합니다
     */
-    float4 reflectionColor = g_TexCube.Sample(g_Sam, reflect(-eye, normal));
+    float roughness = saturate(g_Material.reflect.a);
+    float3 rdir = reflect(-eye, normal);
+    const float kMaxMip = 8.0f;                 // 필요 시 큐브맵 mip 수에 맞춰 조정해야합니다
+    float mipBias = roughness * roughness * kMaxMip; // perceptual mapping
+    float4 reflectionColor = g_TexCube.SampleBias(g_Sam, rdir, mipBias);
     litColor += g_Material.reflect * reflectionColor;
-    litColor.a = kd.a * g_Material.diffuse.a;
+    // 마지막 색상에서의 알파 값은 텍스처 알파 값으로 덮어 씁니다
+    litColor.a = alphaTex;
 
     return litColor;
 }
