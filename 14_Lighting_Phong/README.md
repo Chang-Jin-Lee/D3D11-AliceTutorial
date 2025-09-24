@@ -1,4 +1,13 @@
 ## 14. LightingPhong (14_Lighting_Phong)
+
+
+- 이미지를 클릭하면 이동합니다
+
+| [유튜브](https://www.youtube.com/watch?v=k1ex_n8N5AU) | [블로그](https://velog.io/@whoamicj/DX11-14LightingPhong-Phong-%EC%85%B0%EC%9D%B4%EB%94%A9-%EC%95%8C%ED%8C%8C-%ED%88%AC%EB%AA%85%EC%B2%98%EB%A6%AC-%EB%9F%AC%ED%94%84%EB%8B%88%EC%8A%A4) |
+|---|---|
+| <div align="center">[<img src="https://github.com/user-attachments/assets/b704e2dc-a131-4154-817c-c168174202cd" width="450"/>](https://www.youtube.com/watch?v=k1ex_n8N5AU)<br/></div> | <div align="center">[<img src="https://github.com/user-attachments/assets/ed99ceaf-7235-4a8e-a968-a2c55c6254ac" width="230"/>](https://velog.io/@whoamicj/DX11-14LightingPhong-Phong-%EC%85%B0%EC%9D%B4%EB%94%A9-%EC%95%8C%ED%8C%8C-%ED%88%AC%EB%AA%85%EC%B2%98%EB%A6%AC-%EB%9F%AC%ED%94%84%EB%8B%88%EC%8A%A4)<br/></div> |
+
+
 - 내용 : LightingPhong을 사용한 쉐이더 예제입니다.
 - 주요 구현
   - LightingPhong 쉐이더를 사용합니다
@@ -19,7 +28,9 @@
   litColor.a = alphaTex;
   ```
 
-- 참고 사이트 
+- 참고 사이트
+
+  
 https://dicklyon.com/tech/Graphics/Phong_TR-Lyon.pdf
 
 https://google.github.io/filament/Filament.md.html
