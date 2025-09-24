@@ -9,6 +9,16 @@
     - specGate = saturate(sign(theta)) * saturate(sign(NdotV));
   - 이 specGate를 specularScalar에 곱합니다.
 
+
+  - 투명은 다음처럼 텍스쳐 컬러의 알파값에 메테리얼의 난반사 알파 값을 곱해서 만들어 둡니다.
+  - 마지막 컬러 값의 알파에 덮어쓰기 하면 됩니다
+  ```
+  float alphaTex = textureColor.a * g_Material.diffuse.a;
+  clip(alphaTex - 0.1f);
+  ......
+  litColor.a = alphaTex;
+  ```
+
 - 참고 사이트 
 https://dicklyon.com/tech/Graphics/Phong_TR-Lyon.pdf
 
@@ -18,4 +28,9 @@ https://graphics.pixar.com/library/ReflectanceModel/paper.pdf
 
 https://discussions.unity.com/t/bug-in-all-specular-shaders-causing-highlights-from-light-sources-behind-objects/432906/4
 
-<img width="2052" height="1600" alt="image" src="https://github.com/user-attachments/assets/6ab653c5-7e86-436f-835e-bbd6f536e59c" />
+
+
+<img width="2052" height="1600" alt="스크린샷 2025-09-24 221313" src="https://github.com/user-attachments/assets/5b5b3dd6-9d38-4f30-beaa-d2ef76dea31b" />
+
+
+<img width="2052" height="1600" alt="스크린샷 2025-09-24 221320" src="https://github.com/user-attachments/assets/9468b4b8-ee7d-4920-bdc0-91ffbbbc6b72" />
