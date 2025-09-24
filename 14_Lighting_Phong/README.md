@@ -28,6 +28,7 @@ https://graphics.pixar.com/library/ReflectanceModel/paper.pdf
 
 https://discussions.unity.com/t/bug-in-all-specular-shaders-causing-highlights-from-light-sources-behind-objects/432906/4
 
+<img width="2052" height="1600" alt="image" src="https://github.com/user-attachments/assets/51aff0cf-a20d-42ae-86e1-d49b701f5b88" />
 
 
 <img width="2052" height="1600" alt="스크린샷 2025-09-24 221313" src="https://github.com/user-attachments/assets/5b5b3dd6-9d38-4f30-beaa-d2ef76dea31b" />
