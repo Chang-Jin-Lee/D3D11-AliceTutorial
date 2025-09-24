@@ -395,7 +395,7 @@ void App::OnRender()
         ImGui::ColorEdit4("Ambient (ka)", &m_Material.ambient.x);
         ImGui::ColorEdit4("Diffuse (kd)", &m_Material.diffuse.x);
         ImGui::ColorEdit4("Specular (ks)", &m_Material.specular.x);
-        ImGui::SliderFloat("Shininess (alpha)", &m_Material.specular.w, 1.0f, 256.0f);
+		ImGui::DragFloat("Shininess (alpha)", &m_Material.specular.w, 0.05f, 1.0f, 256.0f);
         ImGui::ColorEdit4("Reflect (kr)", &m_Material.reflect.x);
 	}
 	ImGui::End();
