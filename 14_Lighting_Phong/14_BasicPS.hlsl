@@ -64,7 +64,12 @@ float4 main(VertexOut pIn) : SV_Target
     const float kMaxMip = 8.0f;                 // 필요 시 큐브맵 mip 수에 맞춰 조정해야합니다
     float mipBias = roughness * roughness * kMaxMip; // perceptual mapping
     float4 reflectionColor = g_TexCube.SampleBias(g_Sam, rdir, mipBias);
-    litColor += g_Material.reflect * reflectionColor;
+    /*
+        @details :
+            반사 게이팅: 조명 없는 면(N·L==0)에서는 반사도 0 → 거울처럼 뒤에서 보이는 현상 억제
+    */
+    float reflectGate = theta;                  // 필요시 pow(theta,2) 등으로 부드러운 롤오프
+    litColor += (g_Material.reflect * reflectGate) * reflectionColor;
     // 마지막 색상에서의 알파 값은 텍스처 알파 값으로 덮어 씁니다
     litColor.a = alphaTex;
 
