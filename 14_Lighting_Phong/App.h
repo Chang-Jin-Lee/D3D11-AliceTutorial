@@ -139,6 +139,11 @@ public:
 	DirectX::XMFLOAT3 m_cubeRotation = { 0.0f, 0.0f, 0.0f };	// 큐브 회전(Yaw/Pitch/Roll, deg)
 	bool m_RotateCube = false;								// ImGui 토글: 큐브 자동 회전 on/off
 
+	// Mirror Cube transform (참고: 기본 큐브와 동일한 구성)
+	DirectX::XMFLOAT3 m_mirrorCubePos = { 4.5f, 0.0f, 0.0f };   // 거울 큐브 위치 (x+8 기본)
+	DirectX::XMFLOAT3 m_mirrorCubeRotation = { 0.0f, 0.0f, 0.0f }; // 거울 큐브 회전(Yaw/Pitch/Roll, deg)
+	float m_MirrorCubeScale = 2.0f;                                 // 거울 큐브 스케일
+
 	// DirectionalLight
 	DirectionalLight m_DirLight = {
 		/*ambient*/ { 0.03f, 0.03f, 0.03f, 0.1f },
@@ -153,6 +158,13 @@ public:
 		/*diffuse*/ { 1.0f, 1.0f, 1.0f, 1.0f },
 		/*specular*/{ 1.0f, 1.0f, 1.0f, 32.0f }, // w = shininess
 		/*reflect*/ { 0.0f, 0.0f, 0.0f, 0.0f }
+	};
+	// Mirror Cube Material (메탈릭 거울 느낌)
+	Material m_mirrorCubeMaterial = {
+		/*ambient*/ { 0.0f, 0.0f, 0.0f, 1.0f },
+		/*diffuse*/ { 0.0f, 0.0f, 0.0f, 1.0f },
+		/*specular*/{ 0.0f, 0.0f, 0.0f, 32.0f },
+		/*reflect*/ { 1.0f, 1.0f, 1.0f, 0.02f }   // a=roughness (작을수록 샤프)
 	};
 
 	DirectX::XMFLOAT3 m_LightPosition = { 4.0f, 4.0f, 0.0f };   // 라이트 위치(마커용)

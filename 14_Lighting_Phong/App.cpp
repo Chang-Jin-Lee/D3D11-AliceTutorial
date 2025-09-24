@@ -263,6 +263,47 @@ void App::OnRender()
 	// 필요 시: 블렌딩 OFF로 복구
 	m_pDeviceContext->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
 
+	// Mirror Cube: x + 8 위치에 메탈릭 거울처럼 반사만 보이는 큐브 렌더
+	{
+		ConstantBuffer mirrorCB = m_ConstantBuffer;
+		// 월드: 헤더 공개된 mirrorCube 트랜스폼 사용(스케일*회전*이동)
+		XMMATRIX rotYaw   = XMMatrixRotationY(XMConvertToRadians(m_mirrorCubeRotation.y));
+		XMMATRIX rotPitch = XMMatrixRotationX(XMConvertToRadians(m_mirrorCubeRotation.x));
+		XMMATRIX rotRoll  = XMMatrixRotationZ(XMConvertToRadians(m_mirrorCubeRotation.z));
+		XMMATRIX Sm = XMMatrixScaling(m_MirrorCubeScale, m_MirrorCubeScale, m_MirrorCubeScale);
+		XMMATRIX Tm = XMMatrixTranslation(m_mirrorCubePos.x, m_mirrorCubePos.y, m_mirrorCubePos.z);
+		Tm = Sm * rotPitch * rotYaw * rotRoll * Tm;
+		mirrorCB.world = XMMatrixTranspose(Tm);
+		mirrorCB.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(Tm)));
+		// 재질: 헤더에 공개한 m_mirrorCubeMaterial 사용
+		mirrorCB.material = m_mirrorCubeMaterial;
+		// pad=4.0f : PS에서 반사 게이팅 override
+		mirrorCB.pad = 4.0f;
+
+		D3D11_MAPPED_SUBRESOURCE mapped;
+		HR_T(m_pDeviceContext->Map(m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped));
+		memcpy_s(mapped.pData, sizeof(ConstantBuffer), &mirrorCB, sizeof(ConstantBuffer));
+		m_pDeviceContext->Unmap(m_pConstantBuffer, 0);
+		m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_pConstantBuffer);
+		m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_pConstantBuffer);
+
+		// 블렌딩 ON으로 반사에도 부드러운 에지 허용
+		FLOAT blendFactor2[4] = {0,0,0,0};
+		m_pDeviceContext->OMSetBlendState(m_pAlphaBlendState, blendFactor2, 0xFFFFFFFF);
+
+		// t0에 임의의 불투명 텍스처를 바인딩(컷아웃 통과용). 여기서는 face0 재사용
+		ID3D11ShaderResourceView* srvFace0 = m_pCubeTextureSRVs[0];
+		m_pDeviceContext->PSSetShaderResources(0, 1, &srvFace0);
+		// 드로우: 동일 인덱스 범위를 6면 반복
+		for (int face = 0; face < 6; ++face)
+		{
+			m_pDeviceContext->DrawIndexed(6, face * 6, 0);
+		}
+		m_pDeviceContext->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
+		// pad 복원
+		m_ConstantBuffer.pad = 0.0f;
+	}
+
 	// 라이트 위치 마커 큐브 그리기 (작은 스케일, 흰색)
 	{
 		ConstantBuffer marker = m_ConstantBuffer;
