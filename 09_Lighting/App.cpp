@@ -84,7 +84,7 @@ bool App::OnInitialize()
 	ImGui_ImplWin32_Init(m_hWnd);
 	ImGui_ImplDX11_Init(m_pDevice, m_pDeviceContext);
 
-	LoadTextureSRVAndSize(m_pDevice, L"..\\Resource\\Hanako.png", &m_TexHanakoSRV, &m_TexHanakoSize);
+	LoadTextureSRVAndSize(m_pDevice, L"..\\Resource\\Image\\Hanako.png", &m_TexHanakoSRV, &m_TexHanakoSize);
 
 	// 시스템 정보 수집 (GPU)
 	{
