@@ -127,7 +127,7 @@ public:
 	ImVec2 m_SkyFaceSize = ImVec2(0, 0);
 
 	// Skybox current dds (path)
-	wchar_t m_CurrentSkyboxPath[260] = L"..\\Resource\\cubemap.dds";
+	wchar_t m_CurrentSkyboxPath[260] = L"..\\Resource\\Skybox\\cubemap.dds";
 
 	// ÅØ½ºÃÄ 
 	ID3D11ShaderResourceView* m_pCubeTextureSRVs[6] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };

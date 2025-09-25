@@ -7,6 +7,10 @@
 
 #pragma comment(lib, "Dbghelp.lib")
 
+// 검은 색 테마를 사용하기 위한 헤더
+#include <dwmapi.h>
+#pragma comment(lib, "dwmapi.lib")
+
 GameApp* GameApp::m_pInstance = nullptr;
 HWND GameApp::m_hWnd;
 
@@ -99,6 +103,9 @@ bool GameApp::Initialize()
 		return false;
 	}
 
+	// 다크 모드 설정
+	EnableDarkTitleBar(m_hWnd, true);
+
 	// 윈도우 보이기
 	ShowWindow(m_hWnd,SW_SHOW);
 	UpdateWindow(m_hWnd);
@@ -128,6 +135,15 @@ bool GameApp::Run(HINSTANCE hInstance)
 	m_wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
 	m_wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
 	m_wcex.lpszClassName = m_szWindowClass;
+
+	// 아이콘 설정
+	m_wcex.hIcon = (HICON)LoadImageW(
+		NULL,
+		L"..\\Resource\\Icon\\Alice.ico",
+		IMAGE_ICON,
+		128, 128,           // 아이콘 크기
+		LR_LOADFROMFILE
+	);
 
 	m_Timer.Reset();
 
@@ -234,4 +250,24 @@ LRESULT CALLBACK GameApp::WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 float GameApp::AspectRatio() const
 {
 	return static_cast<float>(m_ClientWidth) / m_ClientHeight;
+}
+
+void GameApp::EnableDarkTitleBar(HWND hWnd, bool enable)
+{
+	const DWORD DWMWA_USE_IMMERSIVE_DARK_MODE = 20; // Win10 2004+/Win11
+	const DWORD DWMWA_USE_IMMERSIVE_DARK_MODE_OLD = 19; // Win10 1809~1903
+	const DWORD DWMWA_CAPTION_COLOR = 35; // Win11
+	const DWORD DWMWA_TEXT_COLOR = 36; // Win11
+
+	BOOL on = enable ? TRUE : FALSE;
+
+	// 다크 타이틀바 적용
+	if (FAILED(DwmSetWindowAttribute(hWnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &on, sizeof(on))))
+		DwmSetWindowAttribute(hWnd, DWMWA_USE_IMMERSIVE_DARK_MODE_OLD, &on, sizeof(on));
+
+	// Win11이면 캡션/텍스트 색까지 강제(완전 검정/흰색)
+	COLORREF caption = RGB(0, 0, 0);
+	COLORREF text = RGB(255, 255, 255);
+	DwmSetWindowAttribute(hWnd, DWMWA_CAPTION_COLOR, &caption, sizeof(caption));
+	DwmSetWindowAttribute(hWnd, DWMWA_TEXT_COLOR, &text, sizeof(text));
 }

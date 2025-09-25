@@ -344,7 +344,7 @@ void App::OnRender()
 			if (ImGui::Combo("SkyBox Choice", &cur, items, IM_ARRAYSIZE(items)))
 			{
 				m_SkyBoxChoice = (cur == 0) ? SkyBoxChoice::Hanako : SkyBoxChoice::CubeMap;
-				const wchar_t* path = (m_SkyBoxChoice == SkyBoxChoice::Hanako) ? L"..\\Resource\\Hanako.dds" : L"..\\Resource\\cubemap.dds";
+				const wchar_t* path = (m_SkyBoxChoice == SkyBoxChoice::Hanako) ? L"..\\Resource\\Skybox\\Hanako.dds" : L"..\\Resource\\Skybox\\cubemap.dds";
 				ChangeSkyboxDDS(path);
 			}
 		}
@@ -620,8 +620,8 @@ bool App::InitScene()
 
 		// ***********************************************************************************************
 	// 스카이 박스 큐브 설정
-    HR_T(CreateDDSTextureFromFile(m_pDevice, L"..\\Resource\\Hanako.dds", nullptr, &m_pSkyHanakoSRV));
-    HR_T(CreateDDSTextureFromFile(m_pDevice, L"..\\Resource\\cubemap.dds", nullptr, &m_pSkyCubeMapSRV));
+    HR_T(CreateDDSTextureFromFile(m_pDevice, L"..\\Resource\\Skybox\\Hanako.dds", nullptr, &m_pSkyHanakoSRV));
+    HR_T(CreateDDSTextureFromFile(m_pDevice, L"..\\Resource\\Skybox\\cubemap.dds", nullptr, &m_pSkyCubeMapSRV));
 	m_SkyBoxChoice = SkyBoxChoice::CubeMap;
 	m_pTextureSRV = m_pSkyCubeMapSRV;
 	
@@ -700,7 +700,7 @@ bool App::InitTexture()
 
 	const wchar_t* facePaths[6] = {
 		//L"front.png", L"left.png", L"top.png", L"back.png", L"right.png", L"bottom.png"
-		L"../Resource/Hanako.png", L"../Resource/Hanako.png", L"../Resource/Hanako.png", L"../Resource/Hanako.png", L"../Resource/Hanako.png", L"../Resource/Hanako.png"
+		L"../Resource/Image/Hanako.png", L"../Resource/Image/Hanako.png", L"../Resource/Image/Hanako.png", L"../Resource/Image/Hanako.png", L"../Resource/Image/Hanako.png", L"../Resource/Image/Hanako.png"
 	};
 	for (int i = 0; i < 6; ++i)
 	{

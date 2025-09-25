@@ -835,8 +835,8 @@ bool App::InitScene()
 
 		// ***********************************************************************************************
 	// 스카이 박스 큐브 설정
-    HR_T(CreateDDSTextureFromFile(m_pDevice, L"..\\Resource\\Hanako.dds", nullptr, &m_pSkyHanakoSRV));
-    HR_T(CreateDDSTextureFromFile(m_pDevice, L"..\\Resource\\cubemap.dds", nullptr, &m_pSkyCubeMapSRV));
+    HR_T(CreateDDSTextureFromFile(m_pDevice, L"..\\Resource\\Skybox\\Hanako.dds", nullptr, &m_pSkyHanakoSRV));
+    HR_T(CreateDDSTextureFromFile(m_pDevice, L"..\\Resource\\Skybox\\cubemap.dds", nullptr, &m_pSkyCubeMapSRV));
 	m_SkyBoxChoice = SkyBoxChoice::CubeMap;
 	m_pTextureSRV = m_pSkyCubeMapSRV;
 	

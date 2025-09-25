@@ -570,7 +570,7 @@ bool App::InitScene()
 	// 텍스처 6장 로드 (png/jpg 허용)
 	const wchar_t* facePaths[6] = {
 		//L"front.png", L"left.png", L"top.png", L"back.png", L"right.png", L"bottom.png"
-		L"../Resource/Yuuka.png", L"../Resource/Hanako.png", L"../Resource/Hanako.png", L"../Resource/Hanako.png", L"../Resource/Hanako.png", L"../Resource/Hanako.png"
+		L"../Resource/Image/Yuuka.png", L"../Resource/Image/Hanako.png", L"../Resource/Image/Hanako.png", L"../Resource/Image/Hanako.png", L"../Resource/Image/Hanako.png", L"../Resource/Image/Hanako.png"
 	};
 	for (int i = 0; i < 6; ++i)
 	{

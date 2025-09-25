@@ -105,7 +105,7 @@ public:
 
 	// PMX 관리자
 	PmxManager m_Pmx;
-	std::wstring m_ModelPath = L"..\\Resource\\Nikke-Alice\\alice-Apose.pmx";
+	std::wstring m_ModelPath = L"..\\Resource\\pmx\\Nikke-Alice\\alice-Apose.pmx";
 
 	ID3D11Buffer* m_pConstantBuffer = nullptr; 						// 상수 버퍼 (단일)
 	std::vector<ConstantBuffer> m_CBuffers;						// 텍스쳐들 그리기 위한 상수 버퍼 캐시
@@ -138,7 +138,7 @@ public:
 	ImVec2 m_SkyFaceSize = ImVec2(0, 0);
 
 	// Skybox current dds (path)
-	wchar_t m_CurrentSkyboxPath[260] = L"..\\Resource\\cubemap.dds";
+	wchar_t m_CurrentSkyboxPath[260] = L"..\\Resource\\Skybox\\cubemap.dds";
 
 	// 텍스쳐 
 	ID3D11ShaderResourceView* m_pCubeTextureSRVs[6] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };

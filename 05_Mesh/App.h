@@ -116,7 +116,7 @@ public:
 	* 	- m_MaterialSRVs : 머티리얼별 디퓨즈 텍스처 SRV, 없으면 흰색으로 폴백
 	*/
 	// FBX 로딩 상태
-	std::wstring m_ModelPath = L"../Resource/haniwa/haniwa.fbx";
+	std::wstring m_ModelPath = L"../Resource/fbx/haniwa/haniwa.fbx";
 	std::vector<VertexPosTex> m_ModelVertices;
 	std::vector<uint32_t> m_ModelIndices;
 	struct Subset { uint32_t startIndex; uint32_t indexCount; uint32_t materialIndex; };

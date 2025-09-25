@@ -50,5 +50,8 @@ public:
 	virtual void OnRender() {};
 	virtual void OnUpdate(const float& dt) {};
 	virtual void OnUninitialize() {};
+
+private:
+	void EnableDarkTitleBar(HWND hWnd, bool enable = true);
 };
 
