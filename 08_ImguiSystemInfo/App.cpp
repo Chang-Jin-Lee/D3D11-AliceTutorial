@@ -101,8 +101,8 @@ bool App::OnInitialize()
 	ImGui_ImplDX11_Init(m_pDevice, m_pDeviceContext);
 
 	// 텍스쳐 로드(Hanako, Yuuka)
-	TryLoadTextureWithFallbacks(m_pDevice, L"..\\Resource\\Hanako.png", &m_TexHanakoSRV, &m_TexHanakoSize);
-	TryLoadTextureWithFallbacks(m_pDevice, L"..\\Resource\\Yuuka.png", &m_TexYuukaSRV, &m_TexYuukaSize);
+	TryLoadTextureWithFallbacks(m_pDevice, L"..\\Resource\\Image\\Hanako.png", &m_TexHanakoSRV, &m_TexHanakoSize);
+	TryLoadTextureWithFallbacks(m_pDevice, L"..\\Resource\\Image\\Yuuka.png", &m_TexYuukaSRV, &m_TexYuukaSize);
 
 	// 시스템 정보 수집 (GPU)
 	{
