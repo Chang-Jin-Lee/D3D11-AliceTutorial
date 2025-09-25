@@ -113,7 +113,7 @@ public:
 	* 	- m_ModelVertices/Indices : 병합된 메시 데이터(VB/IB 업로드용)
 	*/
 	// PMX 로딩 상태
-	std::wstring m_ModelPath = L"../Resource/Nikke-Alice/alice-Apose.pmx";
+	std::wstring m_ModelPath = L"../Resource/pmx/Nikke-Alice/alice-Apose.pmx";
 	std::vector<VertexPosTex> m_ModelVertices;
 	std::vector<uint32_t> m_ModelIndices;
  
