@@ -138,11 +138,13 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="Camera.h" />
+    <ClInclude Include="FbxManager.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="GameApp.h" />
     <ClInclude Include="Helper.h" />
     <ClInclude Include="InputSystem.h" />
     <ClInclude Include="LineRenderer.h" />
+    <ClInclude Include="ObjManager.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="PmxManager.h" />
     <ClInclude Include="Skybox.h" />
@@ -153,10 +155,12 @@
   <ItemGroup>
     <ClCompile Include="Camera.cpp" />
     <ClCompile Include="Common.cpp" />
+    <ClCompile Include="FbxManager.cpp" />
     <ClCompile Include="GameApp.cpp" />
     <ClCompile Include="Helper.cpp" />
     <ClCompile Include="InputSystem.cpp" />
     <ClCompile Include="LineRenderer.cpp" />
+    <ClCompile Include="ObjManager.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
