@@ -147,19 +147,19 @@ void App::OnUninitialize()
 void App::OnUpdate(const float& dt)
 {
 	// 로컬 변환
-	if(m_RotateCube)
+    if(m_RotateModel)
 	{
-		// 큐브 Yaw(도)를 초당 45도 회전
-		m_cubeRotation.y += 45.0f * dt;
+        // 모델 Yaw(도)를 초당 45도 회전
+        m_modelRotation.y += 45.0f * dt;
 		// -180~180 래핑
-		m_cubeRotation.y = std::fmod(m_cubeRotation.y + 180.0f, 360.0f) - 180.0f;
+        m_modelRotation.y = std::fmod(m_modelRotation.y + 180.0f, 360.0f) - 180.0f;
 	}
-	// 큐브 고유 회전값 사용 Yaw/Pitch/Roll, deg -> rad
-	XMMATRIX rotYaw   = XMMatrixRotationY(XMConvertToRadians(m_cubeRotation.y));
-	XMMATRIX rotPitch = XMMatrixRotationX(XMConvertToRadians(m_cubeRotation.x));
-	XMMATRIX rotRoll  = XMMatrixRotationZ(XMConvertToRadians(m_cubeRotation.z));
-	XMMATRIX S = XMMatrixScaling(m_cubeScale.x, m_cubeScale.y, m_cubeScale.z);
-	XMMATRIX local0 = S * rotPitch * rotYaw * rotRoll * XMMatrixTranslation(m_cubePos.x, m_cubePos.y, m_cubePos.z); // 루트
+    // 모델 고유 회전값 사용 Yaw/Pitch/Roll, deg -> rad
+    XMMATRIX rotYaw   = XMMatrixRotationY(XMConvertToRadians(m_modelRotation.y));
+    XMMATRIX rotPitch = XMMatrixRotationX(XMConvertToRadians(m_modelRotation.x));
+    XMMATRIX rotRoll  = XMMatrixRotationZ(XMConvertToRadians(m_modelRotation.z));
+    XMMATRIX S = XMMatrixScaling(m_modelScale.x, m_modelScale.y, m_modelScale.z);
+    XMMATRIX local0 = S * rotPitch * rotYaw * rotRoll * XMMatrixTranslation(m_modelPos.x, m_modelPos.y, m_modelPos.z); // 루트
 	XMMATRIX world0 = local0; // 루트
 
 	// 카메라 업데이트
@@ -510,12 +510,12 @@ void App::OnRender()
 				ImGui::ColorEdit4("Background Color", &m_ClearColor.x);
 			}
 		}
-		ImGui::Text("Mesh Transforms");
-		ImGui::Checkbox("Rotate Cube", &m_RotateCube);
-		ImGui::DragFloat3("Cube Scale", &m_cubeScale.x, 0.1f, 20.0f);
-		ImGui::DragFloat3("Cube Pos (x,y,z)", &m_cubePos.x, 0.1f);
-		// 큐브 회전(도) 편집
-		ImGui::DragFloat3("Cube Rotation (deg)", &m_cubeRotation.x, 1.0f, -360.0f, 360.0f, "%.1f");
+    ImGui::Text("Model Transforms");
+    ImGui::Checkbox("Rotate Model", &m_RotateModel);
+    ImGui::DragFloat3("Model Scale", &m_modelScale.x, 0.1f, 20.0f);
+    ImGui::DragFloat3("Model Pos (x,y,z)", &m_modelPos.x, 0.1f);
+    // 모델 회전(도) 편집
+    ImGui::DragFloat3("Model Rotation (deg)", &m_modelRotation.x, 1.0f, -360.0f, 360.0f, "%.1f");
 		ImGui::Separator();
 		ImGui::Text("Camera");
 		{
@@ -1212,9 +1212,9 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
     {
         m_RenderMode = RenderMode::Model;
         // 모델 로드 완료 후 트랜스폼 초기화: pos(0,0,0), scale(1,1,1), rot(0,0,0)
-        m_cubePos = { 0.0f, 0.0f, 0.0f };
-        m_cubeScale = { 1.0f, 1.0f, 1.0f };
-        m_cubeRotation = { 0.0f, 0.0f, 0.0f };
+        m_modelPos = { 0.0f, 0.0f, 0.0f };
+        m_modelScale = { 1.0f, 1.0f, 1.0f };
+        m_modelRotation = { 0.0f, 0.0f, 0.0f };
     }
     return ok;
 }
