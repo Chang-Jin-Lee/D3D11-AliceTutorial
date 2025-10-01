@@ -4,8 +4,7 @@
 #include <string>
 #include <vector>
 #include <wrl/client.h>
-#include "StaticMesh.h" // VertexData
-#include "Vertex.h"
+#include "../Common/StaticMesh.h"
 
 // PMX 서브셋 정보 (머티리얼 인덱스별 드로우 범위)
 struct PmxSubset
@@ -15,12 +14,12 @@ struct PmxSubset
 	uint32_t materialIndex = 0;
 };
 
-class PmxManager
+class PmxMangerWithoutTBN
 {
 public:
 	// 상태
-	PmxManager() = default;
-	~PmxManager() = default;
+	PmxMangerWithoutTBN() = default;
+	~PmxMangerWithoutTBN() = default;
 
 	// PMX 로드: 디바이스와 파일 경로를 받아 VB/IB/서브셋/텍스처 SRV를 준비
 	bool Load(ID3D11Device* device, const std::wstring& pmxPath);
@@ -31,7 +30,7 @@ public:
 	ID3D11Buffer* GetVertexBuffer() const { return m_pVB; }
 	ID3D11Buffer* GetIndexBuffer() const { return m_pIB; }
 	int GetIndexCount() const { return m_IndexCount; }
-	UINT GetVertexStride() const { return (UINT)m_VertexStride; }
+	UINT GetVertexStride() const { return (UINT)sizeof(VertexData); }
 	UINT GetVertexOffset() const { return 0; }
 
 	const std::vector<PmxSubset>& GetSubsets() const { return m_Subsets; }
@@ -47,10 +46,9 @@ private:
 	ID3D11Buffer* m_pVB = nullptr;
 	ID3D11Buffer* m_pIB = nullptr;
 	int m_IndexCount = 0;
-	int m_VertexStride = 0; // sizeof(PMX vertex)
 
 	// PMX 원본 데이터(필요 시 유지)
-	std::vector<VertexTBN> m_Vertices;
+	std::vector<VertexData> m_Vertices;
 	std::vector<uint32_t> m_Indices;
 	std::vector<PmxSubset> m_Subsets;
 

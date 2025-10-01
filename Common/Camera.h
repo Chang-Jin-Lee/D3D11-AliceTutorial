@@ -16,7 +16,7 @@ public:
 	XMFLOAT4X4 m_World; 						// Row-major world matrix storage
 	XMFLOAT3 m_InputVector; 					// Accumulated move input (normalized per frame)
 
-	float m_MoveSpeed = 20.0f;
+	float m_MoveSpeed = 55.0f;
 	float m_RotationSpeed = 0.004f; 			// radians per mouse delta unit
 
 	// Frustum

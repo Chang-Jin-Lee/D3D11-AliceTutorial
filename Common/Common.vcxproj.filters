@@ -51,6 +51,15 @@
     <ClInclude Include="PmxManager.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
+    <ClInclude Include="FbxManager.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="ObjManager.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Vertex.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Common.cpp">
@@ -87,6 +96,15 @@
       <Filter>소스 파일</Filter>
     </ClCompile>
     <ClCompile Include="PmxManager.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="FbxManager.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="ObjManager.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Vertex.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
   </ItemGroup>

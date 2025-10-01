@@ -13,17 +13,9 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
-  </ItemGroup>
-  <ItemGroup>
-    <FxCompile Include="15_BasicPS.hlsl" />
-    <FxCompile Include="15_BasicVS.hlsl" />
-    <FxCompile Include="15_SkyBoxPS.hlsl" />
-    <FxCompile Include="15_SkyBoxVS.hlsl" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="15_LightingHelper.hlsli" />
-    <None Include="15_Shared.fxh" />
-    <None Include="15_SkyBox.hlsli" />
+    <Filter Include="Shaders">
+      <UniqueIdentifier>{8b217ad9-3839-4741-b09a-99af5c4c5370}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="App.cpp">
@@ -32,16 +24,33 @@
     <ClCompile Include="WinMain.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
-    <ClCompile Include="PmxMangerWithoutTBN.cpp">
-      <Filter>소스 파일</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="App.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
-    <ClInclude Include="PmxMangerWithoutTBN.h">
-      <Filter>헤더 파일</Filter>
-    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <CopyFileToFolders Include="17_BasicPS.hlsl">
+      <Filter>Shaders</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="17_BasicVS.hlsl">
+      <Filter>Shaders</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="17_LightingHelper.hlsli">
+      <Filter>Shaders</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="17_Shared.fxh">
+      <Filter>Shaders</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="17_SkyBox.hlsli">
+      <Filter>Shaders</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="17_SkyBoxPS.hlsl">
+      <Filter>Shaders</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="17_SkyBoxVS.hlsl">
+      <Filter>Shaders</Filter>
+    </CopyFileToFolders>
   </ItemGroup>
 </Project>

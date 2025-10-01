@@ -1,6 +1,5 @@
-#include "pch.h"
-#include "PmxManager.h"
-#include "Helper.h"
+#include "PmxMangerWithoutTBN.h"
+#include "../Common/Helper.h"
 
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
@@ -11,22 +10,22 @@ using Microsoft::WRL::ComPtr;
 
 static std::wstring WStringFromUtf8(const std::string& s) { return std::wstring(s.begin(), s.end()); }
 
-void PmxManager::Release()
+void PmxMangerWithoutTBN::Release()
 {
-    for (auto& srv : m_MaterialSRVs) { if (srv) { srv->Release(); srv = nullptr; } }
+	for (auto& srv : m_MaterialSRVs) SAFE_RELEASE(srv);
 	m_MaterialSRVs.clear();
-    if (m_pWhiteSRV) { m_pWhiteSRV->Release(); m_pWhiteSRV = nullptr; }
-    for (auto& kv : m_TexCache) { if (kv.second) { kv.second->Release(); kv.second = nullptr; } }
+	SAFE_RELEASE(m_pWhiteSRV);
+	for (auto& kv : m_TexCache) SAFE_RELEASE(kv.second);
 	m_TexCache.clear();
-    if (m_pVB) { m_pVB->Release(); m_pVB = nullptr; }
-    if (m_pIB) { m_pIB->Release(); m_pIB = nullptr; }
+	SAFE_RELEASE(m_pVB);
+	SAFE_RELEASE(m_pIB);
 	m_Vertices.clear();
 	m_Indices.clear();
 	m_Subsets.clear();
 	m_IndexCount = 0;
 }
 
-bool PmxManager::Load(ID3D11Device* device, const std::wstring& pmxPath)
+bool PmxMangerWithoutTBN::Load(ID3D11Device* device, const std::wstring& pmxPath)
 {
 	Release();
 	Assimp::Importer importer;
@@ -49,15 +48,15 @@ bool PmxManager::Load(ID3D11Device* device, const std::wstring& pmxPath)
 	return true;
 }
 
-bool PmxManager::LoadMaterials(ID3D11Device* device, const aiScene* scene, const std::wstring& baseDir)
+bool PmxMangerWithoutTBN::LoadMaterials(ID3D11Device* device, const aiScene* scene, const std::wstring& baseDir)
 {
 	m_MaterialSRVs.clear();
 	m_MaterialSRVs.resize(scene->mNumMaterials, nullptr);
 
-	auto findCached = [&](const std::wstring& key)->ID3D11ShaderResourceView*{
+	auto findCached = [&](const std::wstring& key)->ID3D11ShaderResourceView* {
 		for (auto& kv : m_TexCache) if (kv.first == key) return kv.second; return nullptr;
 	};
-	auto addCache = [&](const std::wstring& key, ID3D11ShaderResourceView* v){ if (v){ m_TexCache.push_back({key, v}); v->AddRef(); } };
+	auto addCache = [&](const std::wstring& key, ID3D11ShaderResourceView* v) { if (v) { m_TexCache.push_back({ key, v }); v->AddRef(); } };
 
 	for (unsigned m = 0; m < scene->mNumMaterials; ++m)
 	{
@@ -78,14 +77,14 @@ bool PmxManager::LoadMaterials(ID3D11Device* device, const aiScene* scene, const
 						if (at->mHeight == 0)
 						{
 							ComPtr<ID3D11Resource> res;
-							if (SUCCEEDED(CreateWICTextureFromMemory(device, reinterpret_cast<const uint8_t*>(at->pcData), at->mWidth, res.GetAddressOf(), &srv)))
+							if (SUCCEEDED(DirectX::CreateWICTextureFromMemory(device, reinterpret_cast<const uint8_t*>(at->pcData), at->mWidth, res.GetAddressOf(), &srv)))
 								m_MaterialSRVs[m] = srv;
 						}
 						else
 						{
 							D3D11_TEXTURE2D_DESC td{};
 							td.Width = at->mWidth; td.Height = at->mHeight; td.MipLevels = 1; td.ArraySize = 1;
-							td.Format = DXGI_FORMAT_B8G8R8A8_UNORM; // aiTexelÀº BGRA
+							td.Format = DXGI_FORMAT_B8G8R8A8_UNORM; // aiTexel   BGRA
 							td.SampleDesc.Count = 1; td.Usage = D3D11_USAGE_IMMUTABLE; td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
 							D3D11_SUBRESOURCE_DATA sd{}; sd.pSysMem = at->pcData; sd.SysMemPitch = at->mWidth * sizeof(aiTexel);
 							ComPtr<ID3D11Texture2D> tex;
@@ -109,13 +108,13 @@ bool PmxManager::LoadMaterials(ID3D11Device* device, const aiScene* scene, const
 				else
 				{
 					ComPtr<ID3D11Resource> res;
-					HRESULT hrLoad = CreateWICTextureFromFile(device, full.c_str(), res.GetAddressOf(), &srv);
+					HRESULT hrLoad = DirectX::CreateWICTextureFromFile(device, full.c_str(), res.GetAddressOf(), &srv);
 					if (FAILED(hrLoad))
 					{
 						std::wstring fbm = L"Alice.fbm/" + wtex;
 						std::wstring full2 = baseDir + fbm;
 						res.Reset(); srv = nullptr;
-						hrLoad = CreateWICTextureFromFile(device, full2.c_str(), res.GetAddressOf(), &srv);
+						hrLoad = DirectX::CreateWICTextureFromFile(device, full2.c_str(), res.GetAddressOf(), &srv);
 						if (SUCCEEDED(hrLoad)) addCache(full2, srv);
 					}
 					else { addCache(full, srv); }
@@ -141,9 +140,9 @@ bool PmxManager::LoadMaterials(ID3D11Device* device, const aiScene* scene, const
 	return true;
 }
 
-bool PmxManager::BuildMeshBuffers(ID3D11Device* device, const aiScene* scene)
+bool PmxMangerWithoutTBN::BuildMeshBuffers(ID3D11Device* device, const aiScene* scene)
 {
-    m_Vertices.clear();
+	m_Vertices.clear();
 	m_Indices.clear();
 	m_Subsets.clear();
 
@@ -155,20 +154,17 @@ bool PmxManager::BuildMeshBuffers(ID3D11Device* device, const aiScene* scene)
 	std::function<void(const aiNode*, const aiMatrix4x4&)> traverse;
 	traverse = [&](const aiNode* node, const aiMatrix4x4& parent) {
 		aiMatrix4x4 global = parent * node->mTransformation;
-    for (unsigned mi = 0; mi < node->mNumMeshes; ++mi)
+		for (unsigned mi = 0; mi < node->mNumMeshes; ++mi)
 		{
 			const aiMesh* mesh = scene->mMeshes[node->mMeshes[mi]];
-        size_t baseIndex = m_Vertices.size();
+			size_t baseIndex = m_Vertices.size();
 			for (unsigned i = 0; i < mesh->mNumVertices; ++i)
 			{
-				//aiVector3D p = transformPoint(mesh->mVertices[i], global);
-				aiVector3D p = mesh->mVertices[i];
-				aiVector3D n = mesh->HasNormals() ? mesh->mNormals[i] : aiVector3D(0,1,0);
-				aiVector3D uv = mesh->HasTextureCoords(0) ? mesh->mTextureCoords[0][i] : aiVector3D(0,0,0);
-				aiColor4D c = mesh->HasVertexColors(0) ? mesh->mColors[0][i] : aiColor4D(1,1,1,1);
-				aiVector3D tg = mesh->HasTangentsAndBitangents() ? mesh->mTangents[i]   : aiVector3D(1,0,0);
-				aiVector3D bt = mesh->HasTangentsAndBitangents() ? mesh->mBitangents[i] : aiVector3D(0,1,0);
-				m_Vertices.push_back({ XMFLOAT3(p.x, p.y, p.z), XMFLOAT3(n.x, n.y, n.z), XMFLOAT3(tg.x, tg.y, tg.z), XMFLOAT3(bt.x, bt.y, bt.z), XMFLOAT4(c.r, c.g, c.b, c.a), XMFLOAT2(uv.x, uv.y) });
+				aiVector3D p = transformPoint(mesh->mVertices[i], global);
+				aiVector3D n = mesh->HasNormals() ? mesh->mNormals[i] : aiVector3D(0, 1, 0);
+				aiVector3D uv = mesh->HasTextureCoords(0) ? mesh->mTextureCoords[0][i] : aiVector3D(0, 0, 0);
+				aiColor4D c = mesh->HasVertexColors(0) ? mesh->mColors[0][i] : aiColor4D(1, 1, 1, 1);
+				m_Vertices.push_back({ DirectX::XMFLOAT3(p.x, p.y, p.z), DirectX::XMFLOAT3(n.x, n.y, n.z), DirectX::XMFLOAT4(c.r, c.g, c.b, c.a), DirectX::XMFLOAT2(uv.x, uv.y) });
 			}
 			uint32_t start = (uint32_t)m_Indices.size();
 			for (unsigned f = 0; f < mesh->mNumFaces; ++f)
@@ -188,14 +184,11 @@ bool PmxManager::BuildMeshBuffers(ID3D11Device* device, const aiScene* scene)
 	};
 	traverse(scene->mRootNode, aiMatrix4x4());
 
-    if (m_Vertices.empty() || m_Indices.empty()) return false;
-
-    // stride
-    m_VertexStride = (int)sizeof(VertexTBN);
+	if (m_Vertices.empty() || m_Indices.empty()) return false;
 
 	// VB
 	D3D11_BUFFER_DESC vbDesc = {};
-    vbDesc.ByteWidth = (UINT)(m_Vertices.size() * sizeof(VertexTBN));
+	vbDesc.ByteWidth = (UINT)(m_Vertices.size() * sizeof(VertexData));
 	vbDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
 	vbDesc.Usage = D3D11_USAGE_DEFAULT;
 	D3D11_SUBRESOURCE_DATA vbData = {}; vbData.pSysMem = m_Vertices.data();
