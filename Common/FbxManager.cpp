@@ -173,21 +173,11 @@ bool FbxManager::BuildMeshBuffers(ID3D11Device* device, const aiScene* scene)
             size_t base = vertices.size();
             for (unsigned i = 0; i < mesh->mNumVertices; ++i)
             {
-                //aiVector3D p = transformPoint(mesh->mVertices[i], global);
                 aiVector3D p = mesh->mVertices[i];
                 aiVector3D n = mesh->HasNormals() ? mesh->mNormals[i] : aiVector3D(0,1,0);
                 aiVector3D uv = mesh->HasTextureCoords(0) ? mesh->mTextureCoords[0][i] : aiVector3D(0,0,0);
                 aiVector3D tg = mesh->HasTangentsAndBitangents() ? mesh->mTangents[i]   : aiVector3D(1,0,0);
                 aiVector3D bt = mesh->HasTangentsAndBitangents() ? mesh->mBitangents[i] : aiVector3D(0,1,0);
-
-                // Coordinate fix: flip Y to match engine's convention; keep UV as-is for FBX
-                //p.y  = -p.y; n.y  = -n.y; tg.y = -tg.y; bt.y = -bt.y;
-                // Manager-side fixed orientation: rotate +90 degrees around X-axis (Z-up -> Y-up)
-                //auto rotX90 = [](const aiVector3D& v) -> aiVector3D { aiVector3D r; r.x = v.x; r.y = -v.z; r.z = v.y; return r; };
-                //p  = rotX90(p);
-                //n  = rotX90(n);
-                //tg = rotX90(tg);
-                //bt = rotX90(bt);
 
                 vertices.push_back({ {p.x,p.y,p.z}, {n.x,n.y,n.z}, {tg.x,tg.y,tg.z}, {bt.x,bt.y,bt.z}, {1,1,1,1}, {uv.x,uv.y} });
             }
