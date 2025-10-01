@@ -143,7 +143,7 @@ bool PmxManager::LoadMaterials(ID3D11Device* device, const aiScene* scene, const
 
 bool PmxManager::BuildMeshBuffers(ID3D11Device* device, const aiScene* scene)
 {
-	m_Vertices.clear();
+    m_Vertices.clear();
 	m_Indices.clear();
 	m_Subsets.clear();
 
@@ -155,17 +155,19 @@ bool PmxManager::BuildMeshBuffers(ID3D11Device* device, const aiScene* scene)
 	std::function<void(const aiNode*, const aiMatrix4x4&)> traverse;
 	traverse = [&](const aiNode* node, const aiMatrix4x4& parent) {
 		aiMatrix4x4 global = parent * node->mTransformation;
-		for (unsigned mi = 0; mi < node->mNumMeshes; ++mi)
+    for (unsigned mi = 0; mi < node->mNumMeshes; ++mi)
 		{
 			const aiMesh* mesh = scene->mMeshes[node->mMeshes[mi]];
-			size_t baseIndex = m_Vertices.size();
+        size_t baseIndex = m_Vertices.size();
 			for (unsigned i = 0; i < mesh->mNumVertices; ++i)
 			{
 				aiVector3D p = transformPoint(mesh->mVertices[i], global);
 				aiVector3D n = mesh->HasNormals() ? mesh->mNormals[i] : aiVector3D(0,1,0);
 				aiVector3D uv = mesh->HasTextureCoords(0) ? mesh->mTextureCoords[0][i] : aiVector3D(0,0,0);
 				aiColor4D c = mesh->HasVertexColors(0) ? mesh->mColors[0][i] : aiColor4D(1,1,1,1);
-				m_Vertices.push_back({ XMFLOAT3(p.x, p.y, p.z), XMFLOAT3(n.x, n.y, n.z), XMFLOAT4(c.r, c.g, c.b, c.a), XMFLOAT2(uv.x, uv.y) });
+				aiVector3D tg = mesh->HasTangentsAndBitangents() ? mesh->mTangents[i]   : aiVector3D(1,0,0);
+				aiVector3D bt = mesh->HasTangentsAndBitangents() ? mesh->mBitangents[i] : aiVector3D(0,1,0);
+				m_Vertices.push_back({ XMFLOAT3(p.x, p.y, p.z), XMFLOAT3(n.x, n.y, n.z), XMFLOAT3(tg.x, tg.y, tg.z), XMFLOAT3(bt.x, bt.y, bt.z), XMFLOAT4(c.r, c.g, c.b, c.a), XMFLOAT2(uv.x, uv.y) });
 			}
 			uint32_t start = (uint32_t)m_Indices.size();
 			for (unsigned f = 0; f < mesh->mNumFaces; ++f)
@@ -185,11 +187,14 @@ bool PmxManager::BuildMeshBuffers(ID3D11Device* device, const aiScene* scene)
 	};
 	traverse(scene->mRootNode, aiMatrix4x4());
 
-	if (m_Vertices.empty() || m_Indices.empty()) return false;
+    if (m_Vertices.empty() || m_Indices.empty()) return false;
+
+    // stride
+    m_VertexStride = (int)sizeof(PmxVertex);
 
 	// VB
 	D3D11_BUFFER_DESC vbDesc = {};
-	vbDesc.ByteWidth = (UINT)(m_Vertices.size() * sizeof(VertexData));
+    vbDesc.ByteWidth = (UINT)(m_Vertices.size() * sizeof(PmxVertex));
 	vbDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
 	vbDesc.Usage = D3D11_USAGE_DEFAULT;
 	D3D11_SUBRESOURCE_DATA vbData = {}; vbData.pSysMem = m_Vertices.data();

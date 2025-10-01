@@ -313,15 +313,11 @@ void App::OnRender()
 	m_pDeviceContext->OMSetBlendState(m_pAlphaBlendState, blendFactor, sampleMask);
     if (m_RenderMode == RenderMode::Model && m_pModelVB && m_pModelIB)
     {
+        // PMX도 FBX/OBJ와 동일한 TBN 포함 레이아웃을 사용하도록 통일
         ID3D11VertexShader* prevVS = nullptr; 
         ID3D11InputLayout* prevIL = nullptr;
-		m_pDeviceContext->VSGetShader(&prevVS, nullptr, nullptr);
-		m_pDeviceContext->IAGetInputLayout(&prevIL);
-        if (m_ModelSource == ModelSource::PMX && m_pVertexShaderNoTBN && m_pInputLayoutNoTBN)
-        {
-            m_pDeviceContext->VSSetShader(m_pVertexShaderNoTBN, nullptr, 0);
-            m_pDeviceContext->IASetInputLayout(m_pInputLayoutNoTBN);
-        }
+        m_pDeviceContext->VSGetShader(&prevVS, nullptr, nullptr);
+        m_pDeviceContext->IAGetInputLayout(&prevIL);
         for (const auto& sub : m_ModelSubsets)
         {
             ID3D11ShaderResourceView* srvDiffuse = nullptr;

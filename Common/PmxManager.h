@@ -14,6 +14,16 @@ struct PmxSubset
 	uint32_t materialIndex = 0;
 };
 
+struct PmxVertex 
+{ 
+	DirectX::XMFLOAT3 pos;
+	DirectX::XMFLOAT3 n; 
+	DirectX::XMFLOAT3 t; 
+	DirectX::XMFLOAT3 b; 
+	DirectX::XMFLOAT4 c;
+	DirectX::XMFLOAT2 uv;
+};
+
 class PmxManager
 {
 public:
@@ -30,7 +40,7 @@ public:
 	ID3D11Buffer* GetVertexBuffer() const { return m_pVB; }
 	ID3D11Buffer* GetIndexBuffer() const { return m_pIB; }
 	int GetIndexCount() const { return m_IndexCount; }
-	UINT GetVertexStride() const { return (UINT)sizeof(VertexData); }
+	UINT GetVertexStride() const { return (UINT)m_VertexStride; }
 	UINT GetVertexOffset() const { return 0; }
 
 	const std::vector<PmxSubset>& GetSubsets() const { return m_Subsets; }
@@ -46,9 +56,10 @@ private:
 	ID3D11Buffer* m_pVB = nullptr;
 	ID3D11Buffer* m_pIB = nullptr;
 	int m_IndexCount = 0;
+	int m_VertexStride = 0; // sizeof(PMX vertex)
 
 	// PMX 원본 데이터(필요 시 유지)
-	std::vector<VertexData> m_Vertices;
+	std::vector<PmxVertex> m_Vertices;
 	std::vector<uint32_t> m_Indices;
 	std::vector<PmxSubset> m_Subsets;
 
