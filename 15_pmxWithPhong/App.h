@@ -13,8 +13,7 @@
 #include <Psapi.h>
 #include <string>
 #include "../Common/SystemInfomation.h"
-#include "../Common/StaticMesh.h"
-#include "../Common/PmxManager.h"
+#include "PmxMangerWithoutTBN.h"
 
 using namespace DirectX::SimpleMath;
 
@@ -104,7 +103,7 @@ public:
 	int m_nIndices = 0; 										// 인덱스 개수
 
 	// PMX 관리자
-	PmxManager m_Pmx;
+	PmxMangerWithoutTBN m_Pmx;
 	std::wstring m_ModelPath = L"..\\Resource\\pmx\\Nikke-Alice\\alice-Apose.pmx";
 
 	ID3D11Buffer* m_pConstantBuffer = nullptr; 						// 상수 버퍼 (단일)
