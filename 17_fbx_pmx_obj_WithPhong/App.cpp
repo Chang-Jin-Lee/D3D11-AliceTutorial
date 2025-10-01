@@ -241,14 +241,17 @@ void App::OnRender()
         m_pDeviceContext->IASetInputLayout(m_pInputLayout);
         m_pDeviceContext->IASetIndexBuffer(m_pIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
     }
+
 	// 컬러 클리어 및 스카이박스/배경 선택
 	if (m_SkyBoxChoice == SkyBoxChoice::Off)
 	{
 		float clr[4] = { m_ClearColor.x, m_ClearColor.y, m_ClearColor.z, m_ClearColor.w };
 		m_pDeviceContext->ClearRenderTargetView(m_pRenderTargetView, clr);
 	}
+
 	// 큐브는 CCW를 앞면으로 정의했으므로 FrontCounterClockwise=false, Back-face culling 사용
-	m_pDeviceContext->RSSetState(RSCullClockWise);
+	//m_pDeviceContext->RSSetState(RSCullClockWise);
+	m_pDeviceContext->RSSetState(RSNoCull);
 
 	m_pDeviceContext->VSSetShader(m_pVertexShader, nullptr, 0);
 	m_pDeviceContext->PSSetShader(m_pPixelShader, nullptr, 0);
@@ -277,6 +280,10 @@ void App::OnRender()
 	// 셰이딩 모드 전달
 	m_ConstantBuffer.shadingMode = (int)m_ShadingMode;
 	m_ConstantBuffer.pad2 = XMFLOAT3(0,0,0);
+	m_ConstantBuffer.enableNormalMap = m_EnableNormalMap;
+	m_ConstantBuffer.pad3 = XMFLOAT3(0,0,0);
+	m_ConstantBuffer.useSpecularMap = m_UseSpecularMap;
+	m_ConstantBuffer.pad4 = XMFLOAT3(0,0,0);
 	// 머티리얼 채우기
 	m_ConstantBuffer.material = m_Material;
 
@@ -289,10 +296,15 @@ void App::OnRender()
 	m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_pConstantBuffer);
     m_pDeviceContext->PSSetSamplers(0, 1, &m_pSamplerState);
     // 큐브맵을 t1 슬롯에 바인딩 (픽셀 셰이더에서 g_TexCube : t1)
-    if (m_pTextureSRV)
+    if (m_pTextureSRV && m_SkyBoxChoice != SkyBoxChoice::Off)
     {
         ID3D11ShaderResourceView* texCube = m_pTextureSRV;
         m_pDeviceContext->PSSetShaderResources(1, 1, &texCube);
+    }
+    else
+    {
+        ID3D11ShaderResourceView* nullSRV = nullptr;
+        m_pDeviceContext->PSSetShaderResources(1, 1, &nullSRV);
     }
 
 	// PNG 알파 반영: 블렌딩 ON
@@ -301,19 +313,30 @@ void App::OnRender()
 	m_pDeviceContext->OMSetBlendState(m_pAlphaBlendState, blendFactor, sampleMask);
     if (m_RenderMode == RenderMode::Model && m_pModelVB && m_pModelIB)
     {
-        // 서브셋 기반 머티리얼 드로우
+        ID3D11VertexShader* prevVS = nullptr; 
+        ID3D11InputLayout* prevIL = nullptr;
+		m_pDeviceContext->VSGetShader(&prevVS, nullptr, nullptr);
+		m_pDeviceContext->IAGetInputLayout(&prevIL);
+        if (m_ModelSource == ModelSource::PMX && m_pVertexShaderNoTBN && m_pInputLayoutNoTBN)
+        {
+            m_pDeviceContext->VSSetShader(m_pVertexShaderNoTBN, nullptr, 0);
+            m_pDeviceContext->IASetInputLayout(m_pInputLayoutNoTBN);
+        }
         for (const auto& sub : m_ModelSubsets)
         {
             ID3D11ShaderResourceView* srvDiffuse = nullptr;
             if (sub.materialIndex < m_ModelMaterialSRVs.size()) srvDiffuse = m_ModelMaterialSRVs[sub.materialIndex];
             if (!srvDiffuse) srvDiffuse = m_pFallbackWhite;
-            ID3D11ShaderResourceView* srvNormal = m_pFallbackNormal;
-            ID3D11ShaderResourceView* srvSpec   = m_pFallbackBlack;
+            ID3D11ShaderResourceView* srvNormal = (m_EnableNormalMap != 0) ? m_pFallbackNormal : nullptr;
+            ID3D11ShaderResourceView* srvSpec   = (m_UseSpecularMap != 0) ? m_pFallbackWhite : nullptr;
             m_pDeviceContext->PSSetShaderResources(0, 1, &srvDiffuse);
             m_pDeviceContext->PSSetShaderResources(2, 1, &srvNormal);
             m_pDeviceContext->PSSetShaderResources(3, 1, &srvSpec);
             m_pDeviceContext->DrawIndexed(sub.count, sub.start, 0);
         }
+        // 복원
+        if (prevVS) { m_pDeviceContext->VSSetShader(prevVS, nullptr, 0); prevVS->Release(); }
+        if (prevIL) { m_pDeviceContext->IASetInputLayout(prevIL); prevIL->Release(); }
     }
     else if (m_RenderMode == RenderMode::Cube)
     {
@@ -532,6 +555,8 @@ void App::OnRender()
             {
                 m_ShadingMode = (ShadingMode)mode;
             }
++			ImGui::Checkbox("Enable Normal Map", (bool*)&m_EnableNormalMap);
++			ImGui::Checkbox("Use Specular Map", (bool*)&m_UseSpecularMap);
         }
         ImGui::Separator();
         ImGui::Text("Light");
@@ -1031,6 +1056,20 @@ bool App::InitBasicEffect()
 	HR_T(m_pDevice->CreateVertexShader(vertexShaderBuffer->GetBufferPointer(),
 		vertexShaderBuffer->GetBufferSize(), NULL, &m_pVertexShader));
 	SAFE_RELEASE(vertexShaderBuffer);	// 컴파일 버퍼 해제
+
+	// PMX 전용: NoTBN 입력용 VS/IL 생성
+	D3D11_INPUT_ELEMENT_DESC layoutNoTBN[] =
+	{
+		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 0,  D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		{ "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT,    0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,        0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		{ "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+	};
+	ID3D10Blob* vsNoTBN = nullptr;
+	HR_T(CompileShaderFromFile(L"17_BasicVS.hlsl", "VSNoTBN", "vs_5_0", &vsNoTBN));
+	HR_T(m_pDevice->CreateInputLayout(layoutNoTBN, ARRAYSIZE(layoutNoTBN), vsNoTBN->GetBufferPointer(), vsNoTBN->GetBufferSize(), &m_pInputLayoutNoTBN));
+	HR_T(m_pDevice->CreateVertexShader(vsNoTBN->GetBufferPointer(), vsNoTBN->GetBufferSize(), nullptr, &m_pVertexShaderNoTBN));
+	SAFE_RELEASE(vsNoTBN);
 
 	// Line VS -------------------------------------------
 	D3D11_INPUT_ELEMENT_DESC lineLayout[] =

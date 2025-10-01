@@ -66,8 +66,12 @@ public:
 		DirectionalLight dirLight;							// 방향성 라이트(색/방향)
 		DirectX::XMFLOAT3 eyePos;							// 카메라 위치
 		float pad;											// 디버그 토글 등에 사용
-		int   shadingMode = 1;                      // 0:Phong,1:Blinn-Phong,2:Lambert,3:Unlit,4:TextureOnly
+		int   shadingMode = 0;                      // 기본 Phong
 		DirectX::XMFLOAT3 pad2 = {0,0,0};
+		int   enableNormalMap = 1;
+		DirectX::XMFLOAT3 pad3 = {0,0,0};
+		int   useSpecularMap = 0;            // 15와 맞추기: 기본 미사용
+		DirectX::XMFLOAT3 pad4 = {0,0,0};
 	};
 
 public:
@@ -78,9 +82,12 @@ public:
 	ID3D11RenderTargetView* m_pRenderTargetView = nullptr;		// 렌더 타겟뷰
 
 	// 파이프라인 리소스
-	ID3D11VertexShader* m_pVertexShader = nullptr;				// 정점 셰이더
+	ID3D11VertexShader* m_pVertexShader = nullptr;					// 정점 셰이더
 	ID3D11PixelShader* m_pPixelShader = nullptr;				// 픽셀 셰이더(조명)	
 	ID3D11PixelShader* m_pPixelShaderSolid = nullptr;			// 픽셀 셰이더(마커용 흰색)
+	// PMX 전용: TBN 없는 입력용 VS/IL
+	ID3D11VertexShader* m_pVertexShaderNoTBN = nullptr;
+	ID3D11InputLayout* m_pInputLayoutNoTBN = nullptr;
 
 	ID3D11SamplerState* m_pSamplerState = nullptr;
 	ID3D11BlendState* m_pAlphaBlendState = nullptr;					// 알파 블렌딩 상태
@@ -158,7 +165,7 @@ public:
 
 	// DirectionalLight
 	DirectionalLight m_DirLight = {
-		/*ambient*/ { 0.03f, 0.03f, 0.03f, 0.1f },
+		/*ambient*/ { 0.0f, 0.0f, 0.0f, 1.0f },
 		/*diffuse*/ { 1.0f, 1.0f, 1.0f, 1.0f },
 		/*specular*/{ 1.0f, 1.0f, 1.0f, 1.0f },
 		/*direction*/{ 0.0f, 0.0f, 1.0f },
@@ -185,7 +192,10 @@ public:
 
 	// Shader selection (like 15)
 	enum class ShadingMode { Phong=0, BlinnPhong=1, Lambert=2, Unlit=3, TextureOnly=4 };
-	ShadingMode m_ShadingMode = ShadingMode::BlinnPhong;
+	ShadingMode m_ShadingMode = ShadingMode::Phong;
+	int m_EnableNormalMap = 1;
+	int m_UseSpecularMap = 0;
+	int m_LegacyShading = 1;
 
 	// Cube scale to better visualize specular highlights
 	float m_CubeScale = 2.0f;

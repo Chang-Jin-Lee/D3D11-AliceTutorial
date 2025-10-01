@@ -31,6 +31,10 @@ cbuffer ConstantBuffer : register(b0)
     float  g_Pad;
     int    g_ShadingMode;               // 0:Phong,1:Blinn,2:Lambert,3:Unlit,4:TextureOnly
     float3 g_Pad2;
+    int    g_EnableNormalMap;           // 0: off, 1: on
+    float3 g_Pad3;
+    int    g_UseSpecularMap;            // 0: off, 1: on
+    float3 g_Pad4;
 }
 
 struct VertexIn
