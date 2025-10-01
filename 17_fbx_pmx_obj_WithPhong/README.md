@@ -11,6 +11,16 @@
   - 각 노드의 position 데이터는 mVertices에서 가져옵니다.
   - 마지막으로 쉐이더에게 값을 전달하면 합니다.
  
+
+| fbx - Phong  | fbx - Blinn Phong  |
+|--------------|--------------------|
+| <div align="center">[<img src="https://github.com/user-attachments/assets/93201a8d-af36-480d-ba2f-d876dc532c61" width="450"/>]()<br/></div> | <div align="center">[<img src="https://github.com/user-attachments/assets/6a66a027-8ddf-4770-9fe7-a9172f2e9b00" width="450"/>]()<br/></div> |
+
+| fbx - Lambert | fbx - TextureOnly  |
+|--------------|-------------------|
+| <div align="center">[<img src="https://github.com/user-attachments/assets/f4fdba6c-0e45-4dd1-a80c-34ff27cdf030" width="450"/>]()<br/></div> | <div align="center">[<img src="https://github.com/user-attachments/assets/7c5a898a-3ae7-4b45-9051-7cca0c23881e" width="450"/>]()<br/></div> |
+
+ 
 ## In blender
 
 | blender - no light  | blender - Sun Light  |
@@ -46,6 +56,7 @@
 | fbx - Lambert | fbx - TextureOnly  |
 |--------------|-------------------|
 | <div align="center">[<img src="https://github.com/user-attachments/assets/54a7d0f5-4ca6-46a9-a2e3-a72effdea8a6" width="450"/>]()<br/></div> | <div align="center">[<img src="https://github.com/user-attachments/assets/c7883b9b-2586-445f-9082-e951a734993d" width="450"/>]()<br/></div> |
+
 
 
 
