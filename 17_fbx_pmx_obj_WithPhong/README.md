@@ -10,7 +10,13 @@
   - TBN의 Normal값은 assimp 안에 있는 mNormals값을 사용합니다
   - 각 노드의 position 데이터는 mVertices에서 가져옵니다.
   - 마지막으로 쉐이더에게 값을 전달하면 합니다.
+ 
+## In blender
 
+| blender - no light  | blender - Sun Light  |
+|---|---|
+| <div align="center">[<img src="https://github.com/user-attachments/assets/7e45fceb-49aa-4af5-8339-4c95777b27ba" width="450"/>]()<br/></div> | <div align="center">[<img src="https://github.com/user-attachments/assets/3eb168e1-d54e-4e21-af0f-f1d05cfd68d6" width="450"/>]()<br/></div> |
+ 
 ## PMX
 
 | pmx - Phong  | pmx - Blinn Phong  |
