@@ -153,14 +153,15 @@ public:
 
 	// ImGui 컨트롤 상태 변수
 	SystemInfomation m_SystemInfo;
-	Camera m_camera;									// 카메라
+	Camera m_camera;												// 카메라
 	DirectX::XMFLOAT3 m_cubePos = { 0.0f, 0.0f, 0.0f };				// 큐브 루트 위치
-	DirectX::XMFLOAT3 m_cubeRotation = { 0.0f, 0.0f, 0.0f };	// 큐브 회전(Yaw/Pitch/Roll, deg)
-	bool m_RotateCube = false;									// ImGui 토글: 큐브 자동 회전 on/off
+	DirectX::XMFLOAT3 m_cubeScale = { 1.0f, 1.0f, 1.0f };			// 큐브 스케일
+	DirectX::XMFLOAT3 m_cubeRotation = { 0.0f, 0.0f, 0.0f };		// 큐브 회전(Yaw/Pitch/Roll, deg)
+	bool m_RotateCube = false;										// ImGui 토글: 큐브 자동 회전 on/off
 
 	// Mirror Cube transform (참고: 기본 큐브와 동일한 구성)
-	DirectX::XMFLOAT3 m_mirrorCubePos = { 4.5f, 0.0f, 0.0f };   // 거울 큐브 위치 (x+8 기본)
-	DirectX::XMFLOAT3 m_mirrorCubeRotation = { 0.0f, 0.0f, 0.0f }; // 거울 큐브 회전(Yaw/Pitch/Roll, deg)
+	DirectX::XMFLOAT3 m_mirrorCubePos = { 4.5f, 0.0f, 0.0f };		// 거울 큐브 위치 (x+8 기본)
+	DirectX::XMFLOAT3 m_mirrorCubeRotation = { 0.0f, 0.0f, 0.0f };	// 거울 큐브 회전(Yaw/Pitch/Roll, deg)
 	float m_MirrorCubeScale = 2.0f;                                 // 거울 큐브 스케일
 
 	// DirectionalLight
@@ -196,9 +197,6 @@ public:
 	int m_EnableNormalMap = 1;
 	int m_UseSpecularMap = 0;
 	int m_LegacyShading = 1;
-
-	// Cube scale to better visualize specular highlights
-	float m_CubeScale = 2.0f;
 	
 	// 배경 색상 (스카이박스 Off일 때 Clear 색)
 	DirectX::XMFLOAT4 m_ClearColor = { 0.02f, 0.02f, 0.02f, 1.0f };

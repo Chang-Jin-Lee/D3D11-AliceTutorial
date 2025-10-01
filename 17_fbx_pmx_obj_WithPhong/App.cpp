@@ -146,7 +146,7 @@ void App::OnUninitialize()
 
 void App::OnUpdate(const float& dt)
 {
-	// 로컬 변환 정의 (간단 Scene Graph)
+	// 로컬 변환
 	if(m_RotateCube)
 	{
 		// 큐브 Yaw(도)를 초당 45도 회전
@@ -154,15 +154,15 @@ void App::OnUpdate(const float& dt)
 		// -180~180 래핑
 		m_cubeRotation.y = std::fmod(m_cubeRotation.y + 180.0f, 360.0f) - 180.0f;
 	}
-	// 큐브 고유 회전값 사용 (Yaw/Pitch/Roll, deg -> rad)
+	// 큐브 고유 회전값 사용 Yaw/Pitch/Roll, deg -> rad
 	XMMATRIX rotYaw   = XMMatrixRotationY(XMConvertToRadians(m_cubeRotation.y));
 	XMMATRIX rotPitch = XMMatrixRotationX(XMConvertToRadians(m_cubeRotation.x));
 	XMMATRIX rotRoll  = XMMatrixRotationZ(XMConvertToRadians(m_cubeRotation.z));
-	XMMATRIX S = XMMatrixScaling(m_CubeScale, m_CubeScale, m_CubeScale);
+	XMMATRIX S = XMMatrixScaling(m_cubeScale.x, m_cubeScale.y, m_cubeScale.z);
 	XMMATRIX local0 = S * rotPitch * rotYaw * rotRoll * XMMatrixTranslation(m_cubePos.x, m_cubePos.y, m_cubePos.z); // 루트
 	XMMATRIX world0 = local0; // 루트
 
-	// Camera update via Camera class (RMB look + WASD/E/Q movement)
+	// 카메라 업데이트
 	ImGuiIO& io = ImGui::GetIO();
 	bool rmbDown = ImGui::IsMouseDown(ImGuiMouseButton_Right) && !io.WantCaptureMouse;
 	bool keyW = ImGui::IsKeyDown(ImGuiKey_W);
@@ -173,9 +173,7 @@ void App::OnUpdate(const float& dt)
 	bool keyQ = ImGui::IsKeyDown(ImGuiKey_Q);
 	m_camera.UpdateFromUI(rmbDown && !io.WantCaptureKeyboard, io.MouseDelta.x, io.MouseDelta.y, keyW, keyS, keyA, keyD, keyE, keyQ, dt);
 
-	XMFLOAT3 camForward3 = m_camera.GetForward();
-
-	// View/Proj from Camera
+	// Camera의 View/Proj 
 	XMMATRIX view = XMMatrixTranspose(m_camera.GetViewMatrixXM());
 	XMMATRIX proj = XMMatrixTranspose(m_camera.GetProjMatrixXM());
 	m_baseProjection.world = XMMatrixTranspose(world0);
@@ -187,7 +185,7 @@ void App::OnUpdate(const float& dt)
 		XMFLOAT3 dir = m_DirLight.direction;
 		XMVECTOR v = XMVector3Normalize(XMLoadFloat3(&dir));
 		XMStoreFloat3(&dir, v);
-		// DirectionalLight 필드 대입 (정규화된 방향)
+		// DirectionalLight 정규화된 방향으로 대입 
 		m_baseProjection.dirLight = m_DirLight;
 		m_baseProjection.dirLight.direction = dir;
 		m_baseProjection.dirLight.pad = 0.0f;
@@ -514,7 +512,7 @@ void App::OnRender()
 		}
 		ImGui::Text("Mesh Transforms");
 		ImGui::Checkbox("Rotate Cube", &m_RotateCube);
-		ImGui::SliderFloat("Cube Scale", &m_CubeScale, 0.1f, 10.0f);
+		ImGui::DragFloat3("Cube Scale", &m_cubeScale.x, 0.1f, 20.0f);
 		ImGui::DragFloat3("Cube Pos (x,y,z)", &m_cubePos.x, 0.1f);
 		// 큐브 회전(도) 편집
 		ImGui::DragFloat3("Cube Rotation (deg)", &m_cubeRotation.x, 1.0f, -360.0f, 360.0f, "%.1f");
@@ -525,6 +523,7 @@ void App::OnRender()
 			{
 				m_camera.Reset();
 			}
+			ImGui::SliderFloat("Camera Speed", &m_camera.m_MoveSpeed, 10.0f, 500.0f, "%.1f");
 			DirectX::XMFLOAT3 pos = m_camera.GetPosition();
 			if (ImGui::DragFloat3("Camera Pos (x,y,z)", &pos.x, 0.1f))
 			{
@@ -1209,7 +1208,14 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
         }
     }
 
-    if (ok) { m_RenderMode = RenderMode::Model; }
+    if (ok)
+    {
+        m_RenderMode = RenderMode::Model;
+        // 모델 로드 완료 후 트랜스폼 초기화: pos(0,0,0), scale(1,1,1), rot(0,0,0)
+        m_cubePos = { 0.0f, 0.0f, 0.0f };
+        m_cubeScale = { 1.0f, 1.0f, 1.0f };
+        m_cubeRotation = { 0.0f, 0.0f, 0.0f };
+    }
     return ok;
 }
 
