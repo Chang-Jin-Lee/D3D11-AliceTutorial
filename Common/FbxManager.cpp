@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "FbxManager.h"
 #include "Helper.h"
+#include "Vertex.h"
 
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
@@ -13,13 +14,13 @@ static std::wstring WStringFromUtf8(const std::string& s) { return std::wstring(
 
 void FbxManager::Release()
 {
-    SAFE_RELEASE(m_pVB);
-    SAFE_RELEASE(m_pIB);
-    for (auto& p : m_MaterialSRVs) SAFE_RELEASE(p);
+    if (m_pVB) { m_pVB->Release(); m_pVB = nullptr; }
+    if (m_pIB) { m_pIB->Release(); m_pIB = nullptr; }
+    for (auto& p : m_MaterialSRVs) { if (p) { p->Release(); p = nullptr; } }
     m_MaterialSRVs.clear();
-    for (auto& kv : m_TexCache) SAFE_RELEASE(kv.second);
+    for (auto& kv : m_TexCache) { if (kv.second) { kv.second->Release(); kv.second = nullptr; } }
     m_TexCache.clear();
-    SAFE_RELEASE(m_pWhite);
+    if (m_pWhite) { m_pWhite->Release(); m_pWhite = nullptr; }
     m_Subsets.clear();
     m_IndexCount = 0;
     m_VertexStride = 0;
@@ -69,7 +70,38 @@ bool FbxManager::LoadMaterials(ID3D11Device* device, const aiScene* scene, const
         if (mat->GetTexture(aiTextureType_DIFFUSE, 0, &texPath) == AI_SUCCESS)
         {
             std::string t = texPath.C_Str();
-            if (!t.empty() && t[0] == '*')
+
+            // fbx 파일에 임베디드된 텍스처 로딩을 시도함 이름 또는 *인덱스 표기를 모두 처리함 (Assimp 헬퍼를 사용해서)
+            if (!t.empty())
+            {
+                const aiTexture* at = scene->GetEmbeddedTexture(t.c_str());
+                if (at)
+                {
+                    ComPtr<ID3D11Resource> res; ID3D11ShaderResourceView* srv = nullptr;
+                    if (at->mHeight == 0)
+                    {
+                        // 이미지를 읽어옴. 압축 버퍼를 사용함 (PNG/JPG 등)
+                        if (SUCCEEDED(CreateWICTextureFromMemory(device, reinterpret_cast<const uint8_t*>(at->pcData), at->mWidth, res.GetAddressOf(), &srv)))
+                            m_MaterialSRVs[m] = srv;
+                    }
+                    else
+                    {
+                        // RAW BGRA8 픽셀 데이터
+                        D3D11_TEXTURE2D_DESC td{}; td.Width = at->mWidth; td.Height = at->mHeight; td.MipLevels = 1; td.ArraySize = 1;
+                        td.Format = DXGI_FORMAT_B8G8R8A8_UNORM; td.SampleDesc.Count = 1; td.Usage = D3D11_USAGE_IMMUTABLE; td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+                        D3D11_SUBRESOURCE_DATA sd{}; sd.pSysMem = at->pcData; sd.SysMemPitch = at->mWidth * sizeof(aiTexel);
+                        ComPtr<ID3D11Texture2D> tex;
+                        if (SUCCEEDED(device->CreateTexture2D(&td, &sd, tex.GetAddressOf())))
+                        {
+                            D3D11_SHADER_RESOURCE_VIEW_DESC srvd{}; srvd.Format = td.Format; srvd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D; srvd.Texture2D.MipLevels = 1; srvd.Texture2D.MostDetailedMip = 0;
+                            if (SUCCEEDED(device->CreateShaderResourceView(tex.Get(), &srvd, &srv))) m_MaterialSRVs[m] = srv;
+                        }
+                    }
+                }
+            }
+
+            // 임베디드된 텍스쳐가 없거나 실패 시, 구형 *인덱스 방식 처리
+            if (!m_MaterialSRVs[m] && !t.empty() && t[0] == '*')
             {
                 int idx = atoi(t.c_str() + 1);
                 if (idx >= 0 && (unsigned)idx < scene->mNumTextures)
@@ -98,7 +130,9 @@ bool FbxManager::LoadMaterials(ID3D11Device* device, const aiScene* scene, const
                     }
                 }
             }
-            else
+
+            // 위 방법 둘다 안될경우에 외부 파일 경로 시도
+            if (!m_MaterialSRVs[m])
             {
                 std::wstring wtex = WStringFromUtf8(t);
                 bool isAbs = (!wtex.empty() && (wtex.find(L":") != std::wstring::npos || wtex[0] == L'/' || wtex[0] == L'\\'));
@@ -118,13 +152,17 @@ bool FbxManager::LoadMaterials(ID3D11Device* device, const aiScene* scene, const
 
 bool FbxManager::BuildMeshBuffers(ID3D11Device* device, const aiScene* scene)
 {
-    struct Vx { DirectX::XMFLOAT3 pos; DirectX::XMFLOAT3 n; DirectX::XMFLOAT3 t; DirectX::XMFLOAT3 b; DirectX::XMFLOAT4 c; DirectX::XMFLOAT2 uv; };
-    std::vector<Vx> vertices; vertices.reserve(8192);
+    std::vector<VertexTBN> vertices; vertices.reserve(8192);
     std::vector<uint32_t> indices; indices.reserve(16384);
     m_Subsets.clear();
 
     auto transformPoint = [](const aiVector3D& v, const aiMatrix4x4& m) -> aiVector3D {
-        aiVector3D r; r.x = v.x * m.a1 + v.y * m.b1 + v.z * m.c1 + m.d1; r.y = v.x * m.a2 + v.y * m.b2 + v.z * m.c2 + m.d2; r.z = v.x * m.a3 + v.y * m.b3 + v.z * m.c3 + m.d3; return r; };
+        aiVector3D r;
+        r.x = v.x * m.a1 + v.y * m.b1 + v.z * m.c1 + m.d1;
+        r.y = v.x * m.a2 + v.y * m.b2 + v.z * m.c2 + m.d2;
+        r.z = v.x * m.a3 + v.y * m.b3 + v.z * m.c3 + m.d3;
+        return r; 
+    };
 
     std::function<void(const aiNode*, const aiMatrix4x4&)> traverse;
     traverse = [&](const aiNode* node, const aiMatrix4x4& parent){
@@ -135,7 +173,8 @@ bool FbxManager::BuildMeshBuffers(ID3D11Device* device, const aiScene* scene)
             size_t base = vertices.size();
             for (unsigned i = 0; i < mesh->mNumVertices; ++i)
             {
-                aiVector3D p = transformPoint(mesh->mVertices[i], global);
+                //aiVector3D p = transformPoint(mesh->mVertices[i], global);
+                aiVector3D p = mesh->mVertices[i];
                 aiVector3D n = mesh->HasNormals() ? mesh->mNormals[i] : aiVector3D(0,1,0);
                 aiVector3D uv = mesh->HasTextureCoords(0) ? mesh->mTextureCoords[0][i] : aiVector3D(0,0,0);
                 aiVector3D tg = mesh->HasTangentsAndBitangents() ? mesh->mTangents[i]   : aiVector3D(1,0,0);
@@ -143,6 +182,13 @@ bool FbxManager::BuildMeshBuffers(ID3D11Device* device, const aiScene* scene)
 
                 // Coordinate fix: flip Y to match engine's convention; keep UV as-is for FBX
                 //p.y  = -p.y; n.y  = -n.y; tg.y = -tg.y; bt.y = -bt.y;
+                // Manager-side fixed orientation: rotate +90 degrees around X-axis (Z-up -> Y-up)
+                //auto rotX90 = [](const aiVector3D& v) -> aiVector3D { aiVector3D r; r.x = v.x; r.y = -v.z; r.z = v.y; return r; };
+                //p  = rotX90(p);
+                //n  = rotX90(n);
+                //tg = rotX90(tg);
+                //bt = rotX90(bt);
+
                 vertices.push_back({ {p.x,p.y,p.z}, {n.x,n.y,n.z}, {tg.x,tg.y,tg.z}, {bt.x,bt.y,bt.z}, {1,1,1,1}, {uv.x,uv.y} });
             }
             uint32_t start = (uint32_t)indices.size();
@@ -153,8 +199,8 @@ bool FbxManager::BuildMeshBuffers(ID3D11Device* device, const aiScene* scene)
                 {
                     // Reverse winding to correct back/front after Y-flip
                     indices.push_back((uint32_t)(base + face.mIndices[0]));
-                    indices.push_back((uint32_t)(base + face.mIndices[2]));
                     indices.push_back((uint32_t)(base + face.mIndices[1]));
+                    indices.push_back((uint32_t)(base + face.mIndices[2]));
                 }
             }
             uint32_t count = (uint32_t)indices.size() - start;
@@ -166,8 +212,8 @@ bool FbxManager::BuildMeshBuffers(ID3D11Device* device, const aiScene* scene)
 
     if (vertices.empty() || indices.empty()) return false;
 
-    m_VertexStride = sizeof(Vx);
-    D3D11_BUFFER_DESC vb{}; vb.ByteWidth = (UINT)(vertices.size() * sizeof(Vx)); vb.BindFlags = D3D11_BIND_VERTEX_BUFFER; vb.Usage = D3D11_USAGE_DEFAULT;
+    m_VertexStride = sizeof(VertexTBN);
+    D3D11_BUFFER_DESC vb{}; vb.ByteWidth = (UINT)(vertices.size() * sizeof(VertexTBN)); vb.BindFlags = D3D11_BIND_VERTEX_BUFFER; vb.Usage = D3D11_USAGE_DEFAULT;
     D3D11_SUBRESOURCE_DATA vbd{}; vbd.pSysMem = vertices.data(); HR_T(device->CreateBuffer(&vb, &vbd, &m_pVB));
 
     m_IndexCount = (int)indices.size();

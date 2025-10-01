@@ -5,6 +5,7 @@
 #include <vector>
 #include <wrl/client.h>
 #include "StaticMesh.h" // VertexData
+#include "Vertex.h"
 
 // PMX 서브셋 정보 (머티리얼 인덱스별 드로우 범위)
 struct PmxSubset
@@ -12,16 +13,6 @@ struct PmxSubset
 	uint32_t startIndex = 0;
 	uint32_t indexCount = 0;
 	uint32_t materialIndex = 0;
-};
-
-struct PmxVertex 
-{ 
-	DirectX::XMFLOAT3 pos;
-	DirectX::XMFLOAT3 n; 
-	DirectX::XMFLOAT3 t; 
-	DirectX::XMFLOAT3 b; 
-	DirectX::XMFLOAT4 c;
-	DirectX::XMFLOAT2 uv;
 };
 
 class PmxManager
@@ -59,7 +50,7 @@ private:
 	int m_VertexStride = 0; // sizeof(PMX vertex)
 
 	// PMX 원본 데이터(필요 시 유지)
-	std::vector<PmxVertex> m_Vertices;
+	std::vector<VertexTBN> m_Vertices;
 	std::vector<uint32_t> m_Indices;
 	std::vector<PmxSubset> m_Subsets;
 

@@ -13,13 +13,13 @@ static std::wstring WStringFromUtf8(const std::string& s) { return std::wstring(
 
 void PmxManager::Release()
 {
-	for (auto& srv : m_MaterialSRVs) SAFE_RELEASE(srv);
+    for (auto& srv : m_MaterialSRVs) { if (srv) { srv->Release(); srv = nullptr; } }
 	m_MaterialSRVs.clear();
-	SAFE_RELEASE(m_pWhiteSRV);
-	for (auto& kv : m_TexCache) SAFE_RELEASE(kv.second);
+    if (m_pWhiteSRV) { m_pWhiteSRV->Release(); m_pWhiteSRV = nullptr; }
+    for (auto& kv : m_TexCache) { if (kv.second) { kv.second->Release(); kv.second = nullptr; } }
 	m_TexCache.clear();
-	SAFE_RELEASE(m_pVB);
-	SAFE_RELEASE(m_pIB);
+    if (m_pVB) { m_pVB->Release(); m_pVB = nullptr; }
+    if (m_pIB) { m_pIB->Release(); m_pIB = nullptr; }
 	m_Vertices.clear();
 	m_Indices.clear();
 	m_Subsets.clear();
@@ -161,7 +161,8 @@ bool PmxManager::BuildMeshBuffers(ID3D11Device* device, const aiScene* scene)
         size_t baseIndex = m_Vertices.size();
 			for (unsigned i = 0; i < mesh->mNumVertices; ++i)
 			{
-				aiVector3D p = transformPoint(mesh->mVertices[i], global);
+				//aiVector3D p = transformPoint(mesh->mVertices[i], global);
+				aiVector3D p = mesh->mVertices[i];
 				aiVector3D n = mesh->HasNormals() ? mesh->mNormals[i] : aiVector3D(0,1,0);
 				aiVector3D uv = mesh->HasTextureCoords(0) ? mesh->mTextureCoords[0][i] : aiVector3D(0,0,0);
 				aiColor4D c = mesh->HasVertexColors(0) ? mesh->mColors[0][i] : aiColor4D(1,1,1,1);
@@ -190,11 +191,11 @@ bool PmxManager::BuildMeshBuffers(ID3D11Device* device, const aiScene* scene)
     if (m_Vertices.empty() || m_Indices.empty()) return false;
 
     // stride
-    m_VertexStride = (int)sizeof(PmxVertex);
+    m_VertexStride = (int)sizeof(VertexTBN);
 
 	// VB
 	D3D11_BUFFER_DESC vbDesc = {};
-    vbDesc.ByteWidth = (UINT)(m_Vertices.size() * sizeof(PmxVertex));
+    vbDesc.ByteWidth = (UINT)(m_Vertices.size() * sizeof(VertexTBN));
 	vbDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
 	vbDesc.Usage = D3D11_USAGE_DEFAULT;
 	D3D11_SUBRESOURCE_DATA vbData = {}; vbData.pSysMem = m_Vertices.data();

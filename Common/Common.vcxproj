@@ -151,6 +151,7 @@
     <ClInclude Include="StaticMesh.h" />
     <ClInclude Include="SystemInfomation.h" />
     <ClInclude Include="TimeSystem.h" />
+    <ClInclude Include="Vertex.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Camera.cpp" />
@@ -172,6 +173,7 @@
     <ClCompile Include="StaticMesh.cpp" />
     <ClCompile Include="SystemInfomation.cpp" />
     <ClCompile Include="TimeSystem.cpp" />
+    <ClCompile Include="Vertex.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

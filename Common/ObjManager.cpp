@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "ObjManager.h"
 #include "Helper.h"
+#include "Vertex.h"
 
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
@@ -117,13 +118,17 @@ bool ObjManager::LoadMaterials(ID3D11Device* device, const aiScene* scene, const
 
 bool ObjManager::BuildMeshBuffers(ID3D11Device* device, const aiScene* scene)
 {
-    struct Vx { DirectX::XMFLOAT3 pos; DirectX::XMFLOAT3 n; DirectX::XMFLOAT3 t; DirectX::XMFLOAT3 b; DirectX::XMFLOAT4 c; DirectX::XMFLOAT2 uv; };
-    std::vector<Vx> vertices; vertices.reserve(8192);
+    std::vector<VertexTBN> vertices; vertices.reserve(8192);
     std::vector<uint32_t> indices; indices.reserve(16384);
     m_Subsets.clear();
 
     auto transformPoint = [](const aiVector3D& v, const aiMatrix4x4& m) -> aiVector3D {
-        aiVector3D r; r.x = v.x * m.a1 + v.y * m.b1 + v.z * m.c1 + m.d1; r.y = v.x * m.a2 + v.y * m.b2 + v.z * m.c2 + m.d2; r.z = v.x * m.a3 + v.y * m.b3 + v.z * m.c3 + m.d3; return r; };
+        aiVector3D r;
+        r.x = v.x * m.a1 + v.y * m.b1 + v.z * m.c1 + m.d1;
+        r.y = v.x * m.a2 + v.y * m.b2 + v.z * m.c2 + m.d2;
+        r.z = v.x * m.a3 + v.y * m.b3 + v.z * m.c3 + m.d3;
+        return r; 
+    };
 
     std::function<void(const aiNode*, const aiMatrix4x4&)> traverse;
     traverse = [&](const aiNode* node, const aiMatrix4x4& parent){
@@ -151,8 +156,8 @@ bool ObjManager::BuildMeshBuffers(ID3D11Device* device, const aiScene* scene)
                 if (face.mNumIndices == 3)
                 {
                     indices.push_back((uint32_t)(base + face.mIndices[0]));
-                    indices.push_back((uint32_t)(base + face.mIndices[2]));
                     indices.push_back((uint32_t)(base + face.mIndices[1]));
+                    indices.push_back((uint32_t)(base + face.mIndices[2]));
                 }
             }
             uint32_t count = (uint32_t)indices.size() - start;
@@ -164,8 +169,8 @@ bool ObjManager::BuildMeshBuffers(ID3D11Device* device, const aiScene* scene)
 
     if (vertices.empty() || indices.empty()) return false;
 
-    m_VertexStride = sizeof(Vx);
-    D3D11_BUFFER_DESC vb{}; vb.ByteWidth = (UINT)(vertices.size() * sizeof(Vx)); vb.BindFlags = D3D11_BIND_VERTEX_BUFFER; vb.Usage = D3D11_USAGE_DEFAULT;
+    m_VertexStride = sizeof(VertexTBN);
+    D3D11_BUFFER_DESC vb{}; vb.ByteWidth = (UINT)(vertices.size() * sizeof(VertexTBN)); vb.BindFlags = D3D11_BIND_VERTEX_BUFFER; vb.Usage = D3D11_USAGE_DEFAULT;
     D3D11_SUBRESOURCE_DATA vbd{}; vbd.pSysMem = vertices.data(); HR_T(device->CreateBuffer(&vb, &vbd, &m_pVB));
 
     m_IndexCount = (int)indices.size();
