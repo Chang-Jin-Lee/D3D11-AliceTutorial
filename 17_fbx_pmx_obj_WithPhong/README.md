@@ -9,7 +9,7 @@
   - TBN의 Bitangents값은 assimp 안에 있는 mBitangents값을 사용합니다
   - TBN의 Normal값은 assimp 안에 있는 mNormals값을 사용합니다
   - 각 노드의 position 데이터는 mVertices에서 가져옵니다.
-  - 마지막으로 쉐이더에게 값을 전달하면 합니다.
+  - 마지막으로 쉐이더에게 값을 전달하면 됩니다.
  
 
 | fbx - Phong  | fbx - Blinn Phong  |
