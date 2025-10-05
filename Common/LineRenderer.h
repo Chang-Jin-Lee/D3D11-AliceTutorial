@@ -7,6 +7,7 @@ class LineRenderer
 {
 public:
     LineRenderer() = default;
+    explicit LineRenderer(ID3D11Device* device);
     ~LineRenderer() { Release(); }
 
     bool Initialize(ID3D11Device* device);

@@ -4,6 +4,15 @@
 
 using namespace DirectX;
 
+Skybox::Skybox(ID3D11Device* device, const wchar_t* ddsPath, ID3D11VertexShader* vs, ID3D11PixelShader* ps, ID3D11InputLayout* inputLayout, ID3D11Buffer* sharedConstantBuffer)
+{
+	Initialize(device, ddsPath, vs, ps, inputLayout, sharedConstantBuffer);
+}
+
+Skybox::~Skybox()
+{
+}
+
 bool Skybox::Initialize(ID3D11Device* device,
                         const wchar_t* ddsPath,
                         ID3D11VertexShader* vs,

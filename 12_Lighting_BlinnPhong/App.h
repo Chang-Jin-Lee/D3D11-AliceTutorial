@@ -16,6 +16,30 @@
 
 using namespace DirectX::SimpleMath;
 
+class LineRenderer;
+class Skybox;
+
+class PImplContainer
+{
+public:
+	PImplContainer();
+	~PImplContainer();
+
+	void InitLineRenderer(ID3D11Device* device);
+	void InitSkyBox(ID3D11Device* device,
+		const wchar_t* skyboxPath,
+		ID3D11VertexShader* vs,
+		ID3D11PixelShader* ps,
+		ID3D11InputLayout* inputLayout,
+		ID3D11Buffer* constantBuffer);
+
+	LineRenderer* GetLineRenderer();
+	Skybox* GetSkybox();
+private:
+	class Impl;
+	std::unique_ptr<Impl> pImpl;
+};
+
 // 방향 라이트
 struct DirectionalLight
 {
@@ -36,20 +60,9 @@ struct Material
 };
 
 
-class App :
-	public GameApp
+class App : public GameApp
 {
 public:
-
-	// 정점 레이아웃: POSITION/NORMAL/COLOR
-	struct LightVertex
-	{
-		DirectX::XMFLOAT3 pos;
-		DirectX::XMFLOAT3 normal;
-		DirectX::XMFLOAT4 color;
-		static const D3D11_INPUT_ELEMENT_DESC inputLayout[3];
-	};
-
 	// VS/PS 공용 상수버퍼(b0)
 	struct ConstantBuffer
 	{
@@ -77,7 +90,7 @@ public:
 	ID3D11PixelShader* m_pPixelShaderSolid = nullptr; 			// 픽셀 셰이더(마커용 흰색)
 
 	ID3D11SamplerState* m_pSamplerState = nullptr;
-	ID3D11BlendState* m_pAlphaBlendState = nullptr; 					// 알파 블렌딩 상태
+	ID3D11BlendState* m_pAlphaBlendState = nullptr; 			// 알파 블렌딩 상태
 	ID3D11VertexShader* m_pSkyBoxVertexShader = nullptr; 		// 스카이박스 정점 셰이더
 	ID3D11PixelShader* m_pSkyBoxPixelShader = nullptr; 			// 스카이박스 픽셀 셰이더(조명)	
 	ID3D11InputLayout* m_pSkyBoxInputLayout = nullptr; 			// 스카이박스 입력 레이아웃
@@ -101,9 +114,8 @@ public:
 	ConstantBuffer m_ConstantBuffer; 							// CPU-side 상수 버퍼 데이터
 	ID3D11Buffer* m_pLineVertexBuffer = nullptr; 				// 라이트 방향 표시용 라인 VB
 
-    // 분리된 유틸들
-    class LineRenderer* m_LineRenderer = nullptr;           // 선/좌표축 렌더러
-    class Skybox* m_Skybox = nullptr;                       // 스카이박스
+	PImplContainer pImpl;
+
     // 디버그 박스 버퍼
     ID3D11Buffer* m_pDebugBoxVB = nullptr;
     ID3D11Buffer* m_pDebugBoxIB = nullptr;

@@ -5,6 +5,11 @@ using namespace DirectX;
 
 struct LineV { XMFLOAT3 pos; XMFLOAT3 normal; XMFLOAT4 color; };
 
+LineRenderer::LineRenderer(ID3D11Device* device)
+{
+	Initialize(device);
+}
+
 bool LineRenderer::Initialize(ID3D11Device* device)
 {
     if (m_vb) return true;
