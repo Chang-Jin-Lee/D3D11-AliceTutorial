@@ -147,6 +147,7 @@ void App::OnUninitialize()
 	ImGui_ImplWin32_Shutdown();
 	ImGui::DestroyContext();
 
+	UninitScene();
 	UninitD3D();
 }
 
@@ -652,10 +653,10 @@ bool App::InitScene()
 	*/
 	// 24개 정점 (각 면 4개) + 텍스처 좌표
 	XMFLOAT4 hardColor = XMFLOAT4(0.0f, 1.0f, 1.0f, 1.0f);
-	m_VertextBufferStride = sizeof(LightVertex);
+	m_VertextBufferStride = sizeof(VertexLight);
 	m_VertextBufferOffset = 0;
 	// z = -1  (앞면)   법선 (0,0,-1)
-	LightVertex vertices[] =
+	VertexLight vertices[] =
 	{
 		// Front (z = -1)
 		{ XMFLOAT3(-1,-1,-1), XMFLOAT3(0, 0,-1), hardColor },
