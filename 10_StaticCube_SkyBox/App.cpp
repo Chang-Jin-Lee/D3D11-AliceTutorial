@@ -792,34 +792,14 @@ bool App::InitScene()
 	// 큐브설정
 	// 24개 정점 (각 면 4개) + 텍스처 좌표
 	XMFLOAT4 hardColor = XMFLOAT4(0.0f, 1.0f, 1.0f, 1.0f);
-	m_VertextBufferStride = sizeof(VertexData);
+	m_VertextBufferStride = sizeof(VertexLightTex);
 	m_VertextBufferOffset = 0;
 	// ***********************************************************************************************
 	// 작은 큐브 데이터 설정
 	// 정점 넣는 것과 인덱스 버퍼 값을 넣는것은 CreateBox 함수 안에 있습니다
-	StaticMeshData cubeData = StaticMesh::CreateBox(XMFLOAT4(1, 1, 1, 1));
-
-	D3D11_BUFFER_DESC vbDesc = {};
-	ZeroMemory(&vbDesc, sizeof(vbDesc));			// vbDesc에 0으로 전체 메모리 영역을 초기화 시킵니다
-	vbDesc.ByteWidth = sizeof(VertexData) * cubeData.vertices.size();				// 배열 전체의 바이트 크기를 바로 반환합니다
-	vbDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-	vbDesc.Usage = D3D11_USAGE_DEFAULT;
-
-	D3D11_SUBRESOURCE_DATA vbData = {};
-	ZeroMemory(&vbData, sizeof(vbData));
-	vbData.pSysMem = cubeData.vertices.data();						// 배열 데이터 할당.
-	HR_T(m_pDevice->CreateBuffer(&vbDesc, &vbData, &m_pVertexBuffer));
-
-	D3D11_BUFFER_DESC ibDesc = {};
-	ZeroMemory(&ibDesc, sizeof(ibDesc));
-	m_nIndices = cubeData.indices.size();	// 인덱스 개수 저장.
-	ibDesc.ByteWidth = sizeof(DWORD) * cubeData.indices.size();
-	ibDesc.BindFlags = D3D11_BIND_INDEX_BUFFER;
-	ibDesc.Usage = D3D11_USAGE_DEFAULT;
-
-	D3D11_SUBRESOURCE_DATA ibData = {};
-	ibData.pSysMem = cubeData.indices.data();
-	HR_T(m_pDevice->CreateBuffer(&ibDesc, &ibData, &m_pIndexBuffer));
+	StaticMeshDataLightTex cubeData = StaticMesh::CreateBoxLightTex(XMFLOAT4(1, 1, 1, 1));
+	StaticMesh::AssignMemoryLightTex(m_pDevice, m_pVertexBuffer, cubeData);
+	StaticMesh::AssignIndexMemoryLightTex(m_pDevice, m_pIndexBuffer, cubeData, m_nIndices);
 
 	// ***********************************************************************************************
 	// 상수 버퍼 설정
