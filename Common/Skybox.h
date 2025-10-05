@@ -6,6 +6,14 @@
 class Skybox
 {
 public:
+    Skybox() = default;
+    Skybox(ID3D11Device* device,
+        const wchar_t* ddsPath,
+        ID3D11VertexShader* vs,
+        ID3D11PixelShader* ps,
+        ID3D11InputLayout* inputLayout,
+        ID3D11Buffer* sharedConstantBuffer);
+    ~Skybox();
     bool Initialize(ID3D11Device* device,
                     const wchar_t* ddsPath,
                     ID3D11VertexShader* vs,

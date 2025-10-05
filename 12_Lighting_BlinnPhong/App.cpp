@@ -20,6 +20,51 @@
 #pragma comment (lib, "d3d11.lib")
 #pragma comment(lib,"d3dcompiler.lib")
 
+class PImplContainer::Impl
+{
+public:
+	Impl() : m_LineRenderer(nullptr), m_Skybox(nullptr){}
+
+	void InitLineRenderer(ID3D11Device* device)
+	{
+		m_LineRenderer = std::make_unique<LineRenderer>(device);
+	}
+
+	void InitSkyBox(ID3D11Device* device,
+		const wchar_t* skyboxPath,
+		ID3D11VertexShader* vs,
+		ID3D11PixelShader* ps,
+		ID3D11InputLayout* inputLayout,
+		ID3D11Buffer* constantBuffer)
+	{
+		m_Skybox = std::make_unique<Skybox>(device, skyboxPath, vs, ps, inputLayout, constantBuffer);
+	}
+
+	LineRenderer* GetLineRenderer() { return m_LineRenderer.get(); }
+	Skybox* GetSkybox() { return m_Skybox.get(); }
+
+	~Impl() = default;
+
+	std::unique_ptr<LineRenderer> m_LineRenderer;
+	std::unique_ptr<Skybox> m_Skybox;
+};
+
+PImplContainer::PImplContainer() : pImpl(std::make_unique<Impl>()) {}
+PImplContainer::~PImplContainer() = default;
+
+void PImplContainer::InitLineRenderer(ID3D11Device* device) { pImpl->InitLineRenderer(device); }
+void PImplContainer::InitSkyBox(ID3D11Device* device,
+	const wchar_t* skyboxPath,
+	ID3D11VertexShader* vs,
+	ID3D11PixelShader* ps,
+	ID3D11InputLayout* inputLayout,
+	ID3D11Buffer* constantBuffer) {
+	pImpl->InitSkyBox(device, skyboxPath, vs, ps, inputLayout, constantBuffer);
+}
+LineRenderer* PImplContainer::GetLineRenderer() { return pImpl->GetLineRenderer(); }
+Skybox* PImplContainer::GetSkybox() { return pImpl->GetSkybox(); }
+
+
 static bool LoadTextureSRVAndSize(ID3D11Device* device, const std::wstring& path,
 	ID3D11ShaderResourceView** outSRV, ImVec2* outSize)
 {
@@ -83,16 +128,16 @@ void App::PrepareSkyFaceSRVs()
 
 void App::ChangeSkyboxDDS(const wchar_t* ddsPath)
 {
-    if (m_Skybox)
-    {
-        if (m_Skybox->ChangeDDS(m_pDevice, ddsPath))
-        {
-            // also set for face view and PS binding
-            m_pTextureSRV = m_Skybox->GetTexture();
-            PrepareSkyFaceSRVs();
-            wcscpy_s(m_CurrentSkyboxPath, ddsPath);
-        }
-    }
+	if (Skybox* m_Skybox = pImpl.GetSkybox())
+	{
+		if (m_Skybox->ChangeDDS(m_pDevice, ddsPath))
+		{
+			// also set for face view and PS binding
+			m_pTextureSRV = m_Skybox->GetTexture();
+			PrepareSkyFaceSRVs();
+			wcscpy_s(m_CurrentSkyboxPath, ddsPath);
+		}
+	}
 }
 
 bool App::OnInitialize()
@@ -273,7 +318,7 @@ void App::OnRender()
 		m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_pConstantBuffer);
 		m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_pConstantBuffer);
 
-		UINT dbgStride = sizeof(VertexData);
+		UINT dbgStride = sizeof(VertexLightTex);
 		UINT dbgOffset = 0;
 		m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 		m_pDeviceContext->IASetVertexBuffers(0, 1, &m_pDebugBoxVB, &dbgStride, &dbgOffset);
@@ -297,9 +342,11 @@ void App::OnRender()
 		m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_pConstantBuffer);
 
 		// light direction (red)
-		m_LineRenderer->DrawLightDirection(m_pDeviceContext, m_LightPosition, m_DirLight.direction, 2.0f, m_pInputLayout, m_pVertexShader, m_pPixelShader, m_pConstantBuffer);
-		// symmetric axes centered at origin for better grid feel
-		m_LineRenderer->DrawAxesSymmetric(m_pDeviceContext, 100.0f, m_pInputLayout, m_pVertexShader, m_pPixelShader, m_pConstantBuffer);
+		if (LineRenderer* m_LineRenderer = pImpl.GetLineRenderer())
+		{
+			m_LineRenderer->DrawLightDirection(m_pDeviceContext, m_LightPosition, m_DirLight.direction, 2.0f, m_pInputLayout, m_pVertexShader, m_pPixelShader, m_pConstantBuffer);
+			m_LineRenderer->DrawAxesSymmetric(m_pDeviceContext, 100.0f, m_pInputLayout, m_pVertexShader, m_pPixelShader, m_pConstantBuffer);
+		}
 	}
 
 
@@ -307,7 +354,10 @@ void App::OnRender()
 	{
 		UINT stride = m_VertextBufferStride;
 		UINT offset = m_VertextBufferOffset;
-		m_Skybox->Render(m_pDeviceContext, m_pVertexBuffer, m_pIndexBuffer, m_nIndices, stride, offset, m_baseProjection.view, m_baseProjection.proj);
+		if (Skybox* m_Skybox = pImpl.GetSkybox())
+		{
+			m_Skybox->Render(m_pDeviceContext, m_pVertexBuffer, m_pIndexBuffer, m_nIndices, stride, offset, m_baseProjection.view, m_baseProjection.proj);
+		}
 	}
 
 	// 화면 오버레이 축(NDC)에 작게 표시
@@ -327,7 +377,8 @@ void App::OnRender()
 		m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_pConstantBuffer);
 
 		// 좌상단 작은 축 표시
-		m_LineRenderer->DrawAxesOverlay(m_pDeviceContext, XMMatrixTranspose(m_baseProjection.view), DirectX::XMFLOAT2(-0.9f, 0.85f), 0.08f, m_pInputLayout, m_pVertexShader, m_pPixelShader, m_pConstantBuffer);
+		if (LineRenderer* m_LineRenderer = pImpl.GetLineRenderer())
+			m_LineRenderer->DrawAxesOverlay(m_pDeviceContext, XMMatrixTranspose(m_baseProjection.view), DirectX::XMFLOAT2(-0.9f, 0.85f), 0.08f, m_pInputLayout, m_pVertexShader, m_pPixelShader, m_pConstantBuffer);
 	}
 
 	// ImGui 프레임 및 UI 렌더링
@@ -595,16 +646,16 @@ bool App::InitScene()
 	ID3D10Blob* errorMessage = nullptr;	 // 에러 메시지를 저장할 버퍼.
 
 	// ***********************************************************************************************
-	// 큐브설정
-	// 24개 정점 (각 면 4개) + 텍스처 좌표
-	m_VertextBufferStride = sizeof(VertexData);
+    // 큐브설정 (VertexLightTex 레이아웃)
+    // 24개 정점 (각 면 4개) + 텍스처 좌표
+    m_VertextBufferStride = sizeof(VertexLightTex);
 	m_VertextBufferOffset = 0;
 	// ***********************************************************************************************
-	// 작은 큐브 데이터 설정
-	// 정점 넣는 것과 인덱스 버퍼 값을 넣는것은 CreateBox 함수 안에 있습니다
-	StaticMeshData cubeData = StaticMesh::CreateBox(XMFLOAT4(1, 1, 1, 1));
-	StaticMesh::AssignMemory(m_pDevice, m_pVertexBuffer, cubeData);
-	StaticMesh::AssignIndexMemory(m_pDevice, m_pIndexBuffer, cubeData, m_nIndices);
+    // 작은 큐브 데이터 설정 (LightTex)
+    // 정점 넣는 것과 인덱스 버퍼 값을 넣는것은 CreateBoxLightTex 함수 안에 있습니다
+    StaticMeshDataLightTex cubeData = StaticMesh::CreateBoxLightTex(XMFLOAT4(1, 1, 1, 1));
+    StaticMesh::AssignMemoryLightTex(m_pDevice, m_pVertexBuffer, cubeData);
+    StaticMesh::AssignIndexMemoryLightTex(m_pDevice, m_pIndexBuffer, cubeData, m_nIndices);
 
 	// ***********************************************************************************************
 	// 상수 버퍼 설정
@@ -654,17 +705,12 @@ bool App::InitScene()
 
 	// ***********************************************************************************************
 	// 유틸 초기화: 라인 렌더러, 스카이박스, 디버그 박스
-	if (!m_LineRenderer) m_LineRenderer = new LineRenderer();
-	m_LineRenderer->Initialize(m_pDevice);
-
-	// Skybox: 기존 Hanako를 기본으로 초기화 (선호 DDS를 설정)
-	if (!m_Skybox) m_Skybox = new Skybox();
 	// Skybox는 이미 CreateDDSTextureFromFile로 SRV가 생성되어 있으므로, 여기선 현재 선택된 SRV를 사용하도록 Initialize는 경로 기반 대신 스킵할 수 있습니다.
-	// 간편화를 위해 cubemap.dds로 초기화
-	m_Skybox->Initialize(m_pDevice, m_CurrentSkyboxPath, m_pSkyBoxVertexShader, m_pSkyBoxPixelShader, m_pSkyBoxInputLayout, m_pConstantBuffer);
+	pImpl.InitLineRenderer(m_pDevice);
+	pImpl.InitSkyBox(m_pDevice, m_CurrentSkyboxPath, m_pSkyBoxVertexShader, m_pSkyBoxPixelShader, m_pSkyBoxInputLayout, m_pConstantBuffer);
 
 	// Debug box buffers for light position marker
-	StaticMesh::CreateDebugBoxBuffers(m_pDevice, XMFLOAT4(1,1,1,1), 0.2f, &m_pDebugBoxVB, &m_pDebugBoxIB, &m_DebugBoxIndexCount);
+	StaticMesh::CreateDebugBoxBuffersLightTex(m_pDevice, XMFLOAT4(1,1,1,1), 0.2f, &m_pDebugBoxVB, &m_pDebugBoxIB, &m_DebugBoxIndexCount);
 
 	return true;
 }
@@ -690,8 +736,6 @@ void App::UninitScene()
 
     SAFE_RELEASE(m_pDebugBoxVB);
     SAFE_RELEASE(m_pDebugBoxIB);
-    if (m_LineRenderer) { m_LineRenderer->Release(); delete m_LineRenderer; m_LineRenderer = nullptr; }
-    if (m_Skybox) { m_Skybox->Release(); delete m_Skybox; m_Skybox = nullptr; }
 }
 
 bool App::InitTexture()
