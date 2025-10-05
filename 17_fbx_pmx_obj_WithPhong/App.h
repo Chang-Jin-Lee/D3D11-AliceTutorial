@@ -108,29 +108,29 @@ public:
 	
 	ID3D11InputLayout* m_pInputLayout = nullptr;					// 입력 레이아웃
 	ID3D11Buffer* m_pVertexBuffer = nullptr;						// 버텍스 버퍼
-	UINT m_VertextBufferStride = 0;							// 버텍스 하나의 크기
-	UINT m_VertextBufferOffset = 0;							// 버텍스 버퍼 오프셋
-	ID3D11Buffer* m_pIndexBuffer = nullptr;						// 인덱스 버퍼
-	int m_nIndices = 0;										// 인덱스 개수
+	UINT m_VertextBufferStride = 0;									// 버텍스 하나의 크기
+	UINT m_VertextBufferOffset = 0;									// 버텍스 버퍼 오프셋
+	ID3D11Buffer* m_pIndexBuffer = nullptr;							// 인덱스 버퍼
+	int m_nIndices = 0;												// 인덱스 개수
 
 	ID3D11Buffer* m_pConstantBuffer = nullptr;						// 상수 버퍼 (단일)
-	std::vector<ConstantBuffer> m_CBuffers;						// 텍스쳐들 그리기 위한 상수 버퍼 캐시
-	ConstantBuffer m_ConstantBuffer;							// CPU-side 상수 버퍼 데이터
+	std::vector<ConstantBuffer> m_CBuffers;							// 텍스쳐들 그리기 위한 상수 버퍼 캐시
+	ConstantBuffer m_ConstantBuffer;								// CPU-side 상수 버퍼 데이터
 	ID3D11Buffer* m_pLineVertexBuffer = nullptr;					// 라이트 방향 표시용 라인 VB
 
     // 분리된 유틸들
-    class LineRenderer* m_LineRenderer = nullptr;           // 선/좌표축 렌더러
-    class Skybox* m_Skybox = nullptr;                       // 스카이박스
+    class LineRenderer* m_LineRenderer = nullptr;					// 선/좌표축 렌더러
+    class Skybox* m_Skybox = nullptr;								// 스카이박스
     // 디버그 박스 버퍼
     ID3D11Buffer* m_pDebugBoxVB = nullptr;
     ID3D11Buffer* m_pDebugBoxIB = nullptr;
     int m_DebugBoxIndexCount = 0;
 
 	ID3D11DepthStencilView* m_pDepthStencilView;					// 깊이 스텐실 뷰
-	ID3D11DepthStencilState* m_pDepthStencilState = nullptr;	// 깊이 스텐실 상태
+	ID3D11DepthStencilState* m_pDepthStencilState = nullptr;		// 깊이 스텐실 상태
 
-	ID3D11RasterizerState*  RSNoCull; 							// 레스터 라이저 상태 : 백 클리핑 모드 없음
-	ID3D11RasterizerState* RSCullClockWise;						// 레스터 라이저 상태 : 시계 방향 자르기 모드
+	ID3D11RasterizerState*  RSNoCull; 								// 레스터 라이저 상태 : 백 클리핑 모드 없음
+	ID3D11RasterizerState* RSCullClockWise;							// 레스터 라이저 상태 : 시계 방향 자르기 모드
 
 	// 이미지 디버그/데모용 텍스처 (Hanako)
 	ID3D11ShaderResourceView* m_TexHanakoSRV = nullptr;
@@ -153,16 +153,16 @@ public:
 
 	// ImGui 컨트롤 상태 변수
 	SystemInfomation m_SystemInfo;
-	Camera m_camera;										// 카메라
-	DirectX::XMFLOAT3 m_modelPos = { 0.0f, 0.0f, 0.0f };               // 모델 루트 위치
-	DirectX::XMFLOAT3 m_modelScale = { 1.0f, 1.0f, 1.0f };             // 모델 스케일
-	DirectX::XMFLOAT3 m_modelRotation = { 0.0f, 0.0f, 0.0f };          // 모델 회전(Yaw/Pitch/Roll, deg)
-	bool m_RotateModel = false;                                        // ImGui 토글: 모델 자동 회전 on/off
+	Camera m_camera;													// 카메라
+	DirectX::XMFLOAT3 m_modelPos = { 0.0f, 0.0f, 0.0f };				// 모델 루트 위치
+	DirectX::XMFLOAT3 m_modelScale = { 1.0f, 1.0f, 1.0f };				// 모델 스케일
+	DirectX::XMFLOAT3 m_modelRotation = { 0.0f, 0.0f, 0.0f };			// 모델 회전(Yaw/Pitch/Roll, deg)
+	bool m_RotateModel = false;											// ImGui 토글: 모델 자동 회전 on/off
 
 	// Mirror Cube transform (참고: 기본 큐브와 동일한 구성)
-	DirectX::XMFLOAT3 m_mirrorCubePos = { 4.5f, 0.0f, 0.0f };		// 거울 큐브 위치 (x+8 기본)
-	DirectX::XMFLOAT3 m_mirrorCubeRotation = { 0.0f, 0.0f, 0.0f };	// 거울 큐브 회전(Yaw/Pitch/Roll, deg)
-	float m_MirrorCubeScale = 2.0f;                                 // 거울 큐브 스케일
+	DirectX::XMFLOAT3 m_mirrorCubePos = { 4.5f, 0.0f, 0.0f };			// 거울 큐브 위치 (x+8 기본)
+	DirectX::XMFLOAT3 m_mirrorCubeRotation = { 0.0f, 0.0f, 0.0f };		// 거울 큐브 회전(Yaw/Pitch/Roll, deg)
+	float m_MirrorCubeScale = 2.0f;										// 거울 큐브 스케일
 
 	// DirectionalLight
 	DirectionalLight m_DirLight = {
@@ -176,7 +176,7 @@ public:
 	Material m_Material = {
 		/*ambient*/ { 1.0f, 1.0f, 1.0f, 1.0f },
 		/*diffuse*/ { 1.0f, 1.0f, 1.0f, 1.0f },
-		/*specular*/{ 1.0f, 1.0f, 1.0f, 32.0f }, // w = shininess
+		/*specular*/{ 1.0f, 1.0f, 1.0f, 32.0f },						// w = shininess
 		/*reflect*/ { 0.0f, 0.0f, 0.0f, 0.0f }
 	};
 	// Mirror Cube Material (메탈릭 거울 느낌)
@@ -184,12 +184,12 @@ public:
 		/*ambient*/ { 0.0f, 0.0f, 0.0f, 1.0f },
 		/*diffuse*/ { 0.0f, 0.0f, 0.0f, 1.0f },
 		/*specular*/{ 0.0f, 0.0f, 0.0f, 32.0f },
-		/*reflect*/ { 1.0f, 1.0f, 1.0f, 0.02f }   // a=roughness (작을수록 샤프)
+		/*reflect*/ { 1.0f, 1.0f, 1.0f, 0.02f }							// a=roughness (작을수록 샤프)
 	};
 
-	DirectX::XMFLOAT3 m_LightPosition = { 4.0f, 4.0f, 0.0f };   // 라이트 위치(마커용)
+	DirectX::XMFLOAT3 m_LightPosition = { 4.0f, 4.0f, 0.0f };			// 라이트 위치(마커용)
 
-	ConstantBuffer m_baseProjection;								// 기본 카메라/월드 캐시
+	ConstantBuffer m_baseProjection;									// 기본 카메라/월드 캐시
 
 	// Shader selection (like 15)
 	enum class ShadingMode { Phong=0, BlinnPhong=1, Lambert=2, Unlit=3, TextureOnly=4 };
