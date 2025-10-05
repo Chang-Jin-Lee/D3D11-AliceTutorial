@@ -228,7 +228,7 @@ void App::OnUpdate(const float& dt)
 void App::OnRender()
 {
 	float color[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
-	UINT stride = sizeof(VertexPosTex);	// 바이트 수
+	UINT stride = sizeof(VertexCubePosTex);	// 바이트 수
 	UINT offset = 0;
 
 	m_pDeviceContext->ClearRenderTargetView(m_pRenderTargetView, color);
@@ -633,7 +633,7 @@ bool App::InitScene()
 
 	D3D11_BUFFER_DESC vbDesc = {};
 	ZeroMemory(&vbDesc, sizeof(vbDesc));			// vbDesc에 0으로 전체 메모리 영역을 초기화 시킵니다
-	vbDesc.ByteWidth = (UINT)(m_ModelVertices.size() * sizeof(VertexPosTex));				// 배열 전체의 바이트 크기
+	vbDesc.ByteWidth = (UINT)(m_ModelVertices.size() * sizeof(VertexCubePosTex));				// 배열 전체의 바이트 크기
 	vbDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
 	vbDesc.Usage = D3D11_USAGE_DEFAULT;
 
