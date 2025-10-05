@@ -320,7 +320,7 @@ void App::OnRender()
 		m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_pConstantBuffer);
 		m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_pConstantBuffer);
 
-		UINT dbgStride = sizeof(VertexData);
+		UINT dbgStride = sizeof(VertexLightTex);
 		UINT dbgOffset = 0;
 		m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 		m_pDeviceContext->IASetVertexBuffers(0, 1, &m_pDebugBoxVB, &dbgStride, &dbgOffset);
@@ -645,14 +645,14 @@ bool App::InitScene()
 	// ***********************************************************************************************
 	// 큐브설정
 	// 24개 정점 (각 면 4개) + 텍스처 좌표
-	m_VertextBufferStride = sizeof(VertexData);
+	m_VertextBufferStride = sizeof(VertexLightTex);
 	m_VertextBufferOffset = 0;
 	// ***********************************************************************************************
 	// 작은 큐브 데이터 설정
 	// 정점 넣는 것과 인덱스 버퍼 값을 넣는것은 CreateBox 함수 안에 있습니다
-	StaticMeshData cubeData = StaticMesh::CreateBox(XMFLOAT4(1, 1, 1, 1));
-	StaticMesh::AssignMemory(m_pDevice, m_pVertexBuffer, cubeData);
-	StaticMesh::AssignIndexMemory(m_pDevice, m_pIndexBuffer, cubeData, m_nIndices);
+	StaticMeshDataLightTex cubeData = StaticMesh::CreateBoxLightTex(XMFLOAT4(1, 1, 1, 1));
+	StaticMesh::AssignMemoryLightTex(m_pDevice, m_pVertexBuffer, cubeData);
+	StaticMesh::AssignIndexMemoryLightTex(m_pDevice, m_pIndexBuffer, cubeData, m_nIndices);
 
 	// ***********************************************************************************************
 	// 상수 버퍼 설정
@@ -712,7 +712,7 @@ bool App::InitScene()
 	m_Skybox->Initialize(m_pDevice, m_CurrentSkyboxPath, m_pSkyBoxVertexShader, m_pSkyBoxPixelShader, m_pSkyBoxInputLayout, m_pConstantBuffer);
 
 	// Debug box buffers for light position marker
-	StaticMesh::CreateDebugBoxBuffers(m_pDevice, XMFLOAT4(1,1,1,1), 0.2f, &m_pDebugBoxVB, &m_pDebugBoxIB, &m_DebugBoxIndexCount);
+	StaticMesh::CreateDebugBoxBuffersLightTex(m_pDevice, XMFLOAT4(1,1,1,1), 0.2f, &m_pDebugBoxVB, &m_pDebugBoxIB, &m_DebugBoxIndexCount);
 
 	return true;
 }

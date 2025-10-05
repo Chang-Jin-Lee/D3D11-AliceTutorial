@@ -18,23 +18,12 @@
 */
 
 #include "App.h"
+#include "../Common/Vertex.h"
 #include "../Common/Helper.h"
 #include <d3dcompiler.h>
 
 #pragma comment (lib, "d3d11.lib")
 #pragma comment(lib,"d3dcompiler.lib")
-
-// vertex structure
-struct VertexInfo
-{
-	// 정점의 위치, 색상 정보
-	Vector3 position;
-	Vector3 color;
-	
-	VertexInfo(float x, float y, float z, float r, float g, float b) : position(x, y, z), color(r, g, b){}
-	VertexInfo(Vector3 pos) : position(pos) {}
-	VertexInfo(Vector3 pos, Vector4 col) : position(pos), color(col.x, col.y, col.z) {}
-};
 
 bool App::OnInitialize()
 {
@@ -194,24 +183,24 @@ bool App::InitScene()
 	*   - Usage     : DEFAULT (일반적 용도)
 	*   - 초기 데이터 : vbData.pSysMem = vertices
 	*   - Stride/Offset : IASetVertexBuffers용 파라미터
-	*   - 주의 : VertexInfo(color=Vec3), 셰이더/InputLayout의 COLOR 형식 일치 필요
+	*   - 주의 : VertexTriangle(color=Vec3), 셰이더/InputLayout의 COLOR 형식 일치 필요
 	*/
-	VertexInfo vertices[] =
+	VertexTriangle vertices[] =
 	{
-		VertexInfo(Vector3(-0.5f,  0.5f, 0.5f), Vector4(1.0f, 0.0f, 1.0f, 1.0f)),
-		VertexInfo(Vector3(0.5f,  0.5f, 0.5f), Vector4(0.0f, 1.0f, 0.0f, 1.0f)),
-		VertexInfo(Vector3(-0.5f, -0.5f, 0.5f), Vector4(1.0f, 0.2f, 1.0f, 1.0f)),
-		VertexInfo(Vector3(0.5f, -0.5f, 0.5f), Vector4(0.0f, 0.6f, 1.0f, 1.0f))
+		{DirectX::XMFLOAT3(-0.5f,  0.5f, 0.5f), DirectX::XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f)},
+		{DirectX::XMFLOAT3(0.5f,  0.5f, 0.5f), DirectX::XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f)},
+		{DirectX::XMFLOAT3(-0.5f, -0.5f, 0.5f), DirectX::XMFLOAT4(1.0f, 0.2f, 1.0f, 1.0f)},
+		{DirectX::XMFLOAT3(0.5f, -0.5f, 0.5f), DirectX::XMFLOAT4(0.0f, 0.6f, 1.0f, 1.0f)}
 	};
 
 	D3D11_BUFFER_DESC vbDesc = {};
-	vbDesc.ByteWidth = sizeof(VertexInfo) * ARRAYSIZE(vertices);
+	vbDesc.ByteWidth = sizeof(VertexTriangle) * ARRAYSIZE(vertices);
 	vbDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
 	vbDesc.Usage = D3D11_USAGE_DEFAULT;
 	D3D11_SUBRESOURCE_DATA vbData = {};
 	vbData.pSysMem = vertices;	// 배열 데이터 할당.
 	HR_T(m_pDevice->CreateBuffer(&vbDesc, &vbData, &m_pVertexBuffer));
-	m_VertextBufferStride = sizeof(VertexInfo);		// 버텍스 버퍼 정보
+	m_VertextBufferStride = sizeof(VertexTriangle);		// 버텍스 버퍼 정보
 	m_VertextBufferOffset = 0;
 
 
@@ -270,7 +259,6 @@ bool App::InitScene()
 	D3D11_SUBRESOURCE_DATA ibData = {};
 	ibData.pSysMem = indices;
 	HR_T(m_pDevice->CreateBuffer(&ibDesc, &ibData, &m_pIndexBuffer));
-
 
 	/*
 	* @brief  PS 바이트코드로 Pixel Shader 생성 및 컴파일 버퍼 해제

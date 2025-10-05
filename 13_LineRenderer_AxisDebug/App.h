@@ -47,7 +47,6 @@ public:
 		DirectX::XMFLOAT3 pos;
 		DirectX::XMFLOAT3 normal;
 		DirectX::XMFLOAT4 color;
-		static const D3D11_INPUT_ELEMENT_DESC inputLayout[3];
 	};
 
 	// VS/PS 공용 상수버퍼(b0)

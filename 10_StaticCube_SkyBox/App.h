@@ -1,6 +1,7 @@
 #pragma once
 #include <windows.h>
 #include "../Common/GameApp.h"
+#include "../Common/Vertex.h"
 #include <d3d11.h>
 #include <directxtk/SimpleMath.h>
 #include <vector>
@@ -41,16 +42,6 @@ class App :
 	public GameApp
 {
 public:
-
-	// 정점 레이아웃: POSITION/NORMAL/COLOR
-	struct LightVertex
-	{
-		DirectX::XMFLOAT3 pos;
-		DirectX::XMFLOAT3 normal;
-		DirectX::XMFLOAT4 color;
-		static const D3D11_INPUT_ELEMENT_DESC inputLayout[3];
-	};
-
 	// VS/PS 공용 상수버퍼(b0)
 	struct ConstantBuffer
 	{

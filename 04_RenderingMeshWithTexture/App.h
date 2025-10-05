@@ -19,20 +19,6 @@ class App :
 	public GameApp
 {
 public:
-	struct VertexPosColor
-	{
-		DirectX::XMFLOAT3 pos;
-		DirectX::XMFLOAT4 color;
-		static const D3D11_INPUT_ELEMENT_DESC inputLayout[2];
-	};
-
-	struct VertexPosTex
-	{
-		DirectX::XMFLOAT3 pos;
-		DirectX::XMFLOAT2 tex;
-		static const D3D11_INPUT_ELEMENT_DESC inputLayout[2];
-	};
-
 	struct ConstantBuffer
 	{
 		DirectX::XMMATRIX world;

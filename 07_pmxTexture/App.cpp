@@ -110,6 +110,7 @@ void App::OnUninitialize()
 	ImGui_ImplWin32_Shutdown();
 	ImGui::DestroyContext();
 
+	UninitScene();
 	UninitD3D();
 }
 
@@ -230,7 +231,7 @@ void App::OnUpdate(const float& dt)
 void App::OnRender()
 {
 	float color[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
-	UINT stride = sizeof(VertexPosTex);	// 바이트 수
+	UINT stride = sizeof(VertexCubePosTex);	// 바이트 수
 	UINT offset = 0;
 
 	m_pDeviceContext->ClearRenderTargetView(m_pRenderTargetView, color);
@@ -528,6 +529,13 @@ bool App::InitD3D()
 
 void App::UninitD3D()
 {
+	// 컨텍스트 초기화
+	if (m_pDeviceContext)
+	{
+		m_pDeviceContext->OMSetRenderTargets(0, nullptr, nullptr);
+		m_pDeviceContext->ClearState();
+		m_pDeviceContext->Flush();
+	}
 	SAFE_RELEASE(m_pDepthStencilState);
 	SAFE_RELEASE(m_pRasterState);
 	SAFE_RELEASE(m_pDepthStencilView);
@@ -752,7 +760,7 @@ bool App::InitScene()
 
 	D3D11_BUFFER_DESC vbDesc = {};
 	ZeroMemory(&vbDesc, sizeof(vbDesc));			// vbDesc에 0으로 전체 메모리 영역을 초기화 시킵니다
-	vbDesc.ByteWidth = (UINT)(m_ModelVertices.size() * sizeof(VertexPosTex));				// 배열 전체의 바이트 크기
+	vbDesc.ByteWidth = (UINT)(m_ModelVertices.size() * sizeof(VertexCubePosTex));				// 배열 전체의 바이트 크기
 	vbDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
 	vbDesc.Usage = D3D11_USAGE_DEFAULT;
 

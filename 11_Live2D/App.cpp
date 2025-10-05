@@ -569,7 +569,7 @@ void App::OnUpdate(const float& dt)
 void App::OnRender()
 {
 	float color[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
-	UINT stride = sizeof(VertexPosTex);	// 바이트 수
+	UINT stride = sizeof(VertexCubePosTex);	// 바이트 수
 	UINT offset = 0;
 
 	m_pDeviceContext->ClearRenderTargetView(m_pRenderTargetView, color);
@@ -1025,7 +1025,7 @@ bool App::InitScene()
 	*   - 주의 : VertexInfo(color=Vec3), 셰이더/InputLayout의 COLOR 형식 일치 필요
 	*/
 	// 24개 정점 (각 면 4개) + 텍스처 좌표
-	VertexPosTex vertices[] =
+	VertexCubePosTex vertices[] =
 	{
 		// 앞면 (z = -1)
 		{ XMFLOAT3(-1,-1,-1), XMFLOAT2(0,1) },

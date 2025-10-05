@@ -213,8 +213,6 @@ void App::OnRender()
 		float clr[4] = { m_ClearColor.x, m_ClearColor.y, m_ClearColor.z, m_ClearColor.w };
 		m_pDeviceContext->ClearRenderTargetView(m_pRenderTargetView, clr);
 	}
-	// 큐브는 CCW를 앞면으로 정의했으므로 FrontCounterClockwise=false, Back-face culling 사용
-	m_pDeviceContext->RSSetState(RSCullClockWise);
 
 	m_pDeviceContext->VSSetShader(m_pVertexShader, nullptr, 0);
 	m_pDeviceContext->PSSetShader(m_pPixelShader, nullptr, 0);
@@ -332,7 +330,7 @@ void App::OnRender()
 		m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_pConstantBuffer);
 		m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_pConstantBuffer);
 
-		UINT dbgStride = sizeof(VertexData);
+		UINT dbgStride = sizeof(VertexTBN);
 		UINT dbgOffset = 0;
 		m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 		m_pDeviceContext->IASetVertexBuffers(0, 1, &m_pDebugBoxVB, &dbgStride, &dbgOffset);
@@ -682,73 +680,15 @@ bool App::InitScene()
 	// ***********************************************************************************************
 	// 큐브설정
 	// 24개 정점 (각 면 4개) + 텍스처 좌표
-	m_VertextBufferStride = sizeof(VertexData);
+	m_VertextBufferStride = sizeof(VertexTBN);
 	m_VertextBufferOffset = 0;
 	// ***********************************************************************************************
 	// 작은 큐브 데이터 설정
 	// 정점 넣는 것과 인덱스 버퍼 값을 넣는것은 CreateBox 함수 안에 있습니다
     // Normal Mapping을 위한 TBN 포함 수동 큐브 생성 (좌표계: +X 오른쪽, +Y 위, +Z 앞)
-    struct NMVertex { XMFLOAT3 pos; XMFLOAT3 normal; XMFLOAT3 tangent; XMFLOAT3 bitangent; XMFLOAT4 color; XMFLOAT2 uv; };
-    auto V = [](float x,float y,float z){ return XMFLOAT3(x,y,z); };
-    auto C = XMFLOAT4(1,1,1,1);
-    // 각 면의 TBN 정의
-    XMFLOAT3 Npx = V( 1, 0, 0), Tpx = V(0, 0, 1), Bpx = V(0, 1, 0);
-    XMFLOAT3 Nnx = V(-1, 0, 0), Tnx = V(0, 0,-1), Bnx = V(0, 1, 0);
-    XMFLOAT3 Npy = V( 0, 1, 0), Tpy = V(1, 0, 0), Bpy = V(0, 0,-1);
-    XMFLOAT3 Nny = V( 0,-1, 0), Tny = V(1, 0, 0), Bny = V(0, 0, 1);
-    XMFLOAT3 Npz = V( 0, 0, 1), Tpz = V(1, 0, 0), Bpz = V(0, 1, 0);
-    XMFLOAT3 Nnz = V( 0, 0,-1), Tnz = V(-1,0, 0), Bnz = V(0, 1, 0);
-    // 정점: 각 면 4개 (CCW)
-    NMVertex verts[24] = {
-        // +Z (front)
-        { V(-1,-1, 1), Npz, Tpz, Bpz, C, XMFLOAT2(0,1) },
-        { V(-1, 1, 1), Npz, Tpz, Bpz, C, XMFLOAT2(0,0) },
-        { V( 1, 1, 1), Npz, Tpz, Bpz, C, XMFLOAT2(1,0) },
-        { V( 1,-1, 1), Npz, Tpz, Bpz, C, XMFLOAT2(1,1) },
-        // -Z (back)
-        { V( 1,-1,-1), Nnz, Tnz, Bnz, C, XMFLOAT2(0,1) },
-        { V( 1, 1,-1), Nnz, Tnz, Bnz, C, XMFLOAT2(0,0) },
-        { V(-1, 1,-1), Nnz, Tnz, Bnz, C, XMFLOAT2(1,0) },
-        { V(-1,-1,-1), Nnz, Tnz, Bnz, C, XMFLOAT2(1,1) },
-        // +X (right)
-        { V( 1,-1, 1), Npx, Tpx, Bpx, C, XMFLOAT2(0,1) },
-        { V( 1, 1, 1), Npx, Tpx, Bpx, C, XMFLOAT2(0,0) },
-        { V( 1, 1,-1), Npx, Tpx, Bpx, C, XMFLOAT2(1,0) },
-        { V( 1,-1,-1), Npx, Tpx, Bpx, C, XMFLOAT2(1,1) },
-        // -X (left)
-        { V(-1,-1,-1), Nnx, Tnx, Bnx, C, XMFLOAT2(0,1) },
-        { V(-1, 1,-1), Nnx, Tnx, Bnx, C, XMFLOAT2(0,0) },
-        { V(-1, 1, 1), Nnx, Tnx, Bnx, C, XMFLOAT2(1,0) },
-        { V(-1,-1, 1), Nnx, Tnx, Bnx, C, XMFLOAT2(1,1) },
-        // +Y (top)
-        { V(-1, 1, 1), Npy, Tpy, Bpy, C, XMFLOAT2(0,1) },
-        { V(-1, 1,-1), Npy, Tpy, Bpy, C, XMFLOAT2(0,0) },
-        { V( 1, 1,-1), Npy, Tpy, Bpy, C, XMFLOAT2(1,0) },
-        { V( 1, 1, 1), Npy, Tpy, Bpy, C, XMFLOAT2(1,1) },
-        // -Y (bottom)
-        { V(-1,-1,-1), Nny, Tny, Bny, C, XMFLOAT2(0,1) },
-        { V(-1,-1, 1), Nny, Tny, Bny, C, XMFLOAT2(0,0) },
-        { V( 1,-1, 1), Nny, Tny, Bny, C, XMFLOAT2(1,0) },
-        { V( 1,-1,-1), Nny, Tny, Bny, C, XMFLOAT2(1,1) },
-    };
-    DWORD indices[] = {
-        0,1,2, 2,3,0,      // +Z
-        4,5,6, 6,7,4,      // -Z
-        8,9,10, 10,11,8,   // +X
-        12,13,14, 14,15,12,// -X
-        16,17,18, 18,19,16,// +Y
-        20,21,22, 22,23,20 // -Y
-    };
-    // VB 생성
-    m_VertextBufferStride = sizeof(NMVertex);
-    D3D11_BUFFER_DESC vbDesc{}; vbDesc.ByteWidth = sizeof(verts); vbDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER; vbDesc.Usage = D3D11_USAGE_DEFAULT;
-    D3D11_SUBRESOURCE_DATA vbData{}; vbData.pSysMem = verts;
-    HR_T(m_pDevice->CreateBuffer(&vbDesc, &vbData, &m_pVertexBuffer));
-    // IB 생성
-    D3D11_BUFFER_DESC ibDesc{}; ibDesc.ByteWidth = sizeof(indices); ibDesc.BindFlags = D3D11_BIND_INDEX_BUFFER; ibDesc.Usage = D3D11_USAGE_DEFAULT;
-    D3D11_SUBRESOURCE_DATA ibData{}; ibData.pSysMem = indices;
-    HR_T(m_pDevice->CreateBuffer(&ibDesc, &ibData, &m_pIndexBuffer));
-    m_nIndices = ARRAYSIZE(indices);
+	StaticMeshData cubeData = StaticMesh::CreateBox(XMFLOAT4(1, 1, 1, 1));
+	StaticMesh::AssignMemory(m_pDevice, m_pVertexBuffer, cubeData);
+	StaticMesh::AssignIndexMemory(m_pDevice, m_pIndexBuffer, cubeData, m_nIndices);
 
 	// ***********************************************************************************************
 	// 상수 버퍼 설정

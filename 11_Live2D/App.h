@@ -1,6 +1,7 @@
 #pragma once
 #include <windows.h>
 #include "../Common/GameApp.h"
+#include "../Common/Vertex.h"
 #include <d3d11.h>
 #include <directxtk/SimpleMath.h>
 #include <vector>
@@ -29,25 +30,6 @@ class App :
 	public GameApp
 {
 public:
-	/*
-	* @brief : 큐브 예제에서 사용하던 정점 레이아웃(현재 Live2D UI만 사용)
-	*/
-	struct VertexPosColor
-	{
-		DirectX::XMFLOAT3 pos;
-		DirectX::XMFLOAT4 color;
-		static const D3D11_INPUT_ELEMENT_DESC inputLayout[2];
-	};
-
-	/*
-	* @brief : 텍스처 좌표 포함 정점 레이아웃 현재 기본 셰이더 제거
-	*/
-	struct VertexPosTex
-	{
-		DirectX::XMFLOAT3 pos;
-		DirectX::XMFLOAT2 tex;
-		static const D3D11_INPUT_ELEMENT_DESC inputLayout[2];
-	};
 
 	/*
 	* @brief : VS/PS에서 사용할 기본 MVP 상수 버퍼 형식
