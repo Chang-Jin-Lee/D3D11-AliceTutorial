@@ -1,5 +1,6 @@
 #include "PmxMangerWithoutTBN.h"
 #include "../Common/Helper.h"
+#include "../Common/Vertex.h"
 
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
@@ -188,7 +189,7 @@ bool PmxMangerWithoutTBN::BuildMeshBuffers(ID3D11Device* device, const aiScene* 
 
 	// VB
 	D3D11_BUFFER_DESC vbDesc = {};
-	vbDesc.ByteWidth = (UINT)(m_Vertices.size() * sizeof(VertexData));
+	vbDesc.ByteWidth = (UINT)(m_Vertices.size() * sizeof(VertexLightTex));
 	vbDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
 	vbDesc.Usage = D3D11_USAGE_DEFAULT;
 	D3D11_SUBRESOURCE_DATA vbData = {}; vbData.pSysMem = m_Vertices.data();

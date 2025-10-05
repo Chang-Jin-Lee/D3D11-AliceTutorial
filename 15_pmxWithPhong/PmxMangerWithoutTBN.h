@@ -30,7 +30,7 @@ public:
 	ID3D11Buffer* GetVertexBuffer() const { return m_pVB; }
 	ID3D11Buffer* GetIndexBuffer() const { return m_pIB; }
 	int GetIndexCount() const { return m_IndexCount; }
-	UINT GetVertexStride() const { return (UINT)sizeof(VertexData); }
+	UINT GetVertexStride() const { return (UINT)sizeof(VertexLightTex); }
 	UINT GetVertexOffset() const { return 0; }
 
 	const std::vector<PmxSubset>& GetSubsets() const { return m_Subsets; }
@@ -48,7 +48,7 @@ private:
 	int m_IndexCount = 0;
 
 	// PMX 원본 데이터(필요 시 유지)
-	std::vector<VertexData> m_Vertices;
+	std::vector<VertexLightTex> m_Vertices;
 	std::vector<uint32_t> m_Indices;
 	std::vector<PmxSubset> m_Subsets;
 
