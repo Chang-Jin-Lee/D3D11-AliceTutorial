@@ -187,10 +187,10 @@ bool App::InitScene()
 	*/
 	VertexTriangle vertices[] =
 	{
-		VertexTriangle(Vector3(-0.5f,  0.5f, 0.5f), Vector4(1.0f, 0.0f, 1.0f, 1.0f)),
-		VertexTriangle(Vector3(0.5f,  0.5f, 0.5f), Vector4(0.0f, 1.0f, 0.0f, 1.0f)),
-		VertexTriangle(Vector3(-0.5f, -0.5f, 0.5f), Vector4(1.0f, 0.2f, 1.0f, 1.0f)),
-		VertexTriangle(Vector3(0.5f, -0.5f, 0.5f), Vector4(0.0f, 0.6f, 1.0f, 1.0f))
+		{DirectX::XMFLOAT3(-0.5f,  0.5f, 0.5f), DirectX::XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f)},
+		{DirectX::XMFLOAT3(0.5f,  0.5f, 0.5f), DirectX::XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f)},
+		{DirectX::XMFLOAT3(-0.5f, -0.5f, 0.5f), DirectX::XMFLOAT4(1.0f, 0.2f, 1.0f, 1.0f)},
+		{DirectX::XMFLOAT3(0.5f, -0.5f, 0.5f), DirectX::XMFLOAT4(0.0f, 0.6f, 1.0f, 1.0f)}
 	};
 
 	D3D11_BUFFER_DESC vbDesc = {};
@@ -259,7 +259,6 @@ bool App::InitScene()
 	D3D11_SUBRESOURCE_DATA ibData = {};
 	ibData.pSysMem = indices;
 	HR_T(m_pDevice->CreateBuffer(&ibDesc, &ibData, &m_pIndexBuffer));
-
 
 	/*
 	* @brief  PS 바이트코드로 Pixel Shader 생성 및 컴파일 버퍼 해제
