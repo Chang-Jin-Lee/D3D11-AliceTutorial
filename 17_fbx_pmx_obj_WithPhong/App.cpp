@@ -141,6 +141,8 @@ void App::OnUninitialize()
 	ImGui_ImplWin32_Shutdown();
 	ImGui::DestroyContext();
 
+	// 씬 리소스 먼저 정리 
+	UninitScene();
 	UninitD3D();
 }
 
@@ -650,18 +652,19 @@ bool App::InitD3D()
 	HRESULT hr = S_OK;
 
 	// 스왑체인의 값들을 설정할 구조체를 만듭니다
-	DXGI_SWAP_CHAIN_DESC swapDesc = {};
-	swapDesc.BufferCount = 1;
+    DXGI_SWAP_CHAIN_DESC swapDesc = {};
+    swapDesc.BufferCount = 1;
 	swapDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
 	swapDesc.OutputWindow = m_hWnd;
 	swapDesc.Windowed = true;
 	swapDesc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 	swapDesc.BufferDesc.Width = m_ClientWidth;
 	swapDesc.BufferDesc.Height = m_ClientHeight;
-	swapDesc.BufferDesc.RefreshRate.Numerator = 60;
-	swapDesc.BufferDesc.RefreshRate.Denominator = 1;
+    swapDesc.BufferDesc.RefreshRate.Numerator = 60;
+    swapDesc.BufferDesc.RefreshRate.Denominator = 1;
 	swapDesc.SampleDesc.Count = 1;
 	swapDesc.SampleDesc.Quality = 0;
+    swapDesc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
 
 	// 디버그 창을 띄우기 위함입니다.
 	UINT creationFlags = 0;
@@ -938,6 +941,7 @@ void App::UninitScene()
 	SAFE_RELEASE(m_pVertexShader);
 	SAFE_RELEASE(m_pPixelShader);
 	SAFE_RELEASE(m_pConstantBuffer);
+	SAFE_RELEASE(m_pSamplerState);
 
 	SAFE_RELEASE(m_pSkyBoxInputLayout);
 	SAFE_RELEASE(m_pSkyBoxVertexShader);
@@ -948,6 +952,10 @@ void App::UninitScene()
 
 	for (int i = 0; i < 6; ++i) SAFE_RELEASE(m_pCubeTextureSRVs[i]);
     for (int i = 0; i < 6; ++i) SAFE_RELEASE(m_pSkyFaceSRV[i]);
+
+	SAFE_RELEASE(m_pFallbackWhite);
+	SAFE_RELEASE(m_pFallbackNormal);
+	SAFE_RELEASE(m_pFallbackBlack);
 
     SAFE_RELEASE(m_pDebugBoxVB);
     SAFE_RELEASE(m_pDebugBoxIB);

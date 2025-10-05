@@ -65,8 +65,10 @@ void Skybox::Render(ID3D11DeviceContext* ctx,
 {
     ID3D11RasterizerState* prevRS = nullptr;
     ID3D11DepthStencilState* prevDS = nullptr; UINT prevRef = 0;
+    ID3D11ShaderResourceView* prevSRV0 = nullptr; // preserve PS t0 to avoid dimension mismatch in other passes
     ctx->RSGetState(&prevRS);
     ctx->OMGetDepthStencilState(&prevDS, &prevRef);
+    ctx->PSGetShaderResources(0, 1, &prevSRV0);
 
     ctx->OMSetDepthStencilState(m_ds, 0);
     ctx->RSSetState(m_rs);
@@ -102,6 +104,9 @@ void Skybox::Render(ID3D11DeviceContext* ctx,
     // restore
     ctx->OMSetDepthStencilState(prevDS, prevRef);
     ctx->RSSetState(prevRS);
+    // restore previous PS t0 SRV (skybox binds a TextureCube to t0)
+    ctx->PSSetShaderResources(0, 1, &prevSRV0);
+    if (prevSRV0) prevSRV0->Release();
     if (prevDS) prevDS->Release();
     if (prevRS) prevRS->Release();
 }
