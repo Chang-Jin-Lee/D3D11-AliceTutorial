@@ -1,6 +1,7 @@
 #pragma once
 #include <windows.h>
 #include "../Common/GameApp.h"
+#include "../Common/Vertex.h"
 #include <d3d11.h>
 #include <directxtk/SimpleMath.h>
 #include <vector>
@@ -22,22 +23,9 @@ public:
 	/*
 	* @brief : 정점/상수 버퍼 데이터 형식 정의
 	* @details :
-	* 	- VertexPosTex : POSITION(float3) + TEXCOORD(float2)
+	* 	- VertexCubePosTex : POSITION(float3) + TEXCOORD(float2)
 	* 	- ConstantBuffer : 월드/뷰/프로젝션 행렬(HLSL과 전치행렬 일치 주의)
 	*/
-	struct VertexPosColor
-	{
-		DirectX::XMFLOAT3 pos;
-		DirectX::XMFLOAT4 color;
-		static const D3D11_INPUT_ELEMENT_DESC inputLayout[2];
-	};
-
-	struct VertexPosTex
-	{
-		DirectX::XMFLOAT3 pos;
-		DirectX::XMFLOAT2 tex;
-		static const D3D11_INPUT_ELEMENT_DESC inputLayout[2];
-	};
 
 	struct ConstantBuffer
 	{
@@ -114,7 +102,7 @@ public:
 	*/
 	// PMX 로딩 상태
 	std::wstring m_ModelPath = L"../Resource/pmx/Nikke-Alice/alice-Apose.pmx";
-	std::vector<VertexPosTex> m_ModelVertices;
+	std::vector<VertexCubePosTex> m_ModelVertices;
 	std::vector<uint32_t> m_ModelIndices;
 	struct Subset { uint32_t startIndex; uint32_t indexCount; uint32_t materialIndex; };
 	std::vector<Subset> m_Subsets;                       // 머티리얼별 드로우 서브셋
