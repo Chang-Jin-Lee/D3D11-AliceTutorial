@@ -105,7 +105,7 @@ public:
 
 	// SkyBox º±≈√: Off / Hanako.dds / cubemap.dds
 	enum class SkyBoxChoice { Off = 0, Hanako = 1, CubeMap = 2 };
-	SkyBoxChoice m_SkyBoxChoice = SkyBoxChoice::CubeMap;
+	SkyBoxChoice m_SkyBoxChoice = SkyBoxChoice::Off;
 	ID3D11ShaderResourceView* m_pSkyHanakoSRV = nullptr;
 	ID3D11ShaderResourceView* m_pSkyCubeMapSRV = nullptr;
 	

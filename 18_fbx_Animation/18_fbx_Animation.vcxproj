@@ -19,31 +19,41 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="18_BasicPS.hlsl">
+    <CopyFileToFolders Include="18_BasicPS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Pixel</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
-    </FxCompile>
-    <FxCompile Include="18_BasicVS.hlsl">
+      <FileType>Document</FileType>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="18_BasicVS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Vertex</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
-    </FxCompile>
-    <FxCompile Include="18_SkyBoxPS.hlsl">
+      <FileType>Document</FileType>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="18_SkyBoxPS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Pixel</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">PS</EntryPointName>
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">PS</EntryPointName>
-    </FxCompile>
-    <FxCompile Include="18_SkyBoxVS.hlsl">
+      <FileType>Document</FileType>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="18_SkyBoxVS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Vertex</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">VS</EntryPointName>
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">VS</EntryPointName>
-    </FxCompile>
+      <FileType>Document</FileType>
+    </CopyFileToFolders>
   </ItemGroup>
   <ItemGroup>
-    <None Include="18_LightingHelper.hlsli" />
-    <None Include="18_Shared.fxh" />
-    <None Include="18_SkyBox.hlsli" />
+    <CopyFileToFolders Include="18_LightingHelper.hlsli">
+      <FileType>Document</FileType>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="18_Shared.fxh">
+      <FileType>Document</FileType>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="18_SkyBox.hlsli">
+      <FileType>Document</FileType>
+    </CopyFileToFolders>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="App.cpp" />
@@ -121,6 +131,9 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <PreBuildEvent>
+      <Command>xcopy /Y /E /I /D "$(SolutionDir)Resource\*" "$(OutDir)\..\Resource\"</Command>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
@@ -148,6 +161,9 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <PreBuildEvent>
+      <Command>xcopy /Y /E /I /D "$(SolutionDir)Resource\*" "$(OutDir)\..\Resource\"</Command>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>

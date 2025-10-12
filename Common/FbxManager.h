@@ -71,7 +71,6 @@ private:
     struct Impl;
     std::unique_ptr<Impl> m_;
 
-    // Private helpers kept in cpp, declared here for members
     bool LoadMaterials(ID3D11Device* device, const struct aiScene* scene, const std::wstring& baseDir);
     bool BuildMeshBuffers(ID3D11Device* device, const struct aiScene* scene);
     void EnsureBoneCB(ID3D11Device* device);
