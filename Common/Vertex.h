@@ -44,3 +44,15 @@ struct VertexTBN
 	DirectX::XMFLOAT4 color;
 	DirectX::XMFLOAT2 uv;
 };
+
+struct VertexSkinnedTBN
+{
+    DirectX::XMFLOAT3 pos;
+    DirectX::XMFLOAT3 n;
+    DirectX::XMFLOAT3 t;
+    DirectX::XMFLOAT3 b;
+    DirectX::XMFLOAT4 color;
+    DirectX::XMFLOAT2 uv;
+    unsigned short     boneIdx[4];
+    DirectX::XMFLOAT4  boneWeight;
+};
