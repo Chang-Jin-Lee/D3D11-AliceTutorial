@@ -1,29 +1,319 @@
 /*
-* @brief : 
-* @details :Blinn-Phong 모델을 사용한 조명 계산 예제입니다.
-*	 - Material을 추가했습니다.
-* 	 - 조명 계산을 위한 상수 버퍼를 확장했습니다.
+* @brief : fbx Animation을 재생하는 예제입니다
 */
 
 #include "App.h"
 #include "../Common/Helper.h"
+#include <windows.h>
+#include <d3d11.h>
 #include <d3dcompiler.h>
 #include <directxtk/WICTextureLoader.h>
 #include <directxtk/DDSTextureLoader.h>
+#include <directxtk/SimpleMath.h>
 #include <thread>
 #include <filesystem>
 #include <algorithm>
 #include "../Common/StaticMesh.h"
 #include "../Common/LineRenderer.h"
 #include "../Common/Skybox.h"
+#include "../Common/SystemInfomation.h"
+#include "../Common/FbxManager.h"
+#include "../Common/ObjManager.h"
+#include "../Common/PmxManager.h"
 #include <commdlg.h>
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
+#include <dxgi1_4.h>
+#include <wrl/client.h>
+#include <imgui.h>
+#include <imgui_impl_win32.h>
+#include <imgui_impl_dx11.h>
+#include <imgui_stdlib.h>
 
 #pragma comment (lib, "d3d11.lib")
 #pragma comment(lib,"d3dcompiler.lib")
 #pragma comment(lib, "Comdlg32.lib")
+
+using namespace DirectX;
+using namespace DirectX::SimpleMath;
+
+// Types moved from header to cpp (private to this translation unit)
+struct DirectionalLight
+{
+	XMFLOAT4 ambient;
+	XMFLOAT4 diffuse;
+	XMFLOAT4 specular;
+	XMFLOAT3 direction;
+	float pad;
+};
+
+struct Material
+{
+	XMFLOAT4 ambient;
+	XMFLOAT4 diffuse;
+	XMFLOAT4 specular;
+	XMFLOAT4 reflect;
+};
+
+struct ConstantBuffer
+{
+	XMMATRIX world;
+	XMMATRIX view;
+	XMMATRIX proj;
+	XMMATRIX worldInvTranspose;
+
+	Material material;
+	DirectionalLight dirLight;
+	XMFLOAT3 eyePos;
+	float pad;
+	int   shadingMode = 0;
+	XMFLOAT3 pad2 = {0,0,0};
+	int   enableNormalMap = 1;
+	XMFLOAT3 pad3 = {0,0,0};
+	int   useSpecularMap = 0;
+	XMFLOAT3 pad4 = {0,0,0};
+};
+
+enum class ShadingMode { Phong=0, BlinnPhong=1, Lambert=2, Unlit=3, TextureOnly=4 };
+enum class RenderMode { None = 0, Cube = 1, Model = 2 };
+enum class ModelSource { FBX, OBJ, PMX, Custom };
+
+struct ModelSubset { uint32_t start; uint32_t count; uint32_t materialIndex; };
+
+// pImpl
+struct App::Impl
+{
+	// 필수 D3D 객체
+	ID3D11Device* m_pDevice = nullptr;
+	ID3D11DeviceContext* m_pDeviceContext = nullptr;
+	IDXGISwapChain* m_pSwapChain = nullptr;
+	ID3D11RenderTargetView* m_pRenderTargetView = nullptr;
+
+	// 파이프라인 리소스
+	ID3D11VertexShader* m_pVertexShader = nullptr;
+	ID3D11PixelShader* m_pPixelShader = nullptr;
+	ID3D11PixelShader* m_pPixelShaderSolid = nullptr;
+	// PMX 전용: TBN 없는 입력용 VS/IL
+	ID3D11VertexShader* m_pVertexShaderNoTBN = nullptr;
+	ID3D11InputLayout* m_pInputLayoutNoTBN = nullptr;
+	// FBX GPU 스키닝용 VS/IL
+	ID3D11VertexShader* m_pVertexShaderSkinned = nullptr;
+	ID3D11InputLayout* m_pInputLayoutSkinned = nullptr;
+
+	ID3D11SamplerState* m_pSamplerState = nullptr;
+	ID3D11BlendState* m_pAlphaBlendState = nullptr;
+	ID3D11VertexShader* m_pSkyBoxVertexShader = nullptr;
+	ID3D11PixelShader* m_pSkyBoxPixelShader = nullptr;
+	ID3D11InputLayout* m_pSkyBoxInputLayout = nullptr;
+	ID3D11ShaderResourceView* m_pTextureSRV = nullptr;
+
+	// Debug lines 전용
+	ID3D11VertexShader* m_pLineVS = nullptr;
+	ID3D11InputLayout* m_pLineInputLayout = nullptr;
+
+	enum class SkyBoxChoice { Off = 0, Hanako = 1, CubeMap = 2 };
+	SkyBoxChoice m_SkyBoxChoice = SkyBoxChoice::Off;
+	ID3D11ShaderResourceView* m_pSkyHanakoSRV = nullptr;
+	ID3D11ShaderResourceView* m_pSkyCubeMapSRV = nullptr;
+
+	ID3D11InputLayout* m_pInputLayout = nullptr;
+	ID3D11Buffer* m_pVertexBuffer = nullptr;
+	UINT m_VertextBufferStride = 0;
+	UINT m_VertextBufferOffset = 0;
+	ID3D11Buffer* m_pIndexBuffer = nullptr;
+	int m_nIndices = 0;
+
+	ID3D11Buffer* m_pConstantBuffer = nullptr;
+	std::vector<ConstantBuffer> m_CBuffers;
+	ConstantBuffer m_ConstantBuffer{};
+	ID3D11Buffer* m_pLineVertexBuffer = nullptr;
+
+	// 유틸
+	class LineRenderer* m_LineRenderer = nullptr;
+	class Skybox* m_Skybox = nullptr;
+
+	// 디버그 박스 버퍼
+	ID3D11Buffer* m_pDebugBoxVB = nullptr;
+	ID3D11Buffer* m_pDebugBoxIB = nullptr;
+	int m_DebugBoxIndexCount = 0;
+
+	ID3D11DepthStencilView* m_pDepthStencilView = nullptr;
+	ID3D11DepthStencilState* m_pDepthStencilState = nullptr;
+
+	ID3D11RasterizerState* RSNoCull = nullptr;
+	ID3D11RasterizerState* RSCullClockWise = nullptr;
+
+	// 이미지 디버그/데모용 텍스처 (Hanako)
+	ID3D11ShaderResourceView* m_TexHanakoSRV = nullptr;
+	bool m_ShowHanako = false;
+	ImVec2 m_HanakoDrawSize = ImVec2(128, 128);
+	ImVec2 m_TexHanakoSize = ImVec2(0, 0);
+
+	// 스카이박스 큐브맵 면 SRV들
+	ID3D11ShaderResourceView* m_pSkyFaceSRV[6] = {};
+	ImVec2 m_SkyFaceSize = ImVec2(0, 0);
+	wchar_t m_CurrentSkyboxPath[260] = L"..\\Resource\\Skybox\\cubemap.dds";
+
+	// 큐브 텍스쳐들
+	ID3D11ShaderResourceView* m_pCubeTextureSRVs[6] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
+	ID3D11ShaderResourceView* m_pNormalSRVs[6] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
+	ID3D11ShaderResourceView* m_pSpecularSRVs[6] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
+
+	// ImGui 컨트롤 상태 변수
+	SystemInfomation m_SystemInfo;
+	Camera m_camera;
+	XMFLOAT3 m_modelPos = { 0.0f, 0.0f, 0.0f };
+	XMFLOAT3 m_modelScale = { 1.0f, 1.0f, 1.0f };
+	XMFLOAT3 m_modelRotation = { 0.0f, 0.0f, 0.0f };
+	bool m_RotateModel = false;
+
+	// Mirror Cube transform
+	XMFLOAT3 m_mirrorCubePos = { 4.5f, 0.0f, 0.0f };
+	XMFLOAT3 m_mirrorCubeRotation = { 0.0f, 0.0f, 0.0f };
+	float m_MirrorCubeScale = 2.0f;
+
+	DirectionalLight m_DirLight = {
+		/*ambient*/ { 0.0f, 0.0f, 0.0f, 1.0f },
+		/*diffuse*/ { 1.0f, 1.0f, 1.0f, 1.0f },
+		/*specular*/{ 1.0f, 1.0f, 1.0f, 1.0f },
+		/*direction*/{ 0.0f, 0.0f, 1.0f },
+		/*pad*/ 0.0f
+	};
+	Material m_Material = {
+		/*ambient*/ { 1.0f, 1.0f, 1.0f, 1.0f },
+		/*diffuse*/ { 1.0f, 1.0f, 1.0f, 1.0f },
+		/*specular*/{ 1.0f, 1.0f, 1.0f, 32.0f },
+		/*reflect*/ { 0.0f, 0.0f, 0.0f, 0.0f }
+	};
+	Material m_mirrorCubeMaterial = {
+		/*ambient*/ { 0.0f, 0.0f, 0.0f, 1.0f },
+		/*diffuse*/ { 0.0f, 0.0f, 0.0f, 1.0f },
+		/*specular*/{ 0.0f, 0.0f, 0.0f, 32.0f },
+		/*reflect*/ { 1.0f, 1.0f, 1.0f, 0.02f }
+	};
+
+	XMFLOAT3 m_LightPosition = { 4.0f, 4.0f, 0.0f };
+	ConstantBuffer m_baseProjection{};
+	ShadingMode m_ShadingMode = ShadingMode::Phong;
+	int m_EnableNormalMap = 1;
+	int m_UseSpecularMap = 0;
+	int m_LegacyShading = 1;
+	XMFLOAT4 m_ClearColor = { 0.02f, 0.02f, 0.02f, 1.0f };
+
+	// Model loading
+	RenderMode m_RenderMode = RenderMode::None;
+	ID3D11Buffer* m_pModelVB = nullptr;
+	ID3D11Buffer* m_pModelIB = nullptr;
+	int           m_ModelIndexCount = 0;
+	UINT          m_ModelStride = 0;
+	std::vector<ModelSubset> m_ModelSubsets;
+	std::vector<ID3D11ShaderResourceView*> m_ModelMaterialSRVs;
+	ID3D11ShaderResourceView* m_pFallbackWhite  = nullptr;
+	ID3D11ShaderResourceView* m_pFallbackNormal = nullptr;
+	ID3D11ShaderResourceView* m_pFallbackBlack  = nullptr;
+	std::string m_ModelPathInputUTF8;
+	FbxManager   m_FbxManager;
+	ObjManager   m_ObjManager;
+	PmxManager   m_PmxManager;
+	ModelSource m_ModelSource = ModelSource::Custom;
+	int m_UISelectedAnim = -1;
+	bool m_UIAnimPlaying = false;
+};
+
+// Member name mapping macros to minimize edits
+#define m_pDevice               m_->m_pDevice
+#define m_pDeviceContext        m_->m_pDeviceContext
+#define m_pSwapChain            m_->m_pSwapChain
+#define m_pRenderTargetView     m_->m_pRenderTargetView
+#define m_pVertexShader         m_->m_pVertexShader
+#define m_pPixelShader          m_->m_pPixelShader
+#define m_pPixelShaderSolid     m_->m_pPixelShaderSolid
+#define m_pVertexShaderNoTBN    m_->m_pVertexShaderNoTBN
+#define m_pInputLayoutNoTBN     m_->m_pInputLayoutNoTBN
+#define m_pVertexShaderSkinned  m_->m_pVertexShaderSkinned
+#define m_pInputLayoutSkinned   m_->m_pInputLayoutSkinned
+#define m_pSamplerState         m_->m_pSamplerState
+#define m_pAlphaBlendState      m_->m_pAlphaBlendState
+#define m_pSkyBoxVertexShader   m_->m_pSkyBoxVertexShader
+#define m_pSkyBoxPixelShader    m_->m_pSkyBoxPixelShader
+#define m_pSkyBoxInputLayout    m_->m_pSkyBoxInputLayout
+#define m_pTextureSRV           m_->m_pTextureSRV
+#define m_pLineVS               m_->m_pLineVS
+#define m_pLineInputLayout      m_->m_pLineInputLayout
+#define SkyBoxChoice            App::Impl::SkyBoxChoice
+#define m_SkyBoxChoice          m_->m_SkyBoxChoice
+#define m_pSkyHanakoSRV         m_->m_pSkyHanakoSRV
+#define m_pSkyCubeMapSRV        m_->m_pSkyCubeMapSRV
+#define m_pInputLayout          m_->m_pInputLayout
+#define m_pVertexBuffer         m_->m_pVertexBuffer
+#define m_VertextBufferStride   m_->m_VertextBufferStride
+#define m_VertextBufferOffset   m_->m_VertextBufferOffset
+#define m_pIndexBuffer          m_->m_pIndexBuffer
+#define m_nIndices              m_->m_nIndices
+#define m_pConstantBuffer       m_->m_pConstantBuffer
+#define m_CBuffers              m_->m_CBuffers
+#define m_ConstantBuffer        m_->m_ConstantBuffer
+#define m_pLineVertexBuffer     m_->m_pLineVertexBuffer
+#define m_LineRenderer          m_->m_LineRenderer
+#define m_Skybox                m_->m_Skybox
+#define m_pDebugBoxVB           m_->m_pDebugBoxVB
+#define m_pDebugBoxIB           m_->m_pDebugBoxIB
+#define m_DebugBoxIndexCount    m_->m_DebugBoxIndexCount
+#define m_pDepthStencilView     m_->m_pDepthStencilView
+#define m_pDepthStencilState    m_->m_pDepthStencilState
+#define RSNoCull                m_->RSNoCull
+#define RSCullClockWise         m_->RSCullClockWise
+#define m_TexHanakoSRV          m_->m_TexHanakoSRV
+#define m_ShowHanako            m_->m_ShowHanako
+#define m_HanakoDrawSize        m_->m_HanakoDrawSize
+#define m_TexHanakoSize         m_->m_TexHanakoSize
+#define m_pSkyFaceSRV           m_->m_pSkyFaceSRV
+#define m_SkyFaceSize           m_->m_SkyFaceSize
+#define m_CurrentSkyboxPath     m_->m_CurrentSkyboxPath
+#define m_pCubeTextureSRVs      m_->m_pCubeTextureSRVs
+#define m_pNormalSRVs           m_->m_pNormalSRVs
+#define m_pSpecularSRVs         m_->m_pSpecularSRVs
+#define m_SystemInfo            m_->m_SystemInfo
+#define m_camera                m_->m_camera
+#define m_modelPos              m_->m_modelPos
+#define m_modelScale            m_->m_modelScale
+#define m_modelRotation         m_->m_modelRotation
+#define m_RotateModel           m_->m_RotateModel
+#define m_mirrorCubePos         m_->m_mirrorCubePos
+#define m_mirrorCubeRotation    m_->m_mirrorCubeRotation
+#define m_MirrorCubeScale       m_->m_MirrorCubeScale
+#define m_DirLight              m_->m_DirLight
+#define m_Material              m_->m_Material
+#define m_mirrorCubeMaterial    m_->m_mirrorCubeMaterial
+#define m_LightPosition         m_->m_LightPosition
+#define m_baseProjection        m_->m_baseProjection
+#define m_ShadingMode           m_->m_ShadingMode
+#define m_EnableNormalMap       m_->m_EnableNormalMap
+#define m_UseSpecularMap        m_->m_UseSpecularMap
+#define m_LegacyShading         m_->m_LegacyShading
+#define m_ClearColor            m_->m_ClearColor
+#define m_RenderMode            m_->m_RenderMode
+#define m_pModelVB              m_->m_pModelVB
+#define m_pModelIB              m_->m_pModelIB
+#define m_ModelIndexCount       m_->m_ModelIndexCount
+#define m_ModelStride           m_->m_ModelStride
+#define m_ModelSubsets          m_->m_ModelSubsets
+#define m_ModelMaterialSRVs     m_->m_ModelMaterialSRVs
+#define m_pFallbackWhite        m_->m_pFallbackWhite
+#define m_pFallbackNormal       m_->m_pFallbackNormal
+#define m_pFallbackBlack        m_->m_pFallbackBlack
+#define m_ModelPathInputUTF8    m_->m_ModelPathInputUTF8
+#define m_FbxManager            m_->m_FbxManager
+#define m_ObjManager            m_->m_ObjManager
+#define m_PmxManager            m_->m_PmxManager
+#define m_ModelSource           m_->m_ModelSource
+#define m_UISelectedAnim        m_->m_UISelectedAnim
+#define m_UIAnimPlaying         m_->m_UIAnimPlaying
+
+// Ctors
+App::App() : m_(new Impl) {}
+App::~App() { }
 
 static bool LoadTextureSRVAndSize(ID3D11Device* device, const std::wstring& path,
 	ID3D11ShaderResourceView** outSRV, ImVec2* outSize)

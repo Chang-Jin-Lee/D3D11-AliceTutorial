@@ -1,5 +1,6 @@
 #pragma once
 #include <dxgi1_4.h>
+#include <wrl/client.h>
 
 class SystemInfomation
 {
