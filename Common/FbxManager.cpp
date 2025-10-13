@@ -71,7 +71,7 @@ struct FbxManager::Impl
     ID3D11Buffer* pBoneCB = nullptr;
 };
 
-FbxManager::FbxManager() : m_(new Impl) {}
+FbxManager::FbxManager() : m_(std::make_unique<Impl>()) {}
 FbxManager::~FbxManager() { Release(); }
 
 void FbxManager::Release()
