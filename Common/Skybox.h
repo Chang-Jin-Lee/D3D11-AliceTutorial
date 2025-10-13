@@ -1,12 +1,20 @@
 #pragma once
 
-#include <d3d11.h>
+#include <memory>
 #include <DirectXMath.h>
+
+class ID3D11Device;
+class ID3D11DeviceContext;
+class ID3D11VertexShader;
+class ID3D11PixelShader;
+class ID3D11InputLayout;
+class ID3D11Buffer;
+class ID3D11ShaderResourceView;
 
 class Skybox
 {
 public:
-    Skybox() = default;
+    Skybox();
     Skybox(ID3D11Device* device,
         const wchar_t* ddsPath,
         ID3D11VertexShader* vs,
@@ -34,15 +42,9 @@ public:
 
     void Release();
 
-    ID3D11ShaderResourceView* GetTexture() const { return m_srv; }
+    ID3D11ShaderResourceView* GetTexture() const;
 
 private:
-    ID3D11ShaderResourceView* m_srv = nullptr;
-    ID3D11VertexShader* m_vs = nullptr;
-    ID3D11PixelShader*  m_ps = nullptr;
-    ID3D11InputLayout*  m_inputLayout = nullptr;
-    ID3D11Buffer*       m_constantBuffer = nullptr; // shared b0
-    ID3D11SamplerState* m_sampler = nullptr;
-    ID3D11DepthStencilState* m_ds = nullptr;
-    ID3D11RasterizerState* m_rs = nullptr;
+    class Impl;
+	std::unique_ptr<Impl> pImpl;
 };
