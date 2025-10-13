@@ -1,8 +1,5 @@
 /*
-* @brief : 
-* @details :Blinn-Phong 모델을 사용한 조명 계산 예제입니다.
-*	 - Material을 추가했습니다.
-* 	 - 조명 계산을 위한 상수 버퍼를 확장했습니다.
+* @brief : fbx Animation을 재생하는 예제입니다
 */
 
 #include "App.h"
