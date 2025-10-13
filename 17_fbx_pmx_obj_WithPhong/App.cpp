@@ -1,8 +1,8 @@
 /*
-* @brief : 
-* @details :Blinn-Phong 모델을 사용한 조명 계산 예제입니다.
-*	 - Material을 추가했습니다.
-* 	 - 조명 계산을 위한 상수 버퍼를 확장했습니다.
+* @brief : fbx, pmx, obj 3D 모델을 그리는 예제입니다
+* @details :
+*	 - 노말맵이 적용되어 있는 경우 노말맵을 반영해서 그립니다
+*	 - 없는 경우는 반영하지 않습니다 
 */
 
 #include "App.h"
@@ -56,27 +56,124 @@ struct ModelSubset { uint32_t start; uint32_t count; uint32_t materialIndex; };
 
 // pImpl 정의
 struct App::Impl {
-    ID3D11Device* m_pDevice = nullptr; ID3D11DeviceContext* m_pDeviceContext = nullptr; IDXGISwapChain* m_pSwapChain = nullptr; ID3D11RenderTargetView* m_pRenderTargetView = nullptr;
-    ID3D11VertexShader* m_pVertexShader = nullptr; ID3D11PixelShader* m_pPixelShader = nullptr; ID3D11PixelShader* m_pPixelShaderSolid = nullptr;
-    ID3D11VertexShader* m_pVertexShaderNoTBN = nullptr; ID3D11InputLayout* m_pInputLayoutNoTBN = nullptr;
-    ID3D11SamplerState* m_pSamplerState = nullptr; ID3D11BlendState* m_pAlphaBlendState = nullptr; ID3D11VertexShader* m_pSkyBoxVertexShader = nullptr; ID3D11PixelShader* m_pSkyBoxPixelShader = nullptr; ID3D11InputLayout* m_pSkyBoxInputLayout = nullptr; ID3D11ShaderResourceView* m_pTextureSRV = nullptr;
-    ID3D11VertexShader* m_pLineVS = nullptr; ID3D11InputLayout* m_pLineInputLayout = nullptr;
-    enum class SkyBoxChoice { Off = 0, Hanako = 1, CubeMap = 2 }; SkyBoxChoice m_SkyBoxChoice = SkyBoxChoice::Off; ID3D11ShaderResourceView* m_pSkyHanakoSRV = nullptr; ID3D11ShaderResourceView* m_pSkyCubeMapSRV = nullptr;
-    ID3D11InputLayout* m_pInputLayout = nullptr; ID3D11Buffer* m_pVertexBuffer = nullptr; UINT m_VertextBufferStride = 0; UINT m_VertextBufferOffset = 0; ID3D11Buffer* m_pIndexBuffer = nullptr; int m_nIndices = 0;
-    ID3D11Buffer* m_pConstantBuffer = nullptr; std::vector<ConstantBuffer> m_CBuffers; ConstantBuffer m_ConstantBuffer{}; ID3D11Buffer* m_pLineVertexBuffer = nullptr;
-    class LineRenderer* m_LineRenderer = nullptr; class Skybox* m_Skybox = nullptr; ID3D11Buffer* m_pDebugBoxVB = nullptr; ID3D11Buffer* m_pDebugBoxIB = nullptr; int m_DebugBoxIndexCount = 0;
-    ID3D11DepthStencilView* m_pDepthStencilView = nullptr; ID3D11DepthStencilState* m_pDepthStencilState = nullptr; ID3D11RasterizerState* RSNoCull = nullptr; ID3D11RasterizerState* RSCullClockWise = nullptr;
-    ID3D11ShaderResourceView* m_TexHanakoSRV = nullptr; bool m_ShowHanako = false; ImVec2 m_HanakoDrawSize = ImVec2(128, 128); ImVec2 m_TexHanakoSize = ImVec2(0, 0);
-    ID3D11ShaderResourceView* m_pSkyFaceSRV[6] = {}; ImVec2 m_SkyFaceSize = ImVec2(0, 0); wchar_t m_CurrentSkyboxPath[260] = L"..\\Resource\\Skybox\\cubemap.dds";
-    ID3D11ShaderResourceView* m_pCubeTextureSRVs[6] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr }; ID3D11ShaderResourceView* m_pNormalSRVs[6] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr }; ID3D11ShaderResourceView* m_pSpecularSRVs[6] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
-    SystemInfomation m_SystemInfo; Camera m_camera; XMFLOAT3 m_modelPos = { 0.0f, 0.0f, 0.0f }; XMFLOAT3 m_modelScale = { 1.0f, 1.0f, 1.0f }; XMFLOAT3 m_modelRotation = { 0.0f, 0.0f, 0.0f }; bool m_RotateModel = false;
-    XMFLOAT3 m_mirrorCubePos = { 4.5f, 0.0f, 0.0f }; XMFLOAT3 m_mirrorCubeRotation = { 0.0f, 0.0f, 0.0f }; float m_MirrorCubeScale = 2.0f;
-    DirectionalLight m_DirLight = { {0,0,0,1}, {1,1,1,1}, {1,1,1,1}, {0,0,1}, 0.0f };
-    Material m_Material = { {1,1,1,1}, {1,1,1,1}, {1,1,1,32}, {0,0,0,0} };
-    Material m_mirrorCubeMaterial = { {0,0,0,1}, {0,0,0,1}, {0,0,0,32}, {1,1,1,0.02f} };
-    XMFLOAT3 m_LightPosition = { 4.0f, 4.0f, 0.0f }; ConstantBuffer m_baseProjection{};
-    ShadingMode m_ShadingMode = ShadingMode::Phong; int m_EnableNormalMap = 1; int m_UseSpecularMap = 0; int m_LegacyShading = 1; XMFLOAT4 m_ClearColor = { 0.02f, 0.02f, 0.02f, 1.0f };
-    RenderMode m_RenderMode = RenderMode::None; ID3D11Buffer* m_pModelVB = nullptr; ID3D11Buffer* m_pModelIB = nullptr; int m_ModelIndexCount = 0; UINT m_ModelStride = 0; std::vector<ModelSubset> m_ModelSubsets; std::vector<ID3D11ShaderResourceView*> m_ModelMaterialSRVs; ID3D11ShaderResourceView* m_pFallbackWhite = nullptr; ID3D11ShaderResourceView* m_pFallbackNormal = nullptr; ID3D11ShaderResourceView* m_pFallbackBlack = nullptr; std::string m_ModelPathInputUTF8; FbxManager m_FbxManager; ObjManager m_ObjManager; PmxManager m_PmxManager; ModelSource m_ModelSource = ModelSource::Custom;
+    // D3D 핵심 객체
+    ID3D11Device*                 m_pDevice = nullptr;
+    ID3D11DeviceContext*          m_pDeviceContext = nullptr;
+    IDXGISwapChain*               m_pSwapChain = nullptr;
+    ID3D11RenderTargetView*       m_pRenderTargetView = nullptr;
+
+    // 파이프라인 셰이더/입력 레이아웃 (기본/PMX/스카이박스/라인)
+    ID3D11VertexShader*           m_pVertexShader = nullptr;
+    ID3D11PixelShader*            m_pPixelShader = nullptr;
+    ID3D11PixelShader*            m_pPixelShaderSolid = nullptr;     // 마커용 흰색 출력
+    ID3D11VertexShader*           m_pVertexShaderNoTBN = nullptr;    // PMX 전용 VS
+    ID3D11InputLayout*            m_pInputLayoutNoTBN = nullptr;     // PMX 전용 IL
+    ID3D11VertexShader*           m_pSkyBoxVertexShader = nullptr;
+    ID3D11PixelShader*            m_pSkyBoxPixelShader = nullptr;
+    ID3D11InputLayout*            m_pSkyBoxInputLayout = nullptr;
+    ID3D11VertexShader*           m_pLineVS = nullptr;
+    ID3D11InputLayout*            m_pLineInputLayout = nullptr;
+
+    // 샘플러/블렌드 상태
+    ID3D11SamplerState*           m_pSamplerState = nullptr;
+    ID3D11BlendState*             m_pAlphaBlendState = nullptr;
+
+    // Skybox/큐브맵 자원 및 옵션
+    enum class SkyBoxChoice { Off = 0, Hanako = 1, CubeMap = 2 };
+    SkyBoxChoice                  m_SkyBoxChoice = SkyBoxChoice::Off;
+    ID3D11ShaderResourceView*     m_pSkyHanakoSRV = nullptr;
+    ID3D11ShaderResourceView*     m_pSkyCubeMapSRV = nullptr;
+    ID3D11ShaderResourceView*     m_pTextureSRV = nullptr;           // 현재 스카이박스 SRV
+    ID3D11ShaderResourceView*     m_pSkyFaceSRV[6] = {};
+    ImVec2                        m_SkyFaceSize = ImVec2(0, 0);
+    wchar_t                       m_CurrentSkyboxPath[260] = L"..\\Resource\\Skybox\\cubemap.dds";
+
+    // 기본 메시 버퍼/입력 레이아웃
+    ID3D11InputLayout*            m_pInputLayout = nullptr;
+    ID3D11Buffer*                 m_pVertexBuffer = nullptr;
+    UINT                          m_VertextBufferStride = 0;
+    UINT                          m_VertextBufferOffset = 0;
+    ID3D11Buffer*                 m_pIndexBuffer = nullptr;
+    int                           m_nIndices = 0;
+
+    // 공용 상수 버퍼 (b0)
+    ID3D11Buffer*                 m_pConstantBuffer = nullptr;
+    std::vector<ConstantBuffer>   m_CBuffers;                        // 필요 시 확장용
+    ConstantBuffer                m_ConstantBuffer{};                // CPU 캐시
+
+    // 유틸 렌더러/디버그 박스
+    class LineRenderer*           m_LineRenderer = nullptr;
+    class Skybox*                 m_Skybox = nullptr;
+    ID3D11Buffer*                 m_pDebugBoxVB = nullptr;
+    ID3D11Buffer*                 m_pDebugBoxIB = nullptr;
+    int                           m_DebugBoxIndexCount = 0;
+
+    // 깊이/래스터라이저 상태
+    ID3D11DepthStencilView*       m_pDepthStencilView = nullptr;
+    ID3D11DepthStencilState*      m_pDepthStencilState = nullptr;
+    ID3D11RasterizerState*        RSNoCull = nullptr;
+    ID3D11RasterizerState*        RSCullClockWise = nullptr;
+
+    // 데모/디버그용 텍스처 및 UI 표시 크기
+    ID3D11ShaderResourceView*     m_TexHanakoSRV = nullptr;
+    bool                          m_ShowHanako = false;
+    ImVec2                        m_HanakoDrawSize = ImVec2(128, 128);
+    ImVec2                        m_TexHanakoSize = ImVec2(0, 0);
+
+    // 큐브 각 면 텍스처 (Diffuse/Normal/Specular)
+    ID3D11ShaderResourceView*     m_pCubeTextureSRVs[6] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
+    ID3D11ShaderResourceView*     m_pNormalSRVs[6]      = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
+    ID3D11ShaderResourceView*     m_pSpecularSRVs[6]    = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
+
+    // 시스템/카메라
+    SystemInfomation              m_SystemInfo;
+    Camera                        m_camera;
+
+    // 모델 트랜스폼 (루트)
+    XMFLOAT3                      m_modelPos = { 0.0f, 0.0f, 0.0f };
+    XMFLOAT3                      m_modelScale = { 1.0f, 1.0f, 1.0f };
+    XMFLOAT3                      m_modelRotation = { 0.0f, 0.0f, 0.0f };
+    bool                          m_RotateModel = false;
+
+    // 미러 큐브 트랜스폼
+    XMFLOAT3                      m_mirrorCubePos = { 4.5f, 0.0f, 0.0f };
+    XMFLOAT3                      m_mirrorCubeRotation = { 0.0f, 0.0f, 0.0f };
+    float                         m_MirrorCubeScale = 2.0f;
+
+    // 조명/재질
+    DirectionalLight              m_DirLight = { {0,0,0,1}, {1,1,1,1}, {1,1,1,1}, {0,0,1}, 0.0f };
+    Material                      m_Material = { {1,1,1,1}, {1,1,1,1}, {1,1,1,32}, {0,0,0,0} };
+    Material                      m_mirrorCubeMaterial = { {0,0,0,1}, {0,0,0,1}, {0,0,0,32}, {1,1,1,0.02f} };
+
+    // 라이트 마커 위치 / 카메라 기반 기본 행렬
+    XMFLOAT3                      m_LightPosition = { 4.0f, 4.0f, 0.0f };
+    ConstantBuffer                m_baseProjection{};
+
+    // 셰이딩 옵션 / 클리어 컬러
+    ShadingMode                   m_ShadingMode = ShadingMode::Phong;
+    int                           m_EnableNormalMap = 1;
+    int                           m_UseSpecularMap = 0;
+    int                           m_LegacyShading = 1;
+    XMFLOAT4                      m_ClearColor = { 0.02f, 0.02f, 0.02f, 1.0f };
+
+    // 모델 로딩/렌더링 자원 (FBX/OBJ/PMX 공용)
+    RenderMode                    m_RenderMode = RenderMode::None;
+    ID3D11Buffer*                 m_pModelVB = nullptr;
+    ID3D11Buffer*                 m_pModelIB = nullptr;
+    int                           m_ModelIndexCount = 0;
+    UINT                          m_ModelStride = 0;
+    std::vector<ModelSubset>      m_ModelSubsets;
+    std::vector<ID3D11ShaderResourceView*> m_ModelMaterialSRVs;
+    ID3D11ShaderResourceView*     m_pFallbackWhite = nullptr;
+    ID3D11ShaderResourceView*     m_pFallbackNormal = nullptr;
+    ID3D11ShaderResourceView*     m_pFallbackBlack = nullptr;
+    std::string                   m_ModelPathInputUTF8;
+
+    // 로더 매니저 및 소스 구분
+    FbxManager                    m_FbxManager;
+    ObjManager                    m_ObjManager;
+    PmxManager                    m_PmxManager;
+    ModelSource                   m_ModelSource = ModelSource::Custom;
 };
 
 // 멤버 매핑 매크로
