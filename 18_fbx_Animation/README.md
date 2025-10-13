@@ -8,6 +8,11 @@
   - 버텍스가 매우 많은 모델도 그려낼 수 있도록 본 버퍼의 최대 개수를 1023개로 설정했습니다.
 
 
+| fbx Bone Structure |
+|---|
+| <div align="center"><img src="https://github.com/user-attachments/assets/aaa2d136-d427-4fd4-8088-c55a2b0487bf" width="400"/></div> |
+
+
 | fbx Animation - Phong  | fbx Animation - Blinn Phong  |
 |---|---|
 | <div align="center">[<img src="https://github.com/user-attachments/assets/e283f7a8-132c-4cf3-8474-6d9246e8e827" width="450"/>]()<br/></div> | <div align="center">[<img src="https://github.com/user-attachments/assets/bcc8cf4a-cd32-47b9-8dc7-1f4ec107e1d3" width="450"/>]()<br/></div> |
