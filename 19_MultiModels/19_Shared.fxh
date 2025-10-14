@@ -37,6 +37,15 @@ cbuffer ConstantBuffer : register(b0)
     float3 g_Pad4;
 }
 
+// GPU 스키닝을 위한 레지스터 (b1)
+#define MAX_BONES 1023
+cbuffer BonesBuffer : register(b1)
+{
+	row_major matrix g_BonePalette[MAX_BONES];
+	uint g_BoneCount;
+	float3 g_BonePad;
+}
+
 struct VertexIn
 {
     float3 posL     : POSITION;
@@ -57,4 +66,17 @@ struct VertexOut
     // TBN 노말 매핑을 위한 월드 공간
     float3 tangentW  : TEXCOORD3;
     float3 bitanW    : TEXCOORD4;
+};
+
+// 스키닝 입력 정점 구조체
+struct VertexInSkinned
+{
+	float3 posL     : POSITION;
+	float3 normalL  : NORMAL;
+	float3 tangentL : TANGENT;
+	float3 bitanL   : BINORMAL;
+	float2 tex      : TEXCOORD;
+	float4 color    : COLOR;
+	uint4  boneIdx  : BLENDINDICES;
+	float4 boneW    : BLENDWEIGHT;
 };
