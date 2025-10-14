@@ -143,6 +143,8 @@ struct App::Impl {
     // 깊이/래스터라이저 상태
     ID3D11DepthStencilView*       m_pDepthStencilView = nullptr;
     ID3D11DepthStencilState*      m_pDepthStencilState = nullptr;
+    ID3D11DepthStencilState*      m_pDSStencilWrite1 = nullptr;  // 트리 사각형을 스텐실=1로 채움(깊이 쓰기 OFF)
+    ID3D11DepthStencilState*      m_pDSReject1      = nullptr;  // 스텐실==0에서만 통과(젤다 전용)
     ID3D11RasterizerState*        RSNoCull = nullptr;
     ID3D11RasterizerState*        RSCullClockWise = nullptr;
 
@@ -504,20 +506,19 @@ void App::OnRender()
 				m_->m_pDeviceContext->OMSetBlendState(m_->m_pAlphaBlendState, blendFactor, sampleMask);
 			}
 
-            auto& mdl = *mdlPtr;
             // IA 바인딩
-            UINT s = mdl.stride; UINT o = 0;
-            if (!mdl.vb || !mdl.ib) continue;
-            m_->m_pDeviceContext->IASetVertexBuffers(0, 1, &mdl.vb, &s, &o);
+            UINT s = mdlPtr->stride; UINT o = 0;
+            if (!mdlPtr->vb || !mdlPtr->ib) continue;
+            m_->m_pDeviceContext->IASetVertexBuffers(0, 1, &mdlPtr->vb, &s, &o);
             m_->m_pDeviceContext->IASetInputLayout(m_->m_pInputLayout);
-            m_->m_pDeviceContext->IASetIndexBuffer(mdl.ib, DXGI_FORMAT_R32_UINT, 0);
+            m_->m_pDeviceContext->IASetIndexBuffer(mdlPtr->ib, DXGI_FORMAT_R32_UINT, 0);
 
             // 월드 행렬 (per-model)
-            XMMATRIX rotYaw   = XMMatrixRotationY(XMConvertToRadians(mdl.rotDeg.y));
-            XMMATRIX rotPitch = XMMatrixRotationX(XMConvertToRadians(mdl.rotDeg.x));
-            XMMATRIX rotRoll  = XMMatrixRotationZ(XMConvertToRadians(mdl.rotDeg.z));
-            XMMATRIX S = XMMatrixScaling(mdl.scale.x, mdl.scale.y, mdl.scale.z);
-            XMMATRIX T = XMMatrixTranslation(mdl.pos.x, mdl.pos.y, mdl.pos.z);
+            XMMATRIX rotYaw   = XMMatrixRotationY(XMConvertToRadians(mdlPtr->rotDeg.y));
+            XMMATRIX rotPitch = XMMatrixRotationX(XMConvertToRadians(mdlPtr->rotDeg.x));
+            XMMATRIX rotRoll  = XMMatrixRotationZ(XMConvertToRadians(mdlPtr->rotDeg.z));
+            XMMATRIX S = XMMatrixScaling(mdlPtr->scale.x, mdlPtr->scale.y, mdlPtr->scale.z);
+            XMMATRIX T = XMMatrixTranslation(mdlPtr->pos.x, mdlPtr->pos.y, mdlPtr->pos.z);
             XMMATRIX W = S * rotPitch * rotYaw * rotRoll * T;
 
             ConstantBuffer cb = m_->m_ConstantBuffer;
@@ -536,10 +537,10 @@ void App::OnRender()
             m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
 
             // 서브셋 텍스처 및 드로우
-            for (const auto& sub : mdl.subsets)
+            for (const auto& sub : mdlPtr->subsets)
             {
                 ID3D11ShaderResourceView* srvDiffuse = nullptr;
-                if (sub.materialIndex < mdl.materialSRVs.size()) srvDiffuse = mdl.materialSRVs[sub.materialIndex];
+                if (sub.materialIndex < mdlPtr->materialSRVs.size()) srvDiffuse = mdlPtr->materialSRVs[sub.materialIndex];
                 if (!srvDiffuse) srvDiffuse = m_->m_pFallbackWhite;
                 ID3D11ShaderResourceView* srvNormal = (m_->m_EnableNormalMap != 0) ? m_->m_pFallbackNormal : nullptr;
                 ID3D11ShaderResourceView* srvSpec   = (m_->m_UseSpecularMap != 0) ? m_->m_pFallbackWhite : nullptr;
@@ -552,23 +553,8 @@ void App::OnRender()
                 {
                     ID3D11DepthStencilState* prevDSLocal = nullptr; UINT prevRefLocal = 0;
                     m_->m_pDeviceContext->OMGetDepthStencilState(&prevDSLocal, &prevRefLocal);
-
-                    D3D11_DEPTH_STENCIL_DESC d{};
-                    d.DepthEnable = TRUE;
-                    d.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
-                    d.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
-                    d.StencilEnable = TRUE;
-                    d.StencilReadMask = 0xFF;
-                    d.StencilWriteMask = 0x00;
-                    d.FrontFace.StencilFunc = D3D11_COMPARISON_EQUAL; // ref 0
-                    d.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
-                    d.FrontFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
-                    d.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_KEEP;
-                    d.BackFace = d.FrontFace;
-                    ID3D11DepthStencilState* dsZelda = nullptr; HR_T(m_->m_pDevice->CreateDepthStencilState(&d, &dsZelda));
-                    m_->m_pDeviceContext->OMSetDepthStencilState(dsZelda, 0);
+                    m_->m_pDeviceContext->OMSetDepthStencilState(m_->m_pDSReject1, 0);
                     m_->m_pDeviceContext->DrawIndexed(sub.count, sub.start, 0);
-                    SAFE_RELEASE(dsZelda);
                     if (prevDSLocal) { m_->m_pDeviceContext->OMSetDepthStencilState(prevDSLocal, prevRefLocal); prevDSLocal->Release(); }
                     continue;
                 }
@@ -587,22 +573,8 @@ void App::OnRender()
 
                     ID3D11DepthStencilState* prevDSLocal = nullptr; UINT prevRefLocal = 0;
                     m_->m_pDeviceContext->OMGetDepthStencilState(&prevDSLocal, &prevRefLocal);
-                    D3D11_DEPTH_STENCIL_DESC d{};
-                    d.DepthEnable = TRUE;
-                    d.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
-                    d.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
-                    d.StencilEnable = TRUE;
-                    d.StencilReadMask = 0xFF;
-                    d.StencilWriteMask = 0xFF;
-                    d.FrontFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
-                    d.FrontFace.StencilPassOp = D3D11_STENCIL_OP_REPLACE;
-                    d.FrontFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
-                    d.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_KEEP;
-                    d.BackFace = d.FrontFace;
-                    ID3D11DepthStencilState* dsFill = nullptr; HR_T(m_->m_pDevice->CreateDepthStencilState(&d, &dsFill));
-                    m_->m_pDeviceContext->OMSetDepthStencilState(dsFill, 1);
+                    m_->m_pDeviceContext->OMSetDepthStencilState(m_->m_pDSStencilWrite1, 1);
                     m_->m_pDeviceContext->DrawIndexed(sub.count, sub.start, 0); // 스텐실 채움(사각형 전체)
-                    SAFE_RELEASE(dsFill);
                     if (prevDSLocal) { m_->m_pDeviceContext->OMSetDepthStencilState(prevDSLocal, prevRefLocal); prevDSLocal->Release(); }
 
                     // cb 복원
@@ -1090,6 +1062,30 @@ bool App::InitD3D()
 	dssDesc.StencilEnable = FALSE;
 	HR_T(m_->m_pDevice->CreateDepthStencilState(&dssDesc, &m_->m_pDepthStencilState));
 	m_->m_pDeviceContext->OMSetDepthStencilState(m_->m_pDepthStencilState, 0);
+
+    // 미리 생성해두는 DS 상태
+    {
+        D3D11_DEPTH_STENCIL_DESC d{};
+        d.DepthEnable = TRUE; d.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO; d.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
+        d.StencilEnable = TRUE; d.StencilReadMask = 0xFF; d.StencilWriteMask = 0xFF;
+        d.FrontFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
+        d.FrontFace.StencilPassOp = D3D11_STENCIL_OP_REPLACE;
+        d.FrontFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+        d.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_KEEP;
+        d.BackFace = d.FrontFace;
+        HR_T(m_->m_pDevice->CreateDepthStencilState(&d, &m_->m_pDSStencilWrite1));
+    }
+    {
+        D3D11_DEPTH_STENCIL_DESC d{};
+        d.DepthEnable = TRUE; d.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL; d.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
+        d.StencilEnable = TRUE; d.StencilReadMask = 0xFF; d.StencilWriteMask = 0x00;
+        d.FrontFace.StencilFunc = D3D11_COMPARISON_EQUAL; // ref=0만 통과
+        d.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+        d.FrontFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+        d.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_KEEP;
+        d.BackFace = d.FrontFace;
+        HR_T(m_->m_pDevice->CreateDepthStencilState(&d, &m_->m_pDSReject1));
+    }
 
 	// 렌더 타겟/DSV 바인딩
 	m_->m_pDeviceContext->OMSetRenderTargets(1, &m_->m_pRenderTargetView, m_->m_pDepthStencilView);
