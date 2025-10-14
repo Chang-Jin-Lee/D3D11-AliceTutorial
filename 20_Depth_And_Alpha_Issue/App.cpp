@@ -518,6 +518,7 @@ void App::OnRender()
 				m_->m_pDeviceContext->PSSetShaderResources(2, 1, &srvNormal);
 				m_->m_pDeviceContext->PSSetShaderResources(3, 1, &srvSpec);
 
+				//Depth Buffer and Alpha Blending artifact
 				// 재현 토글: 트리일 때 깊이 프리패스로 배경만 보이게 만들기
 				if (m_->m_ReproAlphaOcclusion && mdlPtr->modelName == L"Tree")
 				{
@@ -529,12 +530,12 @@ void App::OnRender()
 					m_->m_pDeviceContext->Unmap(m_->m_pConstantBuffer, 0);
 					m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
 					m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
-					// 컬러 쓰기 OFF (깊이만 기록)
+					// 2. 컬러 쓰기 OFF (깊이만 기록)
 					m_->m_pDeviceContext->OMSetBlendState(m_->m_pColorMaskNone, nullptr, 0xFFFFFFFF);
 					m_->m_pDeviceContext->DrawIndexed(sub.count, sub.start, 0);
 
 					m_->m_pDeviceContext->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
-					// 2. 본 패스: clip 활성로 실제 컬러 출력 투명은 버려짐. 뒤 오브젝트는 이미 깊이로 가려짐. 배경만 보임
+					// 3. 본 패스: clip 활성로 실제 컬러 출력 투명은 버려짐. 뒤 오브젝트는 이미 깊이로 가려짐. 배경만 보임
 					HR_T(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedPre));
 					memcpy_s(mappedPre.pData, sizeof(ConstantBuffer), &cb, sizeof(ConstantBuffer));
 					m_->m_pDeviceContext->Unmap(m_->m_pConstantBuffer, 0);
