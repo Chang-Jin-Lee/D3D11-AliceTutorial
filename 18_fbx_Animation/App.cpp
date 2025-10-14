@@ -223,7 +223,7 @@ struct App::Impl
 
 
 // Ctors
-App::App() : m_(new Impl) {}
+App::App() : m_(std::make_unique<Impl>()) {}
 App::~App() { }
 
 static bool LoadTextureSRVAndSize(ID3D11Device* device, const std::wstring& path,
@@ -1513,8 +1513,6 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
 
 void App::UnloadModel()
 {
-    SAFE_RELEASE(m_->m_pModelVB);
-    SAFE_RELEASE(m_->m_pModelIB);
     m_->m_ModelMaterialSRVs.clear();
     m_->m_ModelSubsets.clear();
     m_->m_ModelIndexCount = 0;
