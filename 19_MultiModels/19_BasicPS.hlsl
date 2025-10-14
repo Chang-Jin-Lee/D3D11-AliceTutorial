@@ -12,7 +12,10 @@ float4 main(VertexOut pIn) : SV_Target
 	// 알파 컷아웃 조명 모드에서만 적용
 	float4 textureColor = g_DiffuseMap.Sample(g_Sam, pIn.tex);
     float alphaTex = textureColor.a * g_Material.diffuse.a;
-    clip(alphaTex - 0.1f);
+    if (abs(g_Pad - 8.0f) > 1e-3) // g_Pad==8 → 프리패스: clip 비활성화(전체 사각형 커버리지 사용)
+    {
+        clip(alphaTex - 0.1f);
+    }
 
 	// 월드 노말 계산(Nw) - 노말맵 토글에 따라 분기
 	float3 N = normalize(pIn.normalW);

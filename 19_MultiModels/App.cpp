@@ -108,6 +108,7 @@ struct App::Impl {
     // 샘플러/블렌드 상태
     ID3D11SamplerState*           m_pSamplerState = nullptr;
     ID3D11BlendState*             m_pAlphaBlendState = nullptr;
+    ID3D11BlendState*             m_pAlphaBlendStateConst = nullptr; // 상수 블렌드 팩터 사용(버그 재현용)
 
     // Skybox/큐브맵 자원 및 옵션
     enum class SkyBoxChoice { Off = 0, Hanako = 1, CubeMap = 2 };
@@ -186,6 +187,9 @@ struct App::Impl {
     int                           m_UseSpecularMap = 0;
     int                           m_LegacyShading = 1;
     XMFLOAT4                      m_ClearColor = { 0.125f, 0.125f, 0.125f, 1.0f };
+    // 알파 가림(DepthWrite) 버그 재현 토글
+    bool                          m_ReproAlphaOcclusion = false;
+    float                         m_DebugBlendFactor[4] = { 0.35f, 0.35f, 0.35f, 0.35f };
 
     // 모델 로딩 및 렌더링 FBX/OBJ/PMX
     RenderMode                    m_RenderMode = RenderMode::None;
@@ -466,15 +470,40 @@ void App::OnRender()
     // 큐브맵을 t1 슬롯에 바인딩 (픽셀 셰이더에서 g_TexCube : t1)
     m_->m_pDeviceContext->PSSetShaderResources(1, 1, &m_->m_pTextureSRV);
 
-	// PNG 알파 반영 블렌딩
-	FLOAT blendFactor[4] = { 0,0,0,0 };
-	UINT sampleMask = 0xFFFFFFFF;
-	m_->m_pDeviceContext->OMSetBlendState(m_->m_pAlphaBlendState, blendFactor, sampleMask);
+   
     if (m_->m_RenderMode == RenderMode::Model && !m_->m_Models.empty())
     {
         // 모든 모델 렌더
         for (auto& mdlPtr : m_->m_Models)
         {
+			FLOAT blendFactor[4] = { 0,0,0,0 };
+			UINT sampleMask = 0xFFFFFFFF;
+			ID3D11RasterizerState* prevRS = nullptr;
+			ID3D11DepthStencilState* prevDS = nullptr; UINT prevRef = 0;
+			ID3D11ShaderResourceView* prevSRV0 = nullptr; // preserve PS t0 to avoid dimension mismatch in other passes
+
+			if (mdlPtr.get()->modelName == L"Tree")
+			{
+				// PNG 알파 반영 블렌딩
+				
+				if (m_->m_ReproAlphaOcclusion && m_->m_pAlphaBlendStateConst)
+				{
+					// 버그 재현 경로: 상수 팩터 + 깊이 쓰기 ON
+					m_->m_pDeviceContext->OMSetDepthStencilState(m_->m_pDepthStencilState, 0);
+					m_->m_pDeviceContext->OMSetBlendState(m_->m_pAlphaBlendStateConst, m_->m_DebugBlendFactor, sampleMask);
+				}
+				m_->m_pDeviceContext->RSGetState(&prevRS);
+				m_->m_pDeviceContext->OMGetDepthStencilState(&prevDS, &prevRef);
+				m_->m_pDeviceContext->PSGetShaderResources(0, 1, &prevSRV0);
+				m_->m_pDeviceContext->OMSetDepthStencilState(m_->m_pDepthStencilState, 0);
+			}
+			else
+			{
+				// 정상 경로: 깊이 테스트 ON, 깊이 쓰기 OFF(투명), SrcAlpha/InvSrcAlpha
+				// 주의: 실제 깊이 쓰기 OFF는 DepthStencilState로 제어해야 하나, 간단 재현에서는 생략
+				m_->m_pDeviceContext->OMSetBlendState(m_->m_pAlphaBlendState, blendFactor, sampleMask);
+			}
+
             auto& mdl = *mdlPtr;
             // IA 바인딩
             UINT s = mdl.stride; UINT o = 0;
@@ -517,8 +546,92 @@ void App::OnRender()
                 m_->m_pDeviceContext->PSSetShaderResources(0, 1, &srvDiffuse);
                 m_->m_pDeviceContext->PSSetShaderResources(2, 1, &srvNormal);
                 m_->m_pDeviceContext->PSSetShaderResources(3, 1, &srvSpec);
+
+                // Zelda: 스텐실==0에서만 통과 (트리 사각형 커버리지 내부는 거부)
+                if (mdlPtr->modelName == L"zeldaPosed001")
+                {
+                    ID3D11DepthStencilState* prevDSLocal = nullptr; UINT prevRefLocal = 0;
+                    m_->m_pDeviceContext->OMGetDepthStencilState(&prevDSLocal, &prevRefLocal);
+
+                    D3D11_DEPTH_STENCIL_DESC d{};
+                    d.DepthEnable = TRUE;
+                    d.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+                    d.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
+                    d.StencilEnable = TRUE;
+                    d.StencilReadMask = 0xFF;
+                    d.StencilWriteMask = 0x00;
+                    d.FrontFace.StencilFunc = D3D11_COMPARISON_EQUAL; // ref 0
+                    d.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+                    d.FrontFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+                    d.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_KEEP;
+                    d.BackFace = d.FrontFace;
+                    ID3D11DepthStencilState* dsZelda = nullptr; HR_T(m_->m_pDevice->CreateDepthStencilState(&d, &dsZelda));
+                    m_->m_pDeviceContext->OMSetDepthStencilState(dsZelda, 0);
+                    m_->m_pDeviceContext->DrawIndexed(sub.count, sub.start, 0);
+                    SAFE_RELEASE(dsZelda);
+                    if (prevDSLocal) { m_->m_pDeviceContext->OMSetDepthStencilState(prevDSLocal, prevRefLocal); prevDSLocal->Release(); }
+                    continue;
+                }
+
+                // Tree: 텍스처 사각형 전체를 스텐실=1로 채우는 추가 드로우(깊이 쓰기 OFF, clip 비활성화)
+                if (mdlPtr->modelName == L"Tree")
+                {
+                    ConstantBuffer saved = cb;
+                    cb.pad = 8.0f; // PS에서 clip 비활성화
+                    D3D11_MAPPED_SUBRESOURCE mappedPre;
+                    HR_T(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedPre));
+                    memcpy_s(mappedPre.pData, sizeof(ConstantBuffer), &cb, sizeof(ConstantBuffer));
+                    m_->m_pDeviceContext->Unmap(m_->m_pConstantBuffer, 0);
+                    m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
+                    m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
+
+                    ID3D11DepthStencilState* prevDSLocal = nullptr; UINT prevRefLocal = 0;
+                    m_->m_pDeviceContext->OMGetDepthStencilState(&prevDSLocal, &prevRefLocal);
+                    D3D11_DEPTH_STENCIL_DESC d{};
+                    d.DepthEnable = TRUE;
+                    d.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+                    d.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
+                    d.StencilEnable = TRUE;
+                    d.StencilReadMask = 0xFF;
+                    d.StencilWriteMask = 0xFF;
+                    d.FrontFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
+                    d.FrontFace.StencilPassOp = D3D11_STENCIL_OP_REPLACE;
+                    d.FrontFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+                    d.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_KEEP;
+                    d.BackFace = d.FrontFace;
+                    ID3D11DepthStencilState* dsFill = nullptr; HR_T(m_->m_pDevice->CreateDepthStencilState(&d, &dsFill));
+                    m_->m_pDeviceContext->OMSetDepthStencilState(dsFill, 1);
+                    m_->m_pDeviceContext->DrawIndexed(sub.count, sub.start, 0); // 스텐실 채움(사각형 전체)
+                    SAFE_RELEASE(dsFill);
+                    if (prevDSLocal) { m_->m_pDeviceContext->OMSetDepthStencilState(prevDSLocal, prevRefLocal); prevDSLocal->Release(); }
+
+                    // cb 복원
+                    cb = saved;
+                    HR_T(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedPre));
+                    memcpy_s(mappedPre.pData, sizeof(ConstantBuffer), &cb, sizeof(ConstantBuffer));
+                    m_->m_pDeviceContext->Unmap(m_->m_pConstantBuffer, 0);
+                    m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
+                    m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
+                }
+
+                // 일반 드로우(트리/기타)
                 m_->m_pDeviceContext->DrawIndexed(sub.count, sub.start, 0);
             }
+
+			if (mdlPtr.get()->modelName == L"Tree")
+			{
+				// 블렌딩 OFF로 복구
+				m_->m_pDeviceContext->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
+
+				// restore
+				m_->m_pDeviceContext->OMSetDepthStencilState(prevDS, prevRef);
+				m_->m_pDeviceContext->RSSetState(prevRS);
+				// restore previous PS t0 SRV (skybox binds a TextureCube to t0)
+				m_->m_pDeviceContext->PSSetShaderResources(0, 1, &prevSRV0);
+				if (prevSRV0) prevSRV0->Release();
+				if (prevDS) prevDS->Release();
+				if (prevRS) prevRS->Release();
+			}
         }
     }
 	else if (m_->m_RenderMode == RenderMode::Cube)
@@ -534,8 +647,9 @@ void App::OnRender()
 			m_->m_pDeviceContext->DrawIndexed(6, face * 6, 0);
 		}
 	}
-	// 필요 시: 블렌딩 OFF로 복구
-	m_->m_pDeviceContext->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
+	
+
+
 
     // Mirror Cube: 모델 모드일 때는 생략하고, 큐브 모드에서만 거울 큐브 표시
 	if (m_->m_RenderMode == RenderMode::Cube)
@@ -763,7 +877,14 @@ void App::OnRender()
     {
         ImGui::SetNextWindowSize(ImVec2(420, 520), ImGuiCond_FirstUseEver);
 
-		ImGui::Begin("Model Loader (FBX / OBJ / PMX)");
+        ImGui::Begin("Model Loader (FBX / OBJ / PMX)");
+        // 버그 재현 토글 UI
+        ImGui::Checkbox("Repro alpha occlusion (DepthWrite+ConstBlend)", &m_->m_ReproAlphaOcclusion);
+        if (m_->m_ReproAlphaOcclusion)
+        {
+            ImGui::SliderFloat4("Const Blend Factor RGBA", m_->m_DebugBlendFactor, 0.0f, 1.0f, "%.2f");
+            ImGui::TextDisabled("Tip: Draw near-to-far to see rear hidden by alpha");
+        }
 		// 렌더 모드 선택
 		{
 			int curMode = (m_->m_RenderMode == RenderMode::None) ? 0 : (m_->m_RenderMode == RenderMode::Cube ? 1 : 2);
@@ -1015,7 +1136,23 @@ bool App::InitD3D()
 		rt.DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
 		rt.BlendOpAlpha = D3D11_BLEND_OP_ADD;
 		rt.RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
-	HR_T(m_->m_pDevice->CreateBlendState(&bd, &m_->m_pAlphaBlendState));
+		HR_T(m_->m_pDevice->CreateBlendState(&bd, &m_->m_pAlphaBlendState));
+
+        // 버그 재현용: 상수 팩터 블렌딩(CBF)을 켜고 SrcBlend=BLEND_FACTOR, Dest=INV_BLEND_FACTOR
+        // 이 상태에서 깊이 쓰기를 켠 채 반투명 오브젝트를 앞→뒤 순서로 그리면 뒤가 잘 가려짐
+        D3D11_BLEND_DESC bd2{};
+        bd2.AlphaToCoverageEnable = FALSE;
+        bd2.IndependentBlendEnable = FALSE;
+        D3D11_RENDER_TARGET_BLEND_DESC& rt2 = bd2.RenderTarget[0];
+        rt2.BlendEnable = TRUE;
+        rt2.SrcBlend = D3D11_BLEND_BLEND_FACTOR;          // 상수 팩터
+        rt2.DestBlend = D3D11_BLEND_INV_BLEND_FACTOR;     // 1 - 상수 팩터
+        rt2.BlendOp = D3D11_BLEND_OP_ADD;
+        rt2.SrcBlendAlpha = D3D11_BLEND_ONE;
+        rt2.DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
+        rt2.BlendOpAlpha = D3D11_BLEND_OP_ADD;
+        rt2.RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+        HR_T(m_->m_pDevice->CreateBlendState(&bd2, &m_->m_pAlphaBlendStateConst));
 	}
  
 	return true;
