@@ -58,6 +58,7 @@ struct ModelSubset { uint32_t start; uint32_t count; uint32_t materialIndex; };
 // 여러 모델을 그리기 위한 구조체
 struct ModelEntry
 {
+	std::wstring modelName{ L"" };
 	ModelSource source = ModelSource::Custom;
 	// 로더 매니저 (FBX/OBJ/PMX 중 선택해 사용)
 	FbxManager fbx;
@@ -159,7 +160,7 @@ struct App::Impl {
     SystemInfomation              m_SystemInfo;
     Camera                        m_camera;
 
-    // 모델 트랜스폼 (루트)
+    // 큐브 트랜스폼
     XMFLOAT3                      m_cubePos = { 0.0f, 0.0f, 0.0f };
     XMFLOAT3                      m_cubeScale = { 1.0f, 1.0f, 1.0f };
     XMFLOAT3                      m_cubeRotation = { 0.0f, 0.0f, 0.0f };
@@ -184,7 +185,7 @@ struct App::Impl {
     int                           m_EnableNormalMap = 1;
     int                           m_UseSpecularMap = 0;
     int                           m_LegacyShading = 1;
-    XMFLOAT4                      m_ClearColor = { 0.02f, 0.02f, 0.02f, 1.0f };
+    XMFLOAT4                      m_ClearColor = { 0.125f, 0.125f, 0.125f, 1.0f };
 
     // 모델 로딩 및 렌더링 FBX/OBJ/PMX
     RenderMode                    m_RenderMode = RenderMode::None;
@@ -235,7 +236,6 @@ static bool OpenFileDialogModel(std::wstring& outPath)
     if (GetOpenFileNameW(&ofn)) { outPath = file; return true; }
     return false;
 }
-
 
 void App::PrepareSkyFaceSRVs()
 {
@@ -760,7 +760,6 @@ void App::OnRender()
 	ImGui::End();
 
     // Models 독립 창
-    
     {
         ImGui::SetNextWindowSize(ImVec2(420, 520), ImGuiCond_FirstUseEver);
 
@@ -791,14 +790,13 @@ void App::OnRender()
 
 		if (!m_->m_Models.empty())
 		{
-
 			ImGui::Text("Models");
 			for (size_t i = 0; i < m_->m_Models.size(); ++i)
 			{
 				auto& mdl = *m_->m_Models[i];
 				ImGui::PushID((int)i);
 				ImGui::Separator();
-				ImGui::Text("Model #%d", (int)i);
+                ImGui::Text("Model #%d : %s", (int)i, Utf8FromWString(m_->m_Models[i]->modelName).c_str());
 				ImGui::DragFloat3("Position", &mdl.pos.x, 0.1f);
 				ImGui::DragFloat3("Rotation (deg)", &mdl.rotDeg.x, 1.0f, -360.0f, 360.0f, "%.1f");
 				ImGui::DragFloat3("Scale", &mdl.scale.x, 0.01f, 0.001f, 100.0f, "%.3f");
@@ -848,7 +846,7 @@ void App::OnRender()
         ImGui::End();
     }
 
-		// 현재 카메라 포워드 기준 스카이박스 면 이미지를 표시 (스카이박스 On일 때만)
+	// 현재 카메라 포워드 기준 스카이박스 면 이미지를 표시 (스카이박스 On일 때만)
 	if (m_->m_SkyBoxChoice != App::Impl::SkyBoxChoice::Off)
 	{
 		int face = 0;
@@ -888,13 +886,9 @@ void App::OnRender()
 			ImGui::End();
 		}
 	}
-
-
 	m_->m_SystemInfo.RenderUI();
-
 	ImGui::Render();
 	ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-
 	m_->m_pSwapChain->Present(0, 0);
 }
 
@@ -1316,52 +1310,40 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
     // 새 모델델 추가
 
     // 폴백 텍스처 생성(최초 1회)
-    if (!m_->m_pFallbackWhite)
-    {
-        UINT white = 0xFFFFFFFF;
-        D3D11_TEXTURE2D_DESC td{}; td.Width = 1; td.Height = 1; td.MipLevels = 1; td.ArraySize = 1;
-        td.Format = DXGI_FORMAT_R8G8B8A8_UNORM; td.SampleDesc.Count = 1; td.Usage = D3D11_USAGE_IMMUTABLE; td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-        D3D11_SUBRESOURCE_DATA sd{}; sd.pSysMem = &white; sd.SysMemPitch = sizeof(UINT);
-        Microsoft::WRL::ComPtr<ID3D11Texture2D> tex; HR_T(m_->m_pDevice->CreateTexture2D(&td, &sd, tex.GetAddressOf()));
-        D3D11_SHADER_RESOURCE_VIEW_DESC srvd{}; srvd.Format = td.Format; srvd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D; srvd.Texture2D.MipLevels = 1; srvd.Texture2D.MostDetailedMip = 0;
-        HR_T(m_->m_pDevice->CreateShaderResourceView(tex.Get(), &srvd, &m_->m_pFallbackWhite));
-    }
-    if (!m_->m_pFallbackBlack)
-    {
-        UINT black = 0x000000FF; // a=1
-        D3D11_TEXTURE2D_DESC td{}; td.Width = 1; td.Height = 1; td.MipLevels = 1; td.ArraySize = 1;
-        td.Format = DXGI_FORMAT_R8G8B8A8_UNORM; td.SampleDesc.Count = 1; td.Usage = D3D11_USAGE_IMMUTABLE; td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-        D3D11_SUBRESOURCE_DATA sd{}; sd.pSysMem = &black; sd.SysMemPitch = sizeof(UINT);
-        Microsoft::WRL::ComPtr<ID3D11Texture2D> tex; HR_T(m_->m_pDevice->CreateTexture2D(&td, &sd, tex.GetAddressOf()));
-        D3D11_SHADER_RESOURCE_VIEW_DESC srvd{}; srvd.Format = td.Format; srvd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D; srvd.Texture2D.MipLevels = 1; srvd.Texture2D.MostDetailedMip = 0;
-        HR_T(m_->m_pDevice->CreateShaderResourceView(tex.Get(), &srvd, &m_->m_pFallbackBlack));
-    }
-    if (!m_->m_pFallbackNormal)
-    {
-        UINT neutral = 0x8080FFFF; // (0.5,0.5,1,1) in RGBA8
-        D3D11_TEXTURE2D_DESC td{}; td.Width = 1; td.Height = 1; td.MipLevels = 1; td.ArraySize = 1;
-        td.Format = DXGI_FORMAT_R8G8B8A8_UNORM; td.SampleDesc.Count = 1; td.Usage = D3D11_USAGE_IMMUTABLE; td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-        D3D11_SUBRESOURCE_DATA sd{}; sd.pSysMem = &neutral; sd.SysMemPitch = sizeof(UINT);
-        Microsoft::WRL::ComPtr<ID3D11Texture2D> tex; HR_T(m_->m_pDevice->CreateTexture2D(&td, &sd, tex.GetAddressOf()));
-        D3D11_SHADER_RESOURCE_VIEW_DESC srvd{}; srvd.Format = td.Format; srvd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D; srvd.Texture2D.MipLevels = 1; srvd.Texture2D.MostDetailedMip = 0;
-        HR_T(m_->m_pDevice->CreateShaderResourceView(tex.Get(), &srvd, &m_->m_pFallbackNormal));
-    }
+	UINT fallBackColor = 0x000000FF;
+    if (!m_->m_pFallbackWhite) fallBackColor = 0xFFFFFFFF;
+    if (!m_->m_pFallbackBlack) fallBackColor = 0x000000FF; // a=1
+    if (!m_->m_pFallbackNormal) fallBackColor = 0x8080FFFF; // (0.5,0.5,1,1) in RGBA8
 
-    // 확장자 분기: 매니저 사용
-    std::wstring ext;
+	D3D11_TEXTURE2D_DESC td{}; td.Width = 1; td.Height = 1; td.MipLevels = 1; td.ArraySize = 1;
+	td.Format = DXGI_FORMAT_R8G8B8A8_UNORM; td.SampleDesc.Count = 1; td.Usage = D3D11_USAGE_IMMUTABLE; td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+	D3D11_SUBRESOURCE_DATA sd{}; sd.pSysMem = &fallBackColor; sd.SysMemPitch = sizeof(UINT);
+	Microsoft::WRL::ComPtr<ID3D11Texture2D> tex; HR_T(m_->m_pDevice->CreateTexture2D(&td, &sd, tex.GetAddressOf()));
+	D3D11_SHADER_RESOURCE_VIEW_DESC srvd{}; srvd.Format = td.Format; srvd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D; srvd.Texture2D.MipLevels = 1; srvd.Texture2D.MostDetailedMip = 0;
+	HR_T(m_->m_pDevice->CreateShaderResourceView(tex.Get(), &srvd, &m_->m_pFallbackNormal));
+
+	// 받은 경로에서 이름, 확장자 추출
+	std::wstring ext{L""}, fileName{L""};
     if (!pathW.empty())
     {
         size_t dot = pathW.find_last_of(L'.');
-        if (dot != std::wstring::npos) { ext = pathW.substr(dot); std::transform(ext.begin(), ext.end(), ext.begin(), ::towlower); }
+        if (dot != std::wstring::npos) 
+		{ 
+			ext = pathW.substr(dot); std::transform(ext.begin(), ext.end(), ext.begin(), ::towlower);
+			size_t sep = pathW.find_last_of(L"\\/");
+			if (sep != std::wstring::npos) fileName = pathW.substr(sep + 1, dot - sep - 1);
+			else fileName = pathW.substr(0, dot);
+		}
     }
 
     bool ok = false;
+	auto entry = std::make_unique<ModelEntry>();
+	entry->modelName = fileName;
+
     if (ext == L".fbx")
     {
-        auto entry = std::make_unique<ModelEntry>(); 
 		entry->source = ModelSource::FBX;
-        ok = entry->fbx.Load(m_->m_pDevice, pathW);
-        if (ok)
+        if (ok = entry->fbx.Load(m_->m_pDevice, pathW))
         {
             entry->stride = entry->fbx.GetVertexStride();
             entry->vb = entry->fbx.GetVertexBuffer(); if (entry->vb) entry->vb->AddRef();
@@ -1371,14 +1353,13 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
             for (auto& s : entry->fbx.GetSubsets()) entry->subsets.push_back({ s.startIndex, s.indexCount, s.materialIndex });
             entry->materialSRVs = entry->fbx.GetMaterialSRVs();
             m_->m_Models.push_back(std::move(entry));
+			m_->m_RenderMode = RenderMode::Model;
         }
     }
     else if (ext == L".obj")
     {
-        auto entry = std::make_unique<ModelEntry>(); 
 		entry->source = ModelSource::OBJ;
-        ok = entry->obj.Load(m_->m_pDevice, pathW);
-        if (ok)
+        if (ok = entry->obj.Load(m_->m_pDevice, pathW))
         {
             entry->stride = entry->obj.GetVertexStride();
             entry->vb = entry->obj.GetVertexBuffer(); if (entry->vb) entry->vb->AddRef();
@@ -1388,14 +1369,13 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
             for (auto& s : entry->obj.GetSubsets()) entry->subsets.push_back({ s.startIndex, s.indexCount, s.materialIndex });
             entry->materialSRVs = entry->obj.GetMaterialSRVs();
             m_->m_Models.push_back(std::move(entry));
+			m_->m_RenderMode = RenderMode::Model;
         }
     }
     else if (ext == L".pmx")
     {
-        auto entry = std::make_unique<ModelEntry>(); 
 		entry->source = ModelSource::PMX;
-        ok = entry->pmx.Load(m_->m_pDevice, pathW);
-        if (ok)
+        if (ok = entry->pmx.Load(m_->m_pDevice, pathW))
         {
             entry->stride = entry->pmx.GetVertexStride();
             entry->vb = entry->pmx.GetVertexBuffer(); if (entry->vb) entry->vb->AddRef();
@@ -1405,13 +1385,10 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
             for (auto& s : entry->pmx.GetSubsets()) entry->subsets.push_back({ s.startIndex, s.indexCount, s.materialIndex });
             entry->materialSRVs = entry->pmx.GetMaterialSRVs();
             m_->m_Models.push_back(std::move(entry));
+			m_->m_RenderMode = RenderMode::Model;
         }
     }
 
-    if (ok)
-    {
-        m_->m_RenderMode = RenderMode::Model;
-    }
     return ok;
 }
 
