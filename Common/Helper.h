@@ -105,8 +105,6 @@ std::string GetComErrorStringA(HRESULT hr);
 
 void CheckDXGIDebug();
 
-
-
 // Helper class for COM exceptions
 class com_exception : public std::exception {
 	HRESULT m_hr;
@@ -153,3 +151,8 @@ inline void HR_T_Impl(HRESULT hr, const char* file, int line, const char* func)
 HRESULT CompileShaderFromFile(const WCHAR* szFileName, LPCSTR szEntryPoint, LPCSTR szShaderModel, ID3DBlob** ppBlobOut);
 
 HRESULT CreateTextureFromFile(ID3D11Device* d3dDevice, const wchar_t* szFileName, ID3D11ShaderResourceView** textureView);
+
+// UTF-8 -> UTF-16 (Windows) 변환
+std::wstring WStringFromUtf8(const std::string& s);
+// UTF-16 (Windows wide) -> UTF-8 변환
+std::string Utf8FromWString(const std::wstring& ws);
