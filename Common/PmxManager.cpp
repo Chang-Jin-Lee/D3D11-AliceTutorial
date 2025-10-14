@@ -9,8 +9,6 @@
 
 using Microsoft::WRL::ComPtr;
 
-static std::wstring WStringFromUtf8(const std::string& s) { return std::wstring(s.begin(), s.end()); }
-
 void PmxManager::Release()
 {
     for (auto& srv : m_MaterialSRVs) { if (srv) { srv->Release(); srv = nullptr; } }

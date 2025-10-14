@@ -10,8 +10,6 @@
 
 using Microsoft::WRL::ComPtr;
 
-static std::wstring WStringFromUtf8(const std::string& s) { return std::wstring(s.begin(), s.end()); }
-
 void ObjManager::Release()
 {
     SAFE_RELEASE(m_pVB);

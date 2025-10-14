@@ -99,3 +99,24 @@ void CheckDXGIDebug()
 		pDebug->Release();
 	}
 }
+
+
+std::wstring WStringFromUtf8(const std::string& s)
+{
+	if (s.empty()) return std::wstring();
+	int lenW = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, s.c_str(), (int)s.size(), nullptr, 0);
+	if (lenW <= 0) return std::wstring(s.begin(), s.end());
+	std::wstring w; w.resize((size_t)lenW);
+	MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, s.c_str(), (int)s.size(), &w[0], lenW);
+	return w;
+}
+
+std::string Utf8FromWString(const std::wstring& ws)
+{
+	if (ws.empty()) return std::string();
+	int lenU8 = WideCharToMultiByte(CP_UTF8, 0, ws.c_str(), (int)ws.size(), nullptr, 0, nullptr, nullptr);
+	if (lenU8 <= 0) return std::string();
+	std::string out; out.resize((size_t)lenU8);
+	WideCharToMultiByte(CP_UTF8, 0, ws.c_str(), (int)ws.size(), &out[0], lenU8, nullptr, nullptr);
+	return out;
+}

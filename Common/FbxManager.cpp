@@ -9,31 +9,14 @@
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
 #include <directxtk/WICTextureLoader.h>
+#include "../Common/Helper.h"
 
 using Microsoft::WRL::ComPtr;
 
-// UTF-8 -> UTF-16 (Windows) 변환
-static std::wstring WStringFromUtf8(const std::string& s)
-{
-    if (s.empty()) return std::wstring();
-    int lenW = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, s.c_str(), (int)s.size(), nullptr, 0);
-    if (lenW <= 0) return std::wstring(s.begin(), s.end());
-    std::wstring w; w.resize((size_t)lenW);
-    MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, s.c_str(), (int)s.size(), &w[0], lenW);
-    return w;
-}
+
 static std::string  StringFromAi(const aiString& s) { return std::string(s.C_Str()); }
 
-// UTF-16 (Windows wide) -> UTF-8 변환
-static std::string Utf8FromWString(const std::wstring& ws)
-{
-    if (ws.empty()) return std::string();
-    int lenU8 = WideCharToMultiByte(CP_UTF8, 0, ws.c_str(), (int)ws.size(), nullptr, 0, nullptr, nullptr);
-    if (lenU8 <= 0) return std::string();
-    std::string out; out.resize((size_t)lenU8);
-    WideCharToMultiByte(CP_UTF8, 0, ws.c_str(), (int)ws.size(), &out[0], lenU8, nullptr, nullptr);
-    return out;
-}
+
 
 struct FbxManager::Impl
 {
@@ -76,9 +59,10 @@ FbxManager::~FbxManager() { Release(); }
 
 void FbxManager::Release()
 {
-    if (m_->pVB) { m_->pVB->Release(); m_->pVB = nullptr; }
-    if (m_->pIB) { m_->pIB->Release(); m_->pIB = nullptr; }
-    for (auto& p : m_->MaterialSRVs) { if (p) { p->Release(); p = nullptr; } }
+
+	SAFE_RELEASE(m_->pVB);
+	SAFE_RELEASE(m_->pIB);
+    for (auto& p : m_->MaterialSRVs) { SAFE_RELEASE(p); }
     m_->MaterialSRVs.clear();
     for (auto& kv : m_->TexCache) { if (kv.second) { kv.second->Release(); kv.second = nullptr; } }
     m_->TexCache.clear();
@@ -212,9 +196,9 @@ bool FbxManager::Load(ID3D11Device* device, const std::wstring& pathW)
         for (unsigned bi = 0; bi < mesh->mNumBones; ++bi)
         {
             const aiBone* b = mesh->mBones[bi];
-    auto it = m_->BoneIndexOfName.find(b->mName.C_Str());
-    if (it == m_->BoneIndexOfName.end()) continue;
-    int boneIdx = it->second;
+            auto it = m_->BoneIndexOfName.find(b->mName.C_Str());
+            if (it == m_->BoneIndexOfName.end()) continue;
+            int boneIdx = it->second;
             for (unsigned wi = 0; wi < b->mNumWeights; ++wi)
             {
                 const aiVertexWeight& vw = b->mWeights[wi];
