@@ -1,8 +1,8 @@
 /*
-* @brief : fbx, pmx, obj 3D 모델을 그리는 예제입니다
+* @brief : Depth Buffer and Alpha Blending artifact가 일어나는 상황을 보여주는 예제입니다.
 * @details :
-*	 - 노말맵이 적용되어 있는 경우 노말맵을 반영해서 그립니다
-*	 - 없는 경우는 반영하지 않습니다 
+*	 - 투명 값이 있는 알파 블랜드와 깊이 스탠실	버퍼를 함께 사용할 때 발생하는 문제를 시연합니다.
+*	 - 투명 오브젝트가 서로 겹쳐질 때, 깊이 테스트로 인해 올바르게 렌더링되지 않는 현상을 관찰할 수 있습니다.
 */
 
 #include "App.h"
@@ -473,6 +473,9 @@ void App::OnRender()
 	
     if (m_->m_RenderMode == RenderMode::Model && !m_->m_Models.empty())
     {
+        // 이름이 "Tree"인 모든 엔트리를 앞으로 모으고, 나머지를 뒤로 밀기. 상대 순서는 보존
+        std::stable_partition(m_->m_Models.begin(), m_->m_Models.end(),
+            [](const std::unique_ptr<ModelEntry>& e){ return e && e->modelName == L"Tree"; });
         // 모든 모델 렌더
 		for (auto& mdlPtr : m_->m_Models)
 		{
