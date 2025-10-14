@@ -9,6 +9,7 @@
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
 #include <directxtk/WICTextureLoader.h>
+#include "../Common/Helper.h"
 
 using Microsoft::WRL::ComPtr;
 
@@ -76,9 +77,10 @@ FbxManager::~FbxManager() { Release(); }
 
 void FbxManager::Release()
 {
-    if (m_->pVB) { m_->pVB->Release(); m_->pVB = nullptr; }
-    if (m_->pIB) { m_->pIB->Release(); m_->pIB = nullptr; }
-    for (auto& p : m_->MaterialSRVs) { if (p) { p->Release(); p = nullptr; } }
+
+	SAFE_RELEASE(m_->pVB);
+	SAFE_RELEASE(m_->pIB);
+    for (auto& p : m_->MaterialSRVs) { SAFE_RELEASE(p); }
     m_->MaterialSRVs.clear();
     for (auto& kv : m_->TexCache) { if (kv.second) { kv.second->Release(); kv.second = nullptr; } }
     m_->TexCache.clear();
