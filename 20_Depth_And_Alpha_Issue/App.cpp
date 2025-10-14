@@ -473,6 +473,9 @@ void App::OnRender()
 	
     if (m_->m_RenderMode == RenderMode::Model && !m_->m_Models.empty())
     {
+        // 이름이 "Tree"인 모든 엔트리를 앞으로 모으고, 나머지를 뒤로 밀기. 상대 순서는 보존
+        std::stable_partition(m_->m_Models.begin(), m_->m_Models.end(),
+            [](const std::unique_ptr<ModelEntry>& e){ return e && e->modelName == L"Tree"; });
         // 모든 모델 렌더
 		for (auto& mdlPtr : m_->m_Models)
 		{
