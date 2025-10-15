@@ -18,28 +18,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="19_BasicVS.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="19_SkyBoxPS.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="19_SkyBoxVS.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="19_LightingHelper.hlsli">
-      <Filter>Shaders</Filter>
-    </None>
-    <None Include="19_Shared.fxh">
-      <Filter>Shaders</Filter>
-    </None>
-    <None Include="19_SkyBox.hlsli">
-      <Filter>Shaders</Filter>
-    </None>
-  </ItemGroup>
-  <ItemGroup>
     <ClCompile Include="App.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
@@ -56,5 +34,11 @@
     <CopyFileToFolders Include="19_BasicPS.hlsl">
       <Filter>Shaders</Filter>
     </CopyFileToFolders>
+    <CopyFileToFolders Include="19_BasicVS.hlsl" />
+    <CopyFileToFolders Include="19_SkyBoxPS.hlsl" />
+    <CopyFileToFolders Include="19_SkyBoxVS.hlsl" />
+    <CopyFileToFolders Include="19_LightingHelper.hlsli" />
+    <CopyFileToFolders Include="19_Shared.fxh" />
+    <CopyFileToFolders Include="19_SkyBox.hlsli" />
   </ItemGroup>
 </Project>
