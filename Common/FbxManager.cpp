@@ -17,7 +17,6 @@ using Microsoft::WRL::ComPtr;
 static std::string  StringFromAi(const aiString& s) { return std::string(s.C_Str()); }
 
 
-
 struct FbxManager::Impl
 {
     ID3D11Buffer* pVB = nullptr;
@@ -56,6 +55,285 @@ struct FbxManager::Impl
 
 FbxManager::FbxManager() : m_(std::make_unique<Impl>()) {}
 FbxManager::~FbxManager() { Release(); }
+
+// --- Helpers implementation (declared in header) ---
+void FbxManager::BuildSkeletonAndNodeIndex(const aiScene* scene)
+{
+    m_->Skeleton.clear();
+    m_->NodeIndexOfName.clear();
+    std::function<int(const aiNode*, int)> build = [&](const aiNode* node, int parent){
+        int idx = (int)m_->Skeleton.size();
+        // UTF-8 -> UTF-16 변환(Helper 사용)으로 디버거에서 깨지지 않게 표시
+        std::string nmUtf8 = node->mName.C_Str();
+        std::wstring nmW = WStringFromUtf8(nmUtf8);
+        FbxManager::SkeletonNode sn{}; sn.name = nmUtf8; sn.nameW = nmW; sn.parent = parent; sn.isBone = false;
+        m_->Skeleton.push_back(std::move(sn));
+        m_->NodeIndexOfName[m_->Skeleton.back().name] = idx;
+        for (unsigned ci = 0; ci < node->mNumChildren; ++ci)
+        {
+            int ch = build(node->mChildren[ci], idx);
+            m_->Skeleton[idx].children.push_back(ch);
+        }
+        return idx;
+    };
+    m_->RootIndex = build(scene->mRootNode, -1);
+}
+
+void FbxManager::CollectBonesAndOffsets(const aiScene* scene)
+{
+    m_->HasSkinning = false;
+    m_->BoneNames.clear();
+    m_->BoneOffset.clear();
+    m_->BoneIndexOfName.clear();
+    for (unsigned mi = 0; mi < scene->mNumMeshes; ++mi)
+    {
+        const aiMesh* mesh = scene->mMeshes[mi];
+        for (unsigned bi = 0; bi < mesh->mNumBones; ++bi)
+        {
+            const aiBone* b = mesh->mBones[bi];
+            std::string name = b->mName.C_Str();
+            std::wstring nameW = WStringFromUtf8(name);
+            if (m_->BoneIndexOfName.find(name) == m_->BoneIndexOfName.end())
+            {
+                int newIndex = (int)m_->BoneNames.size();
+                m_->BoneIndexOfName[name] = newIndex;
+                m_->BoneNames.push_back(name);
+                DirectX::XMFLOAT4X4 off;
+                off._11 = (float)b->mOffsetMatrix.a1; off._12 = (float)b->mOffsetMatrix.a2; off._13 = (float)b->mOffsetMatrix.a3; off._14 = (float)b->mOffsetMatrix.a4;
+                off._21 = (float)b->mOffsetMatrix.b1; off._22 = (float)b->mOffsetMatrix.b2; off._23 = (float)b->mOffsetMatrix.b3; off._24 = (float)b->mOffsetMatrix.b4;
+                off._31 = (float)b->mOffsetMatrix.c1; off._32 = (float)b->mOffsetMatrix.c2; off._33 = (float)b->mOffsetMatrix.c3; off._34 = (float)b->mOffsetMatrix.c4;
+                off._41 = (float)b->mOffsetMatrix.d1; off._42 = (float)b->mOffsetMatrix.d2; off._43 = (float)b->mOffsetMatrix.d3; off._44 = (float)b->mOffsetMatrix.d4;
+                m_->BoneOffset.push_back(off);
+                auto itNode = m_->NodeIndexOfName.find(name);
+                if (itNode != m_->NodeIndexOfName.end()) {
+                    m_->Skeleton[itNode->second].isBone = true;
+                    if (m_->Skeleton[itNode->second].nameW.empty()) m_->Skeleton[itNode->second].nameW = nameW;
+                }
+            }
+        }
+    }
+}
+
+void FbxManager::BuildBaseVertexTable(const aiScene* scene, std::vector<size_t>& baseVertex)
+{
+    baseVertex.clear();
+    baseVertex.resize(scene->mNumMeshes, 0);
+    size_t cursor = 0;
+    std::function<void(const aiNode*)> fillBase = [&](const aiNode* node){
+        for (unsigned mi2 = 0; mi2 < node->mNumMeshes; ++mi2)
+        {
+            unsigned meshIdx = node->mMeshes[mi2];
+            baseVertex[meshIdx] = cursor;
+            cursor += scene->mMeshes[meshIdx]->mNumVertices;
+        }
+        for (unsigned ci = 0; ci < node->mNumChildren; ++ci) fillBase(node->mChildren[ci]);
+    };
+    fillBase(scene->mRootNode);
+}
+
+void FbxManager::AccumulateVertexWeights(const aiScene* scene, const std::vector<size_t>& baseVertex)
+{
+    if (!m_->Influences.empty()) m_->Influences.clear();
+    m_->Influences.assign(m_->BindVertices.size(), {});
+    for (unsigned mi2 = 0; mi2 < scene->mNumMeshes; ++mi2)
+    {
+        const aiMesh* mesh = scene->mMeshes[mi2];
+        size_t base = baseVertex[mi2];
+        for (unsigned bi = 0; bi < mesh->mNumBones; ++bi)
+        {
+            const aiBone* b = mesh->mBones[bi];
+            auto it = m_->BoneIndexOfName.find(b->mName.C_Str());
+            if (it == m_->BoneIndexOfName.end()) continue;
+            int boneIdx = it->second;
+            for (unsigned wi = 0; wi < b->mNumWeights; ++wi)
+            {
+                const aiVertexWeight& vw = b->mWeights[wi];
+                size_t v = base + (size_t)vw.mVertexId;
+                if (v >= m_->Influences.size()) continue;
+                int slot = 0; float minW = m_->Influences[v].w[0];
+                for (int s = 1; s < 4; ++s) { if (m_->Influences[v].w[s] < minW) { minW = m_->Influences[v].w[s]; slot = s; } }
+                m_->Influences[v].idx[slot] = (unsigned short)boneIdx;
+                m_->Influences[v].w[slot] = (float)vw.mWeight;
+            }
+        }
+    }
+}
+
+void FbxManager::NormalizeInfluencesAndFlag()
+{
+    for (auto& inf : m_->Influences)
+    {
+        float s = inf.w[0] + inf.w[1] + inf.w[2] + inf.w[3];
+        if (s > 1e-6f)
+        {
+            float inv = 1.0f / s;
+            inf.w[0] *= inv; inf.w[1] *= inv; inf.w[2] *= inv; inf.w[3] *= inv;
+        }
+        else
+        {
+            inf.idx[0] = 0; inf.w[0] = 1.0f;
+            inf.idx[1] = 0; inf.w[1] = 0.0f;
+            inf.idx[2] = 0; inf.w[2] = 0.0f;
+            inf.idx[3] = 0; inf.w[3] = 0.0f;
+        }
+    }
+    m_->HasSkinning = !m_->BoneNames.empty();
+}
+
+void FbxManager::ApplyInfluencesToVB(ID3D11Device* device)
+{
+    if (!m_->HasSkinning) return;
+    for (size_t i = 0; i < m_->BindVertices.size(); ++i)
+    {
+        const auto& inf = m_->Influences[i];
+        m_->BindVertices[i].boneIdx[0] = inf.idx[0];
+        m_->BindVertices[i].boneIdx[1] = inf.idx[1];
+        m_->BindVertices[i].boneIdx[2] = inf.idx[2];
+        m_->BindVertices[i].boneIdx[3] = inf.idx[3];
+        m_->BindVertices[i].boneWeight = { inf.w[0], inf.w[1], inf.w[2], inf.w[3] };
+    }
+    if (m_->pVB) { m_->pVB->Release(); m_->pVB = nullptr; }
+    D3D11_BUFFER_DESC vb{}; vb.BindFlags = D3D11_BIND_VERTEX_BUFFER; vb.Usage = D3D11_USAGE_DEFAULT;
+    vb.ByteWidth = (UINT)(m_->BindVertices.size() * sizeof(VertexSkinnedTBN));
+    D3D11_SUBRESOURCE_DATA vbd{}; vbd.pSysMem = m_->BindVertices.data();
+    HR_T(device->CreateBuffer(&vb, &vbd, &m_->pVB));
+}
+
+void FbxManager::InitAnimationMetadata(const aiScene* scene)
+{
+    if (scene->mNumAnimations == 0) return;
+    m_->HasAnimations = true;
+    m_->AnimationNames.reserve(scene->mNumAnimations);
+    m_->ClipDurationSec.reserve(scene->mNumAnimations);
+    m_->ClipTicksPerSec.reserve(scene->mNumAnimations);
+    for (unsigned i = 0; i < scene->mNumAnimations; ++i)
+    {
+        const aiAnimation* a = scene->mAnimations[i];
+        std::string nm = a->mName.length > 0 ? StringFromAi(a->mName) : ("Anim" + std::to_string(i));
+        double tps = (a->mTicksPerSecond != 0.0) ? a->mTicksPerSecond : 25.0;
+        double durSec = (tps != 0.0) ? (a->mDuration / tps) : 0.0;
+        m_->AnimationNames.push_back(nm);
+        m_->ClipTicksPerSec.push_back(tps);
+        m_->ClipDurationSec.push_back(durSec);
+    }
+    m_->CurrentClip = 0;
+    m_->ClipTimeSec = 0.0;
+    m_->Playing = false;
+}
+
+static aiVector3D InterpVec(const aiVectorKey* keys, unsigned count, double t)
+{
+	if (count == 0) return aiVector3D(0, 0, 0);
+	if (count == 1) return keys[0].mValue;
+	unsigned i = 0;
+	while (i + 1 < count && t >= keys[i + 1].mTime) ++i;
+	unsigned j = (i + 1 < count) ? i + 1 : i;
+	double dt = keys[j].mTime - keys[i].mTime; double a = (dt > 0.0) ? (t - keys[i].mTime) / dt : 0.0;
+	aiVector3D v0 = keys[i].mValue, v1 = keys[j].mValue; return v0 + (float)a * (v1 - v0);
+}
+
+static aiQuaternion InterpQuat(const aiQuatKey* keys, unsigned count, double t)
+{
+	if (count == 0) return aiQuaternion();
+	if (count == 1) return keys[0].mValue;
+	unsigned i = 0;
+	while (i + 1 < count && t >= keys[i + 1].mTime) ++i;
+	unsigned j = (i + 1 < count) ? i + 1 : i;
+	double dt = keys[j].mTime - keys[i].mTime; double a = (dt > 0.0) ? (t - keys[i].mTime) / dt : 0.0;
+	aiQuaternion q; aiQuaternion::Interpolate(q, keys[i].mValue, keys[j].mValue, (float)a); q.Normalize(); return q;
+}
+
+void FbxManager::EvaluateGlobalMatrices(const aiScene* scene, const std::unordered_map<std::wstring, const aiNodeAnim*>& channelOf, std::vector<DirectX::XMFLOAT4X4>& outGlobal) const
+{
+    outGlobal.resize(m_->Skeleton.size());
+    std::function<void(const aiNode*, int, const DirectX::XMMATRIX&)> eval = [&](const aiNode* node, int idx, const DirectX::XMMATRIX& parent){
+        aiVector3D S(1,1,1), T(0,0,0); aiQuaternion R;
+        aiMatrix4x4 mLocal = node->mTransformation;
+        auto itCh = channelOf.find(WStringFromUtf8(node->mName.C_Str()));
+        if (itCh != channelOf.end())
+        {
+            double tTicks = m_->ClipTimeSec * ((m_->CurrentClip >= 0 && (size_t)m_->CurrentClip < m_->ClipTicksPerSec.size()) ? m_->ClipTicksPerSec[m_->CurrentClip] : 25.0);
+            const aiNodeAnim* ch = itCh->second;
+            S = (ch->mNumScalingKeys   > 0) ? InterpVec(ch->mScalingKeys,   ch->mNumScalingKeys,   tTicks) : aiVector3D(1,1,1);
+            T = (ch->mNumPositionKeys  > 0) ? InterpVec(ch->mPositionKeys,  ch->mNumPositionKeys,  tTicks) : aiVector3D(0,0,0);
+            R = (ch->mNumRotationKeys  > 0) ? InterpQuat(ch->mRotationKeys, ch->mNumRotationKeys,  tTicks) : aiQuaternion();
+            aiMatrix4x4 mS; mS.Scaling(S, mS); aiMatrix4x4 mR = aiMatrix4x4(R.GetMatrix()); aiMatrix4x4 mT; mT.Translation(T, mT);
+            aiMatrix4x4 mA = mT * mR * mS;
+            mLocal = mA;
+        }
+        DirectX::XMFLOAT4X4 lm;
+        lm._11 = (float)mLocal.a1; lm._12 = (float)mLocal.a2; lm._13 = (float)mLocal.a3; lm._14 = (float)mLocal.a4;
+        lm._21 = (float)mLocal.b1; lm._22 = (float)mLocal.b2; lm._23 = (float)mLocal.b3; lm._24 = (float)mLocal.b4;
+        lm._31 = (float)mLocal.c1; lm._32 = (float)mLocal.c2; lm._33 = (float)mLocal.c3; lm._34 = (float)mLocal.c4;
+        lm._41 = (float)mLocal.d1; lm._42 = (float)mLocal.d2; lm._43 = (float)mLocal.d3; lm._44 = (float)mLocal.d4;
+        DirectX::XMMATRIX L = DirectX::XMLoadFloat4x4(&lm);
+        DirectX::XMMATRIX G = DirectX::XMMatrixMultiply(parent, L);
+        DirectX::XMStoreFloat4x4(&outGlobal[idx], G);
+        for (unsigned ci = 0; ci < node->mNumChildren; ++ci)
+        {
+            auto it = m_->NodeIndexOfName.find(node->mChildren[ci]->mName.C_Str());
+            int childIdx = (it != m_->NodeIndexOfName.end()) ? it->second : -1;
+            if (childIdx >= 0) eval(node->mChildren[ci], childIdx, G);
+        }
+    };
+    if (m_->RootIndex >= 0) eval(scene->mRootNode, m_->RootIndex, DirectX::XMMatrixIdentity());
+}
+
+void FbxManager::BuildBonePalette(const std::vector<DirectX::XMFLOAT4X4>& global, std::vector<DirectX::XMMATRIX>& outPalette) const
+{
+    outPalette.resize(m_->BoneNames.size(), DirectX::XMMatrixIdentity());
+    for (size_t bi = 0; bi < m_->BoneNames.size(); ++bi)
+    {
+        auto itN = m_->NodeIndexOfName.find(m_->BoneNames[bi]);
+        if (itN == m_->NodeIndexOfName.end()) continue;
+        int nodeIdx = itN->second;
+        DirectX::XMMATRIX G = DirectX::XMLoadFloat4x4(&global[nodeIdx]);
+        DirectX::XMMATRIX Off = DirectX::XMLoadFloat4x4(&m_->BoneOffset[bi]);
+        DirectX::XMMATRIX Gi = DirectX::XMLoadFloat4x4(&m_->GlobalInverse);
+        outPalette[bi] = DirectX::XMMatrixMultiply(DirectX::XMMatrixMultiply(Gi, G), Off);
+    }
+}
+
+void FbxManager::EnsureBoneCB(ID3D11Device* device)
+{
+    if (m_->pBoneCB || !device) return;
+    D3D11_BUFFER_DESC bd{};
+    bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    bd.ByteWidth = sizeof(DirectX::XMFLOAT4X4) * kMaxBones + sizeof(unsigned int) + sizeof(float) * 3;
+    bd.Usage = D3D11_USAGE_DYNAMIC;
+    bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    HR_T(device->CreateBuffer(&bd, nullptr, &m_->pBoneCB));
+}
+
+void FbxManager::UploadBonePalette(ID3D11DeviceContext* ctx, const std::vector<DirectX::XMMATRIX>& palette)
+{
+    if (!ctx) return;
+    Microsoft::WRL::ComPtr<ID3D11Device> dev;
+    ctx->GetDevice(dev.GetAddressOf());
+    EnsureBoneCB(dev.Get());
+    if (!m_->pBoneCB) return;
+
+    struct BoneCB { DirectX::XMFLOAT4X4 m[kMaxBones]; unsigned int boneCount; float pad[3]; };
+    BoneCB cb{};
+    size_t n = std::min(palette.size(), (size_t)kMaxBones);
+    DirectX::XMMATRIX I = DirectX::XMMatrixIdentity();
+    for (size_t i = 0; i < (size_t)kMaxBones; ++i)
+    {
+        DirectX::XMStoreFloat4x4(&cb.m[i], I);
+    }
+    for (size_t i = 0; i < n; ++i)
+    {
+        DirectX::XMMATRIX Mt = DirectX::XMMatrixTranspose(palette[i]);
+        DirectX::XMStoreFloat4x4(&cb.m[i], Mt);
+    }
+    cb.boneCount = (unsigned int)n;
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    if (SUCCEEDED(ctx->Map(m_->pBoneCB, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+    {
+        memcpy(mapped.pData, &cb, sizeof(BoneCB));
+        ctx->Unmap(m_->pBoneCB, 0);
+    }
+}
 
 void FbxManager::Release()
 {
@@ -98,7 +376,7 @@ bool FbxManager::Load(ID3D11Device* device, const std::wstring& pathW)
     m_->Importer = new Impl::AssimpImporterHolder();
     // Importer properties for speed/robustness
     m_->Importer->importer.SetPropertyInteger(AI_CONFIG_PP_LBW_MAX_WEIGHTS, 4);
-    std::string pathA(pathW.begin(), pathW.end());
+    std::string pathA = Utf8FromWString(pathW);
     const aiScene* scene = m_->Importer->importer.ReadFile(pathA,
         aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_ImproveCacheLocality |
         aiProcess_GenSmoothNormals | aiProcess_CalcTangentSpace | aiProcess_ConvertToLeftHanded |
@@ -124,154 +402,14 @@ bool FbxManager::Load(ID3D11Device* device, const std::wstring& pathW)
     if (!LoadMaterials(device, scene, baseDir)) return false;
     if (!BuildMeshBuffers(device, scene)) return false;
 
-    // 본 구조를 위한 스켈레톤 노드와 애니메이션 생성
-    // 스켈레톤 노드
-    m_->Skeleton.clear();
-    m_->NodeIndexOfName.clear();
-    std::function<int(const aiNode*, int)> build = [&](const aiNode* node, int parent){
-        int idx = (int)m_->Skeleton.size();
-        m_->Skeleton.push_back({ node->mName.C_Str(), parent, {}, false });
-        m_->NodeIndexOfName[m_->Skeleton.back().name] = idx;
-        for (unsigned ci = 0; ci < node->mNumChildren; ++ci)
-        {
-            int ch = build(node->mChildren[ci], idx);
-            m_->Skeleton[idx].children.push_back(ch);
-        }
-        return idx;
-    };
-    m_->RootIndex = build(scene->mRootNode, -1);
-
-    // 본/오프셋과 가중치
-    m_->HasSkinning = false;
-    m_->BoneNames.clear();
-    m_->BoneOffset.clear();
-    m_->BoneIndexOfName.clear();
-
-    for (unsigned mi = 0; mi < scene->mNumMeshes; ++mi)
-    {
-        const aiMesh* mesh = scene->mMeshes[mi];
-        for (unsigned bi = 0; bi < mesh->mNumBones; ++bi)
-        {
-            const aiBone* b = mesh->mBones[bi];
-            std::string name = b->mName.C_Str();
-            if (m_->BoneIndexOfName.find(name) == m_->BoneIndexOfName.end())
-            {
-                int newIndex = (int)m_->BoneNames.size();
-                m_->BoneIndexOfName[name] = newIndex;
-                m_->BoneNames.push_back(name);
-                DirectX::XMFLOAT4X4 off;
-                off._11 = (float)b->mOffsetMatrix.a1; off._12 = (float)b->mOffsetMatrix.a2; off._13 = (float)b->mOffsetMatrix.a3; off._14 = (float)b->mOffsetMatrix.a4;
-                off._21 = (float)b->mOffsetMatrix.b1; off._22 = (float)b->mOffsetMatrix.b2; off._23 = (float)b->mOffsetMatrix.b3; off._24 = (float)b->mOffsetMatrix.b4;
-                off._31 = (float)b->mOffsetMatrix.c1; off._32 = (float)b->mOffsetMatrix.c2; off._33 = (float)b->mOffsetMatrix.c3; off._34 = (float)b->mOffsetMatrix.c4;
-                off._41 = (float)b->mOffsetMatrix.d1; off._42 = (float)b->mOffsetMatrix.d2; off._43 = (float)b->mOffsetMatrix.d3; off._44 = (float)b->mOffsetMatrix.d4;
-                m_->BoneOffset.push_back(off);
-                auto itNode = m_->NodeIndexOfName.find(name);
-                if (itNode != m_->NodeIndexOfName.end()) m_->Skeleton[itNode->second].isBone = true;
-            }
-        }
-    }
-
-    // 정점당 최대 4개의 영향을 받음
-    if (!m_->Influences.empty()) m_->Influences.clear();
-    m_->Influences.assign(m_->BindVertices.size(), {});
-
-    // 각 메시의 기준 정점 재구성
-    std::vector<size_t> baseVertex; baseVertex.resize(scene->mNumMeshes, 0);
-    size_t cursor = 0;
-    std::function<void(const aiNode*)> fillBase = [&](const aiNode* node){
-        for (unsigned mi2 = 0; mi2 < node->mNumMeshes; ++mi2)
-        {
-            unsigned meshIdx = node->mMeshes[mi2];
-            baseVertex[meshIdx] = cursor;
-            cursor += scene->mMeshes[meshIdx]->mNumVertices;
-        }
-        for (unsigned ci = 0; ci < node->mNumChildren; ++ci) fillBase(node->mChildren[ci]);
-    };
-    fillBase(scene->mRootNode);
-
-    for (unsigned mi2 = 0; mi2 < scene->mNumMeshes; ++mi2)
-    {
-        const aiMesh* mesh = scene->mMeshes[mi2];
-        size_t base = baseVertex[mi2];
-        for (unsigned bi = 0; bi < mesh->mNumBones; ++bi)
-        {
-            const aiBone* b = mesh->mBones[bi];
-            auto it = m_->BoneIndexOfName.find(b->mName.C_Str());
-            if (it == m_->BoneIndexOfName.end()) continue;
-            int boneIdx = it->second;
-            for (unsigned wi = 0; wi < b->mNumWeights; ++wi)
-            {
-                const aiVertexWeight& vw = b->mWeights[wi];
-                size_t v = base + (size_t)vw.mVertexId;
-                if (v >= m_->Influences.size()) continue;
-                // 가중치가 더 큰 쪽을 보존: 비어있으면 빈 슬롯, 가득이면 가장 작은 슬롯 대체
-                int slot = 0; float minW = m_->Influences[v].w[0];
-                for (int s = 1; s < 4; ++s) { if (m_->Influences[v].w[s] < minW) { minW = m_->Influences[v].w[s]; slot = s; } }
-                m_->Influences[v].idx[slot] = (unsigned short)boneIdx;
-                m_->Influences[v].w[slot] = (float)vw.mWeight;
-            }
-        }
-    }
-    for (auto& inf : m_->Influences)
-    {
-        float s = inf.w[0] + inf.w[1] + inf.w[2] + inf.w[3];
-        if (s > 1e-6f)
-        {
-            float inv = 1.0f / s;
-            inf.w[0] *= inv; inf.w[1] *= inv; inf.w[2] *= inv; inf.w[3] *= inv;
-        }
-        else
-        {
-            // 본 영향이 전혀 없는 정점은 ID 0에 완전 가중치로 설정 (아이덴티티 본)
-            inf.idx[0] = 0; inf.w[0] = 1.0f;
-            inf.idx[1] = 0; inf.w[1] = 0.0f;
-            inf.idx[2] = 0; inf.w[2] = 0.0f;
-            inf.idx[3] = 0; inf.w[3] = 0.0f;
-        }
-    }
-    m_->HasSkinning = !m_->BoneNames.empty();
-
-    // 애니메이션 메타데이터
-    if (scene->mNumAnimations > 0)
-    {
-        m_->HasAnimations = true;
-        m_->AnimationNames.reserve(scene->mNumAnimations);
-        m_->ClipDurationSec.reserve(scene->mNumAnimations);
-        m_->ClipTicksPerSec.reserve(scene->mNumAnimations);
-        for (unsigned i = 0; i < scene->mNumAnimations; ++i)
-        {
-            const aiAnimation* a = scene->mAnimations[i];
-            std::string nm = a->mName.length > 0 ? StringFromAi(a->mName) : ("Anim" + std::to_string(i));
-            double tps = (a->mTicksPerSecond != 0.0) ? a->mTicksPerSecond : 25.0;
-            double durSec = (tps != 0.0) ? (a->mDuration / tps) : 0.0;
-            m_->AnimationNames.push_back(nm);
-            m_->ClipTicksPerSec.push_back(tps);
-            m_->ClipDurationSec.push_back(durSec);
-        }
-        m_->CurrentClip = 0;
-        m_->ClipTimeSec = 0.0;
-        m_->Playing = false;
-    }
-    // 본/가중치를 정점에 반영하고 바인드된 버텍스를 재업로드
-    if (m_->HasSkinning && m_->pVB)
-    {
-        for (size_t i = 0; i < m_->BindVertices.size(); ++i)
-        {
-            const auto& inf = m_->Influences[i];
-            m_->BindVertices[i].boneIdx[0] = inf.idx[0];
-            m_->BindVertices[i].boneIdx[1] = inf.idx[1];
-            m_->BindVertices[i].boneIdx[2] = inf.idx[2];
-            m_->BindVertices[i].boneIdx[3] = inf.idx[3];
-            m_->BindVertices[i].boneWeight = { inf.w[0], inf.w[1], inf.w[2], inf.w[3] };
-        }
-        // VB 업데이트(전체 업데이트)
-        // DEFAULT 버퍼로 생성되어 있으므로 재생성으로 업로드
-        if (m_->pVB) { m_->pVB->Release(); m_->pVB = nullptr; }
-        D3D11_BUFFER_DESC vb{}; vb.BindFlags = D3D11_BIND_VERTEX_BUFFER; vb.Usage = D3D11_USAGE_DEFAULT;
-        vb.ByteWidth = (UINT)(m_->BindVertices.size() * sizeof(VertexSkinnedTBN));
-        D3D11_SUBRESOURCE_DATA vbd{}; vbd.pSysMem = m_->BindVertices.data();
-        HR_T(device->CreateBuffer(&vb, &vbd, &m_->pVB));
-    }
+    // 스켈레톤/본/가중치/애니메이션 메타 분리 호출
+    BuildSkeletonAndNodeIndex(scene);
+    CollectBonesAndOffsets(scene);
+    std::vector<size_t> baseVertex; BuildBaseVertexTable(scene, baseVertex);
+    AccumulateVertexWeights(scene, baseVertex);
+    NormalizeInfluencesAndFlag();
+    if (m_->pVB) { ApplyInfluencesToVB(device); }
+    InitAnimationMetadata(scene);
     return true;
 }
 
@@ -479,28 +617,6 @@ void FbxManager::SetAnimationTimeSeconds(double t)
     m_->ClipTimeSec = t;
 }
 
-static aiVector3D InterpVec(const aiVectorKey* keys, unsigned count, double t)
-{
-    if (count == 0) return aiVector3D(0,0,0);
-    if (count == 1) return keys[0].mValue;
-    unsigned i = 0;
-    while (i + 1 < count && t >= keys[i+1].mTime) ++i;
-    unsigned j = (i + 1 < count) ? i + 1 : i;
-    double dt = keys[j].mTime - keys[i].mTime; double a = (dt > 0.0) ? (t - keys[i].mTime) / dt : 0.0;
-    aiVector3D v0 = keys[i].mValue, v1 = keys[j].mValue; return v0 + (float)a * (v1 - v0);
-}
-
-static aiQuaternion InterpQuat(const aiQuatKey* keys, unsigned count, double t)
-{
-    if (count == 0) return aiQuaternion();
-    if (count == 1) return keys[0].mValue;
-    unsigned i = 0;
-    while (i + 1 < count && t >= keys[i+1].mTime) ++i;
-    unsigned j = (i + 1 < count) ? i + 1 : i;
-    double dt = keys[j].mTime - keys[i].mTime; double a = (dt > 0.0) ? (t - keys[i].mTime) / dt : 0.0;
-    aiQuaternion q; aiQuaternion::Interpolate(q, keys[i].mValue, keys[j].mValue, (float)a); q.Normalize(); return q;
-}
-
 void FbxManager::UpdateAnimation(ID3D11DeviceContext* ctx, double dtSec)
 {
     if (!m_->HasAnimations || m_->CurrentClip < 0) return;
@@ -509,103 +625,25 @@ void FbxManager::UpdateAnimation(ID3D11DeviceContext* ctx, double dtSec)
     const aiScene* scene = reinterpret_cast<const aiScene*>(m_->SceneMutable);
     if (!scene) return;
     const aiAnimation* anim = (m_->HasAnimations && m_->CurrentClip >= 0) ? scene->mAnimations[m_->CurrentClip] : nullptr;
-    std::unordered_map<std::string, const aiNodeAnim*> channelOf;
+    std::unordered_map<std::wstring, const aiNodeAnim*> channelOf;
     if (anim)
     {
         for (unsigned i = 0; i < anim->mNumChannels; ++i)
         {
             const aiNodeAnim* ch = anim->mChannels[i];
-            channelOf[ch->mNodeName.C_Str()] = ch;
+            channelOf[WStringFromUtf8(ch->mNodeName.C_Str())] = ch;
         }
     }
 
-    std::vector<DirectX::XMFLOAT4X4> global; global.resize(m_->Skeleton.size());
-    std::function<void(const aiNode*, int, const DirectX::XMMATRIX&)> eval = [&](const aiNode* node, int idx, const DirectX::XMMATRIX& parent){
-        aiVector3D S(1,1,1), T(0,0,0); aiQuaternion R;
-        aiMatrix4x4 mLocal = node->mTransformation;
-        auto itCh = channelOf.find(node->mName.C_Str());
-        if (itCh != channelOf.end() && anim)
-        {
-            double tTicks = m_->ClipTimeSec * ((m_->CurrentClip >= 0) ? m_->ClipTicksPerSec[m_->CurrentClip] : 25.0);
-            const aiNodeAnim* ch = itCh->second;
-            S = (ch->mNumScalingKeys   > 0) ? InterpVec(ch->mScalingKeys,   ch->mNumScalingKeys,   tTicks) : aiVector3D(1,1,1);
-            T = (ch->mNumPositionKeys  > 0) ? InterpVec(ch->mPositionKeys,  ch->mNumPositionKeys,  tTicks) : aiVector3D(0,0,0);
-            R = (ch->mNumRotationKeys  > 0) ? InterpQuat(ch->mRotationKeys, ch->mNumRotationKeys,  tTicks) : aiQuaternion();
-            aiMatrix4x4 mS; mS.Scaling(S, mS); aiMatrix4x4 mR = aiMatrix4x4(R.GetMatrix()); aiMatrix4x4 mT; mT.Translation(T, mT);
-            // Assimp은 노드 변환을 row-vector 기준으로 T*R*S로 곱해도 일관되게 동작 (fbx exporter 옵션과 일치)
-            aiMatrix4x4 m = mT * mR * mS;
-            mLocal = m;
-        }
-        DirectX::XMFLOAT4X4 lm;
-        lm._11 = (float)mLocal.a1; lm._12 = (float)mLocal.a2; lm._13 = (float)mLocal.a3; lm._14 = (float)mLocal.a4;
-        lm._21 = (float)mLocal.b1; lm._22 = (float)mLocal.b2; lm._23 = (float)mLocal.b3; lm._24 = (float)mLocal.b4;
-        lm._31 = (float)mLocal.c1; lm._32 = (float)mLocal.c2; lm._33 = (float)mLocal.c3; lm._34 = (float)mLocal.c4;
-        lm._41 = (float)mLocal.d1; lm._42 = (float)mLocal.d2; lm._43 = (float)mLocal.d3; lm._44 = (float)mLocal.d4;
-        DirectX::XMMATRIX L = DirectX::XMLoadFloat4x4(&lm);
-        // DirectX row-vector: global = parent * local
-        DirectX::XMMATRIX G = DirectX::XMMatrixMultiply(parent, L);
-        DirectX::XMStoreFloat4x4(&global[idx], G);
-        for (unsigned ci = 0; ci < node->mNumChildren; ++ci)
-        {
-            auto it = m_->NodeIndexOfName.find(node->mChildren[ci]->mName.C_Str());
-            int childIdx = (it != m_->NodeIndexOfName.end()) ? it->second : -1;
-            if (childIdx >= 0) eval(node->mChildren[ci], childIdx, G);
-        }
-    };
-    if (m_->RootIndex >= 0) eval(scene->mRootNode, m_->RootIndex, DirectX::XMMatrixIdentity());
+    // 전 노드의 글로벌 행렬 평가(키 보간 포함)
+    std::vector<DirectX::XMFLOAT4X4> global;
+    EvaluateGlobalMatrices(scene, channelOf, global);
 
-    std::vector<DirectX::XMMATRIX> palette; palette.resize(m_->BoneNames.size(), DirectX::XMMatrixIdentity());
-    for (size_t bi = 0; bi < m_->BoneNames.size(); ++bi)
-    {
-        auto itN = m_->NodeIndexOfName.find(m_->BoneNames[bi]);
-        if (itN == m_->NodeIndexOfName.end()) continue;
-        int nodeIdx = itN->second;
-        DirectX::XMMATRIX G = DirectX::XMLoadFloat4x4(&global[nodeIdx]);
-        DirectX::XMMATRIX Off = DirectX::XMLoadFloat4x4(&m_->BoneOffset[bi]);
-        DirectX::XMMATRIX Gi = DirectX::XMLoadFloat4x4(&m_->GlobalInverse);
-        // 표준 스키닝: Final = GlobalInverse * Global * Offset
-        palette[bi] = DirectX::XMMatrixMultiply(DirectX::XMMatrixMultiply(Gi, G), Off);
-    }
-    // 본 팔레트 상수 버퍼 업로드 (VS b1)
-    if (!m_->pBoneCB && ctx)
-    {
-        ComPtr<ID3D11Device> dev;
-        ctx->GetDevice(dev.GetAddressOf());
-        if (dev)
-        {
-            D3D11_BUFFER_DESC bd{};
-            bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-            bd.ByteWidth = sizeof(DirectX::XMFLOAT4X4) * kMaxBones + sizeof(unsigned int) + sizeof(float) * 3;
-            bd.Usage = D3D11_USAGE_DYNAMIC;
-            bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-            HR_T(dev->CreateBuffer(&bd, nullptr, &m_->pBoneCB));
-        }
-    }
-    if (m_->pBoneCB)
-    {
-        struct BoneCB { DirectX::XMFLOAT4X4 m[kMaxBones]; unsigned int boneCount; float pad[3]; };
-        BoneCB cb{};
-        size_t n = std::min(palette.size(), (size_t)kMaxBones);
-        // 먼저 전부 아이덴티티로 채운다
-        DirectX::XMMATRIX I = DirectX::XMMatrixIdentity();
-        for (size_t i = 0; i < (size_t)kMaxBones; ++i)
-        {
-            DirectX::XMStoreFloat4x4(&cb.m[i], I);
-        }
-        // 사용되는 본만 전치하여 덮어쓴다
-        for (size_t i = 0; i < n; ++i)
-        {
-            DirectX::XMMATRIX Mt = DirectX::XMMatrixTranspose(palette[i]);
-            DirectX::XMStoreFloat4x4(&cb.m[i], Mt);
-        }
-        cb.boneCount = (unsigned int)n;
-        D3D11_MAPPED_SUBRESOURCE mapped{};
-        if (SUCCEEDED(ctx->Map(m_->pBoneCB, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
-        {
-            memcpy(mapped.pData, &cb, sizeof(BoneCB));
-            ctx->Unmap(m_->pBoneCB, 0);
-        }
-    }
+    // 스키닝 팔레트 구성: GlobalInverse * Global(node) * Offset
+    std::vector<DirectX::XMMATRIX> palette;
+    BuildBonePalette(global, palette);
+    // 본 팔레트 상수 버퍼 업로드
+    UploadBonePalette(ctx, palette);
 }
 
 // ---------------- pImpl implementations ----------------
@@ -634,6 +672,12 @@ double FbxManager::GetClipDurationSec(int idx) const { return (idx>=0 && idx<(in
 
 ID3D11Buffer* FbxManager::GetBoneConstantBuffer() const { return m_->pBoneCB; }
 UINT FbxManager::GetBoneCount() const { return (UINT)m_->BoneNames.size(); }
+
+std::wstring FbxManager::GetSkeletonNodeNameW(int idx) const
+{
+    if (idx < 0 || idx >= (int)m_->Skeleton.size()) return L"";
+    return m_->Skeleton[idx].nameW;
+}
 
 void FbxManager::RebuildChannelMap()
 {
