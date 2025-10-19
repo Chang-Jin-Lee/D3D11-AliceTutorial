@@ -46,6 +46,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "20_Depth_And_Alpha_Issue", 
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "21_MultiModels_With_Animations", "21_MultiModels_With_Animations\21_MultiModels_With_Animations.vcxproj", "{BD4D713A-6A74-47BF-8F18-0DEC69F66F7B}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "22_VMD", "22_VMD\22_VMD.vcxproj", "{6FA61378-1744-4C0A-8A36-1E4FBA04D3DB}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -230,6 +232,14 @@ Global
 		{BD4D713A-6A74-47BF-8F18-0DEC69F66F7B}.Release|x64.Build.0 = Release|x64
 		{BD4D713A-6A74-47BF-8F18-0DEC69F66F7B}.Release|x86.ActiveCfg = Release|Win32
 		{BD4D713A-6A74-47BF-8F18-0DEC69F66F7B}.Release|x86.Build.0 = Release|Win32
+		{6FA61378-1744-4C0A-8A36-1E4FBA04D3DB}.Debug|x64.ActiveCfg = Debug|x64
+		{6FA61378-1744-4C0A-8A36-1E4FBA04D3DB}.Debug|x64.Build.0 = Debug|x64
+		{6FA61378-1744-4C0A-8A36-1E4FBA04D3DB}.Debug|x86.ActiveCfg = Debug|Win32
+		{6FA61378-1744-4C0A-8A36-1E4FBA04D3DB}.Debug|x86.Build.0 = Debug|Win32
+		{6FA61378-1744-4C0A-8A36-1E4FBA04D3DB}.Release|x64.ActiveCfg = Release|x64
+		{6FA61378-1744-4C0A-8A36-1E4FBA04D3DB}.Release|x64.Build.0 = Release|x64
+		{6FA61378-1744-4C0A-8A36-1E4FBA04D3DB}.Release|x86.ActiveCfg = Release|Win32
+		{6FA61378-1744-4C0A-8A36-1E4FBA04D3DB}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

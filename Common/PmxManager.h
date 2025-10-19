@@ -90,9 +90,9 @@ private:
 	void EnsureBoneCB(ID3D11Device* device);
 
 	// 애니메이션 평가(VMD)
-	void EvaluateGlobalMatricesFromVMD(std::vector<DirectX::XMFLOAT4X4>& outGlobal) const;
 	void BuildBonePalette(const std::vector<DirectX::XMFLOAT4X4>& global, std::vector<DirectX::XMMATRIX>& outPalette) const;
 	void UploadBonePalette(ID3D11DeviceContext* ctx, const std::vector<DirectX::XMMATRIX>& palette);
+	void EnsureBoneNodesExist();
 
 private:
 	// 버퍼
@@ -116,9 +116,11 @@ private:
 	std::vector<Influence4> m_Influences;
 	bool m_HasSkinning = false;
 	std::vector<std::string> m_BoneNames;
+	std::vector<std::wstring> m_BoneNamesW;
 	std::vector<DirectX::XMFLOAT4X4> m_BoneOffset; // offset matrix per bone
 	std::unordered_map<std::string, int> m_BoneIndexOfName;
 	std::unordered_map<std::string, int> m_NodeIndexOfName;
+	std::unordered_map<std::wstring, int> m_NodeIndexOfNameW;
 	std::vector<SkeletonNode> m_Skeleton;
 	int m_RootIndex = -1;
 	DirectX::XMFLOAT4X4 m_GlobalInverse = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
