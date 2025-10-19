@@ -330,22 +330,26 @@ void App::OnUninitialize()
 void App::OnUpdate(const float& dt)
 {
     // 자동 회전은 모델 내부의 autoRotate 변수를 사용함함
-    for (auto& mdlPtr : m_->m_Models)
-    {
-        auto& mdl = *mdlPtr;
-        if (mdl.autoRotate)
-        {
-            mdl.rotDeg.y += 45.0f * dt;
-            mdl.rotDeg.y = std::fmod(mdl.rotDeg.y + 180.0f, 360.0f) - 180.0f;
-        }
-        if (mdl.source == ModelSource::FBX)
-        {
+	for (auto& mdlPtr : m_->m_Models)
+	{
+		auto& mdl = *mdlPtr;
+		if (mdl.autoRotate)
+		{
+			mdl.rotDeg.y += 45.0f * dt;
+			mdl.rotDeg.y = std::fmod(mdl.rotDeg.y + 180.0f, 360.0f) - 180.0f;
+		}
+		if (mdl.source == ModelSource::FBX)
+		{
             // FBX 애니메이션 (팔레트 업데이트만 수행)
-            mdl.fbx.UpdateAnimation(m_->m_pDeviceContext, dt);
-        }
-    }
+			mdl.fbx.UpdateAnimation(m_->m_pDeviceContext, dt);
+		}
+		else if (mdl.source == ModelSource::PMX)
+		{
+			// PMX + VMD 애니메이션 실행
+			mdl.pmx.UpdateAnimation(m_->m_pDeviceContext, dt);
+		}
     // 기본 카메라용 world0 (원점 단위행렬)
-    XMMATRIX world0 = XMMatrixIdentity();
+	XMMATRIX world0 = XMMatrixIdentity();
 
 	// 카메라 업데이트
 	ImGuiIO& io = ImGui::GetIO();
@@ -482,30 +486,46 @@ void App::OnRender()
 			if (!mdlPtr->vb || !mdlPtr->ib) continue;
 			m_->m_pDeviceContext->IASetVertexBuffers(0, 1, &mdlPtr->vb, &s, &o);
             // FBX 스켈레톤이 있으면 스키닝 VS/IL로 교체, 아니면 기본
-            ID3D11Buffer* cbBones = nullptr;
-            if (mdlPtr->source == ModelSource::FBX)
-                cbBones = mdlPtr->fbx.GetBoneConstantBuffer();
-            bool useSkinned = (mdlPtr->source == ModelSource::FBX)
-                && mdlPtr->fbx.HasSkeleton()
-                && (mdlPtr->stride == sizeof(VertexSkinnedTBN))
-                && (m_->m_pInputLayoutSkinned != nullptr)
-                && (m_->m_pVertexShaderSkinned != nullptr)
-                && (cbBones != nullptr);
-            if (useSkinned)
-            {
-                m_->m_pDeviceContext->IASetInputLayout(m_->m_pInputLayoutSkinned);
-                m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShaderSkinned, nullptr, 0);
-                // 뼈 팔레트 상수버퍼(b1)
-                if (cbBones) m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &cbBones);
-            }
-            else
-            {
-                m_->m_pDeviceContext->IASetInputLayout(m_->m_pInputLayout);
-                m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShader, nullptr, 0);
+			ID3D11Buffer* cbBones = nullptr;
+			bool hasSkeleton = false;
+			if (mdlPtr->source == ModelSource::FBX)
+			{
+				cbBones = mdlPtr->fbx.GetBoneConstantBuffer();
+				hasSkeleton = mdlPtr->fbx.HasSkeleton();
+			}
+			else if (mdlPtr->source == ModelSource::PMX)
+			{
+				cbBones = mdlPtr->pmx.GetBoneConstantBuffer();
+				hasSkeleton = mdlPtr->pmx.HasSkeleton();
+			}
+            bool useSkinned = hasSkeleton
+				&& (mdlPtr->stride == sizeof(VertexSkinnedTBN))
+				&& (m_->m_pInputLayoutSkinned != nullptr)
+				&& (m_->m_pVertexShaderSkinned != nullptr)
+				&& (cbBones != nullptr);
+			if (useSkinned)
+			{
+				m_->m_pDeviceContext->IASetInputLayout(m_->m_pInputLayoutSkinned);
+				m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShaderSkinned, nullptr, 0);
+				// 본 팔레트 상수버퍼에 바인딩하기
+                if (cbBones)
+                {
+					// PMX, VMD 애니메이션이 없는 경우는 단위 팔레트 업로드
+                    if (mdlPtr->source == ModelSource::PMX && !mdlPtr->pmx.HasAnimations())
+                    {
+                        mdlPtr->pmx.UploadIdentityPalette(m_->m_pDeviceContext);
+                    }
+                    m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &cbBones);
+                }
+			}
+			else
+			{
+				m_->m_pDeviceContext->IASetInputLayout(m_->m_pInputLayout);
+				m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShader, nullptr, 0);
                 // 스키닝 미사용 시 VS b1 해제(안전)
-                ID3D11Buffer* nullCB = nullptr; m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &nullCB);
-            }
-            m_->m_pDeviceContext->IASetIndexBuffer(mdlPtr->ib, DXGI_FORMAT_R32_UINT, 0);
+				ID3D11Buffer* nullCB = nullptr; m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &nullCB);
+			}
+			m_->m_pDeviceContext->IASetIndexBuffer(mdlPtr->ib, DXGI_FORMAT_R32_UINT, 0);
 
 			// 월드 행렬 (per-model)
 			XMMATRIX rotYaw = XMMatrixRotationY(XMConvertToRadians(mdlPtr->rotDeg.y));
@@ -864,6 +884,34 @@ void App::OnRender()
 						}
 					}
 				}
+						else if (mdl.source == ModelSource::PMX)
+						{
+							if (ImGui::Button("Load VMD..."))
+							{
+								std::wstring vmdPath;
+								wchar_t file[MAX_PATH] = {0};
+								OPENFILENAMEW ofn{}; ofn.lStructSize = sizeof(ofn); ofn.hwndOwner = GameApp::m_hWnd; ofn.lpstrFilter = L"VMD Files (*.vmd)\0*.vmd\0All Files\0*.*\0\0"; ofn.lpstrFile = file; ofn.nMaxFile = MAX_PATH; ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
+								if (GetOpenFileNameW(&ofn))
+								{
+									if (mdl.pmx.LoadVMD(m_->m_pDevice, file))
+									{
+										// �ε� ���� �� ��� ����
+										mdl.uiAnimPlaying = true;
+										mdl.pmx.SetAnimationPlaying(true);
+									}
+								}
+							}
+							ImGui::Checkbox("Play##PMX", &mdl.uiAnimPlaying);
+							mdl.pmx.SetAnimationPlaying(mdl.uiAnimPlaying);
+							// PMX���� ���� Ŭ��(�ε�� VMD)���� ���
+							double cur = mdl.pmx.GetAnimationTimeSeconds();
+							double dur = mdl.pmx.GetClipDurationSec();
+							float curF = (float)cur, durF = (float)dur;
+							if (durF > 0.0f)
+							{
+								if (ImGui::SliderFloat("Time (s)##PMX", &curF, 0.0f, durF)) mdl.pmx.SetAnimationTimeSeconds((double)curF);
+							}
+						}
 				if (ImGui::Button("Remove"))
 				{
 					// release resources
