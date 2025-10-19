@@ -63,7 +63,6 @@ void FbxManager::BuildSkeletonAndNodeIndex(const aiScene* scene)
     m_->NodeIndexOfName.clear();
     std::function<int(const aiNode*, int)> build = [&](const aiNode* node, int parent){
         int idx = (int)m_->Skeleton.size();
-        // UTF-8 -> UTF-16 변환(Helper 사용)으로 디버거에서 깨지지 않게 표시
         std::string nmUtf8 = node->mName.C_Str();
         std::wstring nmW = WStringFromUtf8(nmUtf8);
         FbxManager::SkeletonNode sn{}; sn.name = nmUtf8; sn.nameW = nmW; sn.parent = parent; sn.isBone = false;

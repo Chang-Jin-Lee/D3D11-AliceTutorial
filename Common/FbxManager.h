@@ -43,7 +43,7 @@ public:
     // 본 구조를 위한 스켈레톤 노드. 애니메이션 실행을 위해서 만듬
     struct SkeletonNode
     {
-        // name: UTF-8 원문(검색/매핑 용), nameW: 디버그 가독성용 유니코드
+        // name: UTF-8 (검색/매핑 용), nameW: 디버그용
         std::string name;
         std::wstring nameW;
         int parent = -1;
@@ -69,7 +69,7 @@ public:
     ID3D11Buffer* GetBoneConstantBuffer() const;
     UINT GetBoneCount() const;
 
-    // 디버그 가독성: 스켈레톤 노드의 유니코드 이름 조회
+    // 스켈레톤 노드의 유니코드 이름 조회
     std::wstring GetSkeletonNodeNameW(int idx) const;
 
     // GPU 스키닝 본 팔레트 최대 크기
