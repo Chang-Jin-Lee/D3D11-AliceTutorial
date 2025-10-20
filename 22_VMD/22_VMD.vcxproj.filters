@@ -16,6 +16,9 @@
     <Filter Include="Shaders">
       <UniqueIdentifier>{e9723d2e-8014-43d6-bd01-8c53ba2a4e19}</UniqueIdentifier>
     </Filter>
+    <Filter Include="mmd">
+      <UniqueIdentifier>{bef2ccf6-a6e9-4d3f-9083-b761232dd137}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="22_BasicPS.hlsl">
@@ -49,10 +52,28 @@
     <ClCompile Include="WinMain.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
+    <ClCompile Include="Pmd.cpp">
+      <Filter>mmd</Filter>
+    </ClCompile>
+    <ClCompile Include="Pmx.cpp">
+      <Filter>mmd</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="App.h">
       <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Pmx.h">
+      <Filter>mmd</Filter>
+    </ClInclude>
+    <ClInclude Include="Vmd.h">
+      <Filter>mmd</Filter>
+    </ClInclude>
+    <ClInclude Include="Pmd.h">
+      <Filter>mmd</Filter>
+    </ClInclude>
+    <ClInclude Include="EncodingHelper.h">
+      <Filter>mmd</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

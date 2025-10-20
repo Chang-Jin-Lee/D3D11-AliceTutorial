@@ -41,10 +41,16 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="App.cpp" />
+    <ClCompile Include="Pmd.cpp" />
+    <ClCompile Include="Pmx.cpp" />
     <ClCompile Include="WinMain.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="App.h" />
+    <ClInclude Include="EncodingHelper.h" />
+    <ClInclude Include="Pmd.h" />
+    <ClInclude Include="Pmx.h" />
+    <ClInclude Include="Vmd.h" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Common\Common.vcxproj">
