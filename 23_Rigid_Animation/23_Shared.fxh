@@ -35,6 +35,8 @@ cbuffer ConstantBuffer : register(b0)
     float3 g_Pad3;
     int    g_UseSpecularMap;            // 0: off, 1: on
     float3 g_Pad4;
+    int g_UseRigid; // 0: Skinned, 1: Rigid
+    float3 g_Pad5;
 }
 
 // GPU 스키닝을 위한 레지스터 (b1)

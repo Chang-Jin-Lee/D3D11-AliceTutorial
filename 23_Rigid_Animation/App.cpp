@@ -1,4 +1,4 @@
-﻿/*
+/*
 * @brief : fbx, pmx, obj 3D 모델을 연속으로 여러 개를 그리는 예제입니다.
 * @details :
 *		- 노말맵이 적용되어 있는 경우 노말맵을 반영해서 그립니다
@@ -34,6 +34,7 @@
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
+#include <functional>
 
 #pragma comment (lib, "d3d11.lib")
 #pragma comment(lib,"d3dcompiler.lib")
@@ -48,12 +49,86 @@ struct Material { XMFLOAT4 ambient; XMFLOAT4 diffuse; XMFLOAT4 specular; XMFLOAT
 struct ConstantBuffer {
 	XMMATRIX world; XMMATRIX view; XMMATRIX proj; XMMATRIX worldInvTranspose;
 	Material material; DirectionalLight dirLight; XMFLOAT3 eyePos; float pad;
-	int shadingMode = 0; XMFLOAT3 pad2 = { 0,0,0 }; int enableNormalMap = 1; XMFLOAT3 pad3 = { 0,0,0 }; int useSpecularMap = 0; XMFLOAT3 pad4 = { 0,0,0 };
+	int shadingMode = 0; XMFLOAT3 pad2 = { 0,0,0 }; int enableNormalMap = 1; XMFLOAT3 pad3 = { 0,0,0 }; int useSpecularMap = 0; XMFLOAT3 pad4 = { 0,0,0 }; int useRigid = 0; XMFLOAT3 pad5 = { 0,0,0 };
 };
 enum class ShadingMode { Phong = 0, BlinnPhong = 1, Lambert = 2, Unlit = 3, TextureOnly = 4 };
 enum class RenderMode { None = 0, Cube = 1, Model = 2 };
 enum class ModelSource { FBX, OBJ, PMX, Custom };
 struct ModelSubset { uint32_t start; uint32_t count; uint32_t materialIndex; };
+
+// Rigid Animation Structures
+struct RigidNode
+{
+    std::string name;
+    XMMATRIX localTransform = XMMatrixIdentity();
+    XMMATRIX worldMatrix = XMMatrixIdentity();
+    std::vector<RigidNode*> children;
+    RigidNode* parent = nullptr;
+    
+    // Mesh data
+    std::vector<VertexTBN> vertices;
+    std::vector<UINT> indices;
+    ID3D11Buffer* vb = nullptr;
+    ID3D11Buffer* ib = nullptr;
+    UINT indexCount = 0;
+    UINT stride = sizeof(VertexTBN);
+    
+    // Animation data
+    std::vector<XMFLOAT3> positionKeys;
+    std::vector<XMFLOAT4> rotationKeys;
+    std::vector<XMFLOAT3> scaleKeys;
+    std::vector<double> positionTimes;
+    std::vector<double> rotationTimes;
+    std::vector<double> scaleTimes;
+    
+    // Current animation state
+    XMFLOAT3 currentPosition = { 0, 0, 0 };
+    XMFLOAT4 currentRotation = { 0, 0, 0, 1 };
+    XMFLOAT3 currentScale = { 1, 1, 1 };
+};
+
+struct RigidAnimationManager
+{
+    RigidNode* rootNode = nullptr;
+    double animationTime = 0.0;
+    double animationDuration = 0.0;
+    bool isPlaying = false;
+    
+    // Animation control
+    void SetAnimationPlaying(bool playing) { isPlaying = playing; }
+    bool IsAnimationPlaying() const { return isPlaying; }
+    void SetAnimationTime(double time) { animationTime = time; }
+    double GetAnimationTime() const { return animationTime; }
+    double GetAnimationDuration() const { return animationDuration; }
+    
+    // Load rigid animation from FBX
+    bool LoadRigidAnimationFromFBX(ID3D11Device* device, const std::wstring& filePath);
+    
+    // Update animation
+    void UpdateAnimation(float deltaTime);
+    
+    // Render
+    void Render(ID3D11DeviceContext* context, ID3D11Buffer* constantBuffer, 
+                const XMMATRIX& view, const XMMATRIX& proj);
+    
+    // Cleanup
+    void Cleanup();
+    
+private:
+    void ProcessNode(aiNode* node, RigidNode* parent, const aiScene* scene, ID3D11Device* device);
+    void ExtractMeshData(aiMesh* mesh, RigidNode* node, const aiScene* scene, ID3D11Device* device);
+    void UpdateWorldMatrix(RigidNode* node);
+    void RenderNode(RigidNode* node, ID3D11DeviceContext* context, ID3D11Buffer* constantBuffer,
+                   const XMMATRIX& view, const XMMATRIX& proj);
+    void CleanupNode(RigidNode* node);
+    
+    // Animation interpolation
+    XMFLOAT3 InterpolatePosition(double time);
+    XMFLOAT4 InterpolateRotation(double time);
+    XMFLOAT3 InterpolateScale(double time);
+    
+    RigidNode* FindNodeByName(const std::string& name);
+};
 
 // 여러 모델을 그리기 위한 구조체
 struct ModelEntry
@@ -83,6 +158,10 @@ struct ModelEntry
 	// ImGui에서 보여주기 위함
 	int  uiSelectedAnim = -1;
 	bool uiAnimPlaying = false;
+	
+	// Rigid Animation
+	std::unique_ptr<RigidAnimationManager> rigidAnimation;
+	bool hasRigidAnimation = false;
 };
 
 // pImpl 정의
@@ -242,6 +321,281 @@ static bool OpenFileDialogModel(std::wstring& outPath)
 	return false;
 }
 
+// RigidAnimationManager Implementation
+bool RigidAnimationManager::LoadRigidAnimationFromFBX(ID3D11Device* device, const std::wstring& filePath)
+{
+    Assimp::Importer importer;
+    const aiScene* scene = importer.ReadFile(Utf8FromWString(filePath), 
+        aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_CalcTangentSpace);
+    
+    if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
+    {
+        return false;
+    }
+    
+    // Clean up existing data
+    Cleanup();
+    
+    // Process root node
+    rootNode = new RigidNode();
+    rootNode->name = scene->mRootNode->mName.C_Str();
+    ProcessNode(scene->mRootNode, rootNode, scene, device);
+    
+    // Calculate animation duration
+    if (scene->mNumAnimations > 0)
+    {
+        aiAnimation* anim = scene->mAnimations[0];
+        animationDuration = anim->mDuration / anim->mTicksPerSecond;
+    }
+    
+    return true;
+}
+
+void RigidAnimationManager::ProcessNode(aiNode* node, RigidNode* parent, const aiScene* scene, ID3D11Device* device)
+{
+    RigidNode* rigidNode = new RigidNode();
+    rigidNode->name = node->mName.C_Str();
+    rigidNode->parent = parent;
+    
+    // Convert aiMatrix4x4 to XMMATRIX
+    aiMatrix4x4 aiMat = node->mTransformation;
+    XMMATRIX localTransform = XMMatrixSet(
+        aiMat.a1, aiMat.b1, aiMat.c1, aiMat.d1,
+        aiMat.a2, aiMat.b2, aiMat.c2, aiMat.d2,
+        aiMat.a3, aiMat.b3, aiMat.c3, aiMat.d3,
+        aiMat.a4, aiMat.b4, aiMat.c4, aiMat.d4
+    );
+    rigidNode->localTransform = localTransform;
+    
+    // Process meshes
+    for (unsigned int i = 0; i < node->mNumMeshes; i++)
+    {
+        aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
+        ExtractMeshData(mesh, rigidNode, scene, device);
+    }
+    
+    // Process children
+    for (unsigned int i = 0; i < node->mNumChildren; i++)
+    {
+        ProcessNode(node->mChildren[i], rigidNode, scene, device);
+    }
+    
+    parent->children.push_back(rigidNode);
+}
+
+void RigidAnimationManager::ExtractMeshData(aiMesh* mesh, RigidNode* node, const aiScene* scene, ID3D11Device* device)
+{
+    // Extract vertices
+    for (unsigned int i = 0; i < mesh->mNumVertices; i++)
+    {
+        VertexTBN vertex;
+        
+        // Position
+        vertex.posL = XMFLOAT3(mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z);
+        
+        // Normal
+        if (mesh->mNormals)
+            vertex.normalL = XMFLOAT3(mesh->mNormals[i].x, mesh->mNormals[i].y, mesh->mNormals[i].z);
+        else
+            vertex.normalL = XMFLOAT3(0, 1, 0);
+        
+        // Tangent
+        if (mesh->mTangents)
+            vertex.tangentL = XMFLOAT3(mesh->mTangents[i].x, mesh->mTangents[i].y, mesh->mTangents[i].z);
+        else
+            vertex.tangentL = XMFLOAT3(1, 0, 0);
+        
+        // Bitangent
+        if (mesh->mBitangents)
+            vertex.bitanL = XMFLOAT3(mesh->mBitangents[i].x, mesh->mBitangents[i].y, mesh->mBitangents[i].z);
+        else
+            vertex.bitanL = XMFLOAT3(0, 0, 1);
+        
+        // UV coordinates
+        if (mesh->mTextureCoords[0])
+            vertex.tex = XMFLOAT2(mesh->mTextureCoords[0][i].x, mesh->mTextureCoords[0][i].y);
+        else
+            vertex.tex = XMFLOAT2(0, 0);
+        
+        // Color
+        if (mesh->mColors[0])
+            vertex.color = XMFLOAT4(mesh->mColors[0][i].r, mesh->mColors[0][i].g, mesh->mColors[0][i].b, mesh->mColors[0][i].a);
+        else
+            vertex.color = XMFLOAT4(1, 1, 1, 1);
+        
+        node->vertices.push_back(vertex);
+    }
+    
+    // Extract indices
+    for (unsigned int i = 0; i < mesh->mNumFaces; i++)
+    {
+        aiFace face = mesh->mFaces[i];
+        for (unsigned int j = 0; j < face.mNumIndices; j++)
+        {
+            node->indices.push_back(face.mIndices[j]);
+        }
+    }
+    
+    // Create vertex buffer
+    if (!node->vertices.empty())
+    {
+        D3D11_BUFFER_DESC vbd = {};
+        vbd.Usage = D3D11_USAGE_DEFAULT;
+        vbd.ByteWidth = sizeof(VertexTBN) * (UINT)node->vertices.size();
+        vbd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+        vbd.CPUAccessFlags = 0;
+        
+        D3D11_SUBRESOURCE_DATA vinitData = {};
+        vinitData.pSysMem = node->vertices.data();
+        device->CreateBuffer(&vbd, &vinitData, &node->vb);
+    }
+    
+    // Create index buffer
+    if (!node->indices.empty())
+    {
+        D3D11_BUFFER_DESC ibd = {};
+        ibd.Usage = D3D11_USAGE_DEFAULT;
+        ibd.ByteWidth = sizeof(UINT) * (UINT)node->indices.size();
+        ibd.BindFlags = D3D11_BIND_INDEX_BUFFER;
+        ibd.CPUAccessFlags = 0;
+        
+        D3D11_SUBRESOURCE_DATA iinitData = {};
+        iinitData.pSysMem = node->indices.data();
+        device->CreateBuffer(&ibd, &iinitData, &node->ib);
+        
+        node->indexCount = (UINT)node->indices.size();
+    }
+}
+
+void RigidAnimationManager::UpdateAnimation(float deltaTime)
+{
+    if (!isPlaying || !rootNode) return;
+    
+    animationTime += deltaTime;
+    if (animationTime > animationDuration)
+    {
+        animationTime = 0.0; // Loop
+    }
+    
+    UpdateWorldMatrix(rootNode);
+}
+
+void RigidAnimationManager::UpdateWorldMatrix(RigidNode* node)
+{
+    if (!node) return;
+    
+    // Calculate world matrix
+    if (node->parent)
+    {
+        node->worldMatrix = XMMatrixMultiply(node->localTransform, node->parent->worldMatrix);
+    }
+    else
+    {
+        node->worldMatrix = node->localTransform;
+    }
+    
+    // Update children
+    for (auto* child : node->children)
+    {
+        UpdateWorldMatrix(child);
+    }
+}
+
+void RigidAnimationManager::Render(ID3D11DeviceContext* context, ID3D11Buffer* constantBuffer, 
+                                  const XMMATRIX& view, const XMMATRIX& proj)
+{
+    if (!rootNode) return;
+    
+    RenderNode(rootNode, context, constantBuffer, view, proj);
+}
+
+void RigidAnimationManager::RenderNode(RigidNode* node, ID3D11DeviceContext* context, ID3D11Buffer* constantBuffer,
+                                      const XMMATRIX& view, const XMMATRIX& proj)
+{
+    if (!node) return;
+    
+    // Render this node's mesh if it has one
+    if (node->vb && node->ib && node->indexCount > 0)
+    {
+        // Set vertex and index buffers
+        UINT stride = node->stride;
+        UINT offset = 0;
+        context->IASetVertexBuffers(0, 1, &node->vb, &stride, &offset);
+        context->IASetIndexBuffer(node->ib, DXGI_FORMAT_R32_UINT, 0);
+        
+        // Update constant buffer with this node's world matrix
+        D3D11_MAPPED_SUBRESOURCE mapped;
+        context->Map(constantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+        ConstantBuffer* cb = (ConstantBuffer*)mapped.pData;
+        
+        // Set world matrix and other matrices
+        cb->world = XMMatrixTranspose(node->worldMatrix);
+        cb->view = view;
+        cb->proj = proj;
+        cb->worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(node->worldMatrix)));
+        
+        // Set rigid animation flag
+        cb->useRigid = 1;
+        
+        context->Unmap(constantBuffer, 0);
+        context->VSSetConstantBuffers(0, 1, &constantBuffer);
+        context->PSSetConstantBuffers(0, 1, &constantBuffer);
+        
+        // Draw
+        context->DrawIndexed(node->indexCount, 0, 0);
+    }
+    
+    // Render children
+    for (auto* child : node->children)
+    {
+        RenderNode(child, context, constantBuffer, view, proj);
+    }
+}
+
+void RigidAnimationManager::Cleanup()
+{
+    if (rootNode)
+    {
+        CleanupNode(rootNode);
+        delete rootNode;
+        rootNode = nullptr;
+    }
+}
+
+void RigidAnimationManager::CleanupNode(RigidNode* node)
+{
+    if (!node) return;
+    
+    SAFE_RELEASE(node->vb);
+    SAFE_RELEASE(node->ib);
+    
+    for (auto* child : node->children)
+    {
+        CleanupNode(child);
+        delete child;
+    }
+    node->children.clear();
+}
+
+RigidNode* RigidAnimationManager::FindNodeByName(const std::string& name)
+{
+    if (!rootNode) return nullptr;
+    
+    std::function<RigidNode*(RigidNode*, const std::string&)> findRecursive = 
+        [&](RigidNode* node, const std::string& targetName) -> RigidNode* {
+            if (node->name == targetName) return node;
+            
+            for (auto* child : node->children)
+            {
+                RigidNode* result = findRecursive(child, targetName);
+                if (result) return result;
+            }
+            return nullptr;
+        };
+    
+    return findRecursive(rootNode, name);
+}
+
 void App::PrepareSkyFaceSRVs()
 {
 	// 다른 스카이박스로 바꿀 수도 있으니 해제하고 다시 로드
@@ -343,10 +697,15 @@ void App::OnUpdate(const float& dt)
 			// FBX 애니메이션 (팔레트 업데이트만 수행)
 			mdl.fbx.UpdateAnimation(m_->m_pDeviceContext, dt);
 		}
-		else if (mdl.source == ModelSource::PMX)
+		else 		if (mdl.source == ModelSource::PMX)
 		{
 			// PMX + VMD 애니메이션 실행
 			mdl.pmx.UpdateAnimation(m_->m_pDeviceContext, dt);
+		}
+		if (mdl.hasRigidAnimation && mdl.rigidAnimation)
+		{
+			// Rigid 애니메이션 실행
+			mdl.rigidAnimation->UpdateAnimation(dt);
 		}
 		// 기본 카메라용 world0 (원점 단위행렬)
 		XMMATRIX world0 = XMMatrixIdentity();
@@ -482,88 +841,119 @@ void App::OnRender()
 		// 모든 모델 렌더
 		for (auto& mdlPtr : m_->m_Models)
 		{
-			// IA 바인딩
-			UINT s = mdlPtr->stride; UINT o = 0;
-			if (!mdlPtr->vb || !mdlPtr->ib) continue;
-			m_->m_pDeviceContext->IASetVertexBuffers(0, 1, &mdlPtr->vb, &s, &o);
-			// FBX 스켈레톤이 있으면 스키닝 VS/IL로 교체, 아니면 기본
-			ID3D11Buffer* cbBones = nullptr;
-			bool hasSkeleton = false;
-			if (mdlPtr->source == ModelSource::FBX)
+			// Rigid Animation 렌더링
+			if (mdlPtr->hasRigidAnimation && mdlPtr->rigidAnimation)
 			{
-				cbBones = mdlPtr->fbx.GetBoneConstantBuffer();
-				hasSkeleton = mdlPtr->fbx.HasSkeleton();
-			}
-			else if (mdlPtr->source == ModelSource::PMX)
-			{
-				cbBones = mdlPtr->pmx.GetBoneConstantBuffer();
-				hasSkeleton = mdlPtr->pmx.HasSkeleton();
-			}
-			bool useSkinned = hasSkeleton
-				&& (mdlPtr->stride == sizeof(VertexSkinnedTBN))
-				&& (m_->m_pInputLayoutSkinned != nullptr)
-				&& (m_->m_pVertexShaderSkinned != nullptr)
-				&& (cbBones != nullptr);
-			if (useSkinned)
-			{
-				m_->m_pDeviceContext->IASetInputLayout(m_->m_pInputLayoutSkinned);
-				m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShaderSkinned, nullptr, 0);
-				// 본 팔레트 상수버퍼에 바인딩하기
-				if (cbBones)
-				{
-					// PMX, VMD 애니메이션이 없는 경우는 단위 팔레트 업로드
-					if (mdlPtr->source == ModelSource::PMX && !mdlPtr->pmx.HasAnimations())
-					{
-						mdlPtr->pmx.UploadIdentityPalette(m_->m_pDeviceContext);
-					}
-					m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &cbBones);
-				}
+				// Set input layout for rigid animation
+				m_->m_pDeviceContext->IASetInputLayout(m_->m_pInputLayout);
+				m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShader, nullptr, 0);
+				
+				// Set rigid animation flag in constant buffer
+				ConstantBuffer cb = m_->m_ConstantBuffer;
+				cb.useRigid = 1;
+				cb.material = m_->m_Material;
+				cb.shadingMode = (int)m_->m_ShadingMode;
+				cb.enableNormalMap = m_->m_EnableNormalMap;
+				cb.useSpecularMap = m_->m_UseSpecularMap;
+				
+				D3D11_MAPPED_SUBRESOURCE mapped;
+				HR_T(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped));
+				memcpy_s(mapped.pData, sizeof(ConstantBuffer), &cb, sizeof(ConstantBuffer));
+				m_->m_pDeviceContext->Unmap(m_->m_pConstantBuffer, 0);
+				m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
+				m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
+				
+				// Render rigid animation
+				mdlPtr->rigidAnimation->Render(m_->m_pDeviceContext, m_->m_pConstantBuffer, 
+					m_->m_baseProjection.view, m_->m_baseProjection.proj);
 			}
 			else
 			{
-				m_->m_pDeviceContext->IASetInputLayout(m_->m_pInputLayout);
-				m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShader, nullptr, 0);
-				// 스키닝 미사용 시 VS b1 해제(안전)
-				ID3D11Buffer* nullCB = nullptr; m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &nullCB);
-			}
-			m_->m_pDeviceContext->IASetIndexBuffer(mdlPtr->ib, DXGI_FORMAT_R32_UINT, 0);
+				// 기존 스키닝 애니메이션 렌더링
+				// IA 바인딩
+				UINT s = mdlPtr->stride; UINT o = 0;
+				if (!mdlPtr->vb || !mdlPtr->ib) continue;
+				m_->m_pDeviceContext->IASetVertexBuffers(0, 1, &mdlPtr->vb, &s, &o);
+				// FBX 스켈레톤이 있으면 스키닝 VS/IL로 교체, 아니면 기본
+				ID3D11Buffer* cbBones = nullptr;
+				bool hasSkeleton = false;
+				if (mdlPtr->source == ModelSource::FBX)
+				{
+					cbBones = mdlPtr->fbx.GetBoneConstantBuffer();
+					hasSkeleton = mdlPtr->fbx.HasSkeleton();
+				}
+				else if (mdlPtr->source == ModelSource::PMX)
+				{
+					cbBones = mdlPtr->pmx.GetBoneConstantBuffer();
+					hasSkeleton = mdlPtr->pmx.HasSkeleton();
+				}
+				bool useSkinned = hasSkeleton
+					&& (mdlPtr->stride == sizeof(VertexSkinnedTBN))
+					&& (m_->m_pInputLayoutSkinned != nullptr)
+					&& (m_->m_pVertexShaderSkinned != nullptr)
+					&& (cbBones != nullptr);
+				if (useSkinned)
+				{
+					m_->m_pDeviceContext->IASetInputLayout(m_->m_pInputLayoutSkinned);
+					m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShaderSkinned, nullptr, 0);
+					// 본 팔레트 상수버퍼에 바인딩하기
+					if (cbBones)
+					{
+						// PMX, VMD 애니메이션이 없는 경우는 단위 팔레트 업로드
+						if (mdlPtr->source == ModelSource::PMX && !mdlPtr->pmx.HasAnimations())
+						{
+							mdlPtr->pmx.UploadIdentityPalette(m_->m_pDeviceContext);
+						}
+						m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &cbBones);
+					}
+				}
+				else
+				{
+					m_->m_pDeviceContext->IASetInputLayout(m_->m_pInputLayout);
+					m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShader, nullptr, 0);
+					// 스키닝 미사용 시 VS b1 해제(안전)
+					ID3D11Buffer* nullCB = nullptr; m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &nullCB);
+				}
+				m_->m_pDeviceContext->IASetIndexBuffer(mdlPtr->ib, DXGI_FORMAT_R32_UINT, 0);
 
-			// 월드 행렬 (per-model)
-			XMMATRIX rotYaw = XMMatrixRotationY(XMConvertToRadians(mdlPtr->rotDeg.y));
-			XMMATRIX rotPitch = XMMatrixRotationX(XMConvertToRadians(mdlPtr->rotDeg.x));
-			XMMATRIX rotRoll = XMMatrixRotationZ(XMConvertToRadians(mdlPtr->rotDeg.z));
-			XMMATRIX S = XMMatrixScaling(mdlPtr->scale.x, mdlPtr->scale.y, mdlPtr->scale.z);
-			XMMATRIX T = XMMatrixTranslation(mdlPtr->pos.x, mdlPtr->pos.y, mdlPtr->pos.z);
-			XMMATRIX W = S * rotPitch * rotYaw * rotRoll * T;
+				// 월드 행렬 (per-model)
+				XMMATRIX rotYaw = XMMatrixRotationY(XMConvertToRadians(mdlPtr->rotDeg.y));
+				XMMATRIX rotPitch = XMMatrixRotationX(XMConvertToRadians(mdlPtr->rotDeg.x));
+				XMMATRIX rotRoll = XMMatrixRotationZ(XMConvertToRadians(mdlPtr->rotDeg.z));
+				XMMATRIX S = XMMatrixScaling(mdlPtr->scale.x, mdlPtr->scale.y, mdlPtr->scale.z);
+				XMMATRIX T = XMMatrixTranslation(mdlPtr->pos.x, mdlPtr->pos.y, mdlPtr->pos.z);
+				XMMATRIX W = S * rotPitch * rotYaw * rotRoll * T;
 
-			ConstantBuffer cb = m_->m_ConstantBuffer;
-			cb.world = XMMatrixTranspose(W);
-			cb.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(W)));
-			cb.material = m_->m_Material;
-			cb.shadingMode = (int)m_->m_ShadingMode;
-			cb.enableNormalMap = m_->m_EnableNormalMap;
-			cb.useSpecularMap = m_->m_UseSpecularMap;
+				ConstantBuffer cb = m_->m_ConstantBuffer;
+				cb.world = XMMatrixTranspose(W);
+				cb.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(W)));
+				cb.material = m_->m_Material;
+				cb.shadingMode = (int)m_->m_ShadingMode;
+				cb.enableNormalMap = m_->m_EnableNormalMap;
+				cb.useSpecularMap = m_->m_UseSpecularMap;
+				cb.useRigid = 0; // 스키닝 애니메이션
 
-			D3D11_MAPPED_SUBRESOURCE mapped;
-			HR_T(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped));
-			memcpy_s(mapped.pData, sizeof(ConstantBuffer), &cb, sizeof(ConstantBuffer));
-			m_->m_pDeviceContext->Unmap(m_->m_pConstantBuffer, 0);
-			m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
-			m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
+				D3D11_MAPPED_SUBRESOURCE mapped;
+				HR_T(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped));
+				memcpy_s(mapped.pData, sizeof(ConstantBuffer), &cb, sizeof(ConstantBuffer));
+				m_->m_pDeviceContext->Unmap(m_->m_pConstantBuffer, 0);
+				m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
+				m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
 
-			// 서브셋 텍스처 및 드로우
-			for (const auto& sub : mdlPtr->subsets)
-			{
-				ID3D11ShaderResourceView* srvDiffuse = nullptr;
-				if (sub.materialIndex < mdlPtr->materialSRVs.size()) srvDiffuse = mdlPtr->materialSRVs[sub.materialIndex];
-				if (!srvDiffuse) srvDiffuse = m_->m_pFallbackWhite;
-				ID3D11ShaderResourceView* srvNormal = (m_->m_EnableNormalMap != 0) ? m_->m_pFallbackNormal : nullptr;
-				ID3D11ShaderResourceView* srvSpec = (m_->m_UseSpecularMap != 0) ? m_->m_pFallbackWhite : nullptr;
-				m_->m_pDeviceContext->PSSetShaderResources(0, 1, &srvDiffuse);
-				m_->m_pDeviceContext->PSSetShaderResources(2, 1, &srvNormal);
-				m_->m_pDeviceContext->PSSetShaderResources(3, 1, &srvSpec);
+				// 서브셋 텍스처 및 드로우
+				for (const auto& sub : mdlPtr->subsets)
+				{
+					ID3D11ShaderResourceView* srvDiffuse = nullptr;
+					if (sub.materialIndex < mdlPtr->materialSRVs.size()) srvDiffuse = mdlPtr->materialSRVs[sub.materialIndex];
+					if (!srvDiffuse) srvDiffuse = m_->m_pFallbackWhite;
+					ID3D11ShaderResourceView* srvNormal = (m_->m_EnableNormalMap != 0) ? m_->m_pFallbackNormal : nullptr;
+					ID3D11ShaderResourceView* srvSpec = (m_->m_UseSpecularMap != 0) ? m_->m_pFallbackWhite : nullptr;
+					m_->m_pDeviceContext->PSSetShaderResources(0, 1, &srvDiffuse);
+					m_->m_pDeviceContext->PSSetShaderResources(2, 1, &srvNormal);
+					m_->m_pDeviceContext->PSSetShaderResources(3, 1, &srvSpec);
 
-				m_->m_pDeviceContext->DrawIndexed(sub.count, sub.start, 0);
+					m_->m_pDeviceContext->DrawIndexed(sub.count, sub.start, 0);
+				}
 			}
 			// 모델별 루프 끝에서 VS/IL 복원은 다음 모델에서 다시 설정되므로 별도 복원 불필요
 		}
@@ -913,6 +1303,25 @@ void App::OnRender()
 						if (ImGui::SliderFloat("Time (s)##PMX", &curF, 0.0f, durF)) mdl.pmx.SetAnimationTimeSeconds((double)curF);
 					}
 				}
+				
+				// Rigid Animation UI
+				if (mdl.hasRigidAnimation && mdl.rigidAnimation)
+				{
+					ImGui::Separator();
+					ImGui::Text("Rigid Animation");
+					ImGui::Checkbox("Play##Rigid", &mdl.uiAnimPlaying);
+					mdl.rigidAnimation->SetAnimationPlaying(mdl.uiAnimPlaying);
+					
+					double cur = mdl.rigidAnimation->GetAnimationTime();
+					double dur = mdl.rigidAnimation->GetAnimationDuration();
+					float curF = (float)cur, durF = (float)dur;
+					if (durF > 0.0f)
+					{
+						if (ImGui::SliderFloat("Time (s)##Rigid", &curF, 0.0f, durF)) 
+							mdl.rigidAnimation->SetAnimationTime((double)curF);
+					}
+				}
+				
 				if (ImGui::Button("Remove"))
 				{
 					// release resources
@@ -1443,15 +1852,32 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
 	if (ext == L".fbx")
 	{
 		entry->source = ModelSource::FBX;
-		if (ok = entry->fbx.Load(m_->m_pDevice, pathW))
+		
+		// Try rigid animation first
+		entry->rigidAnimation = std::make_unique<RigidAnimationManager>();
+		if (entry->rigidAnimation->LoadRigidAnimationFromFBX(m_->m_pDevice, pathW))
 		{
-			entry->stride = entry->fbx.GetVertexStride();
-			entry->vb = entry->fbx.GetVertexBuffer(); if (entry->vb) entry->vb->AddRef();
-			entry->ib = entry->fbx.GetIndexBuffer();  if (entry->ib) entry->ib->AddRef();
-			entry->indexCount = entry->fbx.GetIndexCount();
-			entry->subsets.clear();
-			for (auto& s : entry->fbx.GetSubsets()) entry->subsets.push_back({ s.startIndex, s.indexCount, s.materialIndex });
-			entry->materialSRVs = entry->fbx.GetMaterialSRVs();
+			entry->hasRigidAnimation = true;
+			ok = true;
+		}
+		else
+		{
+			// Fall back to skinned animation
+			entry->rigidAnimation.reset();
+			if (ok = entry->fbx.Load(m_->m_pDevice, pathW))
+			{
+				entry->stride = entry->fbx.GetVertexStride();
+				entry->vb = entry->fbx.GetVertexBuffer(); if (entry->vb) entry->vb->AddRef();
+				entry->ib = entry->fbx.GetIndexBuffer();  if (entry->ib) entry->ib->AddRef();
+				entry->indexCount = entry->fbx.GetIndexCount();
+				entry->subsets.clear();
+				for (auto& s : entry->fbx.GetSubsets()) entry->subsets.push_back({ s.startIndex, s.indexCount, s.materialIndex });
+				entry->materialSRVs = entry->fbx.GetMaterialSRVs();
+			}
+		}
+		
+		if (ok)
+		{
 			m_->m_Models.push_back(std::move(entry));
 			m_->m_RenderMode = RenderMode::Model;
 		}
@@ -1494,5 +1920,24 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
 
 void App::UnloadModel()
 {
+	// Clean up rigid animations
+	for (auto& mdlPtr : m_->m_Models)
+	{
+		if (mdlPtr->hasRigidAnimation && mdlPtr->rigidAnimation)
+		{
+			mdlPtr->rigidAnimation->Cleanup();
+		}
+	}
 	m_->m_Models.clear();
+}
+
+void App::UpdateRigidAnimations(float deltaTime)
+{
+	for (auto& mdlPtr : m_->m_Models)
+	{
+		if (mdlPtr->hasRigidAnimation && mdlPtr->rigidAnimation)
+		{
+			mdlPtr->rigidAnimation->UpdateAnimation(deltaTime);
+		}
+	}
 }
