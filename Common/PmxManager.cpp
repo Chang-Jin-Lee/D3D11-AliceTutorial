@@ -10,6 +10,8 @@
 #include <algorithm>
 #include <fstream>
 #include <Windows.h>
+// MMDFormats VMD parser (user-attached)
+#include "../22_VMD/Vmd.h"
 
 using Microsoft::WRL::ComPtr;
 
@@ -386,30 +388,69 @@ void PmxManager::UploadIdentityPalette(ID3D11DeviceContext* ctx)
 bool PmxManager::LoadVMD(ID3D11Device* device, const std::wstring& vmdPath)
 {
     (void)device;
-    std::vector<VMDRawMotion> motions;
-    if (!ReadVMDMotions(vmdPath, motions)) return false;
+    // 초기화
     m_VMDChannels.clear();
-    uint32_t maxFrame = 0;
-    for (const auto& m : motions)
-    {
-        // bone name is Shift-JIS, 15 bytes (not zero-terminated guaranteed)
-        std::wstring boneW = ConvertSjisToWString(m.boneName, 15);
-        // 1차: wide 이름으로 매핑
-        VMDKey k{}; k.t = (double)m.frame / 30.0; // 30fps
-        k.T = { m.translate[0], m.translate[1], m.translate[2] };
-        k.Q = { m.quaternion[0], m.quaternion[1], m.quaternion[2], m.quaternion[3] };
-        m_VMDChannels[boneW].push_back(k);
-        if (m.frame > maxFrame) maxFrame = m.frame;
-    }
-    for (auto& kv : m_VMDChannels)
-    {
-        auto& vec = kv.second;
-        std::sort(vec.begin(), vec.end(), [](const VMDKey& a, const VMDKey& b){ return a.t < b.t; });
-    }
-    m_ClipDurationSec = (double)maxFrame / 30.0;
+    m_HasVMD = false;
     m_AnimTimeSec = 0.0;
-    m_HasVMD = (m_ClipDurationSec > 0.0);
-    return m_HasVMD;
+    m_ClipDurationSec = 0.0;
+
+    // 우선 MMDFormats 파서 사용 시도 (사용자가 첨부한 파서)
+    {
+        std::ifstream stream(vmdPath, std::ios::binary);
+        if (stream)
+        {
+            auto motion = vmd::VmdMotion::LoadFromStream(&stream);
+            if (motion)
+            {
+                uint32_t maxFrame = 0;
+                for (const auto& bf : motion->bone_frames)
+                {
+                    // 이름은 Shift-JIS. CP932로 와이드 변환
+                    std::wstring boneW = ConvertSjisToWString(bf.name.c_str(), bf.name.size());
+                    VMDKey k{};
+                    k.t = (double)max(0, bf.frame) / 30.0; // 30fps 고정 가정
+                    k.T = { bf.position[0], bf.position[1], bf.position[2] };
+                    k.Q = { bf.orientation[0], bf.orientation[1], bf.orientation[2], bf.orientation[3] };
+                    m_VMDChannels[boneW].push_back(k);
+                    if ((uint32_t)max(0, bf.frame) > maxFrame) maxFrame = (uint32_t)bf.frame;
+                }
+                for (auto& kv : m_VMDChannels)
+                {
+                    auto& vec = kv.second;
+                    std::sort(vec.begin(), vec.end(), [](const VMDKey& a, const VMDKey& b){ return a.t < b.t; });
+                }
+                m_ClipDurationSec = (double)maxFrame / 30.0;
+                m_AnimTimeSec = 0.0;
+                m_HasVMD = (m_ClipDurationSec > 0.0);
+                if (m_HasVMD) return true;
+            }
+        }
+    }
+
+    // 폴백: 최소 파서로 재시도
+    {
+        std::vector<VMDRawMotion> motions;
+        if (!ReadVMDMotions(vmdPath, motions)) return false;
+        uint32_t maxFrame = 0;
+        for (const auto& m : motions)
+        {
+            std::wstring boneW = ConvertSjisToWString(m.boneName, 15);
+            VMDKey k{}; k.t = (double)m.frame / 30.0; // 30fps
+            k.T = { m.translate[0], m.translate[1], m.translate[2] };
+            k.Q = { m.quaternion[0], m.quaternion[1], m.quaternion[2], m.quaternion[3] };
+            m_VMDChannels[boneW].push_back(k);
+            if (m.frame > maxFrame) maxFrame = m.frame;
+        }
+        for (auto& kv : m_VMDChannels)
+        {
+            auto& vec = kv.second;
+            std::sort(vec.begin(), vec.end(), [](const VMDKey& a, const VMDKey& b){ return a.t < b.t; });
+        }
+        m_ClipDurationSec = (double)maxFrame / 30.0;
+        m_AnimTimeSec = 0.0;
+        m_HasVMD = (m_ClipDurationSec > 0.0);
+        return m_HasVMD;
+    }
 }
 
 void PmxManager::SetAnimationTimeSeconds(double t)
@@ -430,7 +471,7 @@ void PmxManager::UpdateAnimation(ID3D11DeviceContext* ctx, double dtSec)
         return;
     }
     std::vector<DirectX::XMFLOAT4X4> global;
-    // Evaluate globals: use bind-local as base then apply VMD TR (scale=1)
+    // Evaluate globals: apply VMD TR on top of bind-local but pre-multiply to avoid double-scale
     global.resize(m_Skeleton.size());
     std::function<void(int, const DirectX::XMMATRIX&)> eval = [&](int idx, const DirectX::XMMATRIX& parent){
         const auto& node = m_Skeleton[idx];
@@ -444,11 +485,11 @@ void PmxManager::UpdateAnimation(ID3D11DeviceContext* ctx, double dtSec)
             int j = (i + 1 < (int)keys.size()) ? i + 1 : i;
             double dt = keys[j].t - keys[i].t; double a = (dt > 0.0) ? (m_AnimTimeSec - keys[i].t) / dt : 0.0;
             DirectX::XMFLOAT3 T0 = keys[i].T, T1 = keys[j].T; DirectX::XMVECTOR T = DirectX::XMVectorLerp(XMLoadFloat3(&T0), XMLoadFloat3(&T1), (float)a);
-            DirectX::XMFLOAT4 Q0 = keys[i].Q, Q1 = keys[j].Q; DirectX::XMVECTOR Q = DirectX::XMQuaternionSlerp(XMLoadFloat4(&Q0), XMLoadFloat4(&Q1), (float)a);
+            DirectX::XMFLOAT4 Q0 = keys[i].Q, Q1 = keys[j].Q; DirectX::XMVECTOR Q = DirectX::XMQuaternionNormalize(DirectX::XMQuaternionSlerp(XMLoadFloat4(&Q0), XMLoadFloat4(&Q1), (float)a));
             DirectX::XMMATRIX mR = DirectX::XMMatrixRotationQuaternion(Q);
             DirectX::XMMATRIX mT = DirectX::XMMatrixTranslationFromVector(T);
-            // MMD/VMD는 로컬 변위 후 회전(T*R)이 일반적. L = bind * (T * R)
-            L = DirectX::XMMatrixMultiply(Lbind, DirectX::XMMatrixMultiply(mT, mR));
+            // FBX 파이프라인과 일관: 로컬= (T*R) * Lbind  (pivot=bind 위치, 이중 스케일 방지)
+            L = DirectX::XMMatrixMultiply(DirectX::XMMatrixMultiply(mT, mR), Lbind);
         }
         DirectX::XMMATRIX G = DirectX::XMMatrixMultiply(parent, L);
         DirectX::XMStoreFloat4x4(&global[idx], G);
