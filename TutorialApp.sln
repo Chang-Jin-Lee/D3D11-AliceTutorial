@@ -48,6 +48,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "21_MultiModels_With_Animati
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "22_VMD", "22_VMD\22_VMD.vcxproj", "{6FA61378-1744-4C0A-8A36-1E4FBA04D3DB}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "23_Rigid_Animation", "23_Rigid_Animation\23_Rigid_Animation.vcxproj", "{FFFE01DE-10B2-408A-9149-03905B5D473F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -240,6 +242,14 @@ Global
 		{6FA61378-1744-4C0A-8A36-1E4FBA04D3DB}.Release|x64.Build.0 = Release|x64
 		{6FA61378-1744-4C0A-8A36-1E4FBA04D3DB}.Release|x86.ActiveCfg = Release|Win32
 		{6FA61378-1744-4C0A-8A36-1E4FBA04D3DB}.Release|x86.Build.0 = Release|Win32
+		{FFFE01DE-10B2-408A-9149-03905B5D473F}.Debug|x64.ActiveCfg = Debug|x64
+		{FFFE01DE-10B2-408A-9149-03905B5D473F}.Debug|x64.Build.0 = Debug|x64
+		{FFFE01DE-10B2-408A-9149-03905B5D473F}.Debug|x86.ActiveCfg = Debug|Win32
+		{FFFE01DE-10B2-408A-9149-03905B5D473F}.Debug|x86.Build.0 = Debug|Win32
+		{FFFE01DE-10B2-408A-9149-03905B5D473F}.Release|x64.ActiveCfg = Release|x64
+		{FFFE01DE-10B2-408A-9149-03905B5D473F}.Release|x64.Build.0 = Release|x64
+		{FFFE01DE-10B2-408A-9149-03905B5D473F}.Release|x86.ActiveCfg = Release|Win32
+		{FFFE01DE-10B2-408A-9149-03905B5D473F}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
