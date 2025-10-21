@@ -18,13 +18,16 @@ struct aiScene;
 struct aiNodeAnim;
 struct ID3D11DeviceContext;
 struct ID3D11ShaderResourceView;
-namespace DirectX { struct XMFLOAT4X4; struct XMMATRIX; }
+namespace DirectX { struct XMFLOAT4X4; struct XMMATRIX; struct XMFLOAT3; }
 
 class FbxManager
 {
 public:
     FbxManager();
     ~FbxManager();
+
+    // 현재 애니메이션 처리 방식
+    enum class AnimationType { None = 0, Skinned = 1, Rigid = 2 };
 
     bool Load(ID3D11Device* device, const std::wstring& pathW);
     void Release();
@@ -43,7 +46,7 @@ public:
     // 본 구조를 위한 스켈레톤 노드. 애니메이션 실행을 위해서 만듬
     struct SkeletonNode
     {
-        // name: UTF-8 원문(검색/매핑 용), nameW: 디버그 가독성용 유니코드
+        // name: UTF-8 (검색/매핑 용), nameW: 디버그용
         std::string name;
         std::wstring nameW;
         int parent = -1;
@@ -64,20 +67,38 @@ public:
     double GetAnimationTimeSeconds() const;
     void SetAnimationTimeSeconds(double t);
     void UpdateAnimation(ID3D11DeviceContext* ctx, double dtSec);
+    void UpdateAnimationGrid(ID3D11DeviceContext* ctx, double dtSec);
     double GetClipDurationSec(int idx) const;
 
     ID3D11Buffer* GetBoneConstantBuffer() const;
     UINT GetBoneCount() const;
 
-    // 디버그 가독성: 스켈레톤 노드의 유니코드 이름 조회
+    // 스켈레톤 노드의 유니코드 이름 조회
     std::wstring GetSkeletonNodeNameW(int idx) const;
 
     // GPU 스키닝 본 팔레트 최대 크기
     static constexpr int kMaxBones = 1023;
 
+    // --- Per-node local TRS override (applied after animation local) ---
+    struct BoneOverride { DirectX::XMFLOAT3 T; DirectX::XMFLOAT3 Rdeg; DirectX::XMFLOAT3 S; bool enabled; };
+    void SetBoneOverride(int nodeIndex, const BoneOverride& ov);
+    bool GetBoneOverride(int nodeIndex, BoneOverride& out) const;
+    void ResetBoneOverrides();
+    bool HasBoneOverrides() const;
+
+    // Rigid: upload per-node global palette (no Offset/GlobalInverse)
+    void UploadRigidNodePalette(ID3D11DeviceContext* ctx);
+
+    // Rigid hierarchy (mesh node tree) update and palette upload (bone-order)
+    void UpdateRigidAndUploadPalette(ID3D11DeviceContext* ctx, double dtSec);
+
+    // 현재 애니메이션 타입 조회
+    AnimationType GetCurrentAnimationType() const { return m_CurrentType; }
+
 private:
     struct Impl;
     std::unique_ptr<Impl> m_;
+    AnimationType m_CurrentType = AnimationType::None;
 
     bool LoadMaterials(ID3D11Device* device, const struct aiScene* scene, const std::wstring& baseDir);
     bool BuildMeshBuffers(ID3D11Device* device, const struct aiScene* scene);
@@ -105,6 +126,13 @@ private:
     void BuildBonePalette(const std::vector<DirectX::XMFLOAT4X4>& global, std::vector<DirectX::XMMATRIX>& outPalette) const;
     // 본 팔레트를 VS 상수 버퍼로 업로드합니다.
     void UploadBonePalette(ID3D11DeviceContext* ctx, const std::vector<DirectX::XMMATRIX>& palette);
+
+    // Debug: evaluate current global matrices (after animation+overrides)
+    bool GetCurrentGlobalMatrices(std::vector<DirectX::XMFLOAT4X4>& out) const;
+
+    // Rigid 애니메이션 관련 helper 함수. 본이 아예 없다면 스켈레탈 노드를 통해서 가짜 본을 만들어 준다
+    void BuildRigidBonesFromSkeleton();
+    void BuildRigidWeightsFromOwners();
 };
 
 

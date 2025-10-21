@@ -1313,7 +1313,7 @@ bool App::InitBasicEffect()
 	};
 
 		ID3D10Blob* vertexShaderBuffer = nullptr;
-    HR_T(CompileShaderFromFile(L"21_BasicVS.hlsl", "main", "vs_5_0", &vertexShaderBuffer));
+    HR_T(CompileShaderFromFile(L"22_BasicVS.hlsl", "main", "vs_5_0", &vertexShaderBuffer));
 	HR_T(m_->m_pDevice->CreateInputLayout(layout, ARRAYSIZE(layout),
 		vertexShaderBuffer->GetBufferPointer(), vertexShaderBuffer->GetBufferSize(), &m_->m_pInputLayout));
 
@@ -1330,7 +1330,7 @@ bool App::InitBasicEffect()
 		{ "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 	};
 	ID3D10Blob* vsNoTBN = nullptr;
-    HR_T(CompileShaderFromFile(L"21_BasicVS.hlsl", "VSNoTBN", "vs_5_0", &vsNoTBN));
+    HR_T(CompileShaderFromFile(L"22_BasicVS.hlsl", "VSNoTBN", "vs_5_0", &vsNoTBN));
 	HR_T(m_->m_pDevice->CreateInputLayout(layoutNoTBN, ARRAYSIZE(layoutNoTBN), vsNoTBN->GetBufferPointer(), vsNoTBN->GetBufferSize(), &m_->m_pInputLayoutNoTBN));
 	HR_T(m_->m_pDevice->CreateVertexShader(vsNoTBN->GetBufferPointer(), vsNoTBN->GetBufferSize(), nullptr, &m_->m_pVertexShaderNoTBN));
 	SAFE_RELEASE(vsNoTBN);
@@ -1343,7 +1343,7 @@ bool App::InitBasicEffect()
 		{ "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 	};
 	ID3D10Blob* vsLine = nullptr;
-    HR_T(CompileShaderFromFile(L"21_BasicVS.hlsl", "VSLine", "vs_5_0", &vsLine));
+    HR_T(CompileShaderFromFile(L"22_BasicVS.hlsl", "VSLine", "vs_5_0", &vsLine));
 
     // FBX GPU 스키닝용 VS/IL 생성 (POSITION,NORMAL,TANGENT,BINORMAL,COLOR,TEXCOORD,BLENDINDICES,BLENDWEIGHT)
     {
@@ -1359,7 +1359,7 @@ bool App::InitBasicEffect()
             { "BLENDWEIGHT",  0, DXGI_FORMAT_R32G32B32A32_FLOAT,0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
         };
         ID3D10Blob* vsSkinned = nullptr;
-        HR_T(CompileShaderFromFile(L"21_BasicVS.hlsl", "VSSkinned", "vs_5_0", &vsSkinned));
+        HR_T(CompileShaderFromFile(L"22_BasicVS.hlsl", "VSSkinned", "vs_5_0", &vsSkinned));
         HR_T(m_->m_pDevice->CreateInputLayout(layoutSkinned, ARRAYSIZE(layoutSkinned), vsSkinned->GetBufferPointer(), vsSkinned->GetBufferSize(), &m_->m_pInputLayoutSkinned));
         HR_T(m_->m_pDevice->CreateVertexShader(vsSkinned->GetBufferPointer(), vsSkinned->GetBufferSize(), nullptr, &m_->m_pVertexShaderSkinned));
         SAFE_RELEASE(vsSkinned);
@@ -1371,7 +1371,7 @@ bool App::InitBasicEffect()
 
 	// Pixel Shader -------------------------------------
 	ID3D10Blob* pixelShaderBuffer = nullptr;
-    HR_T(CompileShaderFromFile(L"21_BasicPS.hlsl", "main", "ps_4_0", &pixelShaderBuffer));
+    HR_T(CompileShaderFromFile(L"22_BasicPS.hlsl", "main", "ps_4_0", &pixelShaderBuffer));
 	HR_T(m_->m_pDevice->CreatePixelShader(pixelShaderBuffer->GetBufferPointer(),
 		pixelShaderBuffer->GetBufferSize(), NULL, &m_->m_pPixelShader));
 	SAFE_RELEASE(pixelShaderBuffer);	// 픽셀 셰이더 버퍼 더이상 필요없음
@@ -1387,7 +1387,7 @@ bool App::InitSkyBoxEffect()
 	};
 
 	ID3D10Blob* vertexShaderBuffer = nullptr;
-    HR_T(CompileShaderFromFile(L"21_SkyBoxVS.hlsl", "VS", "vs_4_0", &vertexShaderBuffer));
+    HR_T(CompileShaderFromFile(L"22_SkyBoxVS.hlsl", "VS", "vs_4_0", &vertexShaderBuffer));
 	HR_T(m_->m_pDevice->CreateInputLayout(layout, ARRAYSIZE(layout),
 		vertexShaderBuffer->GetBufferPointer(), vertexShaderBuffer->GetBufferSize(), &m_->m_pSkyBoxInputLayout));
 
@@ -1397,7 +1397,7 @@ bool App::InitSkyBoxEffect()
 
 	// Pixel Shader -------------------------------------
 	ID3D10Blob* pixelShaderBuffer = nullptr;
-    HR_T(CompileShaderFromFile(L"21_SkyBoxPS.hlsl", "PS", "ps_4_0", &pixelShaderBuffer));
+    HR_T(CompileShaderFromFile(L"22_SkyBoxPS.hlsl", "PS", "ps_4_0", &pixelShaderBuffer));
 	HR_T(m_->m_pDevice->CreatePixelShader(pixelShaderBuffer->GetBufferPointer(),
 		pixelShaderBuffer->GetBufferSize(), NULL, &m_->m_pSkyBoxPixelShader));
 	SAFE_RELEASE(pixelShaderBuffer);	// 픽셀 셰이더 버퍼 더이상 필요없음
