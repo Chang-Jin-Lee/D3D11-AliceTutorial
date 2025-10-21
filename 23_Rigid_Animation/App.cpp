@@ -61,6 +61,7 @@ struct RigidNode
 {
     std::string name;
     XMMATRIX localTransform = XMMatrixIdentity();
+    XMMATRIX bindLocal = XMMatrixIdentity();
     XMMATRIX worldMatrix = XMMatrixIdentity();
     std::vector<RigidNode*> children;
     RigidNode* parent = nullptr;
@@ -121,6 +122,7 @@ private:
     void RenderNode(RigidNode* node, ID3D11DeviceContext* context, ID3D11Buffer* constantBuffer,
                    const XMMATRIX& view, const XMMATRIX& proj, const ConstantBuffer& baseCB, const XMMATRIX& modelWorld);
     void CleanupNode(RigidNode* node);
+    void ApplyAnimationAtTime(RigidNode* node, double timeSec);
     
     // Animation interpolation
     XMFLOAT3 InterpolatePosition(double time);
@@ -129,6 +131,83 @@ private:
     
     RigidNode* FindNodeByName(const std::string& name);
 };
+static int FindKeyframeIndex(const std::vector<double>& times, double t)
+{
+    if (times.empty()) return -1;
+    if (t <= times.front()) return 0;
+    for (int i = (int)times.size() - 2; i >= 0; --i)
+    {
+        if (t >= times[(size_t)i]) return i;
+    }
+    return (int)times.size() - 1;
+}
+
+void RigidAnimationManager::ApplyAnimationAtTime(RigidNode* node, double timeSec)
+{
+    if (!node) return;
+
+    auto sampleVec3 = [](const std::vector<XMFLOAT3>& keys, const std::vector<double>& times, double t) -> XMFLOAT3
+    {
+        if (keys.empty()) return XMFLOAT3{ 0,0,0 };
+        if (keys.size() == 1 || times.size() == 1) return keys[0];
+        int idx = FindKeyframeIndex(times, t);
+        if (idx < 0) return keys[0];
+        size_t i = (size_t)idx;
+        if (i >= keys.size() - 1) return keys.back();
+        double t0 = times[i];
+        double t1 = times[i + 1];
+        float s = (float)((t1 > t0) ? (t - t0) / (t1 - t0) : 0.0);
+        XMVECTOR a = XMLoadFloat3(&keys[i]);
+        XMVECTOR b = XMLoadFloat3(&keys[i + 1]);
+        XMVECTOR r = XMVectorLerp(a, b, s);
+        XMFLOAT3 out; XMStoreFloat3(&out, r);
+        return out;
+    };
+    auto sampleQuat = [](const std::vector<XMFLOAT4>& keys, const std::vector<double>& times, double t) -> XMFLOAT4
+    {
+        if (keys.empty()) return XMFLOAT4{ 0,0,0,1 };
+        if (keys.size() == 1 || times.size() == 1) return keys[0];
+        int idx = FindKeyframeIndex(times, t);
+        if (idx < 0) return keys[0];
+        size_t i = (size_t)idx;
+        if (i >= keys.size() - 1) return keys.back();
+        double t0 = times[i];
+        double t1 = times[i + 1];
+        float s = (float)((t1 > t0) ? (t - t0) / (t1 - t0) : 0.0);
+        XMVECTOR qa = XMLoadFloat4(&keys[i]);
+        XMVECTOR qb = XMLoadFloat4(&keys[i + 1]);
+        qa = XMQuaternionNormalize(qa);
+        qb = XMQuaternionNormalize(qb);
+        XMVECTOR r = XMQuaternionSlerp(qa, qb, s);
+        XMFLOAT4 out; XMStoreFloat4(&out, r);
+        return out;
+    };
+
+    // 기본은 바인드 포즈
+    XMVECTOR sV, rV, tV;
+    if (!XMMatrixDecompose(&sV, &rV, &tV, node->bindLocal))
+    {
+        sV = XMVectorSet(1,1,1,0);
+        rV = XMQuaternionIdentity();
+        tV = XMVectorZero();
+    }
+    XMFLOAT3 baseS; XMFLOAT4 baseQ; XMFLOAT3 baseT;
+    XMStoreFloat3(&baseS, sV); XMStoreFloat4(&baseQ, rV); XMStoreFloat3(&baseT, tV);
+
+    XMFLOAT3 p = node->positionKeys.empty() ? baseT : sampleVec3(node->positionKeys, node->positionTimes, timeSec);
+    XMFLOAT4 q = node->rotationKeys.empty() ? baseQ : sampleQuat(node->rotationKeys, node->rotationTimes, timeSec);
+    XMFLOAT3 s = node->scaleKeys.empty()    ? baseS : sampleVec3(node->scaleKeys, node->scaleTimes, timeSec);
+
+    XMMATRIX Sm = XMMatrixScaling(s.x, s.y, s.z);
+    XMMATRIX Rm = XMMatrixRotationQuaternion(XMLoadFloat4(&q));
+    XMMATRIX Tm = XMMatrixTranslation(p.x, p.y, p.z);
+    node->localTransform = Sm * Rm * Tm;
+
+    for (auto* child : node->children)
+    {
+        ApplyAnimationAtTime(child, timeSec);
+    }
+}
 
 // 여러 모델을 그리기 위한 구조체
 struct ModelEntry
@@ -343,11 +422,43 @@ bool RigidAnimationManager::LoadRigidAnimationFromFBX(ID3D11Device* device, cons
     // Initialize world matrices so static pose renders correctly
     UpdateWorldMatrix(rootNode);
     
-    // Calculate animation duration
+    // Extract animation keys per node (use the first animation clip)
     if (scene->mNumAnimations > 0)
     {
         aiAnimation* anim = scene->mAnimations[0];
-        animationDuration = anim->mDuration / anim->mTicksPerSecond;
+        double tps = (anim->mTicksPerSecond > 0.0) ? anim->mTicksPerSecond : 25.0;
+        animationDuration = anim->mDuration / tps;
+
+        for (unsigned int ci = 0; ci < anim->mNumChannels; ++ci)
+        {
+            aiNodeAnim* ch = anim->mChannels[ci];
+            if (!ch) continue;
+            RigidNode* rn = FindNodeByName(ch->mNodeName.C_Str());
+            if (!rn) continue;
+
+            rn->positionKeys.clear(); rn->positionTimes.clear();
+            rn->rotationKeys.clear(); rn->rotationTimes.clear();
+            rn->scaleKeys.clear();    rn->scaleTimes.clear();
+
+            for (unsigned int k = 0; k < ch->mNumPositionKeys; ++k)
+            {
+                const aiVectorKey& key = ch->mPositionKeys[k];
+                rn->positionKeys.push_back(XMFLOAT3((float)key.mValue.x, (float)key.mValue.y, (float)key.mValue.z));
+                rn->positionTimes.push_back(key.mTime / tps);
+            }
+            for (unsigned int k = 0; k < ch->mNumRotationKeys; ++k)
+            {
+                const aiQuatKey& key = ch->mRotationKeys[k];
+                rn->rotationKeys.push_back(XMFLOAT4((float)key.mValue.x, (float)key.mValue.y, (float)key.mValue.z, (float)key.mValue.w));
+                rn->rotationTimes.push_back(key.mTime / tps);
+            }
+            for (unsigned int k = 0; k < ch->mNumScalingKeys; ++k)
+            {
+                const aiVectorKey& key = ch->mScalingKeys[k];
+                rn->scaleKeys.push_back(XMFLOAT3((float)key.mValue.x, (float)key.mValue.y, (float)key.mValue.z));
+                rn->scaleTimes.push_back(key.mTime / tps);
+            }
+        }
     }
     
     return true;
@@ -369,6 +480,7 @@ void RigidAnimationManager::ProcessNode(aiNode* node, RigidNode* parent, const a
         aiMat.a4, aiMat.b4, aiMat.c4, aiMat.d4
     );
     rigidNode->localTransform = localTransform;
+    rigidNode->bindLocal = localTransform;
     
     // Process meshes
     for (unsigned int i = 0; i < node->mNumMeshes; i++)
@@ -474,14 +586,18 @@ void RigidAnimationManager::UpdateAnimation(float deltaTime)
 {
     if (!rootNode) return;
 
-    if (isPlaying)
+    if (isPlaying && animationDuration > 0.0)
     {
         animationTime += deltaTime;
-        if (animationTime > animationDuration && animationDuration > 0.0)
+        if (animationTime >= animationDuration)
         {
-            animationTime = 0.0; // Loop
+            animationTime = fmod(animationTime, animationDuration);
         }
-        // TODO: apply key interpolation to update node->localTransform by animationTime
+    }
+
+    if (animationDuration > 0.0)
+    {
+        ApplyAnimationAtTime(rootNode, animationTime);
     }
 
     // Always refresh world matrices (even when paused)
@@ -540,7 +656,7 @@ void RigidAnimationManager::RenderNode(RigidNode* node, ID3D11DeviceContext* con
         cb->world = XMMatrixTranspose(W);
         cb->view = view;
         cb->proj = proj;
-        cb->worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(W)));
+        cb->worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, W));
         cb->useRigid = 1;
         context->Unmap(constantBuffer, 0);
         context->VSSetConstantBuffers(0, 1, &constantBuffer);
