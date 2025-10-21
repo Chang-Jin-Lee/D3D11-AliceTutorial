@@ -492,10 +492,10 @@ void RigidAnimationManager::UpdateWorldMatrix(RigidNode* node)
 {
     if (!node) return;
     
-    // Calculate world matrix (parent first then local because we use row-vector convention: v' = v * M)
+    // Calculate world matrix (row-vector pipeline): child = local * parent
     if (node->parent)
     {
-        node->worldMatrix = XMMatrixMultiply(node->parent->worldMatrix, node->localTransform);
+        node->worldMatrix = XMMatrixMultiply(node->localTransform, node->parent->worldMatrix);
     }
     else
     {
