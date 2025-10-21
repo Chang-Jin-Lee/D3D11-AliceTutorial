@@ -109,7 +109,7 @@ struct RigidAnimationManager
     
     // Render
     void Render(ID3D11DeviceContext* context, ID3D11Buffer* constantBuffer, 
-                const XMMATRIX& view, const XMMATRIX& proj, const ConstantBuffer& baseCB);
+                const XMMATRIX& view, const XMMATRIX& proj, const ConstantBuffer& baseCB, const XMMATRIX& modelWorld);
     
     // Cleanup
     void Cleanup();
@@ -119,7 +119,7 @@ private:
     void ExtractMeshData(aiMesh* mesh, RigidNode* node, const aiScene* scene, ID3D11Device* device);
     void UpdateWorldMatrix(RigidNode* node);
     void RenderNode(RigidNode* node, ID3D11DeviceContext* context, ID3D11Buffer* constantBuffer,
-                   const XMMATRIX& view, const XMMATRIX& proj, const ConstantBuffer& baseCB);
+                   const XMMATRIX& view, const XMMATRIX& proj, const ConstantBuffer& baseCB, const XMMATRIX& modelWorld);
     void CleanupNode(RigidNode* node);
     
     // Animation interpolation
@@ -510,15 +510,15 @@ void RigidAnimationManager::UpdateWorldMatrix(RigidNode* node)
 }
 
 void RigidAnimationManager::Render(ID3D11DeviceContext* context, ID3D11Buffer* constantBuffer, 
-                                  const XMMATRIX& view, const XMMATRIX& proj, const ConstantBuffer& baseCB)
+                                  const XMMATRIX& view, const XMMATRIX& proj, const ConstantBuffer& baseCB, const XMMATRIX& modelWorld)
 {
     if (!rootNode) return;
     
-    RenderNode(rootNode, context, constantBuffer, view, proj, baseCB);
+    RenderNode(rootNode, context, constantBuffer, view, proj, baseCB, modelWorld);
 }
 
 void RigidAnimationManager::RenderNode(RigidNode* node, ID3D11DeviceContext* context, ID3D11Buffer* constantBuffer,
-                                      const XMMATRIX& view, const XMMATRIX& proj, const ConstantBuffer& baseCB)
+                                      const XMMATRIX& view, const XMMATRIX& proj, const ConstantBuffer& baseCB, const XMMATRIX& modelWorld)
 {
     if (!node) return;
     
@@ -536,10 +536,11 @@ void RigidAnimationManager::RenderNode(RigidNode* node, ID3D11DeviceContext* con
         context->Map(constantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
         ConstantBuffer* cb = (ConstantBuffer*)mapped.pData;
         *cb = baseCB; // copy all fields first
-        cb->world = XMMatrixTranspose(node->worldMatrix);
+        XMMATRIX W = XMMatrixMultiply(node->worldMatrix, modelWorld);
+        cb->world = XMMatrixTranspose(W);
         cb->view = view;
         cb->proj = proj;
-        cb->worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, node->worldMatrix));
+        cb->worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(W)));
         cb->useRigid = 1;
         context->Unmap(constantBuffer, 0);
         context->VSSetConstantBuffers(0, 1, &constantBuffer);
@@ -552,7 +553,7 @@ void RigidAnimationManager::RenderNode(RigidNode* node, ID3D11DeviceContext* con
     // Render children
     for (auto* child : node->children)
     {
-        RenderNode(child, context, constantBuffer, view, proj, baseCB);
+        RenderNode(child, context, constantBuffer, view, proj, baseCB, modelWorld);
     }
 }
 
@@ -910,9 +911,17 @@ void App::OnRender()
 				m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
 				m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
 				
-                // Render rigid animation with base constant fields
+                // Per-model world from UI (scale * pitch * yaw * roll * translate)
+                XMMATRIX rotYaw = XMMatrixRotationY(XMConvertToRadians(mdlPtr->rotDeg.y));
+                XMMATRIX rotPitch = XMMatrixRotationX(XMConvertToRadians(mdlPtr->rotDeg.x));
+                XMMATRIX rotRoll = XMMatrixRotationZ(XMConvertToRadians(mdlPtr->rotDeg.z));
+                XMMATRIX S = XMMatrixScaling(mdlPtr->scale.x, mdlPtr->scale.y, mdlPtr->scale.z);
+                XMMATRIX T = XMMatrixTranslation(mdlPtr->pos.x, mdlPtr->pos.y, mdlPtr->pos.z);
+                XMMATRIX modelWorld = S * rotPitch * rotYaw * rotRoll * T;
+
+                // Render rigid animation with base constant fields and model transform
                 mdlPtr->rigidAnimation->Render(m_->m_pDeviceContext, m_->m_pConstantBuffer, 
-                    m_->m_baseProjection.view, m_->m_baseProjection.proj, m_->m_ConstantBuffer);
+                    m_->m_baseProjection.view, m_->m_baseProjection.proj, m_->m_ConstantBuffer, modelWorld);
 			}
 			else
 			{
