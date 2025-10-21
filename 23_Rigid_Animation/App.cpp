@@ -326,7 +326,7 @@ bool RigidAnimationManager::LoadRigidAnimationFromFBX(ID3D11Device* device, cons
 {
     Assimp::Importer importer;
     const aiScene* scene = importer.ReadFile(Utf8FromWString(filePath), 
-        aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_CalcTangentSpace);
+        aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_CalcTangentSpace | aiProcess_ConvertToLeftHanded);
     
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
     {
