@@ -109,7 +109,7 @@ struct RigidAnimationManager
     
     // Render
     void Render(ID3D11DeviceContext* context, ID3D11Buffer* constantBuffer, 
-                const XMMATRIX& view, const XMMATRIX& proj);
+                const XMMATRIX& view, const XMMATRIX& proj, const ConstantBuffer& baseCB);
     
     // Cleanup
     void Cleanup();
@@ -119,7 +119,7 @@ private:
     void ExtractMeshData(aiMesh* mesh, RigidNode* node, const aiScene* scene, ID3D11Device* device);
     void UpdateWorldMatrix(RigidNode* node);
     void RenderNode(RigidNode* node, ID3D11DeviceContext* context, ID3D11Buffer* constantBuffer,
-                   const XMMATRIX& view, const XMMATRIX& proj);
+                   const XMMATRIX& view, const XMMATRIX& proj, const ConstantBuffer& baseCB);
     void CleanupNode(RigidNode* node);
     
     // Animation interpolation
@@ -340,6 +340,8 @@ bool RigidAnimationManager::LoadRigidAnimationFromFBX(ID3D11Device* device, cons
     rootNode = new RigidNode();
     rootNode->name = scene->mRootNode->mName.C_Str();
     ProcessNode(scene->mRootNode, rootNode, scene, device);
+    // Initialize world matrices so static pose renders correctly
+    UpdateWorldMatrix(rootNode);
     
     // Calculate animation duration
     if (scene->mNumAnimations > 0)
@@ -357,7 +359,8 @@ void RigidAnimationManager::ProcessNode(aiNode* node, RigidNode* parent, const a
     rigidNode->name = node->mName.C_Str();
     rigidNode->parent = parent;
     
-    // Convert aiMatrix4x4 to XMMATRIX
+    // Convert aiMatrix4x4 to XMMATRIX using column-to-row mapping (transpose)
+    // This matches our row-vector pipeline (mul(pos, world)) without changing order of multiplies
     aiMatrix4x4 aiMat = node->mTransformation;
     XMMATRIX localTransform = XMMatrixSet(
         aiMat.a1, aiMat.b1, aiMat.c1, aiMat.d1,
@@ -391,31 +394,31 @@ void RigidAnimationManager::ExtractMeshData(aiMesh* mesh, RigidNode* node, const
         VertexTBN vertex;
         
         // Position
-        vertex.posL = XMFLOAT3(mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z);
+        vertex.pos = XMFLOAT3(mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z);
         
         // Normal
         if (mesh->mNormals)
-            vertex.normalL = XMFLOAT3(mesh->mNormals[i].x, mesh->mNormals[i].y, mesh->mNormals[i].z);
+            vertex.n = XMFLOAT3(mesh->mNormals[i].x, mesh->mNormals[i].y, mesh->mNormals[i].z);
         else
-            vertex.normalL = XMFLOAT3(0, 1, 0);
+            vertex.n = XMFLOAT3(0, 1, 0);
         
         // Tangent
         if (mesh->mTangents)
-            vertex.tangentL = XMFLOAT3(mesh->mTangents[i].x, mesh->mTangents[i].y, mesh->mTangents[i].z);
+            vertex.t = XMFLOAT3(mesh->mTangents[i].x, mesh->mTangents[i].y, mesh->mTangents[i].z);
         else
-            vertex.tangentL = XMFLOAT3(1, 0, 0);
+            vertex.t = XMFLOAT3(1, 0, 0);
         
         // Bitangent
         if (mesh->mBitangents)
-            vertex.bitanL = XMFLOAT3(mesh->mBitangents[i].x, mesh->mBitangents[i].y, mesh->mBitangents[i].z);
+            vertex.b = XMFLOAT3(mesh->mBitangents[i].x, mesh->mBitangents[i].y, mesh->mBitangents[i].z);
         else
-            vertex.bitanL = XMFLOAT3(0, 0, 1);
+            vertex.b = XMFLOAT3(0, 0, 1);
         
         // UV coordinates
         if (mesh->mTextureCoords[0])
-            vertex.tex = XMFLOAT2(mesh->mTextureCoords[0][i].x, mesh->mTextureCoords[0][i].y);
+            vertex.uv = XMFLOAT2(mesh->mTextureCoords[0][i].x, mesh->mTextureCoords[0][i].y);
         else
-            vertex.tex = XMFLOAT2(0, 0);
+            vertex.uv = XMFLOAT2(0, 0);
         
         // Color
         if (mesh->mColors[0])
@@ -469,14 +472,19 @@ void RigidAnimationManager::ExtractMeshData(aiMesh* mesh, RigidNode* node, const
 
 void RigidAnimationManager::UpdateAnimation(float deltaTime)
 {
-    if (!isPlaying || !rootNode) return;
-    
-    animationTime += deltaTime;
-    if (animationTime > animationDuration)
+    if (!rootNode) return;
+
+    if (isPlaying)
     {
-        animationTime = 0.0; // Loop
+        animationTime += deltaTime;
+        if (animationTime > animationDuration && animationDuration > 0.0)
+        {
+            animationTime = 0.0; // Loop
+        }
+        // TODO: apply key interpolation to update node->localTransform by animationTime
     }
-    
+
+    // Always refresh world matrices (even when paused)
     UpdateWorldMatrix(rootNode);
 }
 
@@ -484,10 +492,10 @@ void RigidAnimationManager::UpdateWorldMatrix(RigidNode* node)
 {
     if (!node) return;
     
-    // Calculate world matrix
+    // Calculate world matrix (parent first then local because we use row-vector convention: v' = v * M)
     if (node->parent)
     {
-        node->worldMatrix = XMMatrixMultiply(node->localTransform, node->parent->worldMatrix);
+        node->worldMatrix = XMMatrixMultiply(node->parent->worldMatrix, node->localTransform);
     }
     else
     {
@@ -502,15 +510,15 @@ void RigidAnimationManager::UpdateWorldMatrix(RigidNode* node)
 }
 
 void RigidAnimationManager::Render(ID3D11DeviceContext* context, ID3D11Buffer* constantBuffer, 
-                                  const XMMATRIX& view, const XMMATRIX& proj)
+                                  const XMMATRIX& view, const XMMATRIX& proj, const ConstantBuffer& baseCB)
 {
     if (!rootNode) return;
     
-    RenderNode(rootNode, context, constantBuffer, view, proj);
+    RenderNode(rootNode, context, constantBuffer, view, proj, baseCB);
 }
 
 void RigidAnimationManager::RenderNode(RigidNode* node, ID3D11DeviceContext* context, ID3D11Buffer* constantBuffer,
-                                      const XMMATRIX& view, const XMMATRIX& proj)
+                                      const XMMATRIX& view, const XMMATRIX& proj, const ConstantBuffer& baseCB)
 {
     if (!node) return;
     
@@ -523,20 +531,16 @@ void RigidAnimationManager::RenderNode(RigidNode* node, ID3D11DeviceContext* con
         context->IASetVertexBuffers(0, 1, &node->vb, &stride, &offset);
         context->IASetIndexBuffer(node->ib, DXGI_FORMAT_R32_UINT, 0);
         
-        // Update constant buffer with this node's world matrix
+        // Update constant buffer preserving material/lighting/shading
         D3D11_MAPPED_SUBRESOURCE mapped;
         context->Map(constantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
         ConstantBuffer* cb = (ConstantBuffer*)mapped.pData;
-        
-        // Set world matrix and other matrices
+        *cb = baseCB; // copy all fields first
         cb->world = XMMatrixTranspose(node->worldMatrix);
         cb->view = view;
         cb->proj = proj;
-        cb->worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(node->worldMatrix)));
-        
-        // Set rigid animation flag
+        cb->worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, node->worldMatrix));
         cb->useRigid = 1;
-        
         context->Unmap(constantBuffer, 0);
         context->VSSetConstantBuffers(0, 1, &constantBuffer);
         context->PSSetConstantBuffers(0, 1, &constantBuffer);
@@ -548,7 +552,7 @@ void RigidAnimationManager::RenderNode(RigidNode* node, ID3D11DeviceContext* con
     // Render children
     for (auto* child : node->children)
     {
-        RenderNode(child, context, constantBuffer, view, proj);
+        RenderNode(child, context, constantBuffer, view, proj, baseCB);
     }
 }
 
@@ -847,6 +851,49 @@ void App::OnRender()
 				// Set input layout for rigid animation
 				m_->m_pDeviceContext->IASetInputLayout(m_->m_pInputLayout);
 				m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShader, nullptr, 0);
+
+				// Ensure fallback textures exist (create 1x1 if missing)
+				if (!m_->m_pFallbackWhite)
+				{
+					UINT color = 0xFFFFFFFF; // RGBA8 white
+					D3D11_TEXTURE2D_DESC td{}; td.Width = 1; td.Height = 1; td.MipLevels = 1; td.ArraySize = 1;
+					td.Format = DXGI_FORMAT_R8G8B8A8_UNORM; td.SampleDesc.Count = 1; td.Usage = D3D11_USAGE_IMMUTABLE; td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+					D3D11_SUBRESOURCE_DATA sd{}; sd.pSysMem = &color; sd.SysMemPitch = sizeof(UINT);
+					Microsoft::WRL::ComPtr<ID3D11Texture2D> tex;
+					HR_T(m_->m_pDevice->CreateTexture2D(&td, &sd, tex.GetAddressOf()));
+					D3D11_SHADER_RESOURCE_VIEW_DESC srvd{}; srvd.Format = td.Format; srvd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D; srvd.Texture2D.MipLevels = 1; srvd.Texture2D.MostDetailedMip = 0;
+					HR_T(m_->m_pDevice->CreateShaderResourceView(tex.Get(), &srvd, &m_->m_pFallbackWhite));
+				}
+				if (!m_->m_pFallbackNormal)
+				{
+					UINT color = 0x8080FFFF; // (0.5,0.5,1,1) in RGBA8
+					D3D11_TEXTURE2D_DESC td{}; td.Width = 1; td.Height = 1; td.MipLevels = 1; td.ArraySize = 1;
+					td.Format = DXGI_FORMAT_R8G8B8A8_UNORM; td.SampleDesc.Count = 1; td.Usage = D3D11_USAGE_IMMUTABLE; td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+					D3D11_SUBRESOURCE_DATA sd{}; sd.pSysMem = &color; sd.SysMemPitch = sizeof(UINT);
+					Microsoft::WRL::ComPtr<ID3D11Texture2D> tex;
+					HR_T(m_->m_pDevice->CreateTexture2D(&td, &sd, tex.GetAddressOf()));
+					D3D11_SHADER_RESOURCE_VIEW_DESC srvd{}; srvd.Format = td.Format; srvd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D; srvd.Texture2D.MipLevels = 1; srvd.Texture2D.MostDetailedMip = 0;
+					HR_T(m_->m_pDevice->CreateShaderResourceView(tex.Get(), &srvd, &m_->m_pFallbackNormal));
+				}
+				if (!m_->m_pFallbackBlack)
+				{
+					UINT color = 0x000000FF; // black
+					D3D11_TEXTURE2D_DESC td{}; td.Width = 1; td.Height = 1; td.MipLevels = 1; td.ArraySize = 1;
+					td.Format = DXGI_FORMAT_R8G8B8A8_UNORM; td.SampleDesc.Count = 1; td.Usage = D3D11_USAGE_IMMUTABLE; td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+					D3D11_SUBRESOURCE_DATA sd{}; sd.pSysMem = &color; sd.SysMemPitch = sizeof(UINT);
+					Microsoft::WRL::ComPtr<ID3D11Texture2D> tex;
+					HR_T(m_->m_pDevice->CreateTexture2D(&td, &sd, tex.GetAddressOf()));
+					D3D11_SHADER_RESOURCE_VIEW_DESC srvd{}; srvd.Format = td.Format; srvd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D; srvd.Texture2D.MipLevels = 1; srvd.Texture2D.MostDetailedMip = 0;
+					HR_T(m_->m_pDevice->CreateShaderResourceView(tex.Get(), &srvd, &m_->m_pFallbackBlack));
+				}
+
+				// Bind fallback textures to avoid alpha clip discarding everything
+				ID3D11ShaderResourceView* srvDiffuse = m_->m_pFallbackWhite;
+				ID3D11ShaderResourceView* srvNormal  = (m_->m_EnableNormalMap != 0) ? m_->m_pFallbackNormal : nullptr;
+				ID3D11ShaderResourceView* srvSpec    = (m_->m_UseSpecularMap != 0) ? m_->m_pFallbackWhite : nullptr;
+				m_->m_pDeviceContext->PSSetShaderResources(0, 1, &srvDiffuse);
+				m_->m_pDeviceContext->PSSetShaderResources(2, 1, &srvNormal);
+				m_->m_pDeviceContext->PSSetShaderResources(3, 1, &srvSpec);
 				
 				// Set rigid animation flag in constant buffer
 				ConstantBuffer cb = m_->m_ConstantBuffer;
@@ -863,9 +910,9 @@ void App::OnRender()
 				m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
 				m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
 				
-				// Render rigid animation
-				mdlPtr->rigidAnimation->Render(m_->m_pDeviceContext, m_->m_pConstantBuffer, 
-					m_->m_baseProjection.view, m_->m_baseProjection.proj);
+                // Render rigid animation with base constant fields
+                mdlPtr->rigidAnimation->Render(m_->m_pDeviceContext, m_->m_pConstantBuffer, 
+                    m_->m_baseProjection.view, m_->m_baseProjection.proj, m_->m_ConstantBuffer);
 			}
 			else
 			{
@@ -1852,27 +1899,57 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
 	if (ext == L".fbx")
 	{
 		entry->source = ModelSource::FBX;
-		
-		// Try rigid animation first
-		entry->rigidAnimation = std::make_unique<RigidAnimationManager>();
-		if (entry->rigidAnimation->LoadRigidAnimationFromFBX(m_->m_pDevice, pathW))
+		// 1) Assimp로 먼저 스캔하여 Skinned/Rigid 판별
 		{
-			entry->hasRigidAnimation = true;
-			ok = true;
-		}
-		else
-		{
-			// Fall back to skinned animation
-			entry->rigidAnimation.reset();
-			if (ok = entry->fbx.Load(m_->m_pDevice, pathW))
+			Assimp::Importer preImporter;
+			const aiScene* preScene = preImporter.ReadFile(Utf8FromWString(pathW),
+				aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_CalcTangentSpace);
+			bool hasSkinned = false;
+			bool hasAnim = false;
+			if (preScene)
 			{
-				entry->stride = entry->fbx.GetVertexStride();
-				entry->vb = entry->fbx.GetVertexBuffer(); if (entry->vb) entry->vb->AddRef();
-				entry->ib = entry->fbx.GetIndexBuffer();  if (entry->ib) entry->ib->AddRef();
-				entry->indexCount = entry->fbx.GetIndexCount();
-				entry->subsets.clear();
-				for (auto& s : entry->fbx.GetSubsets()) entry->subsets.push_back({ s.startIndex, s.indexCount, s.materialIndex });
-				entry->materialSRVs = entry->fbx.GetMaterialSRVs();
+				hasAnim = (preScene->mNumAnimations > 0);
+				for (unsigned int mi = 0; mi < preScene->mNumMeshes; ++mi)
+				{
+					if (preScene->mMeshes[mi]->mNumBones > 0) { hasSkinned = true; break; }
+				}
+			}
+			// 우선순위: Rigid-only > Skinned > Static
+			if (hasAnim && !hasSkinned)
+			{
+				entry->rigidAnimation = std::make_unique<RigidAnimationManager>();
+				if (entry->rigidAnimation->LoadRigidAnimationFromFBX(m_->m_pDevice, pathW))
+				{
+					entry->hasRigidAnimation = true;
+					ok = true;
+				}
+			}
+			else if (hasSkinned)
+			{
+				if (ok = entry->fbx.Load(m_->m_pDevice, pathW))
+				{
+					entry->stride = entry->fbx.GetVertexStride();
+					entry->vb = entry->fbx.GetVertexBuffer(); if (entry->vb) entry->vb->AddRef();
+					entry->ib = entry->fbx.GetIndexBuffer();  if (entry->ib) entry->ib->AddRef();
+					entry->indexCount = entry->fbx.GetIndexCount();
+					entry->subsets.clear();
+					for (auto& s : entry->fbx.GetSubsets()) entry->subsets.push_back({ s.startIndex, s.indexCount, s.materialIndex });
+					entry->materialSRVs = entry->fbx.GetMaterialSRVs();
+				}
+			}
+			else
+			{
+				// 정적 메시: FBX 로더로 처리
+				if (ok = entry->fbx.Load(m_->m_pDevice, pathW))
+				{
+					entry->stride = entry->fbx.GetVertexStride();
+					entry->vb = entry->fbx.GetVertexBuffer(); if (entry->vb) entry->vb->AddRef();
+					entry->ib = entry->fbx.GetIndexBuffer();  if (entry->ib) entry->ib->AddRef();
+					entry->indexCount = entry->fbx.GetIndexCount();
+					entry->subsets.clear();
+					for (auto& s : entry->fbx.GetSubsets()) entry->subsets.push_back({ s.startIndex, s.indexCount, s.materialIndex });
+					entry->materialSRVs = entry->fbx.GetMaterialSRVs();
+				}
 			}
 		}
 		
