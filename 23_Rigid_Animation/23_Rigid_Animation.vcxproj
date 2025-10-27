@@ -141,6 +141,10 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <PreBuildEvent>
+      <Command>xcopy /Y /E /I /D "$(SolutionDir)Resource\*" "$(OutDir)\..\Resource\"
+xcopy /Y /E /I /D "$(SolutionDir)third_party\3DModel\*" "$(OutDir)\"</Command>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>

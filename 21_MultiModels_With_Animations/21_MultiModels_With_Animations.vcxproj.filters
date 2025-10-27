@@ -18,28 +18,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="21_BasicVS.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="21_SkyBoxPS.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="21_SkyBoxVS.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="21_LightingHelper.hlsli">
-      <Filter>Shaders</Filter>
-    </None>
-    <None Include="21_Shared.fxh">
-      <Filter>Shaders</Filter>
-    </None>
-    <None Include="21_SkyBox.hlsli">
-      <Filter>Shaders</Filter>
-    </None>
-  </ItemGroup>
-  <ItemGroup>
     <ClCompile Include="App.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
@@ -54,6 +32,24 @@
   </ItemGroup>
   <ItemGroup>
     <CopyFileToFolders Include="21_BasicPS.hlsl">
+      <Filter>Shaders</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="21_SkyBoxVS.hlsl">
+      <Filter>Shaders</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="21_BasicVS.hlsl">
+      <Filter>Shaders</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="21_LightingHelper.hlsli">
+      <Filter>Shaders</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="21_Shared.fxh">
+      <Filter>Shaders</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="21_SkyBox.hlsli">
+      <Filter>Shaders</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="21_SkyBoxPS.hlsl">
       <Filter>Shaders</Filter>
     </CopyFileToFolders>
   </ItemGroup>
