@@ -13,9 +13,34 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
-    <Filter Include="Shaders">
-      <UniqueIdentifier>{d2e1860d-c29f-4fce-a4c2-dbfdf43e10ad}</UniqueIdentifier>
+    <Filter Include="Shared">
+      <UniqueIdentifier>{958308ba-ffd2-4086-925f-6dabef3fcb1e}</UniqueIdentifier>
     </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="24_BasicPS.hlsl">
+      <Filter>Shared</Filter>
+    </FxCompile>
+    <FxCompile Include="24_BasicVS.hlsl">
+      <Filter>Shared</Filter>
+    </FxCompile>
+    <FxCompile Include="24_SkyBoxPS.hlsl">
+      <Filter>Shared</Filter>
+    </FxCompile>
+    <FxCompile Include="24_SkyBoxVS.hlsl">
+      <Filter>Shared</Filter>
+    </FxCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="24_LightingHelper.hlsli">
+      <Filter>Shared</Filter>
+    </None>
+    <None Include="24_Shared.fxh">
+      <Filter>Shared</Filter>
+    </None>
+    <None Include="24_SkyBox.hlsli">
+      <Filter>Shared</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="App.cpp">
@@ -29,28 +54,5 @@
     <ClInclude Include="App.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
-  </ItemGroup>
-  <ItemGroup>
-    <CopyFileToFolders Include="21_BasicPS.hlsl">
-      <Filter>Shaders</Filter>
-    </CopyFileToFolders>
-    <CopyFileToFolders Include="21_SkyBoxVS.hlsl">
-      <Filter>Shaders</Filter>
-    </CopyFileToFolders>
-    <CopyFileToFolders Include="21_BasicVS.hlsl">
-      <Filter>Shaders</Filter>
-    </CopyFileToFolders>
-    <CopyFileToFolders Include="21_LightingHelper.hlsli">
-      <Filter>Shaders</Filter>
-    </CopyFileToFolders>
-    <CopyFileToFolders Include="21_Shared.fxh">
-      <Filter>Shaders</Filter>
-    </CopyFileToFolders>
-    <CopyFileToFolders Include="21_SkyBox.hlsli">
-      <Filter>Shaders</Filter>
-    </CopyFileToFolders>
-    <CopyFileToFolders Include="21_SkyBoxPS.hlsl">
-      <Filter>Shaders</Filter>
-    </CopyFileToFolders>
   </ItemGroup>
 </Project>
