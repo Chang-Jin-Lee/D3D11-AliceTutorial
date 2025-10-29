@@ -1,4 +1,4 @@
-/*
+﻿/*
 * @brief : fbx, pmx, obj 3D 모델을 연속으로 여러 개를 그리는 예제입니다.
 * @details :
 *		- 노말맵이 적용되어 있는 경우 노말맵을 반영해서 그립니다
@@ -17,6 +17,7 @@
 #include <filesystem>
 #include <algorithm>
 #include <memory>
+#include <unordered_set>
 #include "../Common/StaticMesh.h"
 #include "../Common/LineRenderer.h"
 #include "../Common/Skybox.h"
@@ -30,6 +31,7 @@
 #include <imgui_impl_win32.h>
 #include <imgui_impl_dx11.h>
 #include <imgui_stdlib.h>
+#include <imgui_internal.h>
 #include <commdlg.h>
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
@@ -49,11 +51,14 @@ struct ConstantBuffer {
     XMMATRIX world; XMMATRIX view; XMMATRIX proj; XMMATRIX worldInvTranspose;
     Material material; DirectionalLight dirLight; XMFLOAT3 eyePos; float pad;
     int shadingMode = 0; XMFLOAT3 pad2 = {0,0,0}; int enableNormalMap = 1; XMFLOAT3 pad3 = {0,0,0}; int useSpecularMap = 0; XMFLOAT3 pad4 = {0,0,0};
+    float outlineWidth = 0.15f; float outlinePow = 1.0f; XMFLOAT2 outlinePad = {0,0}; XMFLOAT4 outlineColor = XMFLOAT4(0,0,0,1); float outlineStrength = 1.0f; XMFLOAT3 _outlinePad2 = {0,0,0};
 };
-enum class ShadingMode { Phong=0, BlinnPhong=1, Lambert=2, Unlit=3, TextureOnly=4 };
+enum class ShadingMode { Phong=0, BlinnPhong=1, Lambert=2, Unlit=3, TextureOnly=4, ToonShading=5 };
 enum class RenderMode { None = 0, Cube = 1, Model = 2 };
 enum class ModelSource { FBX, OBJ, PMX, Custom };
 struct ModelSubset { uint32_t start; uint32_t count; uint32_t materialIndex; };
+// 간단한 메시 통계 구조체
+struct MeshStats { uint32_t vertices = 0, edges = 0, faces = 0, triangles = 0; };
 
 // 여러 모델을 그리기 위한 구조체
 struct ModelEntry
@@ -79,11 +84,139 @@ struct ModelEntry
 	XMFLOAT3 rotDeg = {0,0,0}; // yaw=pitch=roll(deg)
 	bool     autoRotate = false;
 
+	// 사전 계산된 메시 통계
+	MeshStats meshStats{};
+	bool meshStatsValid = false;
+
 	// FBX 전용 애니메이션 UI 상태
 	// ImGui에서 보여주기 위함
 	int  uiSelectedAnim = -1;
 	bool uiAnimPlaying = false;
+
+	// 본 트리 캐시 로드 시 1회 구축, UI는 이 캐시만 사용하여 빠르게 렌더링
+	struct CachedSkelNode { std::wstring nameW; std::string nameU8; bool isBone = false; std::vector<int> children; };
+	std::vector<CachedSkelNode> boneCache;
+	int  boneRoot = -1;
+	bool boneCacheValid = false;
+	std::string boneDisplayText; // 캐싱된 UI 출력
 };
+
+// 본 캐시/텍스트 일괄 구축 함수
+static void BuildBoneCacheStructure(ModelEntry& entry, const char* filter)
+{
+    entry.boneCache.clear();
+    entry.boneRoot = -1;
+    entry.boneCacheValid = false;
+    entry.boneDisplayText.clear();
+
+    // 캐시 생성
+    if (entry.source == ModelSource::FBX && entry.fbx.HasSkeleton())
+    {
+        const auto& sk = entry.fbx.GetSkeleton();
+        entry.boneCache.resize(sk.size());
+        for (size_t si = 0; si < sk.size(); ++si)
+        {
+            const auto& s = sk[si];
+            auto& c = entry.boneCache[si];
+            c.nameW = s.nameW;
+            c.nameU8 = Utf8FromWString(c.nameW);
+            c.isBone = s.isBone;
+            c.children = s.children;
+        }
+        entry.boneRoot = entry.fbx.GetSkeletonRoot();
+        entry.boneCacheValid = (entry.boneRoot >= 0) && ((size_t)entry.boneRoot < entry.boneCache.size());
+    }
+    else if (entry.source == ModelSource::PMX && entry.pmx.HasSkeleton())
+    {
+        const auto& sk = entry.pmx.GetSkeleton();
+        entry.boneCache.resize(sk.size());
+        for (size_t si = 0; si < sk.size(); ++si)
+        {
+            const auto& s = sk[si];
+            auto& c = entry.boneCache[si];
+            c.nameW = s.nameW;
+            c.nameU8 = Utf8FromWString(c.nameW);
+            c.isBone = s.isBone;
+            c.children = s.children;
+        }
+        entry.boneRoot = entry.pmx.GetSkeletonRoot();
+        entry.boneCacheValid = (entry.boneRoot >= 0) && ((size_t)entry.boneRoot < entry.boneCache.size());
+    }
+
+    if (!entry.boneCacheValid || entry.boneRoot < 0 || entry.boneRoot >= (int)entry.boneCache.size()) return;
+
+    // 출력 문자열 생성
+    const auto& cache = entry.boneCache;
+    const bool useFilter = (filter != nullptr && filter[0] != '\0');
+    std::string f = useFilter ? std::string(filter) : std::string();
+
+    entry.boneDisplayText += "Bone Count: ";
+    entry.boneDisplayText += std::to_string((unsigned)cache.size());
+    entry.boneDisplayText += "\n\n";
+
+    std::function<bool(int)> subtreeContainsFilter = [&](int idx) -> bool {
+        if (!useFilter) return true;
+        if (idx < 0 || idx >= (int)cache.size()) return false;
+        if (cache[idx].nameU8.find(f) != std::string::npos) return true;
+        for (int ch : cache[idx].children) if (subtreeContainsFilter(ch)) return true;
+        return false;
+    };
+
+    std::function<void(int,int)> dfs = [&](int idx, int depth)
+    {
+        if (idx < 0 || idx >= (int)cache.size()) return;
+        if (useFilter && !subtreeContainsFilter(idx)) return;
+        const auto& n = cache[idx];
+        entry.boneDisplayText.append((size_t)depth * 2u, ' ');
+        entry.boneDisplayText += n.nameU8;
+        entry.boneDisplayText += '\n';
+        for (int ch : n.children) dfs(ch, depth + 1);
+    };
+
+    dfs(entry.boneRoot, 0);
+}
+
+
+// 인덱스 버퍼를 스테이징으로 복사해 통계 계산 (삼각형 리스트 가정)
+static bool ComputeMeshStats(ID3D11Device* device, ID3D11DeviceContext* ctx,
+	ID3D11Buffer* vb, UINT vertexStride, ID3D11Buffer* ib, int indexCount,
+	MeshStats& out)
+{
+	if (!device || !ctx || !vb || !ib || vertexStride == 0 || indexCount <= 0) return false;
+
+	D3D11_BUFFER_DESC vbd{}; vb->GetDesc(&vbd);
+	out.vertices = vbd.ByteWidth / vertexStride;
+
+	D3D11_BUFFER_DESC ibd{}; ib->GetDesc(&ibd);
+	D3D11_BUFFER_DESC sd = ibd; sd.Usage = D3D11_USAGE_STAGING; sd.BindFlags = 0; sd.CPUAccessFlags = D3D11_CPU_ACCESS_READ; sd.MiscFlags = 0;
+	ID3D11Buffer* staging = nullptr;
+	if (FAILED(device->CreateBuffer(&sd, nullptr, &staging))) return false;
+	ctx->CopyResource(staging, ib);
+
+	D3D11_MAPPED_SUBRESOURCE mapped{};
+	bool ok = false;
+	if (SUCCEEDED(ctx->Map(staging, 0, D3D11_MAP_READ, 0, &mapped)))
+	{
+		const uint32_t* idx = reinterpret_cast<const uint32_t*>(mapped.pData);
+		int ic = indexCount;
+		out.triangles = (ic >= 3) ? (uint32_t)(ic / 3) : 0;
+		out.faces = out.triangles; // 삼각형으로 구성
+
+		std::unordered_set<uint64_t> edges;
+		edges.reserve(out.triangles * 2u);
+		auto addEdge = [&](uint32_t a, uint32_t b){ uint32_t lo = (a < b) ? a : b; uint32_t hi = (a < b) ? b : a; uint64_t key = ((uint64_t)hi << 32) | (uint64_t)lo; edges.insert(key); };
+		for (int i = 0; i + 2 < ic; i += 3)
+		{
+			uint32_t i0 = idx[i + 0], i1 = idx[i + 1], i2 = idx[i + 2];
+			addEdge(i0, i1); addEdge(i1, i2); addEdge(i2, i0);
+		}
+		out.edges = (uint32_t)edges.size();
+		ctx->Unmap(staging, 0);
+		ok = true;
+	}
+	SAFE_RELEASE(staging);
+	return ok;
+}
 
 // pImpl 정의
 struct App::Impl {
@@ -121,6 +254,34 @@ struct App::Impl {
     ID3D11ShaderResourceView*     m_pSkyFaceSRV[6] = {};
     ImVec2                        m_SkyFaceSize = ImVec2(0, 0);
     wchar_t                       m_CurrentSkyboxPath[260] = L"..\\Resource\\Skybox\\cubemap.dds";
+
+	// Cube 텍스처 경로
+	const wchar_t* facePaths[6] = {
+	L"..\\Resource\\Image\\Bricks059_1K-JPG_Color.jpg",
+	L"..\\Resource\\Image\\Bricks059_1K-JPG_Color.jpg",
+	L"..\\Resource\\Image\\Bricks059_1K-JPG_Color.jpg",
+	L"..\\Resource\\Image\\Bricks059_1K-JPG_Color.jpg",
+	L"..\\Resource\\Image\\Bricks059_1K-JPG_Color.jpg",
+	L"..\\Resource\\Image\\Bricks059_1K-JPG_Color.jpg"
+	};
+
+	const wchar_t* normalPaths[6] = {
+		L"..\\Resource\\Image\\Bricks059_1K-JPG_NormalDX.jpg",
+		L"..\\Resource\\Image\\Bricks059_1K-JPG_NormalDX.jpg",
+		L"..\\Resource\\Image\\Bricks059_1K-JPG_NormalDX.jpg",
+		L"..\\Resource\\Image\\Bricks059_1K-JPG_NormalDX.jpg",
+		L"..\\Resource\\Image\\Bricks059_1K-JPG_NormalDX.jpg",
+		L"..\\Resource\\Image\\Bricks059_1K-JPG_NormalDX.jpg"
+	};
+
+	const wchar_t* specularPaths[6] = {
+		L"..\\Resource\\Image\\Bricks059_Specular.png",
+		L"..\\Resource\\Image\\Bricks059_Specular.png",
+		L"..\\Resource\\Image\\Bricks059_Specular.png",
+		L"..\\Resource\\Image\\Bricks059_Specular.png",
+		L"..\\Resource\\Image\\Bricks059_Specular.png",
+		L"..\\Resource\\Image\\Bricks059_Specular.png"
+	};
 
     // 기본 메시 버퍼/입력 레이아웃
     ID3D11InputLayout*            m_pInputLayout = nullptr;
@@ -185,12 +346,15 @@ struct App::Impl {
 
     // 셰이딩 옵션 / 클리어 컬러
     ShadingMode                   m_ShadingMode = ShadingMode::Phong;
+    // Outline params ImGui에서 제어하는 용도도
+    float                         m_OutlineWidth = 0.15f;
+    float                         m_OutlinePow = 1.0f;
+    XMFLOAT4                      m_OutlineColor = XMFLOAT4(0,0,0,1);
+    float                         m_OutlineStrength = 1.0f;
     int                           m_EnableNormalMap = 1;
     int                           m_UseSpecularMap = 0;
     int                           m_LegacyShading = 1;
     XMFLOAT4                      m_ClearColor = { 0.125f, 0.125f, 0.125f, 1.0f };
-    // 알파 가림(DepthWrite) 버그 재현 토글
-    bool                          m_ReproAlphaOcclusion = false;
 
     // 모델 로딩 및 렌더링 FBX/OBJ/PMX
     RenderMode                    m_RenderMode = RenderMode::None;
@@ -199,6 +363,30 @@ struct App::Impl {
     ID3D11ShaderResourceView*     m_pFallbackNormal = nullptr;
     ID3D11ShaderResourceView*     m_pFallbackBlack = nullptr;
     std::string                   m_ModelPathInputUTF8;
+    
+    // 본 에디터 관련
+    int                           m_SelectedBoneIdx = -1;         // 선택된 본 인덱스
+    int                           m_SelectedModelIdx = -1;        // 선택된 모델 인덱스
+
+    // DockSpace 레이아웃
+    bool                          m_EnableDock = false;
+    bool                          m_DockBuilt = false;
+    ImGuiID                       m_DockMain = 0;
+    ImGuiID                       m_DockLeft = 0;
+    ImGuiID                       m_DockRight = 0;
+    ImGuiID                       m_DockBottom = 0;
+    ImGuiID                       m_DockCenter = 0;
+
+    // Bone 필터/옵션
+    char                          m_BoneFilter[128] = {0};
+    bool                          m_BoneExpandAll = false;
+
+    // Console 로그
+    std::vector<std::string>      m_LogLines;
+    bool                          m_LogAutoScroll = true;
+    char                          m_LogFilter[128] = {0};
+
+	std::function<void(std::string)> PushLog = [&](const std::string& s) { m_LogLines.push_back(s); };
 };
 
 // 멤버 매핑 매크로 제거됨: 직접 m_-> 멤버 접근을 사용합니다.
@@ -462,6 +650,11 @@ void App::OnRender()
 	m_->m_ConstantBuffer.pad3 = XMFLOAT3(0,0,0);
 	m_->m_ConstantBuffer.useSpecularMap = m_->m_UseSpecularMap;
 	m_->m_ConstantBuffer.pad4 = XMFLOAT3(0,0,0);
+    // Outline params 업데이트
+    m_->m_ConstantBuffer.outlineWidth = m_->m_OutlineWidth;
+    m_->m_ConstantBuffer.outlinePow = m_->m_OutlinePow;
+    m_->m_ConstantBuffer.outlineColor = m_->m_OutlineColor;
+    m_->m_ConstantBuffer.outlineStrength = m_->m_OutlineStrength;
 	// 머티리얼 채우기
 	m_->m_ConstantBuffer.material = m_->m_Material;
 
@@ -678,7 +871,7 @@ void App::OnRender()
 		// light direction (red)
 		m_->m_LineRenderer->DrawLightDirection(m_->m_pDeviceContext, m_->m_LightPosition, m_->m_DirLight.direction, 2.0f, m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
 		// symmetric axes centered at origin for better grid feel
-		m_->m_LineRenderer->DrawAxesSymmetric(m_->m_pDeviceContext, 100.0f, m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
+		m_->m_LineRenderer->DrawAxesSymmetric(m_->m_pDeviceContext, 2000.0f, m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
 
 		// 복원
 		m_->m_pDeviceContext->VSSetShader(prevVS, nullptr, 0);
@@ -710,7 +903,6 @@ void App::OnRender()
 		m_->m_pDeviceContext->Unmap(m_->m_pConstantBuffer, 0);
 		m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
 		m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
-
 		// 좌상단 작은 축 표시
 		m_->m_LineRenderer->DrawAxesOverlay(m_->m_pDeviceContext, XMMatrixTranspose(m_->m_baseProjection.view), DirectX::XMFLOAT2(-0.9f, 0.85f), 0.08f, m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
 	}
@@ -720,254 +912,13 @@ void App::OnRender()
 	ImGui_ImplWin32_NewFrame();
 	ImGui::NewFrame();
 
-	if (ImGui::Begin("Controls"))
-	{
-		// SkyBox 선택
-		{
-			int cur = (m_->m_SkyBoxChoice == App::Impl::SkyBoxChoice::Off) ? 0 : (m_->m_SkyBoxChoice == App::Impl::SkyBoxChoice::Hanako ? 1 : 2);
-			const char* items[] = { "Off", "Hanako.dds", "cubemap.dds" };
-			if (ImGui::Combo("SkyBox Choice", &cur, items, IM_ARRAYSIZE(items)))
-			{
-				m_->m_SkyBoxChoice = (cur == 0) ? App::Impl::SkyBoxChoice::Off : (cur == 1 ? App::Impl::SkyBoxChoice::Hanako : App::Impl::SkyBoxChoice::CubeMap);
-				if (m_->m_SkyBoxChoice == App::Impl::SkyBoxChoice::Off)
-				{
-					// Off: 배경 단색 사용
-				}
-				else
-				{
-					const wchar_t* path = (m_->m_SkyBoxChoice == App::Impl::SkyBoxChoice::Hanako) ? L"..\\Resource\\Skybox\\Hanako.dds" : L"..\\Resource\\Skybox\\cubemap.dds";
-					ChangeSkyboxDDS(path);
-				}
-			}
-			if (m_->m_SkyBoxChoice == App::Impl::SkyBoxChoice::Off)
-			{
-				ImGui::ColorEdit4("Background Color", &m_->m_ClearColor.x);
-			}
-		}
-		ImGui::Text("Cube Transforms");
-		ImGui::Checkbox("Rotate Cube", &m_->m_RotateModel);
-		ImGui::DragFloat3("Cube Scale", &m_->m_cubeScale.x, 0.1f, 20.0f);
-		ImGui::DragFloat3("Cube Pos (x,y,z)", &m_->m_cubePos.x, 0.1f);
-		// 모델 회전(도) 편집
-		ImGui::DragFloat3("Cube Rotation (deg)", &m_->m_cubeRotation.x, 1.0f, -360.0f, 360.0f, "%.1f");
-		ImGui::Separator();
-		ImGui::Text("Camera");
-		{
-			if (ImGui::Button("Reset"))
-			{
-				m_->m_camera.Reset();
-			}
-			ImGui::SliderFloat("Camera Speed", &m_->m_camera.m_MoveSpeed, 10.0f, 500.0f, "%.1f");
-			DirectX::XMFLOAT3 pos = m_->m_camera.GetPosition();
-			if (ImGui::DragFloat3("Camera Pos (x,y,z)", &pos.x, 0.1f))
-			{
-				m_->m_camera.SetPosition(pos);
-			}
-			float fovDeg = XMConvertToDegrees(m_->m_camera.GetFovYRad());
-			if (ImGui::SliderFloat("Camera FOV (deg)", &fovDeg, 30.0f, 120.0f))
-			{
-				m_->m_camera.SetFrustum(XMConvertToRadians(fovDeg), AspectRatio(), m_->m_camera.GetNearZ(), m_->m_camera.GetFarZ());
-			}
-			float nearZ = m_->m_camera.GetNearZ();
-			float farZ = m_->m_camera.GetFarZ();
-			if (ImGui::DragFloatRange2("Near/Far", &nearZ, &farZ, 0.1f, 0.01f, 5000.0f, "Near: %.2f", "Far: %.2f"))
-			{
-				m_->m_camera.SetFrustum(m_->m_camera.GetFovYRad(), AspectRatio(), nearZ, farZ);
-			}
-		}
-		ImGui::Separator();
-		ImGui::Text("Shading");
-		{
-            int mode = (int)m_->m_ShadingMode;
-			const char* modes[] = { "Phong", "Blinn-Phong", "Lambert", "Unlit", "TextureOnly" };
-			if (ImGui::Combo("Shading Mode", &mode, modes, IM_ARRAYSIZE(modes)))
-			{
-				m_->m_ShadingMode = (ShadingMode)mode;
-			}
-            ImGui::Checkbox("Enable Normal Map", (bool*)&m_->m_EnableNormalMap);
-            ImGui::Checkbox("Use Specular Map", (bool*)&m_->m_UseSpecularMap);
-		}
-		ImGui::Separator();
-		ImGui::Text("Light");
-		ImGui::DragFloat3("Light Direction", &m_->m_DirLight.direction.x, 0.05f);
-		ImGui::ColorEdit4("Ambient", &m_->m_DirLight.ambient.x);
-		ImGui::ColorEdit4("Diffuse", &m_->m_DirLight.diffuse.x);
-		ImGui::ColorEdit4("Specular", &m_->m_DirLight.specular.x);
-		ImGui::Separator();
-		ImGui::Text("Material");
-		ImGui::ColorEdit4("Ambient (ka)", &m_->m_Material.ambient.x);
-		ImGui::ColorEdit4("Diffuse (kd)", &m_->m_Material.diffuse.x);
-		ImGui::ColorEdit4("Specular (ks)", &m_->m_Material.specular.x);
-		ImGui::DragFloat("Shininess (alpha)", &m_->m_Material.specular.w, 0.05f, 1.0f, 256.0f);
-		ImGui::ColorEdit4("Reflect (kr, a=roughness)", &m_->m_Material.reflect.x);
-
-		ImGui::Separator();
-	}
-	ImGui::End();
-
-    // Models 독립 창
-    {
-        ImGui::SetNextWindowSize(ImVec2(420, 520), ImGuiCond_FirstUseEver);
-
-        ImGui::Begin("Model Loader (FBX / OBJ / PMX)");
-        // 버그 재현 토글 UI
-        ImGui::Checkbox("Repro alpha occlusion (DepthWrite+ConstBlend)", &m_->m_ReproAlphaOcclusion);
-        if (m_->m_ReproAlphaOcclusion)
-        {
-            ImGui::TextDisabled("Tip: Draw near-to-far to see rear hidden by alpha");
-        }
-		// 렌더 모드 선택
-		{
-			int curMode = (m_->m_RenderMode == RenderMode::None) ? 0 : (m_->m_RenderMode == RenderMode::Cube ? 1 : 2);
-			const char* items[] = { "None", "Cube", "Model" };
-			if (ImGui::Combo("Render Mode", &curMode, items, IM_ARRAYSIZE(items)))
-			{
-				m_->m_RenderMode = (curMode == 0) ? RenderMode::None : (curMode == 1 ? RenderMode::Cube : RenderMode::Model);
-			}
-		}
-		if (ImGui::Button("Browse Model..."))
-		{
-			std::wstring pathW;
-			if (OpenFileDialogModel(pathW))
-			{
-				if (LoadModelFromFile(pathW)) { m_->m_RenderMode = RenderMode::Model; }
-			}
-		}
-		ImGui::SameLine();
-		if (ImGui::Button("Unload Model"))
-		{
-			UnloadModel();
-			m_->m_RenderMode = RenderMode::None; // 요구사항: 시작/언로드시 아무것도 렌더 X
-		}
-
-		if (!m_->m_Models.empty())
-		{
-			ImGui::Text("Models");
-			for (size_t i = 0; i < m_->m_Models.size(); ++i)
-			{
-				auto& mdl = *m_->m_Models[i];
-				ImGui::PushID((int)i);
-				ImGui::Separator();
-                ImGui::Text("Model #%d : %s", (int)i, Utf8FromWString(m_->m_Models[i]->modelName).c_str());
-				ImGui::DragFloat3("Position", &mdl.pos.x, 0.1f);
-				ImGui::DragFloat3("Rotation (deg)", &mdl.rotDeg.x, 1.0f, -360.0f, 360.0f, "%.1f");
-				ImGui::DragFloat3("Scale", &mdl.scale.x, 0.01f, 0.001f, 100.0f, "%.3f");
-				ImGui::Checkbox("Auto Rotate (Yaw)", &mdl.autoRotate);
-				if (mdl.source == ModelSource::FBX)
-				{
-					if (mdl.fbx.HasAnimations())
-					{
-						const auto& names = mdl.fbx.GetAnimationNames();
-						if (mdl.uiSelectedAnim < 0 || mdl.uiSelectedAnim >= (int)names.size()) mdl.uiSelectedAnim = mdl.fbx.GetCurrentAnimationIndex();
-						ImGui::Text("FBX Animations");
-						if (ImGui::BeginListBox("##AnimList", ImVec2(-FLT_MIN, 4 * ImGui::GetTextLineHeightWithSpacing())))
-						{
-							for (int a = 0; a < (int)names.size(); ++a)
-							{
-								bool sel = (a == mdl.uiSelectedAnim);
-								if (ImGui::Selectable(names[a].c_str(), sel))
-								{
-									mdl.uiSelectedAnim = a;
-									mdl.fbx.SetCurrentAnimation(a);
-								}
-								if (sel) ImGui::SetItemDefaultFocus();
-							}
-							ImGui::EndListBox();
-						}
-						ImGui::Checkbox("Play", &mdl.uiAnimPlaying);
-						mdl.fbx.SetAnimationPlaying(mdl.uiAnimPlaying);
-						double cur = mdl.fbx.GetAnimationTimeSeconds();
-						double dur = mdl.fbx.GetClipDurationSec(mdl.fbx.GetCurrentAnimationIndex());
-						float curF = (float)cur, durF = (float)dur;
-						if (durF > 0.0f)
-						{
-							if (ImGui::SliderFloat("Time (s)", &curF, 0.0f, durF)) mdl.fbx.SetAnimationTimeSeconds((double)curF);
-						}
-					}
-				}
-						else if (mdl.source == ModelSource::PMX)
-						{
-							if (ImGui::Button("Load VMD..."))
-							{
-								std::wstring vmdPath;
-								wchar_t file[MAX_PATH] = {0};
-								OPENFILENAMEW ofn{}; ofn.lStructSize = sizeof(ofn); ofn.hwndOwner = GameApp::m_hWnd; ofn.lpstrFilter = L"VMD Files (*.vmd)\0*.vmd\0All Files\0*.*\0\0"; ofn.lpstrFile = file; ofn.nMaxFile = MAX_PATH; ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
-								if (GetOpenFileNameW(&ofn))
-								{
-									if (mdl.pmx.LoadVMD(m_->m_pDevice, file))
-									{
-										// �ε� ���� �� ��� ����
-										mdl.uiAnimPlaying = true;
-										mdl.pmx.SetAnimationPlaying(true);
-									}
-								}
-							}
-							ImGui::Checkbox("Play##PMX", &mdl.uiAnimPlaying);
-							mdl.pmx.SetAnimationPlaying(mdl.uiAnimPlaying);
-							// PMX���� ���� Ŭ��(�ε�� VMD)���� ���
-							double cur = mdl.pmx.GetAnimationTimeSeconds();
-							double dur = mdl.pmx.GetClipDurationSec();
-							float curF = (float)cur, durF = (float)dur;
-							if (durF > 0.0f)
-							{
-								if (ImGui::SliderFloat("Time (s)##PMX", &curF, 0.0f, durF)) mdl.pmx.SetAnimationTimeSeconds((double)curF);
-							}
-						}
-				if (ImGui::Button("Remove"))
-				{
-					// release resources
-					m_->m_Models.erase(m_->m_Models.begin() + (ptrdiff_t)i);
-					ImGui::PopID();
-					break;
-				}
-				ImGui::PopID();
-			}
-		}
-        ImGui::End();
-    }
-
-	// 현재 카메라 포워드 기준 스카이박스 면 이미지를 표시 (스카이박스 On일 때만)
-	if (m_->m_SkyBoxChoice != App::Impl::SkyBoxChoice::Off)
-	{
-		int face = 0;
-		using namespace DirectX;
-		XMFLOAT3 fwd = m_->m_camera.GetForward();
-		XMVECTOR f = XMLoadFloat3(&fwd);
-		XMVECTOR fn = XMVector3Normalize(f);
-		XMFLOAT3 v; XMStoreFloat3(&v, fn);
-		float ax = fabsf(v.x), ay = fabsf(v.y), az = fabsf(v.z);
-		if (ax >= ay && ax >= az) face = (v.x >= 0.0f) ? 0 : 1; // +X / -X
-		else if (ay >= ax && ay >= az) face = (v.y >= 0.0f) ? 2 : 3; // +Y / -Y
-		else face =  (v.z >= 0.0f) ? 4 : 5;     // +Z / -Z
-
-		ID3D11ShaderResourceView* faceSRV = (face >= 0 && face < 6) ? m_->m_pSkyFaceSRV[face] : nullptr;
-		if (faceSRV)
-		{
-			ImGui::SetNextWindowPos(ImVec2(810, 210), ImGuiCond_Once);
-			ImGui::SetNextWindowSize(ImVec2(m_->m_HanakoDrawSize.x + 50, m_->m_HanakoDrawSize.y + 80), ImGuiCond_Once);
-			if (ImGui::Begin("Skybox Face"))
-			{
-				ImGui::BeginChild("SkyFaceView", ImVec2(0, 0), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-				const ImVec2 tex = (m_->m_HanakoDrawSize.x > 0 && m_->m_HanakoDrawSize.y > 0) ? m_->m_HanakoDrawSize : m_->m_SkyFaceSize;
-				ImVec2 avail = ImGui::GetContentRegionAvail();
-				float sx = (tex.x > 0.f) ? (avail.x / tex.x) : 1.f;
-				float sy = (tex.y > 0.f) ? (avail.y / tex.y) : 1.f;
-				float scale = (sx > 0.f && sy > 0.f) ? std::min(sx, sy) : 1.f;
-				ImVec2 draw = ImVec2(tex.x * scale, tex.y * scale);
-				ImVec2 start = ImGui::GetCursorPos();
-				ImVec2 offset = ImVec2((avail.x - draw.x) * 0.5f, (avail.y - draw.y) * 0.5f);
-				ImGui::SetCursorPos(start + offset);
-				ImGui::Image((ImTextureID)faceSRV, draw);
-				ImVec2 r0 = ImGui::GetItemRectMin();
-				ImVec2 r1 = ImGui::GetItemRectMax();
-				ImGui::GetWindowDrawList()->AddRect(r0 - ImVec2(2, 2), r1 + ImVec2(2, 2), IM_COL32(255, 255, 255, 160), 8.0f, 0, 2.0f);
-				ImGui::EndChild();
-			}
-			ImGui::End();
-		}
-	}
+	RenderControlPannel();
+	RenderModelPannel();
+	RenderConsolPannel();
 	m_->m_SystemInfo.RenderUI();
-	ImGui::Render();
+
+    ImGui::Render();
+
 	ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 	m_->m_pSwapChain->Present(0, 0);
 }
@@ -1236,54 +1187,15 @@ bool App::InitTexture()
 {
 	PrepareSkyFaceSRVs();
 
-	/*const wchar_t* facePaths[6] = {
-		L"..\\Resource\\Image\\Hanako.png", L"..\\Resource\\Image\\Hanako.png", L"..\\Resource\\Image\\Hanako.png",
-		L"..\\Resource\\Image\\Hanako.png", L"..\\Resource\\Image\\Hanako.png", L"..\\Resource\\Image\\Hanako.png"
-	};
-	const wchar_t* normalPaths[6] = {
-		L"..\\Resource\\Image\\Hanako_Normal.png", L"..\\Resource\\Image\\Hanako_Normal.png", L"..\\Resource\\Image\\Hanako_Normal.png",
-		L"..\\Resource\\Image\\Hanako_Normal.png", L"..\\Resource\\Image\\Hanako_Normal.png", L"..\\Resource\\Image\\Hanako_Normal.png"
-	};
-	const wchar_t* specularPaths[6] = {
-		L"..\\Resource\\Image\\Hanako_Specular.png", L"..\\Resource\\Image\\Hanako_Specular.png", L"..\\Resource\\Image\\Hanako_Specular.png",
-		L"..\\Resource\\Image\\Hanako_Specular.png", L"..\\Resource\\Image\\Hanako_Specular.png", L"..\\Resource\\Image\\Hanako_Specular.png"
-	};*/
-
-	const wchar_t* facePaths[6] = {
-	L"..\\Resource\\Image\\Bricks059_1K-JPG_Color.jpg",
-	L"..\\Resource\\Image\\Bricks059_1K-JPG_Color.jpg",
-	L"..\\Resource\\Image\\Bricks059_1K-JPG_Color.jpg",
-	L"..\\Resource\\Image\\Bricks059_1K-JPG_Color.jpg",
-	L"..\\Resource\\Image\\Bricks059_1K-JPG_Color.jpg",
-	L"..\\Resource\\Image\\Bricks059_1K-JPG_Color.jpg"
-	};
-
-	const wchar_t* normalPaths[6] = {
-		L"..\\Resource\\Image\\Bricks059_1K-JPG_NormalDX.jpg",
-		L"..\\Resource\\Image\\Bricks059_1K-JPG_NormalDX.jpg",
-		L"..\\Resource\\Image\\Bricks059_1K-JPG_NormalDX.jpg",
-		L"..\\Resource\\Image\\Bricks059_1K-JPG_NormalDX.jpg",
-		L"..\\Resource\\Image\\Bricks059_1K-JPG_NormalDX.jpg",
-		L"..\\Resource\\Image\\Bricks059_1K-JPG_NormalDX.jpg"
-	};
-
-	const wchar_t* specularPaths[6] = {
-		L"..\\Resource\\Image\\Bricks059_Specular.png",
-		L"..\\Resource\\Image\\Bricks059_Specular.png",
-		L"..\\Resource\\Image\\Bricks059_Specular.png",
-		L"..\\Resource\\Image\\Bricks059_Specular.png",
-		L"..\\Resource\\Image\\Bricks059_Specular.png",
-		L"..\\Resource\\Image\\Bricks059_Specular.png"
-	};
-
 	for (int i = 0; i < 6; ++i)
 	{
 		Microsoft::WRL::ComPtr<ID3D11Resource> res;
-		HR_T(CreateWICTextureFromFile(m_->m_pDevice, facePaths[i], res.GetAddressOf(), &m_->m_pCubeTextureSRVs[i]));
+		HR_T(CreateWICTextureFromFile(m_->m_pDevice, m_->facePaths[i], res.GetAddressOf(), &m_->m_pCubeTextureSRVs[i]));
 		res.Reset();
-		CreateWICTextureFromFile(m_->m_pDevice, normalPaths[i], res.GetAddressOf(), &m_->m_pNormalSRVs[i]);
+		HR_T(CreateWICTextureFromFile(m_->m_pDevice, m_->normalPaths[i], res.GetAddressOf(), &m_->m_pNormalSRVs[i]));
 		res.Reset();
-		CreateWICTextureFromFile(m_->m_pDevice, specularPaths[i], res.GetAddressOf(), &m_->m_pSpecularSRVs[i]);
+		HR_T(CreateWICTextureFromFile(m_->m_pDevice, m_->specularPaths[i], res.GetAddressOf(), &m_->m_pSpecularSRVs[i]));
+		res.Reset();
 	}
 	return true;
 }
@@ -1294,6 +1206,23 @@ bool App::InitImGui()
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 	ImGui::StyleColorsDark();
+
+	// 한글/일본어 표시를 위한 방법
+	{
+		ImGuiIO& io = ImGui::GetIO();
+		io.Fonts->AddFontDefault();
+		ImFontConfig cfg{}; cfg.MergeMode = true; cfg.PixelSnapH = true; cfg.OversampleH = 2; cfg.OversampleV = 2;
+		// 한글: 맑은 고딕
+		const ImWchar* rangeKR = io.Fonts->GetGlyphRangesKorean();
+		io.Fonts->AddFontFromFileTTF("C:/Windows/Fonts/malgun.ttf", 17.0f, &cfg, rangeKR);
+		// 일본어: Meiryo(일반적으로 존재) → 없으면 Yu Gothic 시도
+		const ImWchar* rangeJP = io.Fonts->GetGlyphRangesJapanese();
+		if (!io.Fonts->AddFontFromFileTTF("C:/Windows/Fonts/meiryo.ttc", 17.0f, &cfg, rangeJP))
+		{
+			io.Fonts->AddFontFromFileTTF("C:/Windows/Fonts/YuGothM.ttc", 17.0f, &cfg, rangeJP);
+		}
+	}
+
 	ImGui_ImplWin32_Init(m_hWnd);
 	ImGui_ImplDX11_Init(m_->m_pDevice, m_->m_pDeviceContext);
 	return true;
@@ -1312,13 +1241,13 @@ bool App::InitBasicEffect()
 		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,        0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 }
 	};
 
-		ID3D10Blob* vertexShaderBuffer = nullptr;
-    HR_T(CompileShaderFromFile(L"22_BasicVS.hlsl", "main", "vs_5_0", &vertexShaderBuffer));
+	ID3D10Blob* vertexShaderBuffer = nullptr;
+    HR_T(CompileShaderFromFile(L"25_BasicVS.hlsl", "main", "vs_5_0", &vertexShaderBuffer));
 	HR_T(m_->m_pDevice->CreateInputLayout(layout, ARRAYSIZE(layout),
-		vertexShaderBuffer->GetBufferPointer(), vertexShaderBuffer->GetBufferSize(), &m_->m_pInputLayout));
+	vertexShaderBuffer->GetBufferPointer(), vertexShaderBuffer->GetBufferSize(), &m_->m_pInputLayout));
 
 	HR_T(m_->m_pDevice->CreateVertexShader(vertexShaderBuffer->GetBufferPointer(),
-		vertexShaderBuffer->GetBufferSize(), NULL, &m_->m_pVertexShader));
+	vertexShaderBuffer->GetBufferSize(), NULL, &m_->m_pVertexShader));
 	SAFE_RELEASE(vertexShaderBuffer);	// 컴파일 버퍼 해제
 
 	// PMX 전용: NoTBN 입력용 VS/IL 생성
@@ -1330,7 +1259,7 @@ bool App::InitBasicEffect()
 		{ "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 	};
 	ID3D10Blob* vsNoTBN = nullptr;
-    HR_T(CompileShaderFromFile(L"22_BasicVS.hlsl", "VSNoTBN", "vs_5_0", &vsNoTBN));
+    HR_T(CompileShaderFromFile(L"25_BasicVS.hlsl", "VSNoTBN", "vs_5_0", &vsNoTBN));
 	HR_T(m_->m_pDevice->CreateInputLayout(layoutNoTBN, ARRAYSIZE(layoutNoTBN), vsNoTBN->GetBufferPointer(), vsNoTBN->GetBufferSize(), &m_->m_pInputLayoutNoTBN));
 	HR_T(m_->m_pDevice->CreateVertexShader(vsNoTBN->GetBufferPointer(), vsNoTBN->GetBufferSize(), nullptr, &m_->m_pVertexShaderNoTBN));
 	SAFE_RELEASE(vsNoTBN);
@@ -1343,7 +1272,7 @@ bool App::InitBasicEffect()
 		{ "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 	};
 	ID3D10Blob* vsLine = nullptr;
-    HR_T(CompileShaderFromFile(L"22_BasicVS.hlsl", "VSLine", "vs_5_0", &vsLine));
+    HR_T(CompileShaderFromFile(L"25_BasicVS.hlsl", "VSLine", "vs_5_0", &vsLine));
 
     // FBX GPU 스키닝용 VS/IL 생성 (POSITION,NORMAL,TANGENT,BINORMAL,COLOR,TEXCOORD,BLENDINDICES,BLENDWEIGHT)
     {
@@ -1359,7 +1288,7 @@ bool App::InitBasicEffect()
             { "BLENDWEIGHT",  0, DXGI_FORMAT_R32G32B32A32_FLOAT,0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
         };
         ID3D10Blob* vsSkinned = nullptr;
-        HR_T(CompileShaderFromFile(L"22_BasicVS.hlsl", "VSSkinned", "vs_5_0", &vsSkinned));
+        HR_T(CompileShaderFromFile(L"25_BasicVS.hlsl", "VSSkinned", "vs_5_0", &vsSkinned));
         HR_T(m_->m_pDevice->CreateInputLayout(layoutSkinned, ARRAYSIZE(layoutSkinned), vsSkinned->GetBufferPointer(), vsSkinned->GetBufferSize(), &m_->m_pInputLayoutSkinned));
         HR_T(m_->m_pDevice->CreateVertexShader(vsSkinned->GetBufferPointer(), vsSkinned->GetBufferSize(), nullptr, &m_->m_pVertexShaderSkinned));
         SAFE_RELEASE(vsSkinned);
@@ -1371,9 +1300,9 @@ bool App::InitBasicEffect()
 
 	// Pixel Shader -------------------------------------
 	ID3D10Blob* pixelShaderBuffer = nullptr;
-    HR_T(CompileShaderFromFile(L"22_BasicPS.hlsl", "main", "ps_4_0", &pixelShaderBuffer));
+    HR_T(CompileShaderFromFile(L"25_BasicPS.hlsl", "main", "ps_4_0", &pixelShaderBuffer));
 	HR_T(m_->m_pDevice->CreatePixelShader(pixelShaderBuffer->GetBufferPointer(),
-		pixelShaderBuffer->GetBufferSize(), NULL, &m_->m_pPixelShader));
+	pixelShaderBuffer->GetBufferSize(), NULL, &m_->m_pPixelShader));
 	SAFE_RELEASE(pixelShaderBuffer);	// 픽셀 셰이더 버퍼 더이상 필요없음
 	return true;
 }
@@ -1387,19 +1316,19 @@ bool App::InitSkyBoxEffect()
 	};
 
 	ID3D10Blob* vertexShaderBuffer = nullptr;
-    HR_T(CompileShaderFromFile(L"22_SkyBoxVS.hlsl", "VS", "vs_4_0", &vertexShaderBuffer));
+    HR_T(CompileShaderFromFile(L"25_SkyBoxVS.hlsl", "VS", "vs_4_0", &vertexShaderBuffer));
 	HR_T(m_->m_pDevice->CreateInputLayout(layout, ARRAYSIZE(layout),
-		vertexShaderBuffer->GetBufferPointer(), vertexShaderBuffer->GetBufferSize(), &m_->m_pSkyBoxInputLayout));
+	vertexShaderBuffer->GetBufferPointer(), vertexShaderBuffer->GetBufferSize(), &m_->m_pSkyBoxInputLayout));
 
 	HR_T(m_->m_pDevice->CreateVertexShader(vertexShaderBuffer->GetBufferPointer(),
-		vertexShaderBuffer->GetBufferSize(), NULL, &m_->m_pSkyBoxVertexShader));
+	vertexShaderBuffer->GetBufferSize(), NULL, &m_->m_pSkyBoxVertexShader));
 	SAFE_RELEASE(vertexShaderBuffer);	// 컴파일 버퍼 해제
 
 	// Pixel Shader -------------------------------------
 	ID3D10Blob* pixelShaderBuffer = nullptr;
-    HR_T(CompileShaderFromFile(L"22_SkyBoxPS.hlsl", "PS", "ps_4_0", &pixelShaderBuffer));
+    HR_T(CompileShaderFromFile(L"25_SkyBoxPS.hlsl", "PS", "ps_4_0", &pixelShaderBuffer));
 	HR_T(m_->m_pDevice->CreatePixelShader(pixelShaderBuffer->GetBufferPointer(),
-		pixelShaderBuffer->GetBufferSize(), NULL, &m_->m_pSkyBoxPixelShader));
+	pixelShaderBuffer->GetBufferSize(), NULL, &m_->m_pSkyBoxPixelShader));
 	SAFE_RELEASE(pixelShaderBuffer);	// 픽셀 셰이더 버퍼 더이상 필요없음
 	return true;
 }
@@ -1445,6 +1374,7 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
 		entry->source = ModelSource::FBX;
         if (ok = entry->fbx.Load(m_->m_pDevice, pathW))
         {
+			m_->PushLog("[OK] Loaded FBX: " + Utf8FromWString(fileName));
             entry->stride = entry->fbx.GetVertexStride();
             entry->vb = entry->fbx.GetVertexBuffer(); if (entry->vb) entry->vb->AddRef();
             entry->ib = entry->fbx.GetIndexBuffer();  if (entry->ib) entry->ib->AddRef();
@@ -1452,15 +1382,21 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
             entry->subsets.clear();
             for (auto& s : entry->fbx.GetSubsets()) entry->subsets.push_back({ s.startIndex, s.indexCount, s.materialIndex });
             entry->materialSRVs = entry->fbx.GetMaterialSRVs();
+            // 본 캐시/출력텍스트 일괄 구축
+            BuildBoneCacheStructure(*entry, nullptr);
+            // 통계 사전 계산
+            entry->meshStatsValid = ComputeMeshStats(m_->m_pDevice, m_->m_pDeviceContext, entry->vb, entry->stride, entry->ib, entry->indexCount, entry->meshStats);
             m_->m_Models.push_back(std::move(entry));
 			m_->m_RenderMode = RenderMode::Model;
         }
+        else { m_->PushLog("[ERR] Failed FBX: " + Utf8FromWString(fileName)); }
     }
     else if (ext == L".obj")
     {
 		entry->source = ModelSource::OBJ;
         if (ok = entry->obj.Load(m_->m_pDevice, pathW))
         {
+			m_->PushLog("[OK] Loaded OBJ: " + Utf8FromWString(fileName));
             entry->stride = entry->obj.GetVertexStride();
             entry->vb = entry->obj.GetVertexBuffer(); if (entry->vb) entry->vb->AddRef();
             entry->ib = entry->obj.GetIndexBuffer();  if (entry->ib) entry->ib->AddRef();
@@ -1468,15 +1404,18 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
             entry->subsets.clear();
             for (auto& s : entry->obj.GetSubsets()) entry->subsets.push_back({ s.startIndex, s.indexCount, s.materialIndex });
             entry->materialSRVs = entry->obj.GetMaterialSRVs();
+            entry->meshStatsValid = ComputeMeshStats(m_->m_pDevice, m_->m_pDeviceContext, entry->vb, entry->stride, entry->ib, entry->indexCount, entry->meshStats);
             m_->m_Models.push_back(std::move(entry));
 			m_->m_RenderMode = RenderMode::Model;
         }
+        else { m_->PushLog("[ERR] Failed OBJ: " + Utf8FromWString(fileName)); }
     }
     else if (ext == L".pmx")
     {
 		entry->source = ModelSource::PMX;
         if (ok = entry->pmx.Load(m_->m_pDevice, pathW))
         {
+			m_->PushLog("[OK] Loaded PMX: " + Utf8FromWString(fileName));
             entry->stride = entry->pmx.GetVertexStride();
             entry->vb = entry->pmx.GetVertexBuffer(); if (entry->vb) entry->vb->AddRef();
             entry->ib = entry->pmx.GetIndexBuffer();  if (entry->ib) entry->ib->AddRef();
@@ -1484,9 +1423,13 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
             entry->subsets.clear();
             for (auto& s : entry->pmx.GetSubsets()) entry->subsets.push_back({ s.startIndex, s.indexCount, s.materialIndex });
             entry->materialSRVs = entry->pmx.GetMaterialSRVs();
+            // 본 캐시/출력텍스트 일괄 구축
+            BuildBoneCacheStructure(*entry, nullptr);
+            entry->meshStatsValid = ComputeMeshStats(m_->m_pDevice, m_->m_pDeviceContext, entry->vb, entry->stride, entry->ib, entry->indexCount, entry->meshStats);
             m_->m_Models.push_back(std::move(entry));
 			m_->m_RenderMode = RenderMode::Model;
         }
+        else { m_->PushLog("[ERR] Failed PMX: " + Utf8FromWString(fileName)); }
     }
 
     return ok;
@@ -1495,4 +1438,332 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
 void App::UnloadModel()
 {
     m_->m_Models.clear();
+    m_->m_SelectedModelIdx = -1;
+    m_->m_SelectedBoneIdx = -1;
+}
+
+void App::RenderControlPannel()
+{
+	// Control 패널
+	ImGuiIO& ioUI = ImGui::GetIO();
+	const float W = ioUI.DisplaySize.x;
+	const float H = ioUI.DisplaySize.y;
+
+	ImGui::SetNextWindowPos(ImVec2(100, 20), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(400, 620), ImGuiCond_FirstUseEver);
+	if (ImGui::Begin("Controls"))
+	{
+		// SkyBox 선택
+		{
+			int cur = (m_->m_SkyBoxChoice == App::Impl::SkyBoxChoice::Off) ? 0 : (m_->m_SkyBoxChoice == App::Impl::SkyBoxChoice::Hanako ? 1 : 2);
+			const char* items[] = { "Off", "Hanako.dds", "cubemap.dds" };
+			if (ImGui::Combo("SkyBox Choice", &cur, items, IM_ARRAYSIZE(items)))
+			{
+				m_->m_SkyBoxChoice = (cur == 0) ? App::Impl::SkyBoxChoice::Off : (cur == 1 ? App::Impl::SkyBoxChoice::Hanako : App::Impl::SkyBoxChoice::CubeMap);
+				if (m_->m_SkyBoxChoice == App::Impl::SkyBoxChoice::Off)
+				{
+					// Off: 배경 단색 사용
+				}
+				else
+				{
+					const wchar_t* path = (m_->m_SkyBoxChoice == App::Impl::SkyBoxChoice::Hanako) ? L"..\\Resource\\Skybox\\Hanako.dds" : L"..\\Resource\\Skybox\\cubemap.dds";
+					ChangeSkyboxDDS(path);
+				}
+			}
+			if (m_->m_SkyBoxChoice == App::Impl::SkyBoxChoice::Off)
+			{
+				ImGui::ColorEdit4("Background Color", &m_->m_ClearColor.x);
+			}
+		}
+		ImGui::Text("Cube Transforms");
+		ImGui::Checkbox("Rotate Cube", &m_->m_RotateModel);
+		ImGui::DragFloat3("Cube Scale", &m_->m_cubeScale.x, 0.1f, 20.0f);
+		ImGui::DragFloat3("Cube Pos (x,y,z)", &m_->m_cubePos.x, 0.1f);
+		// 모델 회전(도) 편집
+		ImGui::DragFloat3("Cube Rotation (deg)", &m_->m_cubeRotation.x, 1.0f, -360.0f, 360.0f, "%.1f");
+		ImGui::Separator();
+		ImGui::Text("Camera");
+		{
+			if (ImGui::Button("Reset"))
+			{
+				m_->m_camera.Reset();
+			}
+			ImGui::SliderFloat("Camera Speed", &m_->m_camera.m_MoveSpeed, 10.0f, 500.0f, "%.1f");
+			DirectX::XMFLOAT3 pos = m_->m_camera.GetPosition();
+			if (ImGui::DragFloat3("Camera Pos (x,y,z)", &pos.x, 0.1f))
+			{
+				m_->m_camera.SetPosition(pos);
+			}
+			float fovDeg = XMConvertToDegrees(m_->m_camera.GetFovYRad());
+			if (ImGui::SliderFloat("Camera FOV (deg)", &fovDeg, 30.0f, 120.0f))
+			{
+				m_->m_camera.SetFrustum(XMConvertToRadians(fovDeg), AspectRatio(), m_->m_camera.GetNearZ(), m_->m_camera.GetFarZ());
+			}
+			float nearZ = m_->m_camera.GetNearZ();
+			float farZ = m_->m_camera.GetFarZ();
+			if (ImGui::DragFloatRange2("Near/Far", &nearZ, &farZ, 0.1f, 0.01f, 5000.0f, "Near: %.2f", "Far: %.2f"))
+			{
+				m_->m_camera.SetFrustum(m_->m_camera.GetFovYRad(), AspectRatio(), nearZ, farZ);
+			}
+		}
+		ImGui::Separator();
+		ImGui::Text("Shading");
+		{
+			int mode = (int)m_->m_ShadingMode;
+            const char* modes[] = { "Phong", "Blinn-Phong", "Lambert", "Unlit", "TextureOnly", "ToonShading" };
+			if (ImGui::Combo("Shading Mode", &mode, modes, IM_ARRAYSIZE(modes)))
+			{
+				m_->m_ShadingMode = (ShadingMode)mode;
+			}
+            if (m_->m_ShadingMode == ShadingMode::ToonShading)
+            {
+                ImGui::Separator();
+                ImGui::Text("Outline (Toon)");
+                ImGui::SliderFloat("Width", &m_->m_OutlineWidth, 0.0f, 2.0f, "%.3f");
+                ImGui::SliderFloat("Power", &m_->m_OutlinePow, 0.2f, 4.0f, "%.2f");
+                ImGui::ColorEdit3("Color", &m_->m_OutlineColor.x);
+                ImGui::SliderFloat("Strength", &m_->m_OutlineStrength, 0.0f, 4.0f, "%.2f");
+            }
+			ImGui::Checkbox("Enable Normal Map", (bool*)&m_->m_EnableNormalMap);
+			ImGui::Checkbox("Use Specular Map", (bool*)&m_->m_UseSpecularMap);
+		}
+		ImGui::Separator();
+		ImGui::Text("Light");
+		ImGui::DragFloat3("Light Direction", &m_->m_DirLight.direction.x, 0.05f);
+		ImGui::ColorEdit4("Ambient", &m_->m_DirLight.ambient.x);
+		ImGui::ColorEdit4("Diffuse", &m_->m_DirLight.diffuse.x);
+		ImGui::ColorEdit4("Specular", &m_->m_DirLight.specular.x);
+		if (ImGui::Button("Reset Light"))
+		{
+			m_->m_DirLight = { XMFLOAT4(0,0,0,1), XMFLOAT4(1,1,1,1), XMFLOAT4(1,1,1,1), XMFLOAT3(0,0,1), 0.0f };
+		}
+		ImGui::Separator();
+		ImGui::Text("Material");
+		ImGui::ColorEdit4("Ambient (ka)", &m_->m_Material.ambient.x);
+		ImGui::ColorEdit4("Diffuse (kd)", &m_->m_Material.diffuse.x);
+		ImGui::ColorEdit4("Specular (ks)", &m_->m_Material.specular.x);
+		ImGui::DragFloat("Shininess (alpha)", &m_->m_Material.specular.w, 0.05f, 1.0f, 256.0f);
+		ImGui::ColorEdit4("Reflect (kr, a=roughness)", &m_->m_Material.reflect.x);
+		if (ImGui::Button("Reset Material"))
+		{
+			m_->m_Material = { XMFLOAT4(1,1,1,1), XMFLOAT4(1,1,1,1), XMFLOAT4(1,1,1,32), XMFLOAT4(0,0,0,0) };
+		}
+
+		ImGui::Separator();
+	}
+	ImGui::End();
+}
+
+void App::RenderModelPannel()
+{
+	// Models 독립 창
+	ImGui::SetNextWindowPos(ImVec2(100, 700), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(500, 600), ImGuiCond_FirstUseEver);
+	ImGui::Begin("Model Loader (FBX / OBJ / PMX)");
+	// 렌더 모드 선택
+	{
+		int curMode = (m_->m_RenderMode == RenderMode::None) ? 0 : (m_->m_RenderMode == RenderMode::Cube ? 1 : 2);
+		const char* items[] = { "None", "Cube", "Model" };
+		if (ImGui::Combo("Render Mode", &curMode, items, IM_ARRAYSIZE(items)))
+		{
+			m_->m_RenderMode = (curMode == 0) ? RenderMode::None : (curMode == 1 ? RenderMode::Cube : RenderMode::Model);
+		}
+	}
+
+	if (ImGui::Button("Browse Model..."))
+	{
+		std::wstring pathW;
+		if (OpenFileDialogModel(pathW))
+		{
+			if (LoadModelFromFile(pathW)) 
+			{ 
+				m_->PushLog("[OK] Model Selected " + Utf8FromWString(pathW));
+				m_->m_RenderMode = RenderMode::Model;
+			}
+			else { m_->PushLog("[ERR] Load failed (Browse) | file extension must be fbx, obj, pmx"); }
+		}
+	}
+
+	ImGui::SameLine();
+	if (ImGui::Button("Unload Model"))
+	{
+		UnloadModel();
+		m_->m_RenderMode = RenderMode::None; // 시작/언로드시 아무것도 렌더 X
+		m_->PushLog("[OK] Unloaded models");
+	}
+
+	if (!m_->m_Models.empty())
+	{
+		ImGui::Text("Models");
+		for (size_t i = 0; i < m_->m_Models.size(); ++i)
+		{
+			auto& mdl = *m_->m_Models[i];
+			ImGui::PushID((int)i);
+			ImGui::Separator();
+			ImGui::Text("Model #%d : %s", (int)i, Utf8FromWString(m_->m_Models[i]->modelName).c_str());
+			ImGui::DragFloat3("Position", &mdl.pos.x, 0.1f);
+			ImGui::DragFloat3("Rotation (deg)", &mdl.rotDeg.x, 1.0f, -360.0f, 360.0f, "%.1f");
+			ImGui::DragFloat3("Scale", &mdl.scale.x, 0.01f, 0.001f, 100.0f, "%.3f");
+			ImGui::Checkbox("Auto Rotate (Yaw)", &mdl.autoRotate);
+			if (mdl.source == ModelSource::FBX)
+			{
+				if (mdl.fbx.HasAnimations())
+				{
+					const auto& names = mdl.fbx.GetAnimationNames();
+					if (mdl.uiSelectedAnim < 0 || mdl.uiSelectedAnim >= (int)names.size()) mdl.uiSelectedAnim = mdl.fbx.GetCurrentAnimationIndex();
+					ImGui::Text("FBX Animations");
+					if (ImGui::BeginListBox("##AnimList", ImVec2(-FLT_MIN, 4 * ImGui::GetTextLineHeightWithSpacing())))
+					{
+						for (int a = 0; a < (int)names.size(); ++a)
+						{
+							bool sel = (a == mdl.uiSelectedAnim);
+							if (ImGui::Selectable(names[a].c_str(), sel))
+							{
+								mdl.uiSelectedAnim = a;
+								mdl.fbx.SetCurrentAnimation(a);
+								m_->PushLog(std::string("[OK] FBX Anim -> ") + names[a]);
+							}
+							if (sel) ImGui::SetItemDefaultFocus();
+						}
+						ImGui::EndListBox();
+					}
+					ImGui::Checkbox("Play", &mdl.uiAnimPlaying);
+					mdl.fbx.SetAnimationPlaying(mdl.uiAnimPlaying);
+					double cur = mdl.fbx.GetAnimationTimeSeconds();
+					double dur = mdl.fbx.GetClipDurationSec(mdl.fbx.GetCurrentAnimationIndex());
+					float curF = (float)cur, durF = (float)dur;
+					if (durF > 0.0f)
+					{
+						if (ImGui::SliderFloat("Time (s)", &curF, 0.0f, durF)) mdl.fbx.SetAnimationTimeSeconds((double)curF);
+					}
+				}
+			}
+			else if (mdl.source == ModelSource::PMX)
+			{
+				if (ImGui::Button("Load VMD..."))
+				{
+					std::wstring vmdPath;
+					wchar_t file[MAX_PATH] = { 0 };
+					OPENFILENAMEW ofn{}; ofn.lStructSize = sizeof(ofn); ofn.hwndOwner = GameApp::m_hWnd; ofn.lpstrFilter = L"VMD Files (*.vmd)\0*.vmd\0All Files\0*.*\0\0"; ofn.lpstrFile = file; ofn.nMaxFile = MAX_PATH; ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
+					if (GetOpenFileNameW(&ofn))
+					{
+						if (mdl.pmx.LoadVMD(m_->m_pDevice, file))
+						{
+							m_->PushLog("[OK] VMD loaded");
+							mdl.uiAnimPlaying = true;
+						}
+						else { m_->PushLog("[ERR] VMD load failed"); }
+					}
+				}
+				ImGui::Checkbox("Play##PMX", &mdl.uiAnimPlaying);
+				double cur = mdl.pmx.GetAnimationTimeSeconds();
+				double dur = mdl.pmx.GetClipDurationSec();
+				float curF = (float)cur, durF = (float)dur;
+				if (durF > 0.0f)
+				{
+					if (ImGui::SliderFloat("Time (s)##PMX", &curF, 0.0f, durF)) mdl.pmx.SetAnimationTimeSeconds((double)curF);
+				}
+			}
+			if (ImGui::Button("Remove"))
+			{
+				m_->PushLog("[OK] Removed model : " + Utf8FromWString(m_->m_Models[i]->modelName));
+				m_->m_Models.erase(m_->m_Models.begin() + (ptrdiff_t)i);
+				ImGui::PopID();
+				break;
+			}
+
+			ImGui::Separator();
+			if (mdl.meshStatsValid)
+			{
+				ImGui::Text("Vertex: %u   Edge: %u   Face: %u   Tri: %u", mdl.meshStats.vertices, mdl.meshStats.edges, mdl.meshStats.faces, mdl.meshStats.triangles);
+			}
+
+			// 본 구조 카드: 캐시된 텍스트를 단 한 줄 호출로 출력
+			const auto& cache = mdl.boneCache;
+			int rootIdx = mdl.boneRoot;
+			bool hasSkeleton = mdl.boneCacheValid && rootIdx >= 0 && rootIdx < (int)cache.size();
+            if (hasSkeleton && rootIdx >= 0)
+			{
+                ImGui::BeginChild("BoneCard", ImVec2(0, 240), true, ImGuiWindowFlags_HorizontalScrollbar);
+                ImGui::TextUnformatted(mdl.boneDisplayText.c_str());
+                ImGui::EndChild();
+			}
+
+			ImGui::PopID();
+		}
+	}
+	ImGui::End();
+
+}
+
+void App::RenderConsolPannel()
+{
+	// Console
+	{
+		auto& io = ImGui::GetIO();
+		ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - 420, 500), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(460, 520), ImGuiCond_FirstUseEver);
+
+		if (ImGui::Begin("Console"))
+		{
+			ImGui::Checkbox("Auto Scroll", &m_->m_LogAutoScroll); ImGui::SameLine();
+			ImGui::InputTextWithHint("##LogFilter", "filter...", m_->m_LogFilter, IM_ARRAYSIZE(m_->m_LogFilter)); ImGui::SameLine();
+			if (ImGui::Button("Clear")) m_->m_LogLines.clear();
+			ImGui::Separator();
+			ImGui::BeginChild("ConsoleScroll", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
+			for (const auto& ln : m_->m_LogLines)
+			{
+				if (m_->m_LogFilter[0] != '\0')
+				{
+					if (ln.find(m_->m_LogFilter) == std::string::npos) continue;
+				}
+				ImGui::TextUnformatted(ln.c_str());
+			}
+			if (m_->m_LogAutoScroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY())
+				ImGui::SetScrollHereY(1.0f);
+			ImGui::EndChild();
+		}
+		ImGui::End();
+	}
+
+	// 현재 카메라 포워드 기준 스카이박스 면 이미지를 표시 (스카이박스 On일 때만)
+	if (m_->m_SkyBoxChoice != App::Impl::SkyBoxChoice::Off)
+	{
+		int face = 0;
+		using namespace DirectX;
+		XMFLOAT3 fwd = m_->m_camera.GetForward();
+		XMVECTOR f = XMLoadFloat3(&fwd);
+		XMVECTOR fn = XMVector3Normalize(f);
+		XMFLOAT3 v; XMStoreFloat3(&v, fn);
+		float ax = fabsf(v.x), ay = fabsf(v.y), az = fabsf(v.z);
+		if (ax >= ay && ax >= az) face = (v.x >= 0.0f) ? 0 : 1; // +X / -X
+		else if (ay >= ax && ay >= az) face = (v.y >= 0.0f) ? 2 : 3; // +Y / -Y
+		else face = (v.z >= 0.0f) ? 4 : 5;     // +Z / -Z
+
+		ID3D11ShaderResourceView* faceSRV = (face >= 0 && face < 6) ? m_->m_pSkyFaceSRV[face] : nullptr;
+		if (faceSRV)
+		{
+			ImGui::SetNextWindowPos(ImVec2(810, 210), ImGuiCond_Once);
+			ImGui::SetNextWindowSize(ImVec2(m_->m_HanakoDrawSize.x + 50, m_->m_HanakoDrawSize.y + 80), ImGuiCond_Once);
+			if (ImGui::Begin("Skybox Face"))
+			{
+				ImGui::BeginChild("SkyFaceView", ImVec2(0, 0), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+				const ImVec2 tex = (m_->m_HanakoDrawSize.x > 0 && m_->m_HanakoDrawSize.y > 0) ? m_->m_HanakoDrawSize : m_->m_SkyFaceSize;
+				ImVec2 avail = ImGui::GetContentRegionAvail();
+				float sx = (tex.x > 0.f) ? (avail.x / tex.x) : 1.f;
+				float sy = (tex.y > 0.f) ? (avail.y / tex.y) : 1.f;
+				float scale = (sx > 0.f && sy > 0.f) ? std::min(sx, sy) : 1.f;
+				ImVec2 draw = ImVec2(tex.x * scale, tex.y * scale);
+				ImVec2 start = ImGui::GetCursorPos();
+				ImVec2 offset = ImVec2((avail.x - draw.x) * 0.5f, (avail.y - draw.y) * 0.5f);
+				ImGui::SetCursorPos(start + offset);
+				ImGui::Image((ImTextureID)faceSRV, draw);
+				ImVec2 r0 = ImGui::GetItemRectMin();
+				ImVec2 r1 = ImGui::GetItemRectMax();
+				ImGui::GetWindowDrawList()->AddRect(r0 - ImVec2(2, 2), r1 + ImVec2(2, 2), IM_COL32(255, 255, 255, 160), 8.0f, 0, 2.0f);
+				ImGui::EndChild();
+			}
+			ImGui::End();
+		}
+	}
 }

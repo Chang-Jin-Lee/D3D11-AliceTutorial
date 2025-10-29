@@ -91,6 +91,13 @@ struct ModelEntry
 	// ImGui에서 보여주기 위함
 	int  uiSelectedAnim = -1;
 	bool uiAnimPlaying = false;
+
+	// 본 트리 캐시 로드 시 1회 구축, UI는 이 캐시만 사용하여 빠르게 렌더링
+	struct CachedSkelNode { std::wstring nameW; std::string nameU8; bool isBone = false; std::vector<int> children; };
+	std::vector<CachedSkelNode> boneCache;
+	int  boneRoot = -1;
+	bool boneCacheValid = false;
+	std::string boneDisplayText; // 캐싱된 UI 출력
 };
 
 
@@ -307,6 +314,80 @@ struct App::Impl {
 App::App() : m_(new Impl) {}
 App::~App() {}
 
+// 본 캐시/텍스트 일괄 구축 함수
+static void BuildBoneCacheStructure(ModelEntry& entry, const char* filter)
+{
+    entry.boneCache.clear();
+    entry.boneRoot = -1;
+    entry.boneCacheValid = false;
+    entry.boneDisplayText.clear();
+
+    // 캐시 생성
+    if (entry.source == ModelSource::FBX && entry.fbx.HasSkeleton())
+    {
+        const auto& sk = entry.fbx.GetSkeleton();
+        entry.boneCache.resize(sk.size());
+        for (size_t si = 0; si < sk.size(); ++si)
+        {
+            const auto& s = sk[si];
+            auto& c = entry.boneCache[si];
+            c.nameW = s.nameW;
+            c.nameU8 = Utf8FromWString(c.nameW);
+            c.isBone = s.isBone;
+            c.children = s.children;
+        }
+        entry.boneRoot = entry.fbx.GetSkeletonRoot();
+        entry.boneCacheValid = (entry.boneRoot >= 0) && ((size_t)entry.boneRoot < entry.boneCache.size());
+    }
+    else if (entry.source == ModelSource::PMX && entry.pmx.HasSkeleton())
+    {
+        const auto& sk = entry.pmx.GetSkeleton();
+        entry.boneCache.resize(sk.size());
+        for (size_t si = 0; si < sk.size(); ++si)
+        {
+            const auto& s = sk[si];
+            auto& c = entry.boneCache[si];
+            c.nameW = s.nameW;
+            c.nameU8 = Utf8FromWString(c.nameW);
+            c.isBone = s.isBone;
+            c.children = s.children;
+        }
+        entry.boneRoot = entry.pmx.GetSkeletonRoot();
+        entry.boneCacheValid = (entry.boneRoot >= 0) && ((size_t)entry.boneRoot < entry.boneCache.size());
+    }
+
+    if (!entry.boneCacheValid || entry.boneRoot < 0 || entry.boneRoot >= (int)entry.boneCache.size()) return;
+
+    // 출력 문자열 생성
+    const auto& cache = entry.boneCache;
+    const bool useFilter = (filter != nullptr && filter[0] != '\0');
+    std::string f = useFilter ? std::string(filter) : std::string();
+
+    entry.boneDisplayText += "Bone Count: ";
+    entry.boneDisplayText += std::to_string((unsigned)cache.size());
+    entry.boneDisplayText += "\n\n";
+
+    std::function<bool(int)> subtreeContainsFilter = [&](int idx) -> bool {
+        if (!useFilter) return true;
+        if (idx < 0 || idx >= (int)cache.size()) return false;
+        if (cache[idx].nameU8.find(f) != std::string::npos) return true;
+        for (int ch : cache[idx].children) if (subtreeContainsFilter(ch)) return true;
+        return false;
+    };
+
+    std::function<void(int,int)> dfs = [&](int idx, int depth)
+    {
+        if (idx < 0 || idx >= (int)cache.size()) return;
+        if (useFilter && !subtreeContainsFilter(idx)) return;
+        const auto& n = cache[idx];
+        entry.boneDisplayText.append((size_t)depth * 2u, ' ');
+        entry.boneDisplayText += n.nameU8;
+        entry.boneDisplayText += '\n';
+        for (int ch : n.children) dfs(ch, depth + 1);
+    };
+
+    dfs(entry.boneRoot, 0);
+}
 static bool LoadTextureSRVAndSize(ID3D11Device* device, const std::wstring& path,
 	ID3D11ShaderResourceView** outSRV, ImVec2* outSize)
 {
@@ -1289,6 +1370,8 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
             entry->subsets.clear();
             for (auto& s : entry->fbx.GetSubsets()) entry->subsets.push_back({ s.startIndex, s.indexCount, s.materialIndex });
             entry->materialSRVs = entry->fbx.GetMaterialSRVs();
+            // 본 캐시/출력텍스트 일괄 구축
+            BuildBoneCacheStructure(*entry, nullptr);
             // 통계 사전 계산
             entry->meshStatsValid = ComputeMeshStats(m_->m_pDevice, m_->m_pDeviceContext, entry->vb, entry->stride, entry->ib, entry->indexCount, entry->meshStats);
             m_->m_Models.push_back(std::move(entry));
@@ -1328,6 +1411,8 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
             entry->subsets.clear();
             for (auto& s : entry->pmx.GetSubsets()) entry->subsets.push_back({ s.startIndex, s.indexCount, s.materialIndex });
             entry->materialSRVs = entry->pmx.GetMaterialSRVs();
+            // 본 캐시/출력텍스트 일괄 구축
+            BuildBoneCacheStructure(*entry, nullptr);
             entry->meshStatsValid = ComputeMeshStats(m_->m_pDevice, m_->m_pDeviceContext, entry->vb, entry->stride, entry->ib, entry->indexCount, entry->meshStats);
             m_->m_Models.push_back(std::move(entry));
 			m_->m_RenderMode = RenderMode::Model;
@@ -1352,7 +1437,7 @@ void App::RenderControlPannel()
 	const float W = ioUI.DisplaySize.x;
 	const float H = ioUI.DisplaySize.y;
 
-	ImGui::SetNextWindowPos(ImVec2(W - 420, 20), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowPos(ImVec2(100, 20), ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowSize(ImVec2(400, 720), ImGuiCond_FirstUseEver);
 	if (ImGui::Begin("Controls"))
 	{
@@ -1443,8 +1528,8 @@ void App::RenderControlPannel()
 void App::RenderModelPannel()
 {
 	// Models 독립 창
-	ImGui::SetNextWindowPos(ImVec2(400, 800), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(600, 600), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowPos(ImVec2(100, 700), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(500, 600), ImGuiCond_FirstUseEver);
 	ImGui::Begin("Model Loader (FBX / OBJ / PMX)");
 	// 렌더 모드 선택
 	{
@@ -1564,32 +1649,14 @@ void App::RenderModelPannel()
 				ImGui::Text("Vertex: %u   Edge: %u   Face: %u   Tri: %u", mdl.meshStats.vertices, mdl.meshStats.edges, mdl.meshStats.faces, mdl.meshStats.triangles);
 			}
 
-			// 본 구조 카드
-			bool hasSkeleton = (mdl.source == ModelSource::FBX ? mdl.fbx.HasSkeleton() : (mdl.source == ModelSource::PMX ? mdl.pmx.HasSkeleton() : false));
-			const std::vector<FbxManager::SkeletonNode>* fbxSk = (mdl.source == ModelSource::FBX ? &mdl.fbx.GetSkeleton() : nullptr);
-			const std::vector<PmxManager::SkeletonNode>* pmxSk = (mdl.source == ModelSource::PMX ? &mdl.pmx.GetSkeleton() : nullptr);
-			int rootIdx = (mdl.source == ModelSource::FBX ? mdl.fbx.GetSkeletonRoot() : (mdl.source == ModelSource::PMX ? mdl.pmx.GetSkeletonRoot() : -1));
-            if (hasSkeleton && rootIdx >= 0)
+			// 본 구조 카드: 캐시된 텍스트 한 줄 출력
+			const auto& cache = mdl.boneCache;
+			int rootIdx = mdl.boneRoot;
+			bool hasSkeleton = mdl.boneCacheValid && rootIdx >= 0 && rootIdx < (int)cache.size();
+			if (hasSkeleton && rootIdx >= 0)
 			{
                 ImGui::BeginChild("BoneCard", ImVec2(0, 240), true, ImGuiWindowFlags_HorizontalScrollbar);
-                ImGui::PushStyleVar(ImGuiStyleVar_IndentSpacing, 12.0f);
-				ImGui::Text("Bone Count: %u", (mdl.source == ModelSource::FBX ? mdl.fbx.GetBoneCount() : mdl.pmx.GetBoneCount()));
-				ImGui::Separator();
-				std::function<void(int, int)> renderNode = [&](int nodeIdx, int depth) {
-					std::wstring name; bool isBone = false; std::vector<int> children;
-					if (fbxSk && nodeIdx < (int)fbxSk->size()) { const auto& n = (*fbxSk)[nodeIdx]; name = n.nameW; isBone = n.isBone; children = n.children; }
-					else if (pmxSk && nodeIdx < (int)pmxSk->size()) { const auto& n = (*pmxSk)[nodeIdx]; name = n.nameW; isBone = n.isBone; children = n.children; }
-					else return;
-					if (m_->m_BoneFilter[0] != '\0') { std::string u8 = Utf8FromWString(name); if (u8.find(m_->m_BoneFilter) == std::string::npos) { for (int ch : children) renderNode(ch, depth + 1); return; } }
-					ImGui::Indent(depth * 1.0f);
-					std::string label = Utf8FromWString(name) + "##bone" + std::to_string(nodeIdx) + std::string("_mdl") + std::to_string(i);
-					bool selected = (m_->m_SelectedModelIdx == (int)i && m_->m_SelectedBoneIdx == nodeIdx);
-					if (ImGui::Selectable(label.c_str(), selected)) { m_->m_SelectedModelIdx = (int)i; m_->m_SelectedBoneIdx = nodeIdx; }
-					for (int ch : children) renderNode(ch, depth + 1);
-					ImGui::Unindent(depth * 1.0f);
-					};
-				renderNode(rootIdx, 0);
-                ImGui::PopStyleVar();
+				ImGui::TextUnformatted(mdl.boneDisplayText.c_str());
                 ImGui::EndChild();
 			}
 
@@ -1604,8 +1671,9 @@ void App::RenderConsolPannel()
 {
 	// Console
 	{
-		ImGui::SetNextWindowPos(ImVec2(420, 500), ImGuiCond_FirstUseEver);
-		ImGui::SetNextWindowSize(ImVec2(420, 520), ImGuiCond_FirstUseEver);
+		auto& io = ImGui::GetIO();
+		ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x  - 420, 500), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(460, 520), ImGuiCond_FirstUseEver);
 
 		if (ImGui::Begin("Console"))
 		{

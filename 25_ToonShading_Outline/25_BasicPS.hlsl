@@ -1,4 +1,4 @@
-#include "23_Shared.fxh"
+#include "25_Shared.fxh"
 
 // 픽셀 셰이더(쉐이더/셰이더)
 float4 main(VertexOut pIn) : SV_Target
@@ -94,6 +94,36 @@ float4 main(VertexOut pIn) : SV_Target
         float4 reflectionColor = g_TexCube.SampleBias(g_Sam, Renv, mipBias);
         float reflectGate = theta;
         litColor += (g_Material.reflect * reflectGate) * reflectionColor;
+    }
+
+    // ToonShading (5): 램프 셰이딩 + 림 다크닝(간단한 외곽 표현)
+    if (g_ShadingMode == 5)
+    {
+        // 램프 스텝 고정
+        const int kSteps = 5;
+        float q = (kSteps > 1) ? floor(theta * (kSteps - 1) + 0.5f) / (kSteps - 1) : theta;
+        float4 toonDiffuse = kd * (ambientTerm + q * g_DirLight.diffuse);
+
+        // 하이라이트를 얇은 밴드로
+        float3 H = normalize(L + V);
+        float NdotH = saturate(dot(N, H));
+        float specBand = smoothstep(0.85f, 0.95f, NdotH) * step(0.0f, NdotL);
+        float4 toonSpec = specBand * g_Material.specular * g_DirLight.specular;
+
+        float4 toon = toonDiffuse + toonSpec;
+
+        // Rim(역광)으로 외곽 강조: N·V 작을수록 검게
+        float nv = saturate(dot(N, V));
+        float w = max(g_OutlineWidth, 0.0001f);
+        // 폭을 크게 허용: 매우 두껍게 퍼질 수 있게 구간을 넓힘
+        float rim = smoothstep(0.0f - w, 1.0f + w, 1.0f - nv);
+        rim = pow(saturate(rim), max(g_OutlinePow, 0.01f));
+        float4 outline = g_OutlineColor * rim;
+
+        float mixW = saturate(rim * max(g_OutlineStrength, 0.0f));
+        float4 outCol = lerp(toon, outline, mixW);
+        outCol.a = alphaTex;
+        return outCol;
     }
 
     litColor.a = alphaTex;

@@ -29,6 +29,9 @@ public:
 
 	// ImGui 관련
 	bool InitImGui();
+	void RenderControlPannel();
+	void RenderModelPannel();
+	void RenderConsolPannel();
 
 	// 로더 API
 	bool LoadModelFromFile(const std::wstring& pathW);
