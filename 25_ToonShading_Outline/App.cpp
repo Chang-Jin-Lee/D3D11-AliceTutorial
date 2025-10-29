@@ -51,7 +51,9 @@ struct ConstantBuffer {
     XMMATRIX world; XMMATRIX view; XMMATRIX proj; XMMATRIX worldInvTranspose;
     Material material; DirectionalLight dirLight; XMFLOAT3 eyePos; float pad;
     int shadingMode = 0; XMFLOAT3 pad2 = {0,0,0}; int enableNormalMap = 1; XMFLOAT3 pad3 = {0,0,0}; int useSpecularMap = 0; XMFLOAT3 pad4 = {0,0,0};
-    float outlineWidth = 0.15f; float outlinePow = 1.0f; XMFLOAT2 outlinePad = {0,0}; XMFLOAT4 outlineColor = XMFLOAT4(0,0,0,1); float outlineStrength = 1.0f; XMFLOAT3 _outlinePad2 = {0,0,0};
+	// 이번 프로젝트 코드
+//////////////////////////////////////////////////////////////////////////
+    float outlineWidth = 0.15f; float outlinePow = 1.0f; float outlineThickness = 0.15f; float _outlinePad0 = 0.0f; XMFLOAT4 outlineColor = XMFLOAT4(0,0,0,1); float outlineStrength = 1.0f; XMFLOAT3 _outlinePad2 = {0,0,0};
 };
 enum class ShadingMode { Phong=0, BlinnPhong=1, Lambert=2, Unlit=3, TextureOnly=4, ToonShading=5 };
 enum class RenderMode { None = 0, Cube = 1, Model = 2 };
@@ -235,6 +237,10 @@ struct App::Impl {
     // FBX GPU 스키닝용 VS/IL
     ID3D11VertexShader*           m_pVertexShaderSkinned = nullptr;
     ID3D11InputLayout*            m_pInputLayoutSkinned = nullptr;
+	// 이번 프로젝트 코드
+//////////////////////////////////////////////////////////////////////////
+    ID3D11VertexShader*           m_pVertexShaderOutline = nullptr;
+    ID3D11VertexShader*           m_pVertexShaderSkinnedOutline = nullptr;
     ID3D11VertexShader*           m_pSkyBoxVertexShader = nullptr;
     ID3D11PixelShader*            m_pSkyBoxPixelShader = nullptr;
     ID3D11InputLayout*            m_pSkyBoxInputLayout = nullptr;
@@ -308,6 +314,7 @@ struct App::Impl {
     ID3D11DepthStencilState*      m_pDepthStencilState = nullptr;
     ID3D11RasterizerState*        RSNoCull = nullptr;
     ID3D11RasterizerState*        RSCullClockWise = nullptr;
+    ID3D11RasterizerState*        RSCullFront = nullptr;
 
     // 데모/디버그용 텍스처 및 UI 표시 크기
     ID3D11ShaderResourceView*     m_TexHanakoSRV = nullptr;
@@ -345,10 +352,11 @@ struct App::Impl {
     ConstantBuffer                m_baseProjection{};
 
     // 셰이딩 옵션 / 클리어 컬러
-    ShadingMode                   m_ShadingMode = ShadingMode::Phong;
+    ShadingMode                   m_ShadingMode = ShadingMode::ToonShading;
     // Outline params ImGui에서 제어하는 용도도
     float                         m_OutlineWidth = 0.15f;
     float                         m_OutlinePow = 1.0f;
+    float                         m_OutlineThickness = 0.15f;
     XMFLOAT4                      m_OutlineColor = XMFLOAT4(0,0,0,1);
     float                         m_OutlineStrength = 1.0f;
     int                           m_EnableNormalMap = 1;
@@ -499,6 +507,24 @@ bool App::OnInitialize()
     // 값 타입 매니저 사용(동적 할당 없음)
 
 	if (!m_->m_SystemInfo.InitSysInfomation(m_->m_pDevice)) return false;
+
+	LoadModelFromFile(L"..\\Resource\\fbx\\SkinningTest.fbx");
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Zombie_Run.fbx");
+	LoadModelFromFile(L"..\\Resource\\fbx\\haniwa\\haniwa.fbx");
+
+	m_->m_camera.SetPosition(XMFLOAT3(0.0f, 30.0f, -60.0f));
+
+	m_->m_Models[0]->uiAnimPlaying = true; // 자동 재생
+	m_->m_Models[0]->scale = XMFLOAT3(0.3f, 0.3f, 0.3f);
+
+	m_->m_Models[1]->uiAnimPlaying = true; // 자동 재생
+	m_->m_Models[1]->pos = XMFLOAT3(36.0f, 0.0f, 0.0f);
+	m_->m_Models[1]->scale = XMFLOAT3(0.4f, 0.4f, 0.4f);
+
+	m_->m_Models[2]->uiAnimPlaying = true; // 자동 재생
+	m_->m_Models[2]->pos = XMFLOAT3(-36.0f, 0.0f, 0.0f);
+	m_->m_Models[2]->scale = XMFLOAT3(80.0f, 80.0f, 80.0f);
+	m_->m_Models[2]->rotDeg = XMFLOAT3(90.0f, 0.0f, 0.0f);
 
 	return true;
 }
@@ -653,6 +679,9 @@ void App::OnRender()
     // Outline params 업데이트
     m_->m_ConstantBuffer.outlineWidth = m_->m_OutlineWidth;
     m_->m_ConstantBuffer.outlinePow = m_->m_OutlinePow;
+	// 이번 프로젝트 코드
+//////////////////////////////////////////////////////////////////////////
+    m_->m_ConstantBuffer.outlineThickness = m_->m_OutlineThickness;
     m_->m_ConstantBuffer.outlineColor = m_->m_OutlineColor;
     m_->m_ConstantBuffer.outlineStrength = m_->m_OutlineStrength;
 	// 머티리얼 채우기
@@ -697,7 +726,70 @@ void App::OnRender()
 				&& (m_->m_pInputLayoutSkinned != nullptr)
 				&& (m_->m_pVertexShaderSkinned != nullptr)
 				&& (cbBones != nullptr);
-			if (useSkinned)
+				// 이번 프로젝트 코드
+//////////////////////////////////////////////////////////////////////////
+            // 1) 아웃라인 패스: ToonShading일 때만, 백페이스 확장 먼저 그리기
+            if (m_->m_ShadingMode == ShadingMode::ToonShading && m_->m_OutlineWidth > 0.0f && m_->m_OutlineStrength > 0.0f)
+            {
+                // 월드행렬 계산(아웃라인 패스 전용)
+                XMMATRIX rotYaw = XMMatrixRotationY(XMConvertToRadians(mdlPtr->rotDeg.y));
+                XMMATRIX rotPitch = XMMatrixRotationX(XMConvertToRadians(mdlPtr->rotDeg.x));
+                XMMATRIX rotRoll = XMMatrixRotationZ(XMConvertToRadians(mdlPtr->rotDeg.z));
+                XMMATRIX S = XMMatrixScaling(mdlPtr->scale.x, mdlPtr->scale.y, mdlPtr->scale.z);
+                XMMATRIX T = XMMatrixTranslation(mdlPtr->pos.x, mdlPtr->pos.y, mdlPtr->pos.z);
+                XMMATRIX W = S * rotPitch * rotYaw * rotRoll * T;
+
+                // 상수버퍼 구성 (pad=6.0 -> PS가 g_OutlineColor로 단색 출력)
+                ConstantBuffer cbOutline = m_->m_ConstantBuffer;
+                cbOutline.world = XMMatrixTranspose(W);
+                cbOutline.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(W)));
+                cbOutline.material = m_->m_Material;
+                cbOutline.shadingMode = (int)m_->m_ShadingMode;
+                cbOutline.enableNormalMap = 0;
+                cbOutline.useSpecularMap = 0;
+                cbOutline.pad = 6.0f;
+                cbOutline.outlineWidth = m_->m_OutlineWidth;
+                cbOutline.outlinePow = m_->m_OutlinePow;
+                cbOutline.outlineThickness = m_->m_OutlineThickness;
+                cbOutline.outlineColor = m_->m_OutlineColor;
+                cbOutline.outlineStrength = m_->m_OutlineStrength;
+                D3D11_MAPPED_SUBRESOURCE mappedOL;
+                HR_T(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedOL));
+                memcpy_s(mappedOL.pData, sizeof(ConstantBuffer), &cbOutline, sizeof(ConstantBuffer));
+                m_->m_pDeviceContext->Unmap(m_->m_pConstantBuffer, 0);
+                m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
+                m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
+
+                // Front Cull 적용
+                m_->m_pDeviceContext->RSSetState(m_->RSCullFront);
+
+                // 아웃라인 VS/IL 선택
+                if (useSkinned)
+                {
+                    m_->m_pDeviceContext->IASetInputLayout(m_->m_pInputLayoutSkinned);
+                    m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShaderSkinnedOutline, nullptr, 0);
+                    if (cbBones) m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &cbBones);
+                }
+                else
+                {
+                    m_->m_pDeviceContext->IASetInputLayout(m_->m_pInputLayout);
+                    m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShaderOutline, nullptr, 0);
+                    ID3D11Buffer* nullCB = nullptr; m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &nullCB);
+                }
+
+                // 단색 출력이므로 텍스처 바인딩 불필요하지만, 컷아웃 테스트를 위해 t0 임의 바인딩 유지 가능
+                for (const auto& sub : mdlPtr->subsets)
+                {
+                    m_->m_pDeviceContext->DrawIndexed(sub.count, sub.start, 0);
+                }
+
+                // RS 복원
+                m_->m_pDeviceContext->RSSetState(nullptr);
+                // pad 복원
+                m_->m_ConstantBuffer.pad = 0.0f;
+            }
+
+            if (useSkinned)
 			{
 				m_->m_pDeviceContext->IASetInputLayout(m_->m_pInputLayoutSkinned);
 				m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShaderSkinned, nullptr, 0);
@@ -1022,7 +1114,7 @@ bool App::InitD3D()
 	m_->m_pDeviceContext->RSSetViewports(1, &viewport);
 
 	// 컬링 설정 (양면 렌더링/후면 컬링)
-	CD3D11_RASTERIZER_DESC rasterizerDesc(CD3D11_DEFAULT{});
+    CD3D11_RASTERIZER_DESC rasterizerDesc(CD3D11_DEFAULT{});
 	rasterizerDesc.FillMode = D3D11_FILL_SOLID;
 	rasterizerDesc.CullMode = D3D11_CULL_NONE;
 	rasterizerDesc.FrontCounterClockwise = false;
@@ -1030,7 +1122,13 @@ bool App::InitD3D()
 	rasterizerDesc.FillMode = D3D11_FILL_SOLID;
 	rasterizerDesc.CullMode = D3D11_CULL_BACK;
 	rasterizerDesc.FrontCounterClockwise = true;
-	HR_T(m_->m_pDevice->CreateRasterizerState(&rasterizerDesc, &m_->RSCullClockWise));
+    HR_T(m_->m_pDevice->CreateRasterizerState(&rasterizerDesc, &m_->RSCullClockWise));
+	// 이번 프로젝트 코드
+//////////////////////////////////////////////////////////////////////////
+    // Outline용 Front Cull (백페이스 표시)
+    rasterizerDesc.CullMode = D3D11_CULL_FRONT;
+    rasterizerDesc.FrontCounterClockwise = true;
+    HR_T(m_->m_pDevice->CreateRasterizerState(&rasterizerDesc, &m_->RSCullFront));
 
 	// 알파 블렌딩 상태 생성 SrcAlpha/InvSrcAlpha
 	{
@@ -1057,6 +1155,9 @@ void App::UninitD3D()
 	SAFE_RELEASE(m_->m_pDepthStencilState);
 	SAFE_RELEASE(m_->m_pDepthStencilView);
 	SAFE_RELEASE(m_->m_pRenderTargetView);
+	SAFE_RELEASE(m_->RSNoCull);
+	SAFE_RELEASE(m_->RSCullClockWise);
+	SAFE_RELEASE(m_->RSCullFront);
 	SAFE_RELEASE(m_->m_pAlphaBlendState);
 	SAFE_RELEASE(m_->m_pDeviceContext);
 	SAFE_RELEASE(m_->m_pSwapChain);
@@ -1156,6 +1257,12 @@ void App::UninitScene()
 	SAFE_RELEASE(m_->m_pIndexBuffer);
 	SAFE_RELEASE(m_->m_pInputLayout);
 	SAFE_RELEASE(m_->m_pVertexShader);
+	// 이번 프로젝트 코드
+//////////////////////////////////////////////////////////////////////////
+	SAFE_RELEASE(m_->m_pVertexShaderNoTBN);
+	SAFE_RELEASE(m_->m_pVertexShaderSkinned);
+	SAFE_RELEASE(m_->m_pVertexShaderOutline);
+	SAFE_RELEASE(m_->m_pVertexShaderSkinnedOutline);
 	SAFE_RELEASE(m_->m_pPixelShader);
 	SAFE_RELEASE(m_->m_pConstantBuffer);
 	SAFE_RELEASE(m_->m_pSamplerState);
@@ -1293,9 +1400,24 @@ bool App::InitBasicEffect()
         HR_T(m_->m_pDevice->CreateVertexShader(vsSkinned->GetBufferPointer(), vsSkinned->GetBufferSize(), nullptr, &m_->m_pVertexShaderSkinned));
         SAFE_RELEASE(vsSkinned);
     }
-	HR_T(m_->m_pDevice->CreateInputLayout(lineLayout, ARRAYSIZE(lineLayout), vsLine->GetBufferPointer(), vsLine->GetBufferSize(), &m_->m_pLineInputLayout));
-	HR_T(m_->m_pDevice->CreateVertexShader(vsLine->GetBufferPointer(), vsLine->GetBufferSize(), nullptr, &m_->m_pLineVS));
-	SAFE_RELEASE(vsLine);
+    HR_T(m_->m_pDevice->CreateInputLayout(lineLayout, ARRAYSIZE(lineLayout), vsLine->GetBufferPointer(), vsLine->GetBufferSize(), &m_->m_pLineInputLayout));
+    HR_T(m_->m_pDevice->CreateVertexShader(vsLine->GetBufferPointer(), vsLine->GetBufferSize(), nullptr, &m_->m_pLineVS));
+    SAFE_RELEASE(vsLine);
+
+	// 이번 프로젝트 코드
+//////////////////////////////////////////////////////////////////////////
+    // Outline VS
+    {
+        ID3D10Blob* vsOutline = nullptr;
+        HR_T(CompileShaderFromFile(L"25_BasicVS.hlsl", "VSOutline", "vs_5_0", &vsOutline));
+        HR_T(m_->m_pDevice->CreateVertexShader(vsOutline->GetBufferPointer(), vsOutline->GetBufferSize(), nullptr, &m_->m_pVertexShaderOutline));
+        SAFE_RELEASE(vsOutline);
+
+        ID3D10Blob* vsSkinnedOutline = nullptr;
+        HR_T(CompileShaderFromFile(L"25_BasicVS.hlsl", "VSSkinnedOutline", "vs_5_0", &vsSkinnedOutline));
+        HR_T(m_->m_pDevice->CreateVertexShader(vsSkinnedOutline->GetBufferPointer(), vsSkinnedOutline->GetBufferSize(), nullptr, &m_->m_pVertexShaderSkinnedOutline));
+        SAFE_RELEASE(vsSkinnedOutline);
+    }
 
 
 	// Pixel Shader -------------------------------------
@@ -1517,10 +1639,15 @@ void App::RenderControlPannel()
 			}
             if (m_->m_ShadingMode == ShadingMode::ToonShading)
             {
+				// 이번 프로젝트 코드
+//////////////////////////////////////////////////////////////////////////
                 ImGui::Separator();
-                ImGui::Text("Outline (Toon)");
+                ImGui::Text("Outline (Toon + Multipass)");
+                // Rim(PS) 파라미터
                 ImGui::SliderFloat("Width", &m_->m_OutlineWidth, 0.0f, 2.0f, "%.3f");
-                ImGui::SliderFloat("Power", &m_->m_OutlinePow, 0.2f, 4.0f, "%.2f");
+                ImGui::SliderFloat("Power", &m_->m_OutlinePow, 0.2f, 8.0f, "%.2f");
+                // Multipass 파라미터
+                ImGui::SliderFloat("Tickness", &m_->m_OutlineThickness, 0.0f, 200.0f, "%.3f");
                 ImGui::ColorEdit3("Color", &m_->m_OutlineColor.x);
                 ImGui::SliderFloat("Strength", &m_->m_OutlineStrength, 0.0f, 4.0f, "%.2f");
             }

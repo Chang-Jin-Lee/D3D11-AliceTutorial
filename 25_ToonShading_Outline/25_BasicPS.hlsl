@@ -7,6 +7,14 @@ float4 main(VertexOut pIn) : SV_Target
 	if (abs(g_Pad - 1.0f) < 1e-3) { return float4(1,0,1,1); }
 	if (abs(g_Pad - 2.0f) < 1e-3) { return float4(1,1,1,1); }
 	if (abs(g_Pad - 3.0f) < 1e-3) { return pIn.color; }
+	// 이번 프로젝트 코드
+	//////////////////////////////////////////////////////////////////////////
+	// 아웃라인(멀티패스) 단색 출력: Strength로 강도 스케일
+	if (abs(g_Pad - 6.0f) < 1e-3)
+	{
+		float s = saturate(g_OutlineStrength);
+		return float4(g_OutlineColor.rgb * s, 1.0f);
+	}
 
 
 	// 알파 컷아웃 조명 모드에서만 적용

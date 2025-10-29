@@ -35,13 +35,15 @@ cbuffer ConstantBuffer : register(b0)
     float3 g_Pad3;
     int    g_UseSpecularMap;            // 0: off, 1: on
     float3 g_Pad4;
-
+// 이번 프로젝트 코드
+//////////////////////////////////////////////////////////////////////////
     // Toon/Outline params
-    float  g_OutlineWidth;              // 림 밴드 폭 조절 (0~0.5)
-    float  g_OutlinePow;                // 림 감마/파워(0.2~4)
-    float2 g_OutlinePad;
+    float  g_OutlineWidth;              // 림 밴드 폭 (PS Rim 용)
+    float  g_OutlinePow;                // 림 감마/파워 (PS Rim 용)
+    float  g_OutlineThickness;          // 외곽선 두께 (VS 팽창 용)
+    float  g_OutlinePad0;
     float4 g_OutlineColor;              // 아웃라인 색상 (a 안씀)
-    float  g_OutlineStrength;           // 0~4 권장
+    float  g_OutlineStrength;           // 아웃라인 강도(0~4 권장)
     float3 g_OutlinePad2;
 }
 
