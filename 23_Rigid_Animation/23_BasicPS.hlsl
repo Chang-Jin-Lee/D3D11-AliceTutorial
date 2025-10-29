@@ -31,7 +31,7 @@ float4 main(VertexOut pIn) : SV_Target
 	}
 
 	// 공통: 라이팅 벡터들
-	float3 L = normalize(g_DirLight.direction);
+	float3 L = normalize(-g_DirLight.direction);
 	float3 V = normalize(g_EyePosW - pIn.posW);
 	float NdotL = dot(N, L);
 	float theta = saturate(NdotL);

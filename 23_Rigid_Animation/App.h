@@ -33,9 +33,6 @@ public:
 	// 로더 API
 	bool LoadModelFromFile(const std::wstring& pathW);
 	void UnloadModel();
-	
-	// 리지드 애니메이션 업데이트
-	void UpdateRigidAnimations(float deltaTime);
 
 private:
 	// 내부 헬퍼
