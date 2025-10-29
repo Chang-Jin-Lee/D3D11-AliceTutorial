@@ -50,6 +50,7 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "22_VMD", "22_VMD\22_VMD.vcx
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "23_Rigid_Animation", "23_Rigid_Animation\23_Rigid_Animation.vcxproj", "{FFFE01DE-10B2-408A-9149-03905B5D473F}"
 EndProject
+
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "24_Skinned_With_Bone_Structure", "24_Skinned_With_Bone_Structure\24_Skinned_With_Bone_Structure.vcxproj", "{570FD717-0614-4305-AB85-061A0A8E97BB}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "25_ToonShading_Outline", "25_ToonShading_Outline\25_ToonShading_Outline.vcxproj", "{E706DA0C-EAB8-4CAB-B3F3-254279BCD4DB}"
