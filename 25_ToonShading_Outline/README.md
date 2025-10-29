@@ -1,0 +1,11 @@
+## 24. Skinned With Bone Structure (24_Skinned_With_Bone_Structure)
+
+- 내용 : Skinned 모델 본 구조를 보여주는 예제 입니다. 이전 애니메이션, rigid을 모두 포함합니다
+- 주요 구현
+  - 이전까지 작업했던 내용을 리팩토링했습니다
+  - ImGui로 본 구조를 보여줍니다
+  - 해당 모델에 대한 통계치를 계산해서 보여줍니다
+
+| Skinned With Bone Structure |
+|---|
+| <div align="center"><img src="https://github.com/user-attachments/assets/c65b9a1b-4ede-419c-a8d8-260c393d2e27" width="600"/></div> |
