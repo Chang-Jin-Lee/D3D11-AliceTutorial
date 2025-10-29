@@ -1,9 +1,11 @@
-## 21. MultiModels With Animations (21_MultiModels_With_Animations)
+## 24. Skinned With Bone Structure (24_Skinned_With_Bone_Structure)
 
-- 내용 : 여러 모델에 애니메이션을 적용한 예제입니다
+- 내용 : Skinned 모델 본 구조를 보여주는 예제 입니다. 이전 애니메이션, rigid을 모두 포함합니다
 - 주요 구현
-  - 18번 프로젝트에서 만든 애니메이션을 벡터로 담아 실행합니다
+  - 이전까지 작업했던 내용을 리팩토링했습니다
+  - ImGui로 본 구조를 보여줍니다
+  - 해당 모델에 대한 통계치를 계산해서 보여줍니다
 
-| MultiModels With Animations |
+| Skinned With Bone Structure |
 |---|
-| <div align="center"><img src="https://github.com/user-attachments/assets/33dc6967-19f2-40e0-a54a-27645860018d" width="600"/></div> |
+| <div align="center"><img src="https://github.com/user-attachments/assets/c65b9a1b-4ede-419c-a8d8-260c393d2e27" width="600"/></div> |
