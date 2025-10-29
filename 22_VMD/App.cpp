@@ -329,7 +329,7 @@ void App::OnUninitialize()
 
 void App::OnUpdate(const float& dt)
 {
-	// 자동 회전은 모델 내부의 autoRotate 변수를 사용함함
+	// 자동 회전은 모델 내부의 autoRotate 변수를 사용함
 	for (auto& mdlPtr : m_->m_Models)
 	{
 		auto& mdl = *mdlPtr;
@@ -348,45 +348,45 @@ void App::OnUpdate(const float& dt)
 			// PMX + VMD 애니메이션 실행
 			mdl.pmx.UpdateAnimation(m_->m_pDeviceContext, dt);
 		}
-		// 기본 카메라용 world0 (원점 단위행렬)
-		XMMATRIX world0 = XMMatrixIdentity();
-
-		// 카메라 업데이트
-		ImGuiIO& io = ImGui::GetIO();
-		bool rmbDown = ImGui::IsMouseDown(ImGuiMouseButton_Right) && !io.WantCaptureMouse;
-		bool keyW = ImGui::IsKeyDown(ImGuiKey_W);
-		bool keyS = ImGui::IsKeyDown(ImGuiKey_S);
-		bool keyA = ImGui::IsKeyDown(ImGuiKey_A);
-		bool keyD = ImGui::IsKeyDown(ImGuiKey_D);
-		bool keyE = ImGui::IsKeyDown(ImGuiKey_E);
-		bool keyQ = ImGui::IsKeyDown(ImGuiKey_Q);
-		m_->m_camera.UpdateFromUI(rmbDown && !io.WantCaptureKeyboard, io.MouseDelta.x, io.MouseDelta.y, keyW, keyS, keyA, keyD, keyE, keyQ, dt);
-
-		// Camera의 View/Proj 
-		XMMATRIX view = XMMatrixTranspose(m_->m_camera.GetViewMatrixXM());
-		XMMATRIX proj = XMMatrixTranspose(m_->m_camera.GetProjMatrixXM());
-		m_->m_baseProjection.world = XMMatrixTranspose(world0);
-		m_->m_baseProjection.view = view;
-		m_->m_baseProjection.proj = proj;
-
-		m_->m_baseProjection.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(world0)));
-		{
-			XMFLOAT3 dir = m_->m_DirLight.direction;
-			XMVECTOR v = XMVector3Normalize(XMLoadFloat3(&dir));
-			XMStoreFloat3(&dir, v);
-			// DirectionalLight 정규화된 방향으로 대입 
-			m_->m_baseProjection.dirLight = m_->m_DirLight;
-			m_->m_baseProjection.dirLight.direction = dir;
-			m_->m_baseProjection.dirLight.pad = 0.0f;
-		}
-		m_->m_baseProjection.eyePos = m_->m_camera.GetPosition();
-		m_->m_baseProjection.pad = 0.0f;
-
-		// 머티리얼을 기본 캐시에 반영해 둔다
-		m_->m_baseProjection.material = m_->m_Material;
-
-		m_->m_SystemInfo.Tick(dt);
 	}
+	// 기본 카메라용 world0 (원점 단위행렬)
+	// 카메라 업데이트
+	ImGuiIO& io = ImGui::GetIO();
+	bool rmbDown = ImGui::IsMouseDown(ImGuiMouseButton_Right) && !io.WantCaptureMouse;
+	bool keyW = ImGui::IsKeyDown(ImGuiKey_W);
+	bool keyS = ImGui::IsKeyDown(ImGuiKey_S);
+	bool keyA = ImGui::IsKeyDown(ImGuiKey_A);
+	bool keyD = ImGui::IsKeyDown(ImGuiKey_D);
+	bool keyE = ImGui::IsKeyDown(ImGuiKey_E);
+	bool keyQ = ImGui::IsKeyDown(ImGuiKey_Q);
+	m_->m_camera.UpdateFromUI(rmbDown && !io.WantCaptureKeyboard, io.MouseDelta.x, io.MouseDelta.y, keyW, keyS, keyA, keyD, keyE, keyQ, dt);
+
+	// Camera의 View/Proj 
+	XMMATRIX model = XMMatrixIdentity();
+	XMMATRIX view = XMMatrixTranspose(m_->m_camera.GetViewMatrixXM());
+	XMMATRIX proj = XMMatrixTranspose(m_->m_camera.GetProjMatrixXM());
+	m_->m_baseProjection.world = XMMatrixTranspose(model);
+	m_->m_baseProjection.view = view;
+	m_->m_baseProjection.proj = proj;
+
+	m_->m_baseProjection.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(model)));
+
+	XMFLOAT3 lightDir = m_->m_DirLight.direction;
+	XMVECTOR v = XMVector3Normalize(XMLoadFloat3(&lightDir));
+	XMStoreFloat3(&lightDir, v);
+
+	// DirectionalLight 정규화된 방향으로 대입 
+	m_->m_baseProjection.dirLight = m_->m_DirLight;
+	m_->m_baseProjection.dirLight.direction = lightDir;
+	m_->m_baseProjection.dirLight.pad = 0.0f;
+
+	m_->m_baseProjection.eyePos = m_->m_camera.GetPosition();
+	m_->m_baseProjection.pad = 0.0f;
+
+	// 머티리얼을 기본 캐시에 반영해 둔다
+	m_->m_baseProjection.material = m_->m_Material;
+
+	m_->m_SystemInfo.Tick(dt);
 }
 
 inline ImVec2 operator+(const ImVec2& lhs, const ImVec2& rhs)
