@@ -246,6 +246,8 @@ struct App::Impl {
     ID3D11InputLayout*            m_pSkyBoxInputLayout = nullptr;
     ID3D11VertexShader*           m_pLineVS = nullptr;
     ID3D11InputLayout*            m_pLineInputLayout = nullptr;
+    ID3D11PixelShader*            m_pPixelShaderOutline = nullptr;
+    ID3D11InputLayout*            m_pOutlineInputLayout = nullptr;
 
     // 샘플러/블렌드 상태
     ID3D11SamplerState*           m_pSamplerState = nullptr;
@@ -312,6 +314,7 @@ struct App::Impl {
     // 깊이/래스터라이저 상태
     ID3D11DepthStencilView*       m_pDepthStencilView = nullptr;
     ID3D11DepthStencilState*      m_pDepthStencilState = nullptr;
+    ID3D11DepthStencilState*      m_pDepthStencilStateReadOnly = nullptr; // Outline용 깊이 읽기 전용
     ID3D11RasterizerState*        RSNoCull = nullptr;
     ID3D11RasterizerState*        RSCullClockWise = nullptr;
     ID3D11RasterizerState*        RSCullFront = nullptr;
@@ -354,9 +357,8 @@ struct App::Impl {
     // 셰이딩 옵션 / 클리어 컬러
     ShadingMode                   m_ShadingMode = ShadingMode::ToonShading;
     // Outline params ImGui에서 제어하는 용도도
-    float                         m_OutlineWidth = 0.15f;
-    float                         m_OutlinePow = 1.0f;
-    float                         m_OutlineThickness = 0.15f;
+    // Rim 파라미터 제거 (멀티패스 지오메트리 아웃라인만 사용)
+    float                         m_OutlineThickness = 0.5f;
     XMFLOAT4                      m_OutlineColor = XMFLOAT4(0,0,0,1);
     float                         m_OutlineStrength = 1.0f;
     int                           m_EnableNormalMap = 1;
@@ -677,8 +679,7 @@ void App::OnRender()
 	m_->m_ConstantBuffer.useSpecularMap = m_->m_UseSpecularMap;
 	m_->m_ConstantBuffer.pad4 = XMFLOAT3(0,0,0);
     // Outline params 업데이트
-    m_->m_ConstantBuffer.outlineWidth = m_->m_OutlineWidth;
-    m_->m_ConstantBuffer.outlinePow = m_->m_OutlinePow;
+    // Rim 파라미터 업로드 제거
 	// 이번 프로젝트 코드
 //////////////////////////////////////////////////////////////////////////
     m_->m_ConstantBuffer.outlineThickness = m_->m_OutlineThickness;
@@ -728,8 +729,8 @@ void App::OnRender()
 				&& (cbBones != nullptr);
 				// 이번 프로젝트 코드
 //////////////////////////////////////////////////////////////////////////
-            // 1) 아웃라인 패스: ToonShading일 때만, 백페이스 확장 먼저 그리기
-            if (m_->m_ShadingMode == ShadingMode::ToonShading && m_->m_OutlineWidth > 0.0f && m_->m_OutlineStrength > 0.0f)
+            // 1) (비활성화) 아웃라인을 먼저 그리던 경로는 사용하지 않음 → 본 패스 후로 이동
+            if (false && m_->m_ShadingMode == ShadingMode::ToonShading && m_->m_OutlineThickness > 0.0f && m_->m_OutlineStrength > 0.0f)
             {
                 // 월드행렬 계산(아웃라인 패스 전용)
                 XMMATRIX rotYaw = XMMatrixRotationY(XMConvertToRadians(mdlPtr->rotDeg.y));
@@ -748,8 +749,7 @@ void App::OnRender()
                 cbOutline.enableNormalMap = 0;
                 cbOutline.useSpecularMap = 0;
                 cbOutline.pad = 6.0f;
-                cbOutline.outlineWidth = m_->m_OutlineWidth;
-                cbOutline.outlinePow = m_->m_OutlinePow;
+                // Rim 파라미터 제거
                 cbOutline.outlineThickness = m_->m_OutlineThickness;
                 cbOutline.outlineColor = m_->m_OutlineColor;
                 cbOutline.outlineStrength = m_->m_OutlineStrength;
@@ -772,10 +772,13 @@ void App::OnRender()
                 }
                 else
                 {
-                    m_->m_pDeviceContext->IASetInputLayout(m_->m_pInputLayout);
+                    m_->m_pDeviceContext->IASetInputLayout(m_->m_pOutlineInputLayout ? m_->m_pOutlineInputLayout : m_->m_pInputLayout);
                     m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShaderOutline, nullptr, 0);
                     ID3D11Buffer* nullCB = nullptr; m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &nullCB);
                 }
+                // Outline 전용 PS 바인딩
+                if (m_->m_pPixelShaderOutline)
+                    m_->m_pDeviceContext->PSSetShader(m_->m_pPixelShaderOutline, nullptr, 0);
 
                 // 단색 출력이므로 텍스처 바인딩 불필요하지만, 컷아웃 테스트를 위해 t0 임의 바인딩 유지 가능
                 for (const auto& sub : mdlPtr->subsets)
@@ -850,6 +853,70 @@ void App::OnRender()
 
 				m_->m_pDeviceContext->DrawIndexed(sub.count, sub.start, 0);
 			}
+
+            // 2) 아웃라인 패스: 본 패스 이후에 백페이스 확장 렌더 (깊이 읽기 전용)
+            if (m_->m_ShadingMode == ShadingMode::ToonShading && m_->m_OutlineThickness > 0.0f && m_->m_OutlineStrength > 0.0f)
+            {
+                // 월드행렬 재계산
+                XMMATRIX rotYaw = XMMatrixRotationY(XMConvertToRadians(mdlPtr->rotDeg.y));
+                XMMATRIX rotPitch = XMMatrixRotationX(XMConvertToRadians(mdlPtr->rotDeg.x));
+                XMMATRIX rotRoll = XMMatrixRotationZ(XMConvertToRadians(mdlPtr->rotDeg.z));
+                XMMATRIX S = XMMatrixScaling(mdlPtr->scale.x, mdlPtr->scale.y, mdlPtr->scale.z);
+                XMMATRIX T = XMMatrixTranslation(mdlPtr->pos.x, mdlPtr->pos.y, mdlPtr->pos.z);
+                XMMATRIX W = S * rotPitch * rotYaw * rotRoll * T;
+
+                ConstantBuffer cbOutline = m_->m_ConstantBuffer;
+                cbOutline.world = XMMatrixTranspose(W);
+                cbOutline.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(W)));
+                cbOutline.material = m_->m_Material;
+                cbOutline.shadingMode = (int)m_->m_ShadingMode;
+                cbOutline.enableNormalMap = 0;
+                cbOutline.useSpecularMap = 0;
+                cbOutline.pad = 6.0f; // PSOutline 단색 출력
+                cbOutline.outlineThickness = m_->m_OutlineThickness;
+                cbOutline.outlineColor = m_->m_OutlineColor;
+                cbOutline.outlineStrength = m_->m_OutlineStrength;
+                D3D11_MAPPED_SUBRESOURCE mappedOL;
+                HR_T(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedOL));
+                memcpy_s(mappedOL.pData, sizeof(ConstantBuffer), &cbOutline, sizeof(ConstantBuffer));
+                m_->m_pDeviceContext->Unmap(m_->m_pConstantBuffer, 0);
+                m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
+                m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
+
+                // 깊이: 읽기 전용, LESS_EQUAL
+                if (m_->m_pDepthStencilStateReadOnly)
+                    m_->m_pDeviceContext->OMSetDepthStencilState(m_->m_pDepthStencilStateReadOnly, 0);
+
+                // 프런트 컬링으로 백페이스 렌더
+                m_->m_pDeviceContext->RSSetState(m_->RSCullClockWise);
+
+                // 입력/셰이더
+                if (useSkinned)
+                {
+                    m_->m_pDeviceContext->IASetInputLayout(m_->m_pInputLayoutSkinned);
+                    m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShaderSkinnedOutline, nullptr, 0);
+                    if (cbBones) m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &cbBones);
+                }
+                else
+                {
+                    m_->m_pDeviceContext->IASetInputLayout(m_->m_pOutlineInputLayout ? m_->m_pOutlineInputLayout : m_->m_pInputLayout);
+                    m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShaderOutline, nullptr, 0);
+                    ID3D11Buffer* nullCB = nullptr; m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &nullCB);
+                }
+                if (m_->m_pPixelShaderOutline)
+                    m_->m_pDeviceContext->PSSetShader(m_->m_pPixelShaderOutline, nullptr, 0);
+
+                for (const auto& sub : mdlPtr->subsets)
+                {
+                    m_->m_pDeviceContext->DrawIndexed(sub.count, sub.start, 0);
+                }
+
+                // 상태 복원
+                m_->m_pDeviceContext->RSSetState(nullptr);
+                if (m_->m_pDepthStencilState)
+                    m_->m_pDeviceContext->OMSetDepthStencilState(m_->m_pDepthStencilState, 0);
+                m_->m_ConstantBuffer.pad = 0.0f;
+            }
             // 모델별 루프 끝에서 VS/IL 복원은 다음 모델에서 다시 설정되므로 별도 복원 불필요
 		}
     }
@@ -1093,6 +1160,14 @@ bool App::InitD3D()
 	HR_T(m_->m_pDevice->CreateDepthStencilState(&dssDesc, &m_->m_pDepthStencilState));
 	m_->m_pDeviceContext->OMSetDepthStencilState(m_->m_pDepthStencilState, 0);
 
+    // Outline용: 깊이 읽기 전용(LESS_EQUAL), 깊이 쓰기 금지
+    dssDesc = {};
+    dssDesc.DepthEnable = TRUE;
+    dssDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+    dssDesc.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
+    dssDesc.StencilEnable = FALSE;
+    HR_T(m_->m_pDevice->CreateDepthStencilState(&dssDesc, &m_->m_pDepthStencilStateReadOnly));
+
 	// 렌더 타겟/DSV 바인딩
 	m_->m_pDeviceContext->OMSetRenderTargets(1, &m_->m_pRenderTargetView, m_->m_pDepthStencilView);
 
@@ -1153,6 +1228,7 @@ bool App::InitD3D()
 void App::UninitD3D()
 {
 	SAFE_RELEASE(m_->m_pDepthStencilState);
+	SAFE_RELEASE(m_->m_pDepthStencilStateReadOnly);
 	SAFE_RELEASE(m_->m_pDepthStencilView);
 	SAFE_RELEASE(m_->m_pRenderTargetView);
 	SAFE_RELEASE(m_->RSNoCull);
@@ -1263,6 +1339,8 @@ void App::UninitScene()
 	SAFE_RELEASE(m_->m_pVertexShaderSkinned);
 	SAFE_RELEASE(m_->m_pVertexShaderOutline);
 	SAFE_RELEASE(m_->m_pVertexShaderSkinnedOutline);
+	SAFE_RELEASE(m_->m_pPixelShaderOutline);
+	SAFE_RELEASE(m_->m_pOutlineInputLayout);
 	SAFE_RELEASE(m_->m_pPixelShader);
 	SAFE_RELEASE(m_->m_pConstantBuffer);
 	SAFE_RELEASE(m_->m_pSamplerState);
@@ -1643,11 +1721,8 @@ void App::RenderControlPannel()
 //////////////////////////////////////////////////////////////////////////
                 ImGui::Separator();
                 ImGui::Text("Outline (Toon + Multipass)");
-                // Rim(PS) 파라미터
-                ImGui::SliderFloat("Width", &m_->m_OutlineWidth, 0.0f, 2.0f, "%.3f");
-                ImGui::SliderFloat("Power", &m_->m_OutlinePow, 0.2f, 8.0f, "%.2f");
-                // Multipass 파라미터
-                ImGui::SliderFloat("Tickness", &m_->m_OutlineThickness, 0.0f, 200.0f, "%.3f");
+                // Multipass 아웃라인 파라미터
+                ImGui::SliderFloat("Thickness", &m_->m_OutlineThickness, 0.0f, 2.0f, "%.3f");
                 ImGui::ColorEdit3("Color", &m_->m_OutlineColor.x);
                 ImGui::SliderFloat("Strength", &m_->m_OutlineStrength, 0.0f, 4.0f, "%.2f");
             }

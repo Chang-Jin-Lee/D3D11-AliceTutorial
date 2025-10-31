@@ -112,33 +112,34 @@ VertexOut VSLine(VertexInLine vIn)
 	return vOut;
 }
 
-// 이번 프로젝트 코드
-//////////////////////////////////////////////////////////////////////////
-
-// 아웃라인 전용: 월드 노말 방향으로 정점을 팽창(Cull Front와 함께 사용)
-VertexOut VSOutline(VertexIn vIn)
+// ---------------- Outline Pass (Geometry-based) ----------------
+struct VSInOutline
 {
-	VertexOut vOut;
-	// 원본 위치를 월드→뷰로 변환
-	float4 posW = mul(float4(vIn.posL, 1.0f), g_World);
-	float4 posV = mul(posW, g_View);
-	// 노말을 월드→뷰로 변환 후 정규화
-	float3 nW = normalize(mul(vIn.normalL, (float3x3) g_WorldInvTranspose));
+    float3 posL   : POSITION;
+    float3 normalL: NORMAL;
+};
+
+struct VSOutOutline
+{
+    float4 posH : SV_POSITION;
+};
+
+VSOutOutline VSOutline(VSInOutline vIn)
+{
+    VSOutOutline o;
+    // View-space XY 팽창: 깊이는 유지하여 실루엣만 보이도록
+    float4 posW = mul(float4(vIn.posL, 1.0f), g_World);
+    float4 posV = mul(posW, g_View);
+    float3 nW = normalize(mul(vIn.normalL, (float3x3) g_WorldInvTranspose));
     float3 nV = normalize(mul(nW, (float3x3) g_View));
-    // 화면 두께가 보이도록 z 성분 제거 후 XY 평면으로만 팽창
-    float2 nVP = normalize(max(abs(nV.x) + abs(nV.y), 1e-5) * (nV.xy / max(length(nV.xy), 1e-5)));
-    posV.xy += nVP * g_OutlineThickness;
-    // 최종 프로젝션
-    vOut.posH = mul(posV, g_Proj);
-    // PS(g_Pad==6)에서는 posW를 사용하지 않으므로 원본 월드 좌표로 채움
-    vOut.posW = posW.xyz;
-	vOut.normalW = nW;
-	vOut.tangentW = mul(vIn.tangentL, (float3x3) g_World);
-	vOut.bitanW   = mul(vIn.bitanL,   (float3x3) g_World);
-	vOut.tex = vIn.tex;
-	vOut.color = float4(0,0,0,1);
-	return vOut;
+    float2 dir = nV.xy;
+    float len = max(length(dir), 1e-5);
+    dir /= len;
+    posV.xy += dir * g_OutlineThickness;
+    o.posH = mul(posV, g_Proj);
+    return o;
 }
+
 
 // 아웃라인 전용(스키닝)
 VertexOut VSSkinnedOutline(VertexInSkinned vIn)
