@@ -111,3 +111,63 @@ VertexOut VSLine(VertexInLine vIn)
 	vOut.color = vIn.color;
 	return vOut;
 }
+
+// ---------------- Outline Pass (Geometry-based) ----------------
+struct VSInOutline
+{
+    float3 posL   : POSITION;
+    float3 normalL: NORMAL;
+};
+
+struct VSOutOutline
+{
+    float4 posH : SV_POSITION;
+};
+
+VSOutOutline VSOutline(VSInOutline vIn)
+{
+    VSOutOutline o;
+    // View-space XY 팽창: 깊이는 유지하여 실루엣만 보이도록
+    float4 posW = mul(float4(vIn.posL, 1.0f), g_World);
+    float4 posV = mul(posW, g_View);
+    float3 nW = normalize(mul(vIn.normalL, (float3x3) g_WorldInvTranspose));
+    float3 nV = normalize(mul(nW, (float3x3) g_View));
+    float2 dir = nV.xy;
+    float len = max(length(dir), 1e-5);
+    dir /= len;
+    posV.xy += dir * g_OutlineThickness;
+    o.posH = mul(posV, g_Proj);
+    return o;
+}
+
+
+// 아웃라인 전용(스키닝)
+VertexOut VSSkinnedOutline(VertexInSkinned vIn)
+{
+	VertexOut vOut;
+	uint4 bi = vIn.boneIdx; float4 bw = vIn.boneW;
+	matrix M = bw.x * g_BonePalette[bi.x]
+			 + bw.y * g_BonePalette[bi.y]
+			 + bw.z * g_BonePalette[bi.z]
+			 + bw.w * g_BonePalette[bi.w];
+	float4 skinnedPos = mul(float4(vIn.posL,1.0f), M);
+	float3x3 M3 = (float3x3)M;
+	float3 skinnedN = normalize(mul(vIn.normalL, M3));
+	// 월드→뷰 변환
+	float4 posW = mul(skinnedPos, g_World);
+	float4 posV = mul(posW, g_View);
+	float3 nW = normalize(mul(skinnedN, (float3x3)g_WorldInvTranspose));
+    float3 nV = normalize(mul(nW, (float3x3)g_View));
+    // 화면 두께가 보이도록 z 성분 제거 후 XY 평면으로만 팽창
+    float2 nVP = normalize(max(abs(nV.x) + abs(nV.y), 1e-5) * (nV.xy / max(length(nV.xy), 1e-5)));
+    posV.xy += nVP * g_OutlineThickness;
+    // 프로젝션
+    vOut.posH = mul(posV, g_Proj);
+    vOut.posW = posW.xyz;
+	vOut.normalW = nW;
+	vOut.tangentW = float3(1,0,0);
+	vOut.bitanW   = float3(0,1,0);
+	vOut.tex = vIn.tex;
+	vOut.color = float4(0,0,0,1);
+	return vOut;
+}

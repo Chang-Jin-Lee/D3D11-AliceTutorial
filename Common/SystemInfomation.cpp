@@ -98,10 +98,10 @@ void SystemInfomation::RenderUI()
 	// 우상단: 시스템 정보(FPS/GPU/CPU)
 	{
 		ImGuiIO& io = ImGui::GetIO();
-		ImVec2 size(420.0f, 180.0f);
+		ImVec2 size(400.0f, 160.0f);
 		ImVec2 pos(io.DisplaySize.x - size.x - 10.0f, 10.0f);
-		ImGui::SetNextWindowPos(pos, ImGuiCond_Always);
-		ImGui::SetNextWindowSize(size, ImGuiCond_Always);
+		ImGui::SetNextWindowPos(pos, ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(size, ImGuiCond_FirstUseEver);
 		ImGuiWindowFlags flags = ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse;
 		if (ImGui::Begin("System Info", nullptr, flags))
 		{

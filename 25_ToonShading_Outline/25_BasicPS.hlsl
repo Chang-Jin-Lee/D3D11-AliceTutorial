@@ -7,6 +7,14 @@ float4 main(VertexOut pIn) : SV_Target
 	if (abs(g_Pad - 1.0f) < 1e-3) { return float4(1,0,1,1); }
 	if (abs(g_Pad - 2.0f) < 1e-3) { return float4(1,1,1,1); }
 	if (abs(g_Pad - 3.0f) < 1e-3) { return pIn.color; }
+	// 이번 프로젝트 코드
+	//////////////////////////////////////////////////////////////////////////
+	// 아웃라인(멀티패스) 단색 출력: Strength로 강도 스케일
+	if (abs(g_Pad - 6.0f) < 1e-3)
+	{
+		float s = saturate(g_OutlineStrength);
+		return float4(g_OutlineColor.rgb * s, 1.0f);
+	}
 
 
 	// 알파 컷아웃 조명 모드에서만 적용
@@ -96,36 +104,33 @@ float4 main(VertexOut pIn) : SV_Target
         litColor += (g_Material.reflect * reflectGate) * reflectionColor;
     }
 
-    // ToonShading (5): 램프 셰이딩 + 림 다크닝(간단한 외곽 표현)
+    // ToonShading (5): 램프 셰이딩만 적용 (림/외곽선 제거)
     if (g_ShadingMode == 5)
     {
-        // 램프 스텝 고정
         const int kSteps = 5;
         float q = (kSteps > 1) ? floor(theta * (kSteps - 1) + 0.5f) / (kSteps - 1) : theta;
         float4 toonDiffuse = kd * (ambientTerm + q * g_DirLight.diffuse);
-
-        // 하이라이트를 얇은 밴드로
         float3 H = normalize(L + V);
         float NdotH = saturate(dot(N, H));
         float specBand = smoothstep(0.85f, 0.95f, NdotH) * step(0.0f, NdotL);
         float4 toonSpec = specBand * g_Material.specular * g_DirLight.specular;
-
-        float4 toon = toonDiffuse + toonSpec;
-
-        // Rim(역광)으로 외곽 강조: N·V 작을수록 검게
-        float nv = saturate(dot(N, V));
-        float w = max(g_OutlineWidth, 0.0001f);
-        // 폭을 크게 허용: 매우 두껍게 퍼질 수 있게 구간을 넓힘
-        float rim = smoothstep(0.0f - w, 1.0f + w, 1.0f - nv);
-        rim = pow(saturate(rim), max(g_OutlinePow, 0.01f));
-        float4 outline = g_OutlineColor * rim;
-
-        float mixW = saturate(rim * max(g_OutlineStrength, 0.0f));
-        float4 outCol = lerp(toon, outline, mixW);
+        float4 outCol = toonDiffuse + toonSpec;
         outCol.a = alphaTex;
         return outCol;
     }
 
     litColor.a = alphaTex;
     return litColor;
+}
+
+// ---------------- Outline Pass (Geometry-based) ----------------
+struct PSInOutline
+{
+    float4 posH : SV_POSITION;
+};
+
+float4 PSOutline(PSInOutline i) : SV_Target
+{
+    float s = saturate(g_OutlineStrength);
+    return float4(g_OutlineColor.rgb * s, 1.0f);
 }
