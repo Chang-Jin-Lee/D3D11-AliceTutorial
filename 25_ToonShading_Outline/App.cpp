@@ -534,7 +534,8 @@ bool App::OnInitialize()
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx");
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx");
 
-	m_->m_camera.SetPosition(XMFLOAT3(0.0f, 30.0f, -60.0f));
+	m_->m_camera.SetPosition(XMFLOAT3(0.0f, 30.0f, -33.0f));
+	m_->m_camera.SetSpeed(30);
 
 	m_->m_Models[0]->uiAnimPlaying = true; // 자동 재생
 	m_->m_Models[1]->uiAnimPlaying = true; // 자동 재생
@@ -571,8 +572,10 @@ bool App::OnInitialize()
 	m_->m_Models[5]->outlineEnabled = false;
 	m_->m_Models[6]->outlineEnabled = true;
 
-	m_->m_OutlineThickness = 0.075;
-	m_->m_OutlineColor = XMFLOAT4(1.0, 1.0, 1.0, 1);
+	m_->m_OutlineThickness = 0.076;
+	m_->m_OutlineColor = XMFLOAT4(0.0, 0.0, 0.0, 1);
+	m_->m_Models[0]->shared->fbx->SetCurrentAnimation(4);
+	m_->m_Models[0]->shared->fbx->SetAnimationPlaying(true);
 
 	return true;
 }
