@@ -359,7 +359,7 @@ struct App::Impl {
     // Outline params ImGui에서 제어하는 용도도
     // Rim 파라미터 제거 (멀티패스 지오메트리 아웃라인만 사용)
     float                         m_OutlineThickness = 0.5f;
-    XMFLOAT4                      m_OutlineColor = XMFLOAT4(0,0,0,1);
+    XMFLOAT4                      m_OutlineColor = XMFLOAT4(1.0, 0.7286, 0, 1);
     float                         m_OutlineStrength = 1.0f;
     int                           m_EnableNormalMap = 1;
     int                           m_UseSpecularMap = 0;
