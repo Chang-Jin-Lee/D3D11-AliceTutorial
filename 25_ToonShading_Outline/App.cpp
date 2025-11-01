@@ -62,35 +62,48 @@ struct ModelSubset { uint32_t start; uint32_t count; uint32_t materialIndex; };
 // 간단한 메시 통계 구조체
 struct MeshStats { uint32_t vertices = 0, edges = 0, faces = 0, triangles = 0; };
 
+// 공유 GPU 리소스(동일 경로 모델 간 공유)
+struct SharedModelData
+{
+    std::wstring pathW;
+    ModelSource source = ModelSource::Custom;
+    std::shared_ptr<FbxManager> fbx;  // FBX용 로더
+    std::shared_ptr<ObjManager> obj;  // OBJ용 로더
+    std::shared_ptr<PmxManager> pmx;  // PMX용 로더
+
+    // 드로우 자원(모든 인스턴스가 공유)
+    ID3D11Buffer* vb = nullptr;
+    ID3D11Buffer* ib = nullptr;
+    int           indexCount = 0;
+    UINT          stride = 0;
+    std::vector<ModelSubset> subsets;
+    std::vector<ID3D11ShaderResourceView*> materialSRVs; // 공유 텍스처
+};
+
 // 여러 모델을 그리기 위한 구조체
 struct ModelEntry
 {
 	std::wstring modelName{ L"" };
-	ModelSource source = ModelSource::Custom;
-	// 로더 매니저 (FBX/OBJ/PMX 중 선택해 사용)
-	FbxManager fbx;
-	ObjManager obj;
-	PmxManager pmx;
+	ModelSource source = ModelSource::Custom;     // 공유 데이터 동일 경로 모델끼리
+    std::shared_ptr<SharedModelData> shared;
 
-	// GPU에서 사용될 것들 
-	ID3D11Buffer* vb = nullptr;
-	ID3D11Buffer* ib = nullptr;
-	int           indexCount = 0;
-	UINT          stride = 0;
-	std::vector<ModelSubset> subsets;
-	std::vector<ID3D11ShaderResourceView*> materialSRVs; // AddRef됨
+    // 드로우는 shared의 자원을 사용
 
 	// 트랜스폼
 	XMFLOAT3 pos = {0,0,0};
 	XMFLOAT3 scale = {1,1,1};
 	XMFLOAT3 rotDeg = {0,0,0}; // yaw=pitch=roll(deg)
 	bool     autoRotate = false;
+    // 모델별 셰이딩 모드 개별로 선택가능함
+    ShadingMode modelShading = ShadingMode::ToonShading;
+	bool outlineEnabled = true;
+	bool showBoneDetails = false;
 
 	// 사전 계산된 메시 통계
 	MeshStats meshStats{};
 	bool meshStatsValid = false;
 
-	// FBX 전용 애니메이션 UI 상태
+    // FBX 전용 애니메이션 UI 상태
 	// ImGui에서 보여주기 위함
 	int  uiSelectedAnim = -1;
 	bool uiAnimPlaying = false;
@@ -112,9 +125,9 @@ static void BuildBoneCacheStructure(ModelEntry& entry, const char* filter)
     entry.boneDisplayText.clear();
 
     // 캐시 생성
-    if (entry.source == ModelSource::FBX && entry.fbx.HasSkeleton())
+    if (entry.source == ModelSource::FBX && entry.shared && entry.shared->fbx && entry.shared->fbx->HasSkeleton())
     {
-        const auto& sk = entry.fbx.GetSkeleton();
+        const auto& sk = entry.shared->fbx->GetSkeleton();
         entry.boneCache.resize(sk.size());
         for (size_t si = 0; si < sk.size(); ++si)
         {
@@ -125,12 +138,12 @@ static void BuildBoneCacheStructure(ModelEntry& entry, const char* filter)
             c.isBone = s.isBone;
             c.children = s.children;
         }
-        entry.boneRoot = entry.fbx.GetSkeletonRoot();
+        entry.boneRoot = entry.shared->fbx->GetSkeletonRoot();
         entry.boneCacheValid = (entry.boneRoot >= 0) && ((size_t)entry.boneRoot < entry.boneCache.size());
     }
-    else if (entry.source == ModelSource::PMX && entry.pmx.HasSkeleton())
+    else if (entry.source == ModelSource::PMX && entry.shared && entry.shared->pmx && entry.shared->pmx->HasSkeleton())
     {
-        const auto& sk = entry.pmx.GetSkeleton();
+        const auto& sk = entry.shared->pmx->GetSkeleton();
         entry.boneCache.resize(sk.size());
         for (size_t si = 0; si < sk.size(); ++si)
         {
@@ -141,7 +154,7 @@ static void BuildBoneCacheStructure(ModelEntry& entry, const char* filter)
             c.isBone = s.isBone;
             c.children = s.children;
         }
-        entry.boneRoot = entry.pmx.GetSkeletonRoot();
+        entry.boneRoot = entry.shared->pmx->GetSkeletonRoot();
         entry.boneCacheValid = (entry.boneRoot >= 0) && ((size_t)entry.boneRoot < entry.boneCache.size());
     }
 
@@ -373,6 +386,9 @@ struct App::Impl {
     ID3D11ShaderResourceView*     m_pFallbackNormal = nullptr;
     ID3D11ShaderResourceView*     m_pFallbackBlack = nullptr;
     std::string                   m_ModelPathInputUTF8;
+
+    // 경로 기반 공유 모델 캐시
+    std::unordered_map<std::wstring, std::weak_ptr<SharedModelData>> m_ModelCache;
     
     // 본 에디터 관련
     int                           m_SelectedBoneIdx = -1;         // 선택된 본 인덱스
@@ -510,23 +526,27 @@ bool App::OnInitialize()
 
 	if (!m_->m_SystemInfo.InitSysInfomation(m_->m_pDevice)) return false;
 
-	LoadModelFromFile(L"..\\Resource\\fbx\\SkinningTest.fbx");
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Zombie_Run.fbx");
-	LoadModelFromFile(L"..\\Resource\\fbx\\haniwa\\haniwa.fbx");
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_run_walk_idle.fbx");
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_run_walk_idle.fbx");
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_run_walk_idle.fbx");
 
 	m_->m_camera.SetPosition(XMFLOAT3(0.0f, 30.0f, -60.0f));
 
 	m_->m_Models[0]->uiAnimPlaying = true; // 자동 재생
-	m_->m_Models[0]->scale = XMFLOAT3(0.3f, 0.3f, 0.3f);
-
 	m_->m_Models[1]->uiAnimPlaying = true; // 자동 재생
-	m_->m_Models[1]->pos = XMFLOAT3(36.0f, 0.0f, 0.0f);
-	m_->m_Models[1]->scale = XMFLOAT3(0.4f, 0.4f, 0.4f);
-
 	m_->m_Models[2]->uiAnimPlaying = true; // 자동 재생
-	m_->m_Models[2]->pos = XMFLOAT3(-36.0f, 0.0f, 0.0f);
-	m_->m_Models[2]->scale = XMFLOAT3(80.0f, 80.0f, 80.0f);
-	m_->m_Models[2]->rotDeg = XMFLOAT3(90.0f, 0.0f, 0.0f);
+
+	m_->m_Models[0]->pos = XMFLOAT3(-36.0f, 0.0f, 0.0f);
+	m_->m_Models[2]->pos = XMFLOAT3(36.0f, 0.0f, 0.0f);
+
+	m_->m_Models[0]->scale = XMFLOAT3(0.3f, 0.3f, 0.3f);
+	m_->m_Models[1]->scale = XMFLOAT3(0.3f, 0.3f, 0.3f);
+	m_->m_Models[2]->scale = XMFLOAT3(0.3f, 0.3f, 0.3f);
+
+
+	m_->m_Models[0]->modelShading = ShadingMode::Lambert;
+	m_->m_Models[0]->modelShading = ShadingMode::Phong;
+	m_->m_Models[0]->modelShading = ShadingMode::ToonShading;
 
 	return true;
 }
@@ -545,26 +565,31 @@ void App::OnUninitialize()
 
 void App::OnUpdate(const float& dt)
 {
-	// 자동 회전은 모델 내부의 autoRotate 변수를 사용함
-	for (auto& mdlPtr : m_->m_Models)
-	{
-		auto& mdl = *mdlPtr;
-		if (mdl.autoRotate)
-		{
-			mdl.rotDeg.y += 45.0f * dt;
-			mdl.rotDeg.y = std::fmod(mdl.rotDeg.y + 180.0f, 360.0f) - 180.0f;
-		}
-		if (mdl.source == ModelSource::FBX)
-		{
-			// FBX 애니메이션 (팔레트 업데이트만 수행)
-			mdl.fbx.UpdateAnimation(m_->m_pDeviceContext, dt);
-		}
-		else if (mdl.source == ModelSource::PMX)
-		{
-			// PMX + VMD 애니메이션 실행
-			mdl.pmx.UpdateAnimation(m_->m_pDeviceContext, dt);
-		}
-	}
+    // 자동 회전 및 애니메이션 업데이트(공유 데이터는 중복 업데이트 방지)
+    {
+        std::unordered_set<SharedModelData*> updated;
+        for (auto& mdlPtr : m_->m_Models)
+        {
+            auto& mdl = *mdlPtr;
+            if (mdl.autoRotate)
+            {
+                mdl.rotDeg.y += 45.0f * dt;
+                mdl.rotDeg.y = std::fmod(mdl.rotDeg.y + 180.0f, 360.0f) - 180.0f;
+            }
+            if (!mdl.shared) continue;
+            if (updated.find(mdl.shared.get()) != updated.end()) continue;
+            if (mdl.source == ModelSource::FBX && mdl.shared->fbx)
+            {
+                mdl.shared->fbx->UpdateAnimation(m_->m_pDeviceContext, dt);
+                updated.insert(mdl.shared.get());
+            }
+            else if (mdl.source == ModelSource::PMX && mdl.shared->pmx)
+            {
+                mdl.shared->pmx->UpdateAnimation(m_->m_pDeviceContext, dt);
+                updated.insert(mdl.shared.get());
+            }
+        }
+    }
 	// 기본 카메라용 world0 (원점 단위행렬)
 	// 카메라 업데이트
 	ImGuiIO& io = ImGui::GetIO();
@@ -729,24 +754,24 @@ void App::OnRender()
 		for (auto& mdlPtr : m_->m_Models)
 		{
 			// IA 바인딩
-			UINT s = mdlPtr->stride; UINT o = 0;
-			if (!mdlPtr->vb || !mdlPtr->ib) continue;
-			m_->m_pDeviceContext->IASetVertexBuffers(0, 1, &mdlPtr->vb, &s, &o);
-            // FBX 스켈레톤이 있으면 스키닝 VS/IL로 교체, 아니면 기본
-			ID3D11Buffer* cbBones = nullptr;
-			bool hasSkeleton = false;
-			if (mdlPtr->source == ModelSource::FBX)
-			{
-				cbBones = mdlPtr->fbx.GetBoneConstantBuffer();
-				hasSkeleton = mdlPtr->fbx.HasSkeleton();
-			}
-			else if (mdlPtr->source == ModelSource::PMX)
-			{
-				cbBones = mdlPtr->pmx.GetBoneConstantBuffer();
-				hasSkeleton = mdlPtr->pmx.HasSkeleton();
-			}
+            UINT s = mdlPtr->shared ? mdlPtr->shared->stride : 0; UINT o = 0;
+            if (!mdlPtr->shared || !mdlPtr->shared->vb || !mdlPtr->shared->ib) continue;
+            m_->m_pDeviceContext->IASetVertexBuffers(0, 1, &mdlPtr->shared->vb, &s, &o);
+            // FBX/PMX 스켈레톤 여부 확인
+            ID3D11Buffer* cbBones = nullptr;
+            bool hasSkeleton = false;
+            if (mdlPtr->source == ModelSource::FBX && mdlPtr->shared && mdlPtr->shared->fbx)
+            {
+                cbBones = mdlPtr->shared->fbx->GetBoneConstantBuffer();
+                hasSkeleton = mdlPtr->shared->fbx->HasSkeleton();
+            }
+            else if (mdlPtr->source == ModelSource::PMX && mdlPtr->shared && mdlPtr->shared->pmx)
+            {
+                cbBones = mdlPtr->shared->pmx->GetBoneConstantBuffer();
+                hasSkeleton = mdlPtr->shared->pmx->HasSkeleton();
+            }
             bool useSkinned = hasSkeleton
-				&& (mdlPtr->stride == sizeof(VertexSkinnedTBN))
+                && (mdlPtr->shared && (mdlPtr->shared->stride == sizeof(VertexSkinnedTBN)))
 				&& (m_->m_pInputLayoutSkinned != nullptr)
 				&& (m_->m_pVertexShaderSkinned != nullptr)
 				&& (cbBones != nullptr);
@@ -803,10 +828,13 @@ void App::OnRender()
                 if (m_->m_pPixelShaderOutline)
                     m_->m_pDeviceContext->PSSetShader(m_->m_pPixelShaderOutline, nullptr, 0);
 
-                // 단색 출력이므로 텍스처 바인딩 불필요하지만, 컷아웃 테스트를 위해 t0 임의 바인딩 유지 가능
-                for (const auto& sub : mdlPtr->subsets)
+                // 단색 출력이므로 텍스처 바인딩이 불필요하지만, 컷아웃 테스트를 위해 t0 바인딩 유지 가능
+                if (mdlPtr->shared)
                 {
-                    m_->m_pDeviceContext->DrawIndexed(sub.count, sub.start, 0);
+                    for (const auto& sub : mdlPtr->shared->subsets)
+                    {
+                        m_->m_pDeviceContext->DrawIndexed(sub.count, sub.start, 0);
+                    }
                 }
 
                 // RS 복원
@@ -822,10 +850,10 @@ void App::OnRender()
 				// 본 팔레트 상수버퍼에 바인딩하기
                 if (cbBones)
                 {
-					// PMX, VMD 애니메이션이 없는 경우는 단위 팔레트 업로드
-                    if (mdlPtr->source == ModelSource::PMX && !mdlPtr->pmx.HasAnimations())
+                    // PMX, VMD 애니메이션이 없는 경우는 단위 팔레트 업로드
+                    if (mdlPtr->source == ModelSource::PMX && mdlPtr->shared && mdlPtr->shared->pmx && !mdlPtr->shared->pmx->HasAnimations())
                     {
-                        mdlPtr->pmx.UploadIdentityPalette(m_->m_pDeviceContext);
+                        mdlPtr->shared->pmx->UploadIdentityPalette(m_->m_pDeviceContext);
                     }
                     m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &cbBones);
                 }
@@ -837,7 +865,8 @@ void App::OnRender()
                 // 스키닝 미사용 시 VS b1 해제(안전)
 				ID3D11Buffer* nullCB = nullptr; m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &nullCB);
 			}
-			m_->m_pDeviceContext->IASetIndexBuffer(mdlPtr->ib, DXGI_FORMAT_R32_UINT, 0);
+            if (mdlPtr->shared)
+                m_->m_pDeviceContext->IASetIndexBuffer(mdlPtr->shared->ib, DXGI_FORMAT_R32_UINT, 0);
 
 			// 월드 행렬 (per-model)
 			XMMATRIX rotYaw = XMMatrixRotationY(XMConvertToRadians(mdlPtr->rotDeg.y));
@@ -851,7 +880,7 @@ void App::OnRender()
 			cb.world = XMMatrixTranspose(W);
 			cb.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(W)));
 			cb.material = m_->m_Material;
-			cb.shadingMode = (int)m_->m_ShadingMode;
+            cb.shadingMode = (int)mdlPtr->modelShading;
 			cb.enableNormalMap = m_->m_EnableNormalMap;
 			cb.useSpecularMap = m_->m_UseSpecularMap;
 
@@ -863,10 +892,10 @@ void App::OnRender()
 			m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
 
 			// 서브셋 텍스처 및 드로우
-            for (const auto& sub : mdlPtr->subsets)
+            for (const auto& sub : (mdlPtr->shared ? mdlPtr->shared->subsets : std::vector<ModelSubset>{}))
 			{
 				ID3D11ShaderResourceView* srvDiffuse = nullptr;
-				if (sub.materialIndex < mdlPtr->materialSRVs.size()) srvDiffuse = mdlPtr->materialSRVs[sub.materialIndex];
+                if (mdlPtr->shared && sub.materialIndex < mdlPtr->shared->materialSRVs.size()) srvDiffuse = mdlPtr->shared->materialSRVs[sub.materialIndex];
 				if (!srvDiffuse) srvDiffuse = m_->m_pFallbackWhite;
 				ID3D11ShaderResourceView* srvNormal = (m_->m_EnableNormalMap != 0) ? m_->m_pFallbackNormal : nullptr;
 				ID3D11ShaderResourceView* srvSpec = (m_->m_UseSpecularMap != 0) ? m_->m_pFallbackWhite : nullptr;
@@ -878,7 +907,7 @@ void App::OnRender()
 			}
 
             // 2) 아웃라인 패스: 본 패스 이후에 백페이스 확장 렌더 (깊이 읽기 전용)
-            if (m_->m_ShadingMode == ShadingMode::ToonShading && m_->m_OutlineThickness > 0.0f && m_->m_OutlineStrength > 0.0f)
+            if (mdlPtr->outlineEnabled && m_->m_OutlineThickness > 0.0f && m_->m_OutlineStrength > 0.0f)
             {
                 // 월드행렬 재계산
                 XMMATRIX rotYaw = XMMatrixRotationY(XMConvertToRadians(mdlPtr->rotDeg.y));
@@ -892,7 +921,7 @@ void App::OnRender()
                 cbOutline.world = XMMatrixTranspose(W);
                 cbOutline.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(W)));
                 cbOutline.material = m_->m_Material;
-                cbOutline.shadingMode = (int)m_->m_ShadingMode;
+                cbOutline.shadingMode = (int)mdlPtr->modelShading;
                 cbOutline.enableNormalMap = 0;
                 cbOutline.useSpecularMap = 0;
                 cbOutline.pad = 6.0f; // PSOutline 단색 출력
@@ -929,7 +958,7 @@ void App::OnRender()
                 if (m_->m_pPixelShaderOutline)
                     m_->m_pDeviceContext->PSSetShader(m_->m_pPixelShaderOutline, nullptr, 0);
 
-                for (const auto& sub : mdlPtr->subsets)
+                for (const auto& sub : (mdlPtr->shared ? mdlPtr->shared->subsets : std::vector<ModelSubset>{}))
                 {
                     m_->m_pDeviceContext->DrawIndexed(sub.count, sub.start, 0);
                 }
@@ -1456,21 +1485,43 @@ void App::RenderWidgetUI()
 			const auto& mdl = *mdlPtr;
 			const char* typeStr = (mdl.source == ModelSource::FBX) ? "FBX" : (mdl.source == ModelSource::PMX) ? "PMX" : (mdl.source == ModelSource::OBJ) ? "OBJ" : "MODEL";
 			std::string label = std::string(typeStr) + ": " + Utf8FromWString(mdl.modelName);
+			auto shaderModeToString = [](ShadingMode m) -> const char*
+			{
+				switch (m)
+				{
+					case ShadingMode::Phong: return "Phong";
+					case ShadingMode::BlinnPhong: return "Blinn-Phong";
+					case ShadingMode::Lambert: return "Lambert";
+					case ShadingMode::Unlit: return "Unlit";
+					case ShadingMode::TextureOnly: return "TextureOnly";
+					case ShadingMode::ToonShading: return "ToonShading";
+					default: return "Unknown";
+				}
+			};
+			std::string modeLine = std::string("Shader Mode: ") + shaderModeToString(mdl.modelShading);
 			ImVec2 sp;
 			if (WorldToScreen(mdl.pos, view, proj, io.DisplaySize.x, io.DisplaySize.y, sp))
 			{
-				ImVec2 textSize = ImGui::CalcTextSize(label.c_str());
-				ImVec2 pos = ImVec2(sp.x - textSize.x * 0.5f, sp.y - textSize.y - 18.0f);
+				ImVec2 szLabel = ImGui::CalcTextSize(label.c_str());
+				ImVec2 szMode  = ImGui::CalcTextSize(modeLine.c_str());
+				float boxW = (szLabel.x > szMode.x) ? szLabel.x : szMode.x;
+				float boxH = szLabel.y + szMode.y + 2.0f;
+				ImVec2 pos = ImVec2(sp.x - boxW * 0.5f, sp.y - boxH - 18.0f);
 				ImVec2 pad(8, 4);
 				ImVec2 r0 = pos - pad;
-				ImVec2 r1 = ImVec2(pos.x + textSize.x, pos.y + textSize.y) + pad;
+				ImVec2 r1 = ImVec2(pos.x + boxW, pos.y + boxH) + pad;
 				ImU32 bg = IM_COL32(0, 0, 0, 160);
 				ImU32 border = IM_COL32(255, 255, 255, 80);
 				ImU32 txt = IM_COL32(255, 255, 255, 230);
 				dl->AddRectFilled(r0, r1, bg, 6.0f);
 				dl->AddRect(r0, r1, border, 6.0f, 0, 1.5f);
+				// 1행: 모델명
 				dl->AddText(pos + ImVec2(1, 1), IM_COL32(0, 0, 0, 200), label.c_str());
 				dl->AddText(pos, txt, label.c_str());
+				// 2행: 셰이더 모드
+				ImVec2 pos2 = ImVec2(pos.x, pos.y + szLabel.y + 2.0f);
+				dl->AddText(pos2 + ImVec2(1, 1), IM_COL32(0, 0, 0, 200), modeLine.c_str());
+				dl->AddText(pos2, txt, modeLine.c_str());
 			}
 		}
 	}
@@ -1637,70 +1688,96 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
     }
 
     bool ok = false;
-	auto entry = std::make_unique<ModelEntry>();
-	entry->modelName = fileName;
+    auto entry = std::make_unique<ModelEntry>();
+    entry->modelName = fileName;
 
-    if (ext == L".fbx")
+    // 캐시 확인
+    std::shared_ptr<SharedModelData> shared;
+    if (auto it = m_->m_ModelCache.find(pathW); it != m_->m_ModelCache.end()) shared = it->second.lock();
+
+    if (!shared)
     {
-		entry->source = ModelSource::FBX;
-        if (ok = entry->fbx.Load(m_->m_pDevice, pathW))
+        shared = std::make_shared<SharedModelData>();
+        shared->pathW = pathW;
+        // 로드 경로에 따라 매니저 준비
+        if (ext == L".fbx")
         {
-			m_->PushLog("[OK] Loaded FBX: " + Utf8FromWString(fileName));
-            entry->stride = entry->fbx.GetVertexStride();
-            entry->vb = entry->fbx.GetVertexBuffer(); if (entry->vb) entry->vb->AddRef();
-            entry->ib = entry->fbx.GetIndexBuffer();  if (entry->ib) entry->ib->AddRef();
-            entry->indexCount = entry->fbx.GetIndexCount();
-            entry->subsets.clear();
-            for (auto& s : entry->fbx.GetSubsets()) entry->subsets.push_back({ s.startIndex, s.indexCount, s.materialIndex });
-            entry->materialSRVs = entry->fbx.GetMaterialSRVs();
-            // 본 캐시/출력텍스트 일괄 구축
-            BuildBoneCacheStructure(*entry, nullptr);
-            // 통계 사전 계산
-            entry->meshStatsValid = ComputeMeshStats(m_->m_pDevice, m_->m_pDeviceContext, entry->vb, entry->stride, entry->ib, entry->indexCount, entry->meshStats);
-            m_->m_Models.push_back(std::move(entry));
-			m_->m_RenderMode = RenderMode::Model;
+            shared->source = ModelSource::FBX;
+            shared->fbx = std::make_shared<FbxManager>();
+            if (ok = shared->fbx->Load(m_->m_pDevice, pathW))
+            {
+                m_->PushLog("[OK] Loaded FBX(shared): " + Utf8FromWString(fileName));
+                shared->stride = shared->fbx->GetVertexStride();
+                shared->vb = shared->fbx->GetVertexBuffer();
+                shared->ib = shared->fbx->GetIndexBuffer();
+                shared->indexCount = shared->fbx->GetIndexCount();
+                shared->subsets.clear();
+                for (auto& s : shared->fbx->GetSubsets()) shared->subsets.push_back({ s.startIndex, s.indexCount, s.materialIndex });
+                shared->materialSRVs = shared->fbx->GetMaterialSRVs();
+            }
+            else { m_->PushLog("[ERR] Failed FBX: " + Utf8FromWString(fileName)); }
         }
-        else { m_->PushLog("[ERR] Failed FBX: " + Utf8FromWString(fileName)); }
+        else if (ext == L".obj")
+        {
+            shared->source = ModelSource::OBJ;
+            shared->obj = std::make_shared<ObjManager>();
+            if (ok = shared->obj->Load(m_->m_pDevice, pathW))
+            {
+                m_->PushLog("[OK] Loaded OBJ(shared): " + Utf8FromWString(fileName));
+                shared->stride = shared->obj->GetVertexStride();
+                shared->vb = shared->obj->GetVertexBuffer();
+                shared->ib = shared->obj->GetIndexBuffer();
+                shared->indexCount = shared->obj->GetIndexCount();
+                shared->subsets.clear();
+                const auto& subs = shared->obj->GetSubsets();
+                for (auto& s : subs) shared->subsets.push_back({ s.startIndex, s.indexCount, s.materialIndex });
+                shared->materialSRVs = shared->obj->GetMaterialSRVs();
+            }
+            else { m_->PushLog("[ERR] Failed OBJ: " + Utf8FromWString(fileName)); }
+        }
+        else if (ext == L".pmx")
+        {
+            shared->source = ModelSource::PMX;
+            shared->pmx = std::make_shared<PmxManager>();
+            if (ok = shared->pmx->Load(m_->m_pDevice, pathW))
+            {
+                m_->PushLog("[OK] Loaded PMX(shared): " + Utf8FromWString(fileName));
+                shared->stride = shared->pmx->GetVertexStride();
+                shared->vb = shared->pmx->GetVertexBuffer();
+                shared->ib = shared->pmx->GetIndexBuffer();
+                shared->indexCount = shared->pmx->GetIndexCount();
+                shared->subsets.clear();
+                const auto& subs = shared->pmx->GetSubsets();
+                for (auto& s : subs) shared->subsets.push_back({ s.startIndex, s.indexCount, s.materialIndex });
+                shared->materialSRVs = shared->pmx->GetMaterialSRVs();
+            }
+            else { m_->PushLog("[ERR] Failed PMX: " + Utf8FromWString(fileName)); }
+        }
+
+        if (ok)
+        {
+            m_->m_ModelCache[pathW] = shared; // 캐시 등록
+        }
     }
-    else if (ext == L".obj")
+    else
     {
-		entry->source = ModelSource::OBJ;
-        if (ok = entry->obj.Load(m_->m_pDevice, pathW))
-        {
-			m_->PushLog("[OK] Loaded OBJ: " + Utf8FromWString(fileName));
-            entry->stride = entry->obj.GetVertexStride();
-            entry->vb = entry->obj.GetVertexBuffer(); if (entry->vb) entry->vb->AddRef();
-            entry->ib = entry->obj.GetIndexBuffer();  if (entry->ib) entry->ib->AddRef();
-            entry->indexCount = entry->obj.GetIndexCount();
-            entry->subsets.clear();
-            for (auto& s : entry->obj.GetSubsets()) entry->subsets.push_back({ s.startIndex, s.indexCount, s.materialIndex });
-            entry->materialSRVs = entry->obj.GetMaterialSRVs();
-            entry->meshStatsValid = ComputeMeshStats(m_->m_pDevice, m_->m_pDeviceContext, entry->vb, entry->stride, entry->ib, entry->indexCount, entry->meshStats);
-            m_->m_Models.push_back(std::move(entry));
-			m_->m_RenderMode = RenderMode::Model;
-        }
-        else { m_->PushLog("[ERR] Failed OBJ: " + Utf8FromWString(fileName)); }
+        ok = true;
+        m_->PushLog("[OK] Reused cached model: " + Utf8FromWString(fileName));
     }
-    else if (ext == L".pmx")
+
+    if (ok && shared)
     {
-		entry->source = ModelSource::PMX;
-        if (ok = entry->pmx.Load(m_->m_pDevice, pathW))
-        {
-			m_->PushLog("[OK] Loaded PMX: " + Utf8FromWString(fileName));
-            entry->stride = entry->pmx.GetVertexStride();
-            entry->vb = entry->pmx.GetVertexBuffer(); if (entry->vb) entry->vb->AddRef();
-            entry->ib = entry->pmx.GetIndexBuffer();  if (entry->ib) entry->ib->AddRef();
-            entry->indexCount = entry->pmx.GetIndexCount();
-            entry->subsets.clear();
-            for (auto& s : entry->pmx.GetSubsets()) entry->subsets.push_back({ s.startIndex, s.indexCount, s.materialIndex });
-            entry->materialSRVs = entry->pmx.GetMaterialSRVs();
-            // 본 캐시/출력텍스트 일괄 구축
-            BuildBoneCacheStructure(*entry, nullptr);
-            entry->meshStatsValid = ComputeMeshStats(m_->m_pDevice, m_->m_pDeviceContext, entry->vb, entry->stride, entry->ib, entry->indexCount, entry->meshStats);
-            m_->m_Models.push_back(std::move(entry));
-			m_->m_RenderMode = RenderMode::Model;
-        }
-        else { m_->PushLog("[ERR] Failed PMX: " + Utf8FromWString(fileName)); }
+        entry->shared = shared;
+        entry->source = shared->source;
+        // 본 캐시/출력텍스트 일괄 구축
+        BuildBoneCacheStructure(*entry, nullptr);
+        // 통계 사전 계산(IB/VB 공유)
+        entry->meshStatsValid = ComputeMeshStats(m_->m_pDevice, m_->m_pDeviceContext, shared->vb, shared->stride, shared->ib, shared->indexCount, entry->meshStats);
+        // 모델별 셰이딩 초기값 = 현재 글로벌 셰이딩, 아웃라인 기본은 Toon일 때만 ON
+        entry->modelShading = m_->m_ShadingMode;
+        entry->outlineEnabled = (entry->modelShading == ShadingMode::ToonShading);
+        m_->m_Models.push_back(std::move(entry));
+        m_->m_RenderMode = RenderMode::Model;
     }
 
     return ok;
@@ -1878,12 +1955,12 @@ void App::RenderModelPannel()
 			ImGui::DragFloat3("Rotation (deg)", &mdl.rotDeg.x, 1.0f, -360.0f, 360.0f, "%.1f");
 			ImGui::DragFloat3("Scale", &mdl.scale.x, 0.01f, 0.001f, 100.0f, "%.3f");
 			ImGui::Checkbox("Auto Rotate (Yaw)", &mdl.autoRotate);
-			if (mdl.source == ModelSource::FBX)
-			{
-				if (mdl.fbx.HasAnimations())
+            if (mdl.source == ModelSource::FBX && mdl.shared && mdl.shared->fbx)
+            {
+                if (mdl.shared->fbx->HasAnimations())
 				{
-					const auto& names = mdl.fbx.GetAnimationNames();
-					if (mdl.uiSelectedAnim < 0 || mdl.uiSelectedAnim >= (int)names.size()) mdl.uiSelectedAnim = mdl.fbx.GetCurrentAnimationIndex();
+                    const auto& names = mdl.shared->fbx->GetAnimationNames();
+                    if (mdl.uiSelectedAnim < 0 || mdl.uiSelectedAnim >= (int)names.size()) mdl.uiSelectedAnim = mdl.shared->fbx->GetCurrentAnimationIndex();
 					ImGui::Text("FBX Animations");
 					if (ImGui::BeginListBox("##AnimList", ImVec2(-FLT_MIN, 4 * ImGui::GetTextLineHeightWithSpacing())))
 					{
@@ -1893,7 +1970,7 @@ void App::RenderModelPannel()
 							if (ImGui::Selectable(names[a].c_str(), sel))
 							{
 								mdl.uiSelectedAnim = a;
-								mdl.fbx.SetCurrentAnimation(a);
+                                mdl.shared->fbx->SetCurrentAnimation(a);
 								m_->PushLog(std::string("[OK] FBX Anim -> ") + names[a]);
 							}
 							if (sel) ImGui::SetItemDefaultFocus();
@@ -1901,17 +1978,17 @@ void App::RenderModelPannel()
 						ImGui::EndListBox();
 					}
 					ImGui::Checkbox("Play", &mdl.uiAnimPlaying);
-					mdl.fbx.SetAnimationPlaying(mdl.uiAnimPlaying);
-					double cur = mdl.fbx.GetAnimationTimeSeconds();
-					double dur = mdl.fbx.GetClipDurationSec(mdl.fbx.GetCurrentAnimationIndex());
+                    mdl.shared->fbx->SetAnimationPlaying(mdl.uiAnimPlaying);
+                    double cur = mdl.shared->fbx->GetAnimationTimeSeconds();
+                    double dur = mdl.shared->fbx->GetClipDurationSec(mdl.shared->fbx->GetCurrentAnimationIndex());
 					float curF = (float)cur, durF = (float)dur;
 					if (durF > 0.0f)
 					{
-						if (ImGui::SliderFloat("Time (s)", &curF, 0.0f, durF)) mdl.fbx.SetAnimationTimeSeconds((double)curF);
+                        if (ImGui::SliderFloat("Time (s)", &curF, 0.0f, durF)) mdl.shared->fbx->SetAnimationTimeSeconds((double)curF);
 					}
 				}
 			}
-			else if (mdl.source == ModelSource::PMX)
+            else if (mdl.source == ModelSource::PMX && mdl.shared && mdl.shared->pmx)
 			{
 				if (ImGui::Button("Load VMD..."))
 				{
@@ -1920,7 +1997,7 @@ void App::RenderModelPannel()
 					OPENFILENAMEW ofn{}; ofn.lStructSize = sizeof(ofn); ofn.hwndOwner = GameApp::m_hWnd; ofn.lpstrFilter = L"VMD Files (*.vmd)\0*.vmd\0All Files\0*.*\0\0"; ofn.lpstrFile = file; ofn.nMaxFile = MAX_PATH; ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
 					if (GetOpenFileNameW(&ofn))
 					{
-						if (mdl.pmx.LoadVMD(m_->m_pDevice, file))
+                        if (mdl.shared->pmx->LoadVMD(m_->m_pDevice, file))
 						{
 							m_->PushLog("[OK] VMD loaded");
 							mdl.uiAnimPlaying = true;
@@ -1929,14 +2006,26 @@ void App::RenderModelPannel()
 					}
 				}
 				ImGui::Checkbox("Play##PMX", &mdl.uiAnimPlaying);
-				double cur = mdl.pmx.GetAnimationTimeSeconds();
-				double dur = mdl.pmx.GetClipDurationSec();
+                double cur = mdl.shared->pmx->GetAnimationTimeSeconds();
+                double dur = mdl.shared->pmx->GetClipDurationSec();
 				float curF = (float)cur, durF = (float)dur;
 				if (durF > 0.0f)
 				{
-					if (ImGui::SliderFloat("Time (s)##PMX", &curF, 0.0f, durF)) mdl.pmx.SetAnimationTimeSeconds((double)curF);
+                    if (ImGui::SliderFloat("Time (s)##PMX", &curF, 0.0f, durF)) mdl.shared->pmx->SetAnimationTimeSeconds((double)curF);
 				}
 			}
+
+			// 셰이딩 모드 선택 UI 
+			{
+				int modePer = (int)mdl.modelShading;
+				const char* modes[] = { "Phong", "Blinn-Phong", "Lambert", "Unlit", "TextureOnly", "ToonShading" };
+				if (ImGui::Combo("Shading Mode", &modePer, modes, IM_ARRAYSIZE(modes)))
+				{
+					mdl.modelShading = (ShadingMode)modePer;
+				}
+			}
+			// Outline 적용 토글
+			ImGui::Checkbox("Outline", &mdl.outlineEnabled);
 			if (ImGui::Button("Remove"))
 			{
 				m_->PushLog("[OK] Removed model : " + Utf8FromWString(m_->m_Models[i]->modelName));
@@ -1951,15 +2040,19 @@ void App::RenderModelPannel()
 				ImGui::Text("Vertex: %u   Edge: %u   Face: %u   Tri: %u", mdl.meshStats.vertices, mdl.meshStats.edges, mdl.meshStats.faces, mdl.meshStats.triangles);
 			}
 
-			// 본 구조 카드: 캐시된 텍스트를 단 한 줄 호출로 출력
+			// 본 구조 카드: 자세히 보기 토글
 			const auto& cache = mdl.boneCache;
 			int rootIdx = mdl.boneRoot;
 			bool hasSkeleton = mdl.boneCacheValid && rootIdx >= 0 && rootIdx < (int)cache.size();
             if (hasSkeleton && rootIdx >= 0)
 			{
-                ImGui::BeginChild("BoneCard", ImVec2(0, 240), true, ImGuiWindowFlags_HorizontalScrollbar);
-                ImGui::TextUnformatted(mdl.boneDisplayText.c_str());
-                ImGui::EndChild();
+				ImGui::Checkbox("Show Bone Details", &mdl.showBoneDetails);
+				if (mdl.showBoneDetails)
+				{
+					ImGui::BeginChild("BoneCard", ImVec2(0, 240), true, ImGuiWindowFlags_HorizontalScrollbar);
+					ImGui::TextUnformatted(mdl.boneDisplayText.c_str());
+					ImGui::EndChild();
+				}
 			}
 
 			ImGui::PopID();
