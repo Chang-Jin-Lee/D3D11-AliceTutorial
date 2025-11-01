@@ -62,7 +62,7 @@ struct ModelSubset { uint32_t start; uint32_t count; uint32_t materialIndex; };
 // 간단한 메시 통계 구조체
 struct MeshStats { uint32_t vertices = 0, edges = 0, faces = 0, triangles = 0; };
 
-// 공유 GPU 리소스(동일 경로 모델 간 공유)
+// 3D 모델 리소스
 struct SharedModelData
 {
     std::wstring pathW;
@@ -71,7 +71,7 @@ struct SharedModelData
     std::shared_ptr<ObjManager> obj;  // OBJ용 로더
     std::shared_ptr<PmxManager> pmx;  // PMX용 로더
 
-    // 드로우 자원(모든 인스턴스가 공유)
+    // 그리는 자원들. 리소스를 모두 공유함
     ID3D11Buffer* vb = nullptr;
     ID3D11Buffer* ib = nullptr;
     int           indexCount = 0;
@@ -526,9 +526,13 @@ bool App::OnInitialize()
 
 	if (!m_->m_SystemInfo.InitSysInfomation(m_->m_pDevice)) return false;
 
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_run_walk_idle.fbx");
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_run_walk_idle.fbx");
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_run_walk_idle.fbx");
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx");
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx");
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx");
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx");
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx");
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx");
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx");
 
 	m_->m_camera.SetPosition(XMFLOAT3(0.0f, 30.0f, -60.0f));
 
@@ -536,17 +540,39 @@ bool App::OnInitialize()
 	m_->m_Models[1]->uiAnimPlaying = true; // 자동 재생
 	m_->m_Models[2]->uiAnimPlaying = true; // 자동 재생
 
-	m_->m_Models[0]->pos = XMFLOAT3(-36.0f, 0.0f, 0.0f);
-	m_->m_Models[2]->pos = XMFLOAT3(36.0f, 0.0f, 0.0f);
+	m_->m_Models[1]->pos = XMFLOAT3(36.0f, 0.0f, 0.0f);
+	m_->m_Models[2]->pos = XMFLOAT3(36.0f * 2, 0.0f, 0.0f);
+	m_->m_Models[3]->pos = XMFLOAT3(36.0f * 3, 0.0f, 0.0f);
+	m_->m_Models[4]->pos = XMFLOAT3(36.0f * 4, 0.0f, 0.0f);
+	m_->m_Models[5]->pos = XMFLOAT3(36.0f * 5, 0.0f, 0.0f);
+	m_->m_Models[6]->pos = XMFLOAT3(36.0f * 6, 0.0f, 0.0f);
 
 	m_->m_Models[0]->scale = XMFLOAT3(0.3f, 0.3f, 0.3f);
 	m_->m_Models[1]->scale = XMFLOAT3(0.3f, 0.3f, 0.3f);
 	m_->m_Models[2]->scale = XMFLOAT3(0.3f, 0.3f, 0.3f);
+	m_->m_Models[3]->scale = XMFLOAT3(0.3f, 0.3f, 0.3f);
+	m_->m_Models[4]->scale = XMFLOAT3(0.3f, 0.3f, 0.3f);
+	m_->m_Models[5]->scale = XMFLOAT3(0.3f, 0.3f, 0.3f);
+	m_->m_Models[6]->scale = XMFLOAT3(0.3f, 0.3f, 0.3f);
 
+	m_->m_Models[0]->modelShading = ShadingMode::Unlit;
+	m_->m_Models[1]->modelShading = ShadingMode::Lambert;
+	m_->m_Models[2]->modelShading = ShadingMode::BlinnPhong;
+	m_->m_Models[3]->modelShading = ShadingMode::Phong;
+	m_->m_Models[4]->modelShading = ShadingMode::TextureOnly;
+	m_->m_Models[5]->modelShading = ShadingMode::ToonShading;
+	m_->m_Models[6]->modelShading = ShadingMode::ToonShading;
+	
+	m_->m_Models[0]->outlineEnabled = false;
+	m_->m_Models[1]->outlineEnabled = false;
+	m_->m_Models[2]->outlineEnabled = false;
+	m_->m_Models[3]->outlineEnabled = false;
+	m_->m_Models[4]->outlineEnabled = false;
+	m_->m_Models[5]->outlineEnabled = false;
+	m_->m_Models[6]->outlineEnabled = true;
 
-	m_->m_Models[0]->modelShading = ShadingMode::Lambert;
-	m_->m_Models[0]->modelShading = ShadingMode::Phong;
-	m_->m_Models[0]->modelShading = ShadingMode::ToonShading;
+	m_->m_OutlineThickness = 0.075;
+	m_->m_OutlineColor = XMFLOAT4(1.0, 1.0, 1.0, 1);
 
 	return true;
 }
@@ -1499,13 +1525,18 @@ void App::RenderWidgetUI()
 				}
 			};
 			std::string modeLine = std::string("Shader Mode: ") + shaderModeToString(mdl.modelShading);
+			std::string outline = std::string("Outline: ") + (mdl.outlineEnabled ? "On" : "Off");
 			ImVec2 sp;
 			if (WorldToScreen(mdl.pos, view, proj, io.DisplaySize.x, io.DisplaySize.y, sp))
 			{
 				ImVec2 szLabel = ImGui::CalcTextSize(label.c_str());
 				ImVec2 szMode  = ImGui::CalcTextSize(modeLine.c_str());
-				float boxW = (szLabel.x > szMode.x) ? szLabel.x : szMode.x;
-				float boxH = szLabel.y + szMode.y + 2.0f;
+				ImVec2 szOutline = ImGui::CalcTextSize(outline.c_str());
+				float boxW = szLabel.x;
+				if (szMode.x > boxW) boxW = szMode.x;
+				if (szOutline.x > boxW) boxW = szOutline.x;
+				float lineGap = 2.0f;
+				float boxH = szLabel.y + lineGap + szMode.y + lineGap + szOutline.y;
 				ImVec2 pos = ImVec2(sp.x - boxW * 0.5f, sp.y - boxH - 18.0f);
 				ImVec2 pad(8, 4);
 				ImVec2 r0 = pos - pad;
@@ -1519,9 +1550,13 @@ void App::RenderWidgetUI()
 				dl->AddText(pos + ImVec2(1, 1), IM_COL32(0, 0, 0, 200), label.c_str());
 				dl->AddText(pos, txt, label.c_str());
 				// 2행: 셰이더 모드
-				ImVec2 pos2 = ImVec2(pos.x, pos.y + szLabel.y + 2.0f);
+				ImVec2 pos2 = ImVec2(pos.x, pos.y + szLabel.y + lineGap);
 				dl->AddText(pos2 + ImVec2(1, 1), IM_COL32(0, 0, 0, 200), modeLine.c_str());
 				dl->AddText(pos2, txt, modeLine.c_str());
+				// 3행: 아웃라인 상태
+				ImVec2 pos3 = ImVec2(pos.x, pos2.y + szMode.y + lineGap);
+				dl->AddText(pos3 + ImVec2(1, 1), IM_COL32(0, 0, 0, 200), outline.c_str());
+				dl->AddText(pos3, txt, outline.c_str());
 			}
 		}
 	}
@@ -1977,8 +2012,8 @@ void App::RenderModelPannel()
 						}
 						ImGui::EndListBox();
 					}
-					ImGui::Checkbox("Play", &mdl.uiAnimPlaying);
-                    mdl.shared->fbx->SetAnimationPlaying(mdl.uiAnimPlaying);
+                    bool playFBX = mdl.shared->fbx->IsAnimationPlaying();
+                    if (ImGui::Checkbox("Play", &playFBX)) mdl.shared->fbx->SetAnimationPlaying(playFBX);
                     double cur = mdl.shared->fbx->GetAnimationTimeSeconds();
                     double dur = mdl.shared->fbx->GetClipDurationSec(mdl.shared->fbx->GetCurrentAnimationIndex());
 					float curF = (float)cur, durF = (float)dur;
@@ -2005,7 +2040,8 @@ void App::RenderModelPannel()
 						else { m_->PushLog("[ERR] VMD load failed"); }
 					}
 				}
-				ImGui::Checkbox("Play##PMX", &mdl.uiAnimPlaying);
+                bool playPMX = mdl.shared->pmx->IsAnimationPlaying();
+                if (ImGui::Checkbox("Play##PMX", &playPMX)) mdl.shared->pmx->SetAnimationPlaying(playPMX);
                 double cur = mdl.shared->pmx->GetAnimationTimeSeconds();
                 double dur = mdl.shared->pmx->GetClipDurationSec();
 				float curF = (float)cur, durF = (float)dur;
