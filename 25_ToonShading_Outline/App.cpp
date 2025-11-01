@@ -1649,8 +1649,8 @@ void App::RenderControlPannel()
 	const float W = ioUI.DisplaySize.x;
 	const float H = ioUI.DisplaySize.y;
 
-	ImGui::SetNextWindowPos(ImVec2(100, 20), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(400, 620), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowPos(ImVec2(10, 20), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(300, 360), ImGuiCond_FirstUseEver);
 	if (ImGui::Begin("Controls"))
 	{
 		// SkyBox 선택
@@ -1759,8 +1759,8 @@ void App::RenderControlPannel()
 void App::RenderModelPannel()
 {
 	// Models 독립 창
-	ImGui::SetNextWindowPos(ImVec2(100, 700), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(500, 600), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowPos(ImVec2(10, 400), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(300, 300), ImGuiCond_FirstUseEver);
 	ImGui::Begin("Model Loader (FBX / OBJ / PMX)");
 	// 렌더 모드 선택
 	{
@@ -1903,13 +1903,13 @@ void App::RenderConsolPannel()
 	// Console
 	{
 		auto& io = ImGui::GetIO();
-		ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - 420, 500), ImGuiCond_FirstUseEver);
-		ImGui::SetNextWindowSize(ImVec2(460, 520), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - 340, 200), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(330, 260), ImGuiCond_FirstUseEver);
 
 		if (ImGui::Begin("Console"))
 		{
 			ImGui::Checkbox("Auto Scroll", &m_->m_LogAutoScroll); ImGui::SameLine();
-			ImGui::InputTextWithHint("##LogFilter", "filter...", m_->m_LogFilter, IM_ARRAYSIZE(m_->m_LogFilter)); ImGui::SameLine();
+			ImGui::InputTextWithHint("##LogFilter", "filter...", m_->m_LogFilter, 70); ImGui::SameLine();
 			if (ImGui::Button("Clear")) m_->m_LogLines.clear();
 			ImGui::Separator();
 			ImGui::BeginChild("ConsoleScroll", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
