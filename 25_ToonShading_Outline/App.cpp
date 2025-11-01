@@ -346,7 +346,7 @@ struct App::Impl {
     float                         m_MirrorCubeScale = 2.0f;
 
     // 조명/재질
-    DirectionalLight              m_DirLight = { {0,0,0,1}, {1,1,1,1}, {1,1,1,1}, {0,0,1}, 0.0f };
+    DirectionalLight              m_DirLight = { {0,0,0,1}, {1,1,1,1}, {0.7,0.7,0.7,1}, {0,0,1}, 0.0f };
     Material                      m_Material = { {1,1,1,1}, {1,1,1,1}, {1,1,1,32}, {0,0,0,0} };
     Material                      m_mirrorCubeMaterial = { {0,0,0,1}, {0,0,0,1}, {0,0,0,32}, {1,1,1,0.02f} };
 
@@ -612,6 +612,29 @@ inline ImVec2 operator+(const ImVec2& lhs, const ImVec2& rhs)
 inline ImVec2 operator-(const ImVec2& lhs, const ImVec2& rhs) 
 {
 	return ImVec2(lhs.x - rhs.x, lhs.y - rhs.y);
+}
+
+// 월드 좌표를 스크린 픽셀 좌표로 투영 (성공 시 true)
+static bool WorldToScreen(const DirectX::XMFLOAT3& world,
+	const DirectX::XMMATRIX& view,
+	const DirectX::XMMATRIX& proj,
+	float screenW, float screenH,
+	ImVec2& outScreen)
+{
+	using namespace DirectX;
+	XMVECTOR p = XMVectorSet(world.x, world.y, world.z, 1.0f);
+	XMMATRIX vp = XMMatrixMultiply(view, proj);
+	XMVECTOR clip = XMVector4Transform(p, vp);
+	float w = XMVectorGetW(clip);
+	if (w <= 0.00001f) return false; // 카메라 뒤
+	XMFLOAT4 c; XMStoreFloat4(&c, clip);
+	float ndcX = c.x / w;
+	float ndcY = c.y / w;
+	float ndcZ = c.z / w;
+	if (ndcZ < 0.0f || ndcZ > 1.0f) return false; // 깊이 밖
+	outScreen.x = (ndcX * 0.5f + 0.5f) * screenW;
+	outScreen.y = (-ndcY * 0.5f + 0.5f) * screenH;
+	return true;
 }
 
 // Render() 함수에 중요한 부분이 다 들어있습니다. 여기를 보면 됩니다
@@ -916,6 +939,10 @@ void App::OnRender()
                 if (m_->m_pDepthStencilState)
                     m_->m_pDeviceContext->OMSetDepthStencilState(m_->m_pDepthStencilState, 0);
                 m_->m_ConstantBuffer.pad = 0.0f;
+                // PS/VS 본 패스에서 사용하던 기본 셰이더로 바꿔야함
+                m_->m_pDeviceContext->PSSetShader(m_->m_pPixelShader, nullptr, 0);
+                m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShader, nullptr, 0);
+                ID3D11Buffer* nullCB = nullptr; m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &nullCB);
             }
             // 모델별 루프 끝에서 VS/IL 복원은 다음 모델에서 다시 설정되므로 별도 복원 불필요
 		}
@@ -1075,6 +1102,8 @@ void App::OnRender()
 	RenderModelPannel();
 	RenderConsolPannel();
 	m_->m_SystemInfo.RenderUI();
+
+	RenderWidgetUI();
 
     ImGui::Render();
 
@@ -1413,6 +1442,40 @@ bool App::InitImGui()
 	return true;
 }
 
+void App::RenderWidgetUI()
+{
+	// 모델 머리 위 이름 태그
+	if (m_->m_RenderMode == RenderMode::Model && !m_->m_Models.empty())
+	{
+		ImGuiIO& io = ImGui::GetIO();
+		auto view = m_->m_camera.GetViewMatrixXM();
+		auto proj = m_->m_camera.GetProjMatrixXM();
+		ImDrawList* dl = ImGui::GetForegroundDrawList();
+		for (const auto& mdlPtr : m_->m_Models)
+		{
+			const auto& mdl = *mdlPtr;
+			const char* typeStr = (mdl.source == ModelSource::FBX) ? "FBX" : (mdl.source == ModelSource::PMX) ? "PMX" : (mdl.source == ModelSource::OBJ) ? "OBJ" : "MODEL";
+			std::string label = std::string(typeStr) + ": " + Utf8FromWString(mdl.modelName);
+			ImVec2 sp;
+			if (WorldToScreen(mdl.pos, view, proj, io.DisplaySize.x, io.DisplaySize.y, sp))
+			{
+				ImVec2 textSize = ImGui::CalcTextSize(label.c_str());
+				ImVec2 pos = ImVec2(sp.x - textSize.x * 0.5f, sp.y - textSize.y - 18.0f);
+				ImVec2 pad(8, 4);
+				ImVec2 r0 = pos - pad;
+				ImVec2 r1 = ImVec2(pos.x + textSize.x, pos.y + textSize.y) + pad;
+				ImU32 bg = IM_COL32(0, 0, 0, 160);
+				ImU32 border = IM_COL32(255, 255, 255, 80);
+				ImU32 txt = IM_COL32(255, 255, 255, 230);
+				dl->AddRectFilled(r0, r1, bg, 6.0f);
+				dl->AddRect(r0, r1, border, 6.0f, 0, 1.5f);
+				dl->AddText(pos + ImVec2(1, 1), IM_COL32(0, 0, 0, 200), label.c_str());
+				dl->AddText(pos, txt, label.c_str());
+			}
+		}
+	}
+}
+
 bool App::InitBasicEffect()
 {
 	// Vertex Shader -------------------------------------
@@ -1504,6 +1567,14 @@ bool App::InitBasicEffect()
 	HR_T(m_->m_pDevice->CreatePixelShader(pixelShaderBuffer->GetBufferPointer(),
 	pixelShaderBuffer->GetBufferSize(), NULL, &m_->m_pPixelShader));
 	SAFE_RELEASE(pixelShaderBuffer);	// 픽셀 셰이더 버퍼 더이상 필요없음
+
+	// Outline 전용 Pixel Shader (PSOutline)
+	{
+		ID3D10Blob* psOutline = nullptr;
+		HR_T(CompileShaderFromFile(L"25_BasicPS.hlsl", "PSOutline", "ps_4_0", &psOutline));
+		HR_T(m_->m_pDevice->CreatePixelShader(psOutline->GetBufferPointer(), psOutline->GetBufferSize(), nullptr, &m_->m_pPixelShaderOutline));
+		SAFE_RELEASE(psOutline);
+	}
 	return true;
 }
 
@@ -1737,7 +1808,7 @@ void App::RenderControlPannel()
 		ImGui::ColorEdit4("Specular", &m_->m_DirLight.specular.x);
 		if (ImGui::Button("Reset Light"))
 		{
-			m_->m_DirLight = { XMFLOAT4(0,0,0,1), XMFLOAT4(1,1,1,1), XMFLOAT4(1,1,1,1), XMFLOAT3(0,0,1), 0.0f };
+			m_->m_DirLight = { XMFLOAT4(0,0,0,1), XMFLOAT4(1,1,1,1), XMFLOAT4(0.7,0.7,0.7,1), XMFLOAT3(0,0,1), 0.0f };
 		}
 		ImGui::Separator();
 		ImGui::Text("Material");

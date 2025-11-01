@@ -32,6 +32,7 @@ public:
 	void RenderControlPannel();
 	void RenderModelPannel();
 	void RenderConsolPannel();
+	void RenderWidgetUI();
 
 	// ·Î´õ API
 	bool LoadModelFromFile(const std::wstring& pathW);
