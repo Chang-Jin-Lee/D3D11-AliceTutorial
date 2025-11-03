@@ -8,9 +8,10 @@
   - 이후에 “백페이스”만 렌더합니다. 깊이는 읽기만 해서 실루엣만 남기고 앞면 색은 보이지 않게 합니다.
   - 프로젝트가 렉이 걸린다면 App::OnInitialize() 함수 내부의 fbx 파일 로드와 밑의 모델들 데이터 수정 하는 부분을 삭제하면 됩니다.
 
+
 | All Shader Collection |
 |---|
-| <div align="center"><img src="https://github.com/user-attachments/assets/c637fcf1-d720-4966-8c09-d3f3f1e854e0" width="1600"/></div> |
+| <div align="center"><img src="https://github.com/user-attachments/assets/78c3c9d0-25e5-40f2-8e32-ceddd3b10eb8" width="1600"/></div> |
 
 
 | Unlit | Lambert  | BlinnPhong |  
