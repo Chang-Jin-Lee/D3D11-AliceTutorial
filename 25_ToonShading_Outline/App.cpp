@@ -22,7 +22,7 @@
 #include "../Common/LineRenderer.h"
 #include "../Common/Skybox.h"
 #include "../Common/SystemInfomation.h"
-#include "../Common/FbxManager.h"
+#include "../Common/Mesh/FbxModel.h"
 #include "../Common/ObjManager.h"
 #include "../Common/PmxManager.h"
 #include <dxgi1_4.h>
@@ -53,7 +53,7 @@ struct ConstantBuffer {
     int shadingMode = 0; XMFLOAT3 pad2 = {0,0,0}; int enableNormalMap = 1; XMFLOAT3 pad3 = {0,0,0}; int useSpecularMap = 0; XMFLOAT3 pad4 = {0,0,0};
 	// 이번 프로젝트 코드
 //////////////////////////////////////////////////////////////////////////
-    float outlineWidth = 0.15f; float outlinePow = 1.0f; float outlineThickness = 0.15f; float _outlinePad0 = 0.0f; XMFLOAT4 outlineColor = XMFLOAT4(0,0,0,1); float outlineStrength = 1.0f; XMFLOAT3 _outlinePad2 = {0,0,0};
+    float outlineWidth = 0.15f; float outlinePow = 1.0f; float outlineThickness = 0.014f; float _outlinePad0 = 0.0f; XMFLOAT4 outlineColor = XMFLOAT4(0,0,0,1); float outlineStrength = 1.0f; XMFLOAT3 _outlinePad2 = {0,0,0};
 };
 enum class ShadingMode { Phong=0, BlinnPhong=1, Lambert=2, Unlit=3, TextureOnly=4, ToonShading=5 };
 enum class RenderMode { None = 0, Cube = 1, Model = 2 };
@@ -67,7 +67,7 @@ struct SharedModelData
 {
     std::wstring pathW;
     ModelSource source = ModelSource::Custom;
-    std::shared_ptr<FbxManager> fbx;  // FBX용 로더
+    std::shared_ptr<FbxModel> fbx;  // FBX용 로더 (새 구조)
     std::shared_ptr<ObjManager> obj;  // OBJ용 로더
     std::shared_ptr<PmxManager> pmx;  // PMX용 로더
 
@@ -371,7 +371,7 @@ struct App::Impl {
     ShadingMode                   m_ShadingMode = ShadingMode::ToonShading;
     // Outline params ImGui에서 제어하는 용도도
     // Rim 파라미터 제거 (멀티패스 지오메트리 아웃라인만 사용)
-    float                         m_OutlineThickness = 0.5f;
+    float                         m_OutlineThickness = 0.15f;
     XMFLOAT4                      m_OutlineColor = XMFLOAT4(1.0, 0.7286, 0, 1);
     float                         m_OutlineStrength = 1.0f;
     int                           m_EnableNormalMap = 1;
@@ -1741,7 +1741,7 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
         if (ext == L".fbx")
         {
             shared->source = ModelSource::FBX;
-            shared->fbx = std::make_shared<FbxManager>();
+            shared->fbx = std::make_shared<FbxModel>();
             if (ok = shared->fbx->Load(m_->m_pDevice, pathW))
             {
                 m_->PushLog("[OK] Loaded FBX(shared): " + Utf8FromWString(fileName));
