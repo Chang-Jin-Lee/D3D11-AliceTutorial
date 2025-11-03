@@ -70,6 +70,15 @@ private:
 		const std::unordered_map<std::string,int>& nodeIndexOfName,
 		std::vector<DirectX::XMFLOAT4X4>& outGlobal) const;
 
+	// Precompute all clips at load-time to avoid per-frame evaluation
+	void PrecomputeAll(
+		const aiScene* scene,
+		const std::unordered_map<std::string,int>& nodeIndexOfName,
+		const std::vector<std::string>& boneNames,
+		const std::vector<DirectX::XMFLOAT4X4>& boneOffsets,
+		const DirectX::XMFLOAT4X4& globalInverse,
+		int samplesPerSecond = 30);
+
 private:
 	AnimType m_Type = AnimType::None;
 	std::vector<std::string> m_Names;
@@ -94,6 +103,19 @@ private:
 	std::vector<const struct aiNode*> m_NodePtrByIndex;
 	std::vector<int> m_ParentIndexByIndex;
 	std::vector<int> m_BoneNodeIndices; // same order as boneNames
+
+	// Precomputed palettes per clip
+	struct PrecomputedClip
+	{
+		double durationSec = 0.0;
+		double ticksPerSec = 0.0;
+		double sampleDt = 0.0;
+		bool   valid = false;
+		bool   rigid = false; // rigid uses Gi*G, skinned uses Gi*G*Off
+		std::vector<double> times; // seconds
+		std::vector<std::vector<DirectX::XMMATRIX>> palettes; // [timeIndex][boneIndex]
+	};
+	std::vector<PrecomputedClip> m_Precomputed; // size = num clips
 };
 
 

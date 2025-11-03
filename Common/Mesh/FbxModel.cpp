@@ -82,6 +82,44 @@ bool FbxModel::Load(ID3D11Device* device, const std::wstring& pathW)
 	if (!hasBones && m_->scene->mNumAnimations > 0)
 	{
 		m_->skeleton.BuildRigidBones();
+		// Build rigid weights from per-vertex owning nodes so GPU skinning path can be reused
+		{
+			auto& verts = m_->geometry.GetCPUVertices();
+			const auto& owners = m_->geometry.GetVertexOwningNodeNames();
+			const auto& boneNames = m_->skeleton.GetBoneNames();
+			const auto& skelNodes = m_->skeleton.GetSkeleton();
+			std::unordered_map<std::string,int> boneIndexOfName;
+			boneIndexOfName.reserve(boneNames.size());
+			for (int i = 0; i < (int)boneNames.size(); ++i) boneIndexOfName[boneNames[(size_t)i]] = i;
+			if (!verts.empty())
+			{
+				for (size_t i = 0; i < verts.size(); ++i)
+				{
+					unsigned short bi = 0;
+					if (i < owners.size())
+					{
+						const std::string& owner = owners[i];
+						auto itB = boneIndexOfName.find(owner);
+						if (itB != boneIndexOfName.end()) bi = (unsigned short)itB->second;
+						else
+						{
+							auto itNode = m_->nodeIndexOfName.find(owner);
+							int node = (itNode != m_->nodeIndexOfName.end()) ? itNode->second : -1;
+							while (node >= 0)
+							{
+								const auto& sn = skelNodes[(size_t)node];
+								auto itB2 = boneIndexOfName.find(sn.name);
+								if (itB2 != boneIndexOfName.end()) { bi = (unsigned short)itB2->second; break; }
+								node = sn.parent;
+							}
+						}
+					}
+					verts[i].boneIdx[0] = bi; verts[i].boneIdx[1] = verts[i].boneIdx[2] = verts[i].boneIdx[3] = 0;
+					verts[i].boneWeight = { 1.0f, 0.0f, 0.0f, 0.0f };
+				}
+				m_->geometry.RebuildVBFromCPU(device);
+			}
+		}
 		m_->animType = AnimationType::Rigid;
 	}
 	else if (hasBones)

@@ -5,6 +5,7 @@
 #include <directxtk/WICTextureLoader.h>
 #include <wrl/client.h>
 #include <assimp/scene.h>
+#include <filesystem>
 
 using Microsoft::WRL::ComPtr;
 
@@ -128,7 +129,7 @@ bool FbxMaterialLoader::Load(ID3D11Device* device, const aiScene* scene, const s
 			}
 
 			// External file
-			if (!m_->materialSRVs[m])
+            if (!m_->materialSRVs[m])
 			{
 				std::wstring wtex = WStringFromUtf8(t);
 				bool isAbs = (!wtex.empty() && (wtex.find(L":") != std::wstring::npos || wtex[0] == L'/' || wtex[0] == L'\\'));
@@ -137,7 +138,39 @@ bool FbxMaterialLoader::Load(ID3D11Device* device, const aiScene* scene, const s
 				else
 				{
 					ComPtr<ID3D11Resource> res; ID3D11ShaderResourceView* srv = nullptr;
-					if (SUCCEEDED(CreateWICTextureFromFile(device, full.c_str(), res.GetAddressOf(), &srv))) { m_->materialSRVs[m] = srv; AddCache(m_->cache, full, srv); }
+                    HRESULT hr = CreateWICTextureFromFile(device, full.c_str(), res.GetAddressOf(), &srv);
+                    if (SUCCEEDED(hr)) { m_->materialSRVs[m] = srv; AddCache(m_->cache, full, srv); }
+                    else
+                    {
+                        // FBX가 외부 텍스처를 <fbxname>.fbm 폴더에 풀어놓는 경우 재시도
+                        // wtex의 파일명만 추출하여 baseDir 하위의 *.fbm 디렉터리에서 검색
+                        std::wstring fileOnly = wtex;
+                        size_t p = wtex.find_last_of(L"/\\");
+                        if (p != std::wstring::npos) fileOnly = wtex.substr(p + 1);
+                        try
+                        {
+                            for (const auto& de : std::filesystem::directory_iterator(baseDir))
+                            {
+                                if (!de.is_directory()) continue;
+                                std::wstring dname = de.path().filename().wstring();
+                                // 접미사 ".fbm" 혹은 "_.fbm" 등 변종 허용: 단순히 ".fbm"로 끝나는지 체크
+                                std::wstring low = dname; std::transform(low.begin(), low.end(), low.begin(), ::towlower);
+                                if (low.size() >= 4 && low.rfind(L".fbm") == low.size() - 4)
+                                {
+                                    std::filesystem::path alt = de.path() / fileOnly;
+                                    ComPtr<ID3D11Resource> res2; ID3D11ShaderResourceView* srv2 = nullptr;
+                                    if (SUCCEEDED(CreateWICTextureFromFile(device, alt.c_str(), res2.GetAddressOf(), &srv2)))
+                                    {
+                                        m_->materialSRVs[m] = srv2; AddCache(m_->cache, alt.wstring(), srv2); break;
+                                    }
+                                }
+                            }
+                        }
+                        catch (...)
+                        {
+                            // directory_iterator 실패 시 무시하고 폴백으로 넘어감
+                        }
+                    }
 				}
 			}
 		}

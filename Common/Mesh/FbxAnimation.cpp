@@ -18,6 +18,11 @@ void FbxAnimation::Clear()
 	m_Current = -1; m_TimeSec = 0.0; m_Playing = false; m_Type = AnimType::None;
     m_Scene = nullptr; m_NodeIndexOfName.clear(); m_BoneNames = nullptr; m_BoneOffsets = nullptr; m_GlobalInverse = nullptr;
     m_ChannelOfNode.clear(); m_ChannelDirty = true; m_GlobalScratch.clear(); m_PaletteScratch.clear();
+    // Optimized traversal caches
+    m_NodePtrByIndex.clear();
+    m_ParentIndexByIndex.clear();
+    m_BoneNodeIndices.clear();
+    m_Precomputed.clear();
 }
 
 void FbxAnimation::InitMetadata(const aiScene* scene)
@@ -61,6 +66,57 @@ void FbxAnimation::SetSharedContext(
     m_GlobalInverse = globalInverse;
     m_ChannelOfNode.assign(m_NodeIndexOfName.size(), nullptr);
     m_ChannelDirty = true;
+
+    // Build fast traversal caches aligned with node indices
+    m_NodePtrByIndex.clear();
+    m_ParentIndexByIndex.clear();
+    m_BoneNodeIndices.clear();
+    if (m_Scene && !m_NodeIndexOfName.empty())
+    {
+        m_NodePtrByIndex.resize(m_NodeIndexOfName.size(), nullptr);
+        m_ParentIndexByIndex.resize(m_NodeIndexOfName.size(), -1);
+
+        std::function<void(const aiNode*, int)> build = [&](const aiNode* node, int parentIdx)
+        {
+            auto it = m_NodeIndexOfName.find(node->mName.C_Str());
+            int idx = (it != m_NodeIndexOfName.end()) ? it->second : -1;
+            if (idx >= 0 && (size_t)idx < m_NodePtrByIndex.size())
+            {
+                m_NodePtrByIndex[(size_t)idx] = node;
+                m_ParentIndexByIndex[(size_t)idx] = parentIdx;
+            }
+            for (unsigned ci = 0; ci < node->mNumChildren; ++ci)
+            {
+                build(node->mChildren[ci], idx);
+            }
+        };
+        if (m_Scene->mRootNode)
+        {
+            auto itRoot = m_NodeIndexOfName.find(m_Scene->mRootNode->mName.C_Str());
+            int rootIdx = (itRoot != m_NodeIndexOfName.end()) ? itRoot->second : -1;
+            build(m_Scene->mRootNode, -1);
+            // Ensure root parent index is -1 if valid
+            if (rootIdx >= 0 && (size_t)rootIdx < m_ParentIndexByIndex.size()) m_ParentIndexByIndex[(size_t)rootIdx] = -1;
+        }
+
+        // Map bone names to node indices (for optimized evaluation path)
+        if (m_BoneNames && !m_BoneNames->empty())
+        {
+            m_BoneNodeIndices.reserve(m_BoneNames->size());
+            for (const auto& bn : *m_BoneNames)
+            {
+                auto itB = m_NodeIndexOfName.find(bn);
+                m_BoneNodeIndices.push_back((itB != m_NodeIndexOfName.end()) ? itB->second : -1);
+            }
+        }
+    }
+
+    // Precompute all clips to avoid per-frame evaluation
+    // Default to 30 samples per second to balance memory/quality
+    if (m_Scene && m_BoneNames && m_BoneOffsets && m_GlobalInverse)
+    {
+        PrecomputeAll(m_Scene, m_NodeIndexOfName, *m_BoneNames, *m_BoneOffsets, *m_GlobalInverse, 30);
+    }
 }
 
 static void RebuildChannelMapIfNeeded(const aiScene* scene, int currentClip, const std::unordered_map<std::string,int>& nodeIndexOfName, std::vector<const aiNodeAnim*>& out)
@@ -192,7 +248,7 @@ void FbxAnimation::EvaluateGlobals(
 		lm._41 = (float)mLocal.d1; lm._42 = (float)mLocal.d2; lm._43 = (float)mLocal.d3; lm._44 = (float)mLocal.d4;
 		XMMATRIX L = XMLoadFloat4x4(&lm);
 		XMMATRIX G = XMMatrixMultiply(parent, L);
-		XMStoreFloat4x4(&outGlobal[idx], G);
+		if ((size_t)idx < outGlobal.size()) XMStoreFloat4x4(&outGlobal[(size_t)idx], G);
 		for (unsigned ci = 0; ci < node->mNumChildren; ++ci)
 		{
 			auto it = nodeIndexOfName.find(node->mChildren[ci]->mName.C_Str());
@@ -203,6 +259,75 @@ void FbxAnimation::EvaluateGlobals(
 	int rootIdx = -1; // find root by nodeIndexOfName of root node
 	if (scene->mRootNode) { auto it = nodeIndexOfName.find(scene->mRootNode->mName.C_Str()); if (it != nodeIndexOfName.end()) rootIdx = it->second; }
 	if (rootIdx >= 0) eval(scene->mRootNode, rootIdx, XMMatrixIdentity());
+}
+
+void FbxAnimation::PrecomputeAll(
+	const aiScene* scene,
+	const std::unordered_map<std::string,int>& nodeIndexOfName,
+	const std::vector<std::string>& boneNames,
+	const std::vector<XMFLOAT4X4>& boneOffsets,
+	const XMFLOAT4X4& globalInverse,
+	int samplesPerSecond)
+{
+	if (!scene || boneNames.empty() || samplesPerSecond <= 0) { m_Precomputed.clear(); return; }
+	m_Precomputed.clear();
+	m_Precomputed.resize(m_Names.size());
+
+	// Preserve current playback state while precomputing
+	int oldClip = m_Current; double oldTime = m_TimeSec; bool oldPlaying = m_Playing;
+	m_Playing = false;
+
+	for (size_t clipIdx = 0; clipIdx < m_Names.size(); ++clipIdx)
+	{
+		PrecomputedClip pc{};
+		pc.ticksPerSec = (clipIdx < m_TicksPerSec.size()) ? m_TicksPerSec[clipIdx] : 25.0;
+		pc.durationSec = (clipIdx < m_DurationSec.size()) ? m_DurationSec[clipIdx] : 0.0;
+		pc.sampleDt = (samplesPerSecond > 0) ? (1.0 / (double)samplesPerSecond) : 0.0;
+		pc.rigid = (m_Type == AnimType::Rigid);
+		if (pc.durationSec <= 0.0 || pc.sampleDt <= 0.0) { m_Precomputed[clipIdx] = pc; continue; }
+
+		// Build channel map for this clip
+		m_Current = (int)clipIdx;
+		m_ChannelOfNode.assign(nodeIndexOfName.size(), nullptr);
+		RebuildChannelMapIfNeeded(scene, m_Current, nodeIndexOfName, m_ChannelOfNode);
+
+		int numSamples = (int)std::ceil(pc.durationSec * samplesPerSecond);
+		if (numSamples < 1) numSamples = 1;
+		pc.times.resize((size_t)numSamples);
+		pc.palettes.resize((size_t)numSamples);
+		XMMATRIX Gi = XMLoadFloat4x4(&globalInverse);
+
+		for (int si = 0; si < numSamples; ++si)
+		{
+			double tSec = si * pc.sampleDt; if (tSec > pc.durationSec) tSec = pc.durationSec;
+			pc.times[(size_t)si] = tSec;
+			// Evaluate globals at tSec (using internal EvaluateGlobals which reads m_TimeSec/m_Current/m_ChannelOfNode)
+			m_TimeSec = tSec;
+			std::vector<XMFLOAT4X4> global;
+			EvaluateGlobals(scene, nodeIndexOfName, global);
+			pc.palettes[(size_t)si].resize(boneNames.size(), XMMatrixIdentity());
+			for (size_t bi = 0; bi < boneNames.size(); ++bi)
+			{
+				auto itN = nodeIndexOfName.find(boneNames[bi]); if (itN == nodeIndexOfName.end()) continue;
+				int nodeIdx = itN->second; if (nodeIdx < 0 || nodeIdx >= (int)global.size()) continue;
+				XMMATRIX G = XMLoadFloat4x4(&global[(size_t)nodeIdx]);
+				if (pc.rigid)
+				{
+					pc.palettes[(size_t)si][bi] = XMMatrixMultiply(Gi, G);
+				}
+				else
+				{
+					XMMATRIX Off = XMLoadFloat4x4(&boneOffsets[bi]);
+					pc.palettes[(size_t)si][bi] = XMMatrixMultiply(XMMatrixMultiply(Gi, G), Off);
+				}
+			}
+		}
+		pc.valid = true;
+		m_Precomputed[clipIdx] = std::move(pc);
+	}
+
+	// Restore playback state
+	m_Current = oldClip; m_TimeSec = oldTime; m_Playing = oldPlaying;
 }
 
 void FbxAnimation::UploadPalette(ID3D11DeviceContext* ctx, const std::vector<XMMATRIX>& pal)
@@ -231,27 +356,49 @@ void FbxAnimation::UpdateAndUpload(
 	const XMFLOAT4X4& globalInverse)
 {
 	if (m_Playing) SetTimeSec(m_TimeSec + dtSec);
-    // Prefer shared context if provided
-    const aiScene* sc = m_Scene ? m_Scene : scene;
-    const auto& nodeMap = !m_NodeIndexOfName.empty() ? m_NodeIndexOfName : nodeIndexOfName;
-    const auto* bones = m_BoneNames ? m_BoneNames : &boneNames;
-    const auto* offsets = m_BoneOffsets ? m_BoneOffsets : &boneOffsets;
-    const XMFLOAT4X4* giPtr = m_GlobalInverse ? m_GlobalInverse : &globalInverse;
-    if (m_Type == AnimType::Rigid) { UploadRigid(ctx, sc, nodeMap, *bones, *giPtr); return; }
-    if (!sc || m_Current < 0) return;
-    if (m_ChannelDirty && !m_ChannelOfNode.empty()) { RebuildChannelMapIfNeeded(sc, m_Current, nodeMap, m_ChannelOfNode); m_ChannelDirty = false; }
-    EvaluateGlobals(sc, nodeMap, m_GlobalScratch);
-    m_PaletteScratch.resize(bones->size(), XMMatrixIdentity());
-    XMMATRIX Gi = XMLoadFloat4x4(giPtr);
-    for (size_t bi = 0; bi < bones->size(); ++bi)
+	const aiScene* sc = m_Scene ? m_Scene : scene;
+	const auto& nodeMap = !m_NodeIndexOfName.empty() ? m_NodeIndexOfName : nodeIndexOfName;
+	const auto* bones = m_BoneNames ? m_BoneNames : &boneNames;
+	const auto* offsets = m_BoneOffsets ? m_BoneOffsets : &boneOffsets;
+	const XMFLOAT4X4* giPtr = m_GlobalInverse ? m_GlobalInverse : &globalInverse;
+
+	// Fast path: if precomputed exists for current clip, just upload
+	if (m_Current >= 0 && (size_t)m_Current < m_Precomputed.size())
 	{
-        auto itN = nodeMap.find((*bones)[bi]); if (itN == nodeMap.end()) continue;
-        int nodeIdx = itN->second; if (nodeIdx < 0 || nodeIdx >= (int)m_GlobalScratch.size()) continue;
-        XMMATRIX G = XMLoadFloat4x4(&m_GlobalScratch[(size_t)nodeIdx]);
-        XMMATRIX Off = XMLoadFloat4x4(&(*offsets)[bi]);
-        m_PaletteScratch[bi] = XMMatrixMultiply(XMMatrixMultiply(Gi, G), Off);
+		const auto& pc = m_Precomputed[(size_t)m_Current];
+		if (pc.valid && !pc.times.empty())
+		{
+			double dur = pc.durationSec;
+			double t = m_TimeSec; if (dur > 0.0) { while (t < 0.0) t += dur; while (t >= dur) t -= dur; }
+			int idx = 0;
+			if (pc.sampleDt > 0.0)
+			{
+				double f = t / pc.sampleDt;
+				idx = (int)(f + 0.5);
+				if (idx >= (int)pc.palettes.size()) idx = (int)pc.palettes.size() - 1;
+				if (idx < 0) idx = 0;
+			}
+			UploadPalette(ctx, pc.palettes[(size_t)idx]);
+			return;
+		}
 	}
-    UploadPalette(ctx, m_PaletteScratch);
+
+	// Fallback: compute on the fly (if not precomputed)
+	if (m_Type == AnimType::Rigid) { UploadRigid(ctx, sc, nodeMap, *bones, *giPtr); return; }
+	if (!sc || m_Current < 0) return;
+	if (m_ChannelDirty && !m_ChannelOfNode.empty()) { RebuildChannelMapIfNeeded(sc, m_Current, nodeMap, m_ChannelOfNode); m_ChannelDirty = false; }
+	EvaluateGlobals(sc, nodeMap, m_GlobalScratch);
+	m_PaletteScratch.resize(bones->size(), XMMatrixIdentity());
+	XMMATRIX Gi = XMLoadFloat4x4(giPtr);
+	for (size_t bi = 0; bi < bones->size(); ++bi)
+	{
+		auto itN = nodeMap.find((*bones)[bi]); if (itN == nodeMap.end()) continue;
+		int nodeIdx = itN->second; if (nodeIdx < 0 || nodeIdx >= (int)m_GlobalScratch.size()) continue;
+		XMMATRIX G = XMLoadFloat4x4(&m_GlobalScratch[(size_t)nodeIdx]);
+		XMMATRIX Off = XMLoadFloat4x4(&(*offsets)[bi]);
+		m_PaletteScratch[bi] = XMMatrixMultiply(XMMatrixMultiply(Gi, G), Off);
+	}
+	UploadPalette(ctx, m_PaletteScratch);
 }
 
 void FbxAnimation::UploadRigid(
@@ -274,5 +421,6 @@ void FbxAnimation::UploadRigid(
 	}
 	UploadPalette(ctx, pal);
 }
+
 
 
