@@ -200,4 +200,11 @@ double FbxModel::GetClipDurationSec(int idx) const { return m_->anim.GetClipDura
 
 FbxModel::AnimationType FbxModel::GetCurrentAnimationType() const { return m_->animType; }
 
+// Shared data accessors for per-instance animators
+const aiScene* FbxModel::GetScenePtr() const { return m_->scene; }
+const std::unordered_map<std::string,int>& FbxModel::GetNodeIndexOfName() const { return m_->nodeIndexOfName; }
+const std::vector<std::string>& FbxModel::GetBoneNames() const { return m_->skeleton.GetBoneNames(); }
+const std::vector<XMFLOAT4X4>& FbxModel::GetBoneOffsets() const { return m_->skeleton.GetBoneOffsets(); }
+const XMFLOAT4X4& FbxModel::GetGlobalInverse() const { return m_->globalInverse; }
+
 

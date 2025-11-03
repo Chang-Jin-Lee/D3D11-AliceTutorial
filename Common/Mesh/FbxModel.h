@@ -56,6 +56,13 @@ public:
 
 	AnimationType GetCurrentAnimationType() const;
 
+	// Shared data accessors for per-instance animators
+	const struct aiScene* GetScenePtr() const;
+	const std::unordered_map<std::string,int>& GetNodeIndexOfName() const;
+	const std::vector<std::string>& GetBoneNames() const;
+	const std::vector<DirectX::XMFLOAT4X4>& GetBoneOffsets() const;
+	const DirectX::XMFLOAT4X4& GetGlobalInverse() const;
+
 private:
 	struct Impl; std::unique_ptr<Impl> m_;
 };

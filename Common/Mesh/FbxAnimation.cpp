@@ -16,6 +16,8 @@ void FbxAnimation::Clear()
 	m_pBoneCB = nullptr;
 	m_Names.clear(); m_DurationSec.clear(); m_TicksPerSec.clear();
 	m_Current = -1; m_TimeSec = 0.0; m_Playing = false; m_Type = AnimType::None;
+    m_Scene = nullptr; m_NodeIndexOfName.clear(); m_BoneNames = nullptr; m_BoneOffsets = nullptr; m_GlobalInverse = nullptr;
+    m_ChannelOfNode.clear(); m_ChannelDirty = true; m_GlobalScratch.clear(); m_PaletteScratch.clear();
 }
 
 void FbxAnimation::InitMetadata(const aiScene* scene)
@@ -43,7 +45,41 @@ void FbxAnimation::SetCurrentIndex(int idx)
 {
 	if (idx < 0 || idx >= (int)m_Names.size()) return;
 	m_Current = idx; m_TimeSec = 0.0;
+    m_ChannelDirty = true;
 }
+void FbxAnimation::SetSharedContext(
+    const aiScene* scene,
+    const std::unordered_map<std::string,int>& nodeIndexOfName,
+    const std::vector<std::string>* boneNames,
+    const std::vector<DirectX::XMFLOAT4X4>* boneOffsets,
+    const DirectX::XMFLOAT4X4* globalInverse)
+{
+    m_Scene = scene;
+    m_NodeIndexOfName = nodeIndexOfName;
+    m_BoneNames = boneNames;
+    m_BoneOffsets = boneOffsets;
+    m_GlobalInverse = globalInverse;
+    m_ChannelOfNode.assign(m_NodeIndexOfName.size(), nullptr);
+    m_ChannelDirty = true;
+}
+
+static void RebuildChannelMapIfNeeded(const aiScene* scene, int currentClip, const std::unordered_map<std::string,int>& nodeIndexOfName, std::vector<const aiNodeAnim*>& out)
+{
+    if (!scene || currentClip < 0 || (size_t)currentClip >= scene->mNumAnimations) return;
+    std::fill(out.begin(), out.end(), nullptr);
+    const aiAnimation* anim = scene->mAnimations[currentClip];
+    for (unsigned i = 0; i < anim->mNumChannels; ++i)
+    {
+        const aiNodeAnim* ch = anim->mChannels[i];
+        auto it = nodeIndexOfName.find(ch->mNodeName.C_Str());
+        if (it != nodeIndexOfName.end())
+        {
+            int idx = it->second;
+            if (idx >= 0 && (size_t)idx < out.size()) out[(size_t)idx] = ch;
+        }
+    }
+}
+
 
 void FbxAnimation::SetTimeSec(double t)
 {
@@ -85,25 +121,70 @@ static aiQuaternion InterpQuat(const aiQuatKey* keys, unsigned count, double t)
 }
 
 void FbxAnimation::EvaluateGlobals(
-	const aiScene* scene,
-	const std::unordered_map<std::wstring, const aiNodeAnim*>& channelOf,
-	const std::unordered_map<std::string,int>& nodeIndexOfName,
-	std::vector<XMFLOAT4X4>& outGlobal) const
+    const aiScene* scene,
+    const std::unordered_map<std::string,int>& nodeIndexOfName,
+    std::vector<XMFLOAT4X4>& outGlobal) const
 {
 	outGlobal.clear(); if (!scene) return;
 	outGlobal.resize(nodeIndexOfName.size());
+
+	// Optimized path: compute only nodes needed by bones using parent indices
+	if (!m_ParentIndexByIndex.empty() && !m_BoneNodeIndices.empty() && m_NodePtrByIndex.size() == nodeIndexOfName.size())
+	{
+		std::vector<uint8_t> done; done.assign(nodeIndexOfName.size(), 0);
+		auto computeNode = [&](auto&& self, int idx) -> void {
+			if (idx < 0 || (size_t)idx >= m_NodePtrByIndex.size()) return;
+			if (done[(size_t)idx]) return;
+			int pi = (idx < (int)m_ParentIndexByIndex.size()) ? m_ParentIndexByIndex[(size_t)idx] : -1;
+			if (pi >= 0) self(self, pi);
+			const aiNode* node = m_NodePtrByIndex[(size_t)idx];
+			aiMatrix4x4 mLocal = node ? node->mTransformation : aiMatrix4x4();
+			if ((size_t)idx < m_ChannelOfNode.size())
+			{
+				const aiNodeAnim* ch = m_ChannelOfNode[(size_t)idx];
+				if (ch)
+				{
+					double tTicks = m_TimeSec * ((m_Current >= 0 && (size_t)m_Current < m_TicksPerSec.size()) ? m_TicksPerSec[m_Current] : 25.0);
+					aiVector3D S = (ch->mNumScalingKeys   > 0) ? InterpVec(ch->mScalingKeys,   ch->mNumScalingKeys,   tTicks) : aiVector3D(1,1,1);
+					aiVector3D T = (ch->mNumPositionKeys  > 0) ? InterpVec(ch->mPositionKeys,  ch->mNumPositionKeys,  tTicks) : aiVector3D(0,0,0);
+					aiQuaternion R = (ch->mNumRotationKeys  > 0) ? InterpQuat(ch->mRotationKeys, ch->mNumRotationKeys,  tTicks) : aiQuaternion();
+					aiMatrix4x4 mS; mS.Scaling(S, mS); aiMatrix4x4 mR = aiMatrix4x4(R.GetMatrix()); aiMatrix4x4 mT; mT.Translation(T, mT);
+					mLocal = mT * mR * mS;
+				}
+			}
+			XMFLOAT4X4 lm; lm._11 = (float)mLocal.a1; lm._12 = (float)mLocal.a2; lm._13 = (float)mLocal.a3; lm._14 = (float)mLocal.a4;
+			lm._21 = (float)mLocal.b1; lm._22 = (float)mLocal.b2; lm._23 = (float)mLocal.b3; lm._24 = (float)mLocal.b4;
+			lm._31 = (float)mLocal.c1; lm._32 = (float)mLocal.c2; lm._33 = (float)mLocal.c3; lm._34 = (float)mLocal.c4;
+			lm._41 = (float)mLocal.d1; lm._42 = (float)mLocal.d2; lm._43 = (float)mLocal.d3; lm._44 = (float)mLocal.d4;
+			XMMATRIX L = XMLoadFloat4x4(&lm);
+			XMMATRIX parent = XMMatrixIdentity();
+			if (pi >= 0) parent = XMLoadFloat4x4(&outGlobal[(size_t)pi]);
+			XMMATRIX G = XMMatrixMultiply(parent, L);
+			XMStoreFloat4x4(&outGlobal[(size_t)idx], G);
+			done[(size_t)idx] = 1;
+		};
+		for (int bn : m_BoneNodeIndices) if (bn >= 0) computeNode(computeNode, bn);
+		return;
+	}
 	std::function<void(const aiNode*, int, const XMMATRIX&)> eval = [&](const aiNode* node, int idx, const XMMATRIX& parent){
 		aiVector3D S(1,1,1), T(0,0,0); aiQuaternion R; aiMatrix4x4 mLocal = node->mTransformation;
-		auto itCh = channelOf.find(WStringFromUtf8(node->mName.C_Str()));
-		if (itCh != channelOf.end())
+        auto itIndex = nodeIndexOfName.find(node->mName.C_Str());
+        if (itIndex != nodeIndexOfName.end())
 		{
-			double tTicks = m_TimeSec * ((m_Current >= 0 && (size_t)m_Current < m_TicksPerSec.size()) ? m_TicksPerSec[m_Current] : 25.0);
-			const aiNodeAnim* ch = itCh->second;
-			S = (ch->mNumScalingKeys   > 0) ? InterpVec(ch->mScalingKeys,   ch->mNumScalingKeys,   tTicks) : aiVector3D(1,1,1);
-			T = (ch->mNumPositionKeys  > 0) ? InterpVec(ch->mPositionKeys,  ch->mNumPositionKeys,  tTicks) : aiVector3D(0,0,0);
-			R = (ch->mNumRotationKeys  > 0) ? InterpQuat(ch->mRotationKeys, ch->mNumRotationKeys,  tTicks) : aiQuaternion();
-			aiMatrix4x4 mS; mS.Scaling(S, mS); aiMatrix4x4 mR = aiMatrix4x4(R.GetMatrix()); aiMatrix4x4 mT; mT.Translation(T, mT);
-			mLocal = mT * mR * mS;
+            int nodeIdx = itIndex->second;
+            if (nodeIdx >= 0 && (size_t)nodeIdx < m_ChannelOfNode.size())
+            {
+                const aiNodeAnim* ch = m_ChannelOfNode[(size_t)nodeIdx];
+                if (ch)
+                {
+                    double tTicks = m_TimeSec * ((m_Current >= 0 && (size_t)m_Current < m_TicksPerSec.size()) ? m_TicksPerSec[m_Current] : 25.0);
+                    S = (ch->mNumScalingKeys   > 0) ? InterpVec(ch->mScalingKeys,   ch->mNumScalingKeys,   tTicks) : aiVector3D(1,1,1);
+                    T = (ch->mNumPositionKeys  > 0) ? InterpVec(ch->mPositionKeys,  ch->mNumPositionKeys,  tTicks) : aiVector3D(0,0,0);
+                    R = (ch->mNumRotationKeys  > 0) ? InterpQuat(ch->mRotationKeys, ch->mNumRotationKeys,  tTicks) : aiQuaternion();
+                    aiMatrix4x4 mS; mS.Scaling(S, mS); aiMatrix4x4 mR = aiMatrix4x4(R.GetMatrix()); aiMatrix4x4 mT; mT.Translation(T, mT);
+                    mLocal = mT * mR * mS;
+                }
+            }
 		}
 		XMFLOAT4X4 lm; lm._11 = (float)mLocal.a1; lm._12 = (float)mLocal.a2; lm._13 = (float)mLocal.a3; lm._14 = (float)mLocal.a4;
 		lm._21 = (float)mLocal.b1; lm._22 = (float)mLocal.b2; lm._23 = (float)mLocal.b3; lm._24 = (float)mLocal.b4;
@@ -150,30 +231,27 @@ void FbxAnimation::UpdateAndUpload(
 	const XMFLOAT4X4& globalInverse)
 {
 	if (m_Playing) SetTimeSec(m_TimeSec + dtSec);
-	if (m_Type == AnimType::Rigid) { UploadRigid(ctx, scene, nodeIndexOfName, boneNames, globalInverse); return; }
-	if (!scene || m_Current < 0) return;
-	const aiAnimation* anim = (scene->mNumAnimations > 0) ? scene->mAnimations[m_Current] : nullptr;
-	std::unordered_map<std::wstring, const aiNodeAnim*> channelOf;
-	if (anim)
+    // Prefer shared context if provided
+    const aiScene* sc = m_Scene ? m_Scene : scene;
+    const auto& nodeMap = !m_NodeIndexOfName.empty() ? m_NodeIndexOfName : nodeIndexOfName;
+    const auto* bones = m_BoneNames ? m_BoneNames : &boneNames;
+    const auto* offsets = m_BoneOffsets ? m_BoneOffsets : &boneOffsets;
+    const XMFLOAT4X4* giPtr = m_GlobalInverse ? m_GlobalInverse : &globalInverse;
+    if (m_Type == AnimType::Rigid) { UploadRigid(ctx, sc, nodeMap, *bones, *giPtr); return; }
+    if (!sc || m_Current < 0) return;
+    if (m_ChannelDirty && !m_ChannelOfNode.empty()) { RebuildChannelMapIfNeeded(sc, m_Current, nodeMap, m_ChannelOfNode); m_ChannelDirty = false; }
+    EvaluateGlobals(sc, nodeMap, m_GlobalScratch);
+    m_PaletteScratch.resize(bones->size(), XMMatrixIdentity());
+    XMMATRIX Gi = XMLoadFloat4x4(giPtr);
+    for (size_t bi = 0; bi < bones->size(); ++bi)
 	{
-		for (unsigned i = 0; i < anim->mNumChannels; ++i)
-		{
-			const aiNodeAnim* ch = anim->mChannels[i];
-			channelOf[WStringFromUtf8(ch->mNodeName.C_Str())] = ch;
-		}
+        auto itN = nodeMap.find((*bones)[bi]); if (itN == nodeMap.end()) continue;
+        int nodeIdx = itN->second; if (nodeIdx < 0 || nodeIdx >= (int)m_GlobalScratch.size()) continue;
+        XMMATRIX G = XMLoadFloat4x4(&m_GlobalScratch[(size_t)nodeIdx]);
+        XMMATRIX Off = XMLoadFloat4x4(&(*offsets)[bi]);
+        m_PaletteScratch[bi] = XMMatrixMultiply(XMMatrixMultiply(Gi, G), Off);
 	}
-	std::vector<XMFLOAT4X4> global; EvaluateGlobals(scene, channelOf, nodeIndexOfName, global);
-	std::vector<XMMATRIX> pal; pal.resize(boneNames.size(), XMMatrixIdentity());
-	XMMATRIX Gi = XMLoadFloat4x4(&globalInverse);
-	for (size_t bi = 0; bi < boneNames.size(); ++bi)
-	{
-		auto itN = nodeIndexOfName.find(boneNames[bi]); if (itN == nodeIndexOfName.end()) continue;
-		int nodeIdx = itN->second; if (nodeIdx < 0 || nodeIdx >= (int)global.size()) continue;
-		XMMATRIX G = XMLoadFloat4x4(&global[(size_t)nodeIdx]);
-		XMMATRIX Off = XMLoadFloat4x4(&boneOffsets[bi]);
-		pal[bi] = XMMatrixMultiply(XMMatrixMultiply(Gi, G), Off);
-	}
-	UploadPalette(ctx, pal);
+    UploadPalette(ctx, m_PaletteScratch);
 }
 
 void FbxAnimation::UploadRigid(
@@ -183,8 +261,7 @@ void FbxAnimation::UploadRigid(
 	const std::vector<std::string>& boneNames,
 	const XMFLOAT4X4& globalInverse)
 {
-	std::unordered_map<std::wstring, const aiNodeAnim*> channelOf; // time used internally
-	std::vector<XMFLOAT4X4> global; EvaluateGlobals(scene, channelOf, nodeIndexOfName, global);
+    std::vector<XMFLOAT4X4> global; EvaluateGlobals(scene, nodeIndexOfName, global);
 	if (global.empty()) return;
 	std::vector<XMMATRIX> pal; pal.resize(boneNames.size(), XMMatrixIdentity());
 	XMMATRIX Gi = XMLoadFloat4x4(&globalInverse);

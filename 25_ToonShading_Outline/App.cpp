@@ -23,6 +23,7 @@
 #include "../Common/Skybox.h"
 #include "../Common/SystemInfomation.h"
 #include "../Common/Mesh/FbxModel.h"
+#include "../Common/Mesh/FbxAnimation.h"
 #include "../Common/ObjManager.h"
 #include "../Common/PmxManager.h"
 #include <dxgi1_4.h>
@@ -98,6 +99,12 @@ struct ModelEntry
     ShadingMode modelShading = ShadingMode::ToonShading;
 	bool outlineEnabled = true;
 	bool showBoneDetails = false;
+
+	// 인스턴스 전용 애니메이터/머티리얼
+	FbxAnimation animator; // FBX 전용: per-instance bone palette
+	bool animatorInited = false;
+	Material instanceMaterial { {1,1,1,1}, {1,1,1,1}, {1,1,1,32}, {0,0,0,0} };
+	bool useInstanceMaterial = false;
 
 	// 사전 계산된 메시 통계
 	MeshStats meshStats{};
@@ -572,10 +579,10 @@ bool App::OnInitialize()
 	m_->m_Models[5]->outlineEnabled = false;
 	m_->m_Models[6]->outlineEnabled = true;
 
-	m_->m_OutlineThickness = 0.076;
+	m_->m_OutlineThickness = 0.03;
 	m_->m_OutlineColor = XMFLOAT4(0.0, 0.0, 0.0, 1);
-	m_->m_Models[0]->shared->fbx->SetCurrentAnimation(4);
-	m_->m_Models[0]->shared->fbx->SetAnimationPlaying(true);
+	m_->m_Models[0]->animator.SetCurrentIndex(5);
+	m_->m_Models[0]->uiAnimPlaying = true;
 
 	return true;
 }
@@ -609,8 +616,30 @@ void App::OnUpdate(const float& dt)
             if (updated.find(mdl.shared.get()) != updated.end()) continue;
             if (mdl.source == ModelSource::FBX && mdl.shared->fbx)
             {
-                mdl.shared->fbx->UpdateAnimation(m_->m_pDeviceContext, dt);
-                updated.insert(mdl.shared.get());
+                // 인스턴스별 애니메이션 업데이트 (공유 지오메트리/스켈레톤 사용)
+                if (!mdl.animatorInited)
+                {
+                    mdl.animator.InitMetadata(mdl.shared->fbx->GetScenePtr());
+                    mdl.animator.SetSharedContext(
+                        mdl.shared->fbx->GetScenePtr(),
+                        mdl.shared->fbx->GetNodeIndexOfName(),
+                        &mdl.shared->fbx->GetBoneNames(),
+                        &mdl.shared->fbx->GetBoneOffsets(),
+                        &mdl.shared->fbx->GetGlobalInverse());
+                    auto t = mdl.shared->fbx->GetCurrentAnimationType();
+                    mdl.animator.SetType(t == FbxModel::AnimationType::Rigid ? FbxAnimation::AnimType::Rigid : (t == FbxModel::AnimationType::Skinned ? FbxAnimation::AnimType::Skinned : FbxAnimation::AnimType::None));
+                    mdl.animatorInited = true;
+                }
+                mdl.animator.SetPlaying(mdl.uiAnimPlaying);
+                mdl.animator.EnsureBoneCB(m_->m_pDevice, 1023);
+                mdl.animator.UpdateAndUpload(
+                    m_->m_pDeviceContext,
+                    dt,
+                    mdl.shared->fbx->GetScenePtr(),
+                    mdl.shared->fbx->GetNodeIndexOfName(),
+                    mdl.shared->fbx->GetBoneNames(),
+                    mdl.shared->fbx->GetBoneOffsets(),
+                    mdl.shared->fbx->GetGlobalInverse());
             }
             else if (mdl.source == ModelSource::PMX && mdl.shared->pmx)
             {
@@ -791,7 +820,7 @@ void App::OnRender()
             bool hasSkeleton = false;
             if (mdlPtr->source == ModelSource::FBX && mdlPtr->shared && mdlPtr->shared->fbx)
             {
-                cbBones = mdlPtr->shared->fbx->GetBoneConstantBuffer();
+                cbBones = mdlPtr->animator.GetBoneCB();
                 hasSkeleton = mdlPtr->shared->fbx->HasSkeleton();
             }
             else if (mdlPtr->source == ModelSource::PMX && mdlPtr->shared && mdlPtr->shared->pmx)
@@ -908,7 +937,7 @@ void App::OnRender()
 			ConstantBuffer cb = m_->m_ConstantBuffer;
 			cb.world = XMMatrixTranspose(W);
 			cb.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(W)));
-			cb.material = m_->m_Material;
+			cb.material = (mdlPtr->useInstanceMaterial ? mdlPtr->instanceMaterial : m_->m_Material);
             cb.shadingMode = (int)mdlPtr->modelShading;
 			cb.enableNormalMap = m_->m_EnableNormalMap;
 			cb.useSpecularMap = m_->m_UseSpecularMap;
@@ -1814,6 +1843,22 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
         // 모델별 셰이딩 초기값 = 현재 글로벌 셰이딩, 아웃라인 기본은 Toon일 때만 ON
         entry->modelShading = m_->m_ShadingMode;
         entry->outlineEnabled = (entry->modelShading == ShadingMode::ToonShading);
+
+        // FBX 인스턴스 애니메이터를 로드 시점에 1회 초기화
+        if (entry->source == ModelSource::FBX && entry->shared && entry->shared->fbx)
+        {
+            entry->animator.InitMetadata(entry->shared->fbx->GetScenePtr());
+            entry->animator.SetSharedContext(
+                entry->shared->fbx->GetScenePtr(),
+                entry->shared->fbx->GetNodeIndexOfName(),
+                &entry->shared->fbx->GetBoneNames(),
+                &entry->shared->fbx->GetBoneOffsets(),
+                &entry->shared->fbx->GetGlobalInverse());
+            auto t = entry->shared->fbx->GetCurrentAnimationType();
+            entry->animator.SetType(t == FbxModel::AnimationType::Rigid ? FbxAnimation::AnimType::Rigid : (t == FbxModel::AnimationType::Skinned ? FbxAnimation::AnimType::Skinned : FbxAnimation::AnimType::None));
+            entry->animatorInited = true;
+        }
+
         m_->m_Models.push_back(std::move(entry));
         m_->m_RenderMode = RenderMode::Model;
     }
@@ -1998,31 +2043,31 @@ void App::RenderModelPannel()
                 if (mdl.shared->fbx->HasAnimations())
 				{
                     const auto& names = mdl.shared->fbx->GetAnimationNames();
-                    if (mdl.uiSelectedAnim < 0 || mdl.uiSelectedAnim >= (int)names.size()) mdl.uiSelectedAnim = mdl.shared->fbx->GetCurrentAnimationIndex();
+                    if (mdl.uiSelectedAnim < 0 || mdl.uiSelectedAnim >= (int)names.size()) mdl.uiSelectedAnim = mdl.animator.GetCurrentIndex();
 					ImGui::Text("FBX Animations");
 					if (ImGui::BeginListBox("##AnimList", ImVec2(-FLT_MIN, 4 * ImGui::GetTextLineHeightWithSpacing())))
 					{
 						for (int a = 0; a < (int)names.size(); ++a)
 						{
 							bool sel = (a == mdl.uiSelectedAnim);
-							if (ImGui::Selectable(names[a].c_str(), sel))
+                            if (ImGui::Selectable(names[a].c_str(), sel))
 							{
-								mdl.uiSelectedAnim = a;
-                                mdl.shared->fbx->SetCurrentAnimation(a);
+                                mdl.uiSelectedAnim = a;
+                                mdl.animator.SetCurrentIndex(a);
 								m_->PushLog(std::string("[OK] FBX Anim -> ") + names[a]);
 							}
 							if (sel) ImGui::SetItemDefaultFocus();
 						}
 						ImGui::EndListBox();
 					}
-                    bool playFBX = mdl.shared->fbx->IsAnimationPlaying();
-                    if (ImGui::Checkbox("Play", &playFBX)) mdl.shared->fbx->SetAnimationPlaying(playFBX);
-                    double cur = mdl.shared->fbx->GetAnimationTimeSeconds();
-                    double dur = mdl.shared->fbx->GetClipDurationSec(mdl.shared->fbx->GetCurrentAnimationIndex());
+                    bool playFBX = mdl.animator.IsPlaying();
+                    if (ImGui::Checkbox("Play", &playFBX)) { mdl.animator.SetPlaying(playFBX); mdl.uiAnimPlaying = playFBX; }
+                    double cur = mdl.animator.GetTimeSec();
+                    double dur = mdl.animator.GetClipDurationSec(mdl.animator.GetCurrentIndex());
 					float curF = (float)cur, durF = (float)dur;
 					if (durF > 0.0f)
 					{
-                        if (ImGui::SliderFloat("Time (s)", &curF, 0.0f, durF)) mdl.shared->fbx->SetAnimationTimeSeconds((double)curF);
+                        if (ImGui::SliderFloat("Time (s)", &curF, 0.0f, durF)) mdl.animator.SetTimeSec((double)curF);
 					}
 				}
 			}
@@ -2065,6 +2110,17 @@ void App::RenderModelPannel()
 			}
 			// Outline 적용 토글
 			ImGui::Checkbox("Outline", &mdl.outlineEnabled);
+
+            // 인스턴스 머티리얼
+            ImGui::Checkbox("Use Instance Material", &mdl.useInstanceMaterial);
+            if (mdl.useInstanceMaterial)
+            {
+                ImGui::ColorEdit4("Ambient (ka)##inst", &mdl.instanceMaterial.ambient.x);
+                ImGui::ColorEdit4("Diffuse (kd)##inst", &mdl.instanceMaterial.diffuse.x);
+                ImGui::ColorEdit4("Specular (ks)##inst", &mdl.instanceMaterial.specular.x);
+                ImGui::DragFloat("Shininess (alpha)##inst", &mdl.instanceMaterial.specular.w, 0.05f, 1.0f, 256.0f);
+                ImGui::ColorEdit4("Reflect (kr,a)##inst", &mdl.instanceMaterial.reflect.x);
+            }
 			if (ImGui::Button("Remove"))
 			{
 				m_->PushLog("[OK] Removed model : " + Utf8FromWString(m_->m_Models[i]->modelName));
