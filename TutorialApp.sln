@@ -55,6 +55,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "24_Skinned_With_Bone_Struct
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "25_ToonShading_Outline", "25_ToonShading_Outline\25_ToonShading_Outline.vcxproj", "{E706DA0C-EAB8-4CAB-B3F3-254279BCD4DB}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "26_ShadowMap_PCF", "26_ShadowMap_PCF\26_ShadowMap_PCF.vcxproj", "{63EA0E96-2032-49C5-BE91-F84C791131CD}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -271,6 +273,14 @@ Global
 		{E706DA0C-EAB8-4CAB-B3F3-254279BCD4DB}.Release|x64.Build.0 = Release|x64
 		{E706DA0C-EAB8-4CAB-B3F3-254279BCD4DB}.Release|x86.ActiveCfg = Release|Win32
 		{E706DA0C-EAB8-4CAB-B3F3-254279BCD4DB}.Release|x86.Build.0 = Release|Win32
+		{63EA0E96-2032-49C5-BE91-F84C791131CD}.Debug|x64.ActiveCfg = Debug|x64
+		{63EA0E96-2032-49C5-BE91-F84C791131CD}.Debug|x64.Build.0 = Debug|x64
+		{63EA0E96-2032-49C5-BE91-F84C791131CD}.Debug|x86.ActiveCfg = Debug|Win32
+		{63EA0E96-2032-49C5-BE91-F84C791131CD}.Debug|x86.Build.0 = Debug|Win32
+		{63EA0E96-2032-49C5-BE91-F84C791131CD}.Release|x64.ActiveCfg = Release|x64
+		{63EA0E96-2032-49C5-BE91-F84C791131CD}.Release|x64.Build.0 = Release|x64
+		{63EA0E96-2032-49C5-BE91-F84C791131CD}.Release|x86.ActiveCfg = Release|Win32
+		{63EA0E96-2032-49C5-BE91-F84C791131CD}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

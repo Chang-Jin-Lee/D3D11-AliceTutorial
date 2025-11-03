@@ -13,9 +13,15 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="Mesh">
+      <UniqueIdentifier>{4bdad9f7-531a-423c-8af7-5d66c106f1bd}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="framework.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Mesh/FbxTypes.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="pch.h">
@@ -59,6 +65,21 @@
     </ClInclude>
     <ClInclude Include="Vertex.h">
       <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Mesh/FbxSkeleton.h">
+      <Filter>Mesh</Filter>
+    </ClInclude>
+    <ClInclude Include="Mesh/FbxModel.h">
+      <Filter>Mesh</Filter>
+    </ClInclude>
+    <ClInclude Include="Mesh/FbxMaterial.h">
+      <Filter>Mesh</Filter>
+    </ClInclude>
+    <ClInclude Include="Mesh/FbxAnimation.h">
+      <Filter>Mesh</Filter>
+    </ClInclude>
+    <ClInclude Include="Mesh/FbxGeometry.h">
+      <Filter>Mesh</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -106,6 +127,21 @@
     </ClCompile>
     <ClCompile Include="Vertex.cpp">
       <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Mesh/FbxMaterial.cpp">
+      <Filter>Mesh</Filter>
+    </ClCompile>
+    <ClCompile Include="Mesh/FbxModel.cpp">
+      <Filter>Mesh</Filter>
+    </ClCompile>
+    <ClCompile Include="Mesh/FbxSkeleton.cpp">
+      <Filter>Mesh</Filter>
+    </ClCompile>
+    <ClCompile Include="Mesh/FbxAnimation.cpp">
+      <Filter>Mesh</Filter>
+    </ClCompile>
+    <ClCompile Include="Mesh/FbxGeometry.cpp">
+      <Filter>Mesh</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

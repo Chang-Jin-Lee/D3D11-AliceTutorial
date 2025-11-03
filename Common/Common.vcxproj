@@ -138,6 +138,12 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="Camera.h" />
+    <ClInclude Include="Mesh/FbxAnimation.h" />
+    <ClInclude Include="Mesh/FbxGeometry.h" />
+    <ClInclude Include="Mesh/FbxMaterial.h" />
+    <ClInclude Include="Mesh/FbxModel.h" />
+    <ClInclude Include="Mesh/FbxSkeleton.h" />
+    <ClInclude Include="Mesh/FbxTypes.h" />
     <ClInclude Include="FbxManager.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="GameApp.h" />
@@ -156,6 +162,11 @@
   <ItemGroup>
     <ClCompile Include="Camera.cpp" />
     <ClCompile Include="Common.cpp" />
+    <ClCompile Include="Mesh/FbxAnimation.cpp" />
+    <ClCompile Include="Mesh/FbxGeometry.cpp" />
+    <ClCompile Include="Mesh/FbxMaterial.cpp" />
+    <ClCompile Include="Mesh/FbxModel.cpp" />
+    <ClCompile Include="Mesh/FbxSkeleton.cpp" />
     <ClCompile Include="FbxManager.cpp" />
     <ClCompile Include="GameApp.cpp" />
     <ClCompile Include="Helper.cpp" />
