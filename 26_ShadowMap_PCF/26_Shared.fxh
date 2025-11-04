@@ -86,6 +86,8 @@ struct VertexOut
     // TBN 노말 매핑을 위한 월드 공간
     float3 tangentW  : TEXCOORD3;
     float3 bitanW    : TEXCOORD4;
+    // 라이트 공간 투영 좌표 (W 포함) - PS 섀도우 샘플에 사용
+    float4 posShadowH: TEXCOORD5;
 };
 
 // 스키닝 입력 정점 구조체

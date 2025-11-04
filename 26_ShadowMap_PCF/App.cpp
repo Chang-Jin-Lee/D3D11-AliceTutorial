@@ -17,6 +17,7 @@
 #include <thread>
 #include <filesystem>
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <unordered_set>
 #include "../Common/StaticMesh.h"
@@ -357,11 +358,11 @@ struct App::Impl {
     ID3D11VertexShader*           m_pVSSkinnedShadow = nullptr;
     // Shadow params (UI)
     int                           m_ShadowEnabled = 1;
-    int                           m_ShadowSize = 2048;
+    int                           m_ShadowSize = 4096;
     float                         m_ShadowBias = 0.0015f;
     float                         m_ShadowPCFRadius = 1.0f;
-    float                         m_ShadowOrthoRadius = 20.0f; // 카메라 중심 반경(m)
-    float                         m_ShadowNear = -50.0f;
+    float                         m_ShadowOrthoRadius = 8.1f; // 카메라 중심 반경(m)
+    float                         m_ShadowNear = -26.0f;
     float                         m_ShadowFar  =  50.0f;
 
     // 데모/디버그용 텍스처 및 UI 표시 크기
@@ -391,7 +392,7 @@ struct App::Impl {
     float                         m_MirrorCubeScale = 2.0f;
 
     // 조명/재질
-    DirectionalLight              m_DirLight = { {0,0,0,1}, {1,1,1,1}, {0.7,0.7,0.7,1}, {0,0,1}, 0.0f };
+    DirectionalLight              m_DirLight = { {0,0,0,1}, {1,1,1,1}, {0.7,0.7,0.7,1}, {0,-1.1,1}, 0.0f };
     Material                      m_Material = { {1,1,1,1}, {1,1,1,1}, {1,1,1,32}, {0,0,0,0} };
     Material                      m_mirrorCubeMaterial = { {0,0,0,1}, {0,0,0,1}, {0,0,0,32}, {1,1,1,0.02f} };
 
@@ -559,80 +560,19 @@ bool App::OnInitialize()
 	if (!m_->m_SystemInfo.InitSysInfomation(m_->m_pDevice)) return false;
 
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 0
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 1
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 2
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 3
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 4
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 5
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 6
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 7
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 8
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 9
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 10
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 11
-
-	// Ground plane (custom cube): large flat box for floor
-	{
-		StaticMeshData ground = StaticMesh::CreateBox(DirectX::XMFLOAT4(0.6f, 0.6f, 0.6f, 1.0f), 200.0f, 0.2f, 200.0f);
-		ID3D11Buffer* vb = nullptr; ID3D11Buffer* ib = nullptr; int ic = 0;
-		StaticMesh::AssignMemory(m_->m_pDevice, vb, ground);
-		StaticMesh::AssignIndexMemory(m_->m_pDevice, ib, ground, ic);
-		auto shared = std::make_shared<SharedModelData>();
-		shared->source = ModelSource::Custom;
-		shared->vb = vb; shared->ib = ib; shared->indexCount = ic;
-		shared->stride = sizeof(VertexTBN);
-		shared->subsets.clear(); shared->subsets.push_back({ 0u, (uint32_t)ic, 0u });
-		shared->materialSRVs.clear(); shared->materialSRVs.push_back(nullptr); // fallback white will be used
-		auto entry = std::make_unique<ModelEntry>();
-		entry->modelName = L"GROUND";
-		entry->source = ModelSource::Custom;
-		entry->shared = shared;
-		entry->pos = DirectX::XMFLOAT3(0.0f, -0.1f, 0.0f);
-		entry->scale = DirectX::XMFLOAT3(1.0f, 1.0f, 1.0f);
-		entry->rotDeg = DirectX::XMFLOAT3(0, 0, 0);
-		entry->modelShading = ShadingMode::Lambert;
-		entry->outlineEnabled = false;
-		m_->m_Models.push_back(std::move(entry));
-	}
-
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 12
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 13
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 14
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 15
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 16
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 17
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 18
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 19
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 20
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 21
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 22
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 23
-	//
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 24
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 25
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 26
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 27
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 28
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 29
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 30
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 31
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 32
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 33
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 34
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 35
-	//
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 36
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 37
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 38
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 39
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 40
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 41
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 42
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 43
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 44
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 45
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 46
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 47
+	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 1
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Ground.fbx"); // 0
+	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 1
+	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 2
+	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 3
+	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 4
+	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 5
+	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 6
+	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 7
+	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 8
+	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 9
+	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 10
+	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 11
 
 	m_->m_camera.SetPosition(XMFLOAT3(0.0f, 1.0f, -1.0f));
 	m_->m_camera.SetSpeed(4);
@@ -641,114 +581,36 @@ bool App::OnInitialize()
 	// 위치 설정 (4줄 × 12개, X는 36 간격, Y는 줄마다 -60 간격)
 	// --------------------------------------------------------------------------------
 	// 1줄 (0..11, y=0)
-	m_->m_Models[0]->pos = XMFLOAT3(1.5f * 0, 0.0f, 0.0f);
-	m_->m_Models[1]->pos = XMFLOAT3(1.5f * 1, 0.0f, 0.0f);
-	m_->m_Models[2]->pos = XMFLOAT3(1.5f * 2, 0.0f, 0.0f);
-	m_->m_Models[3]->pos = XMFLOAT3(1.5f * 3, 0.0f, 0.0f);
-	m_->m_Models[4]->pos = XMFLOAT3(1.5f * 4, 0.0f, 0.0f);
-	m_->m_Models[5]->pos = XMFLOAT3(1.5f * 5, 0.0f, 0.0f);
-	m_->m_Models[6]->pos = XMFLOAT3(1.5f * 6, 0.0f, 0.0f);
-	m_->m_Models[7]->pos = XMFLOAT3(1.5f * 7, 0.0f, 0.0f);
-	m_->m_Models[8]->pos = XMFLOAT3(1.5f * 8, 0.0f, 0.0f);
-	m_->m_Models[9]->pos = XMFLOAT3(1.5f * 9, 0.0f, 0.0f);
-	m_->m_Models[10]->pos = XMFLOAT3(1.5f * 10, 0.0f, 0.0f);
-	m_->m_Models[11]->pos = XMFLOAT3(1.5f * 11, 0.0f, 0.0f);
-	// 2줄 (12..23, y=-60)
-	//m_->m_Models[12]->pos = XMFLOAT3(1.5f * 0, -2.0f, 0.0f);
-	//m_->m_Models[13]->pos = XMFLOAT3(1.5f * 1, -2.0f, 0.0f);
-	//m_->m_Models[14]->pos = XMFLOAT3(1.5f * 2, -2.0f, 0.0f);
-	//m_->m_Models[15]->pos = XMFLOAT3(1.5f * 3, -2.0f, 0.0f);
-	//m_->m_Models[16]->pos = XMFLOAT3(1.5f * 4, -2.0f, 0.0f);
-	//m_->m_Models[17]->pos = XMFLOAT3(1.5f * 5, -2.0f, 0.0f);
-	//m_->m_Models[18]->pos = XMFLOAT3(1.5f * 6, -2.0f, 0.0f);
-	//m_->m_Models[19]->pos = XMFLOAT3(1.5f * 7, -2.0f, 0.0f);
-	//m_->m_Models[20]->pos = XMFLOAT3(1.5f * 8, -2.0f, 0.0f);
-	//m_->m_Models[21]->pos = XMFLOAT3(1.5f * 9, -2.0f, 0.0f);
-	//m_->m_Models[22]->pos = XMFLOAT3(1.5f * 10, -2.0f, 0.0f);
-	//m_->m_Models[23]->pos = XMFLOAT3(1.5f * 11, -2.0f, 0.0f);
-	//// 3줄 (24..35, y=-120)
-	//m_->m_Models[24]->pos = XMFLOAT3(1.5f * 0, -4.0f, 0.0f);
-	//m_->m_Models[25]->pos = XMFLOAT3(1.5f * 1, -4.0f, 0.0f);
-	//m_->m_Models[26]->pos = XMFLOAT3(1.5f * 2, -4.0f, 0.0f);
-	//m_->m_Models[27]->pos = XMFLOAT3(1.5f * 3, -4.0f, 0.0f);
-	//m_->m_Models[28]->pos = XMFLOAT3(1.5f * 4, -4.0f, 0.0f);
-	//m_->m_Models[29]->pos = XMFLOAT3(1.5f * 5, -4.0f, 0.0f);
-	//m_->m_Models[30]->pos = XMFLOAT3(1.5f * 6, -4.0f, 0.0f);
-	//m_->m_Models[31]->pos = XMFLOAT3(1.5f * 7, -4.0f, 0.0f);
-	//m_->m_Models[32]->pos = XMFLOAT3(1.5f * 8, -4.0f, 0.0f);
-	//m_->m_Models[33]->pos = XMFLOAT3(1.5f * 9, -4.0f, 0.0f);
-	//m_->m_Models[34]->pos = XMFLOAT3(1.5f * 10, -4.0f, 0.0f);
-	//m_->m_Models[35]->pos = XMFLOAT3(1.5f * 11, -4.0f, 0.0f);
-	//// 4줄 (36..47, y=-180)
-	//m_->m_Models[36]->pos = XMFLOAT3(1.5f * 0, -6.0f, 0.0f);
-	//m_->m_Models[37]->pos = XMFLOAT3(1.5f * 1, -6.0f, 0.0f);
-	//m_->m_Models[38]->pos = XMFLOAT3(1.5f * 2, -6.0f, 0.0f);
-	//m_->m_Models[39]->pos = XMFLOAT3(1.5f * 3, -6.0f, 0.0f);
-	//m_->m_Models[40]->pos = XMFLOAT3(1.5f * 4, -6.0f, 0.0f);
-	//m_->m_Models[41]->pos = XMFLOAT3(1.5f * 5, -6.0f, 0.0f);
-	//m_->m_Models[42]->pos = XMFLOAT3(1.5f * 6, -6.0f, 0.0f);
-	//m_->m_Models[43]->pos = XMFLOAT3(1.5f * 7, -6.0f, 0.0f);
-	//m_->m_Models[44]->pos = XMFLOAT3(1.5f * 8, -6.0f, 0.0f);
-	//m_->m_Models[45]->pos = XMFLOAT3(1.5f * 9, -6.0f, 0.0f);
-	//m_->m_Models[46]->pos = XMFLOAT3(1.5f * 10, -6.0f, 0.0f);
-	//m_->m_Models[47]->pos = XMFLOAT3(1.5f * 11, -6.0f, 0.0f);
+	m_->m_Models[0]->pos = XMFLOAT3(1.5f * 0, 1.5f, 0.0f);
+	//m_->m_Models[1]->pos = XMFLOAT3(1.5f * 1, 0.0f, 0.0f);
+	//m_->m_Models[2]->pos = XMFLOAT3(1.5f * 2, 0.0f, 0.0f);
+	//m_->m_Models[3]->pos = XMFLOAT3(1.5f * 3, 0.0f, 0.0f);
+	//m_->m_Models[4]->pos = XMFLOAT3(1.5f * 4, 0.0f, 0.0f);
+	//m_->m_Models[5]->pos = XMFLOAT3(1.5f * 5, 0.0f, 0.0f);
+	//m_->m_Models[6]->pos = XMFLOAT3(1.5f * 6, 0.0f, 0.0f);
+	//m_->m_Models[7]->pos = XMFLOAT3(1.5f * 7, 0.0f, 0.0f);
+	//m_->m_Models[8]->pos = XMFLOAT3(1.5f * 8, 0.0f, 0.0f);
+	//m_->m_Models[9]->pos = XMFLOAT3(1.5f * 9, 0.0f, 0.0f);
+	//m_->m_Models[10]->pos = XMFLOAT3(1.5f * 10, 0.0f, 0.0f);
+	//m_->m_Models[11]->pos = XMFLOAT3(1.5f * 11, 0.0f, 0.0f);
 
 	// --------------------------------------------------------------------------------
 	// 셰이딩 모드 및 Outline 설정 (각 줄 12개: 6개 셰이더 × Off/On)
 	// 순서: Lambert, BlinnPhong, Phong, TextureOnly, ToonShading, Unlit | 반복
 	// --------------------------------------------------------------------------------
 	// 1줄 (0..11)
-	m_->m_Models[0]->modelShading = ShadingMode::Lambert;      m_->m_Models[0]->outlineEnabled = false;
-	m_->m_Models[1]->modelShading = ShadingMode::BlinnPhong;   m_->m_Models[1]->outlineEnabled = false;
-	m_->m_Models[2]->modelShading = ShadingMode::Phong;        m_->m_Models[2]->outlineEnabled = false;
-	m_->m_Models[3]->modelShading = ShadingMode::TextureOnly;  m_->m_Models[3]->outlineEnabled = false;
-	m_->m_Models[4]->modelShading = ShadingMode::ToonShading;  m_->m_Models[4]->outlineEnabled = false;
-	m_->m_Models[5]->modelShading = ShadingMode::Unlit;        m_->m_Models[5]->outlineEnabled = false;
-	m_->m_Models[6]->modelShading = ShadingMode::Lambert;      m_->m_Models[6]->outlineEnabled = true;
-	m_->m_Models[7]->modelShading = ShadingMode::BlinnPhong;   m_->m_Models[7]->outlineEnabled = true;
-	m_->m_Models[8]->modelShading = ShadingMode::Phong;        m_->m_Models[8]->outlineEnabled = true;
-	m_->m_Models[9]->modelShading = ShadingMode::TextureOnly;  m_->m_Models[9]->outlineEnabled = true;
-	m_->m_Models[10]->modelShading = ShadingMode::ToonShading; m_->m_Models[10]->outlineEnabled = true;
-	m_->m_Models[11]->modelShading = ShadingMode::Unlit;       m_->m_Models[11]->outlineEnabled = true;
-	// 2줄 (12..23)
-	//m_->m_Models[12]->modelShading = ShadingMode::Lambert;      m_->m_Models[12]->outlineEnabled = false;
-	//m_->m_Models[13]->modelShading = ShadingMode::BlinnPhong;   m_->m_Models[13]->outlineEnabled = false;
-	//m_->m_Models[14]->modelShading = ShadingMode::Phong;        m_->m_Models[14]->outlineEnabled = false;
-	//m_->m_Models[15]->modelShading = ShadingMode::TextureOnly;  m_->m_Models[15]->outlineEnabled = false;
-	//m_->m_Models[16]->modelShading = ShadingMode::ToonShading;  m_->m_Models[16]->outlineEnabled = false;
-	//m_->m_Models[17]->modelShading = ShadingMode::Unlit;        m_->m_Models[17]->outlineEnabled = false;
-	//m_->m_Models[18]->modelShading = ShadingMode::Lambert;      m_->m_Models[18]->outlineEnabled = true;
-	//m_->m_Models[19]->modelShading = ShadingMode::BlinnPhong;   m_->m_Models[19]->outlineEnabled = true;
-	//m_->m_Models[20]->modelShading = ShadingMode::Phong;        m_->m_Models[20]->outlineEnabled = true;
-	//m_->m_Models[21]->modelShading = ShadingMode::TextureOnly;  m_->m_Models[21]->outlineEnabled = true;
-	//m_->m_Models[22]->modelShading = ShadingMode::ToonShading;  m_->m_Models[22]->outlineEnabled = true;
-	//m_->m_Models[23]->modelShading = ShadingMode::Unlit;        m_->m_Models[23]->outlineEnabled = true;
-	//// 3줄 (24..35)
-	//m_->m_Models[24]->modelShading = ShadingMode::Lambert;      m_->m_Models[24]->outlineEnabled = false;
-	//m_->m_Models[25]->modelShading = ShadingMode::BlinnPhong;   m_->m_Models[25]->outlineEnabled = false;
-	//m_->m_Models[26]->modelShading = ShadingMode::Phong;        m_->m_Models[26]->outlineEnabled = false;
-	//m_->m_Models[27]->modelShading = ShadingMode::TextureOnly;  m_->m_Models[27]->outlineEnabled = false;
-	//m_->m_Models[28]->modelShading = ShadingMode::ToonShading;  m_->m_Models[28]->outlineEnabled = false;
-	//m_->m_Models[29]->modelShading = ShadingMode::Unlit;        m_->m_Models[29]->outlineEnabled = false;
-	//m_->m_Models[30]->modelShading = ShadingMode::Lambert;      m_->m_Models[30]->outlineEnabled = true;
-	//m_->m_Models[31]->modelShading = ShadingMode::BlinnPhong;   m_->m_Models[31]->outlineEnabled = true;
-	//m_->m_Models[32]->modelShading = ShadingMode::Phong;        m_->m_Models[32]->outlineEnabled = true;
-	//m_->m_Models[33]->modelShading = ShadingMode::TextureOnly;  m_->m_Models[33]->outlineEnabled = true;
-	//m_->m_Models[34]->modelShading = ShadingMode::ToonShading;  m_->m_Models[34]->outlineEnabled = true;
-	//m_->m_Models[35]->modelShading = ShadingMode::Unlit;        m_->m_Models[35]->outlineEnabled = true;
-	//// 4줄 (36..47)
-	//m_->m_Models[36]->modelShading = ShadingMode::Lambert;      m_->m_Models[36]->outlineEnabled = false;
-	//m_->m_Models[37]->modelShading = ShadingMode::BlinnPhong;   m_->m_Models[37]->outlineEnabled = false;
-	//m_->m_Models[38]->modelShading = ShadingMode::Phong;        m_->m_Models[38]->outlineEnabled = false;
-	//m_->m_Models[39]->modelShading = ShadingMode::TextureOnly;  m_->m_Models[39]->outlineEnabled = false;
-	//m_->m_Models[40]->modelShading = ShadingMode::ToonShading;  m_->m_Models[40]->outlineEnabled = false;
-	//m_->m_Models[41]->modelShading = ShadingMode::Unlit;        m_->m_Models[41]->outlineEnabled = false;
-	//m_->m_Models[42]->modelShading = ShadingMode::Lambert;      m_->m_Models[42]->outlineEnabled = true;
-	//m_->m_Models[43]->modelShading = ShadingMode::BlinnPhong;   m_->m_Models[43]->outlineEnabled = true;
-	//m_->m_Models[44]->modelShading = ShadingMode::Phong;        m_->m_Models[44]->outlineEnabled = true;
-	//m_->m_Models[45]->modelShading = ShadingMode::TextureOnly;  m_->m_Models[45]->outlineEnabled = true;
-	//m_->m_Models[46]->modelShading = ShadingMode::ToonShading;  m_->m_Models[46]->outlineEnabled = true;
-	//m_->m_Models[47]->modelShading = ShadingMode::Unlit;        m_->m_Models[47]->outlineEnabled = true;
+	m_->m_Models[0]->modelShading = ShadingMode::Phong;      m_->m_Models[0]->outlineEnabled = false;
+	m_->m_Models[1]->modelShading = ShadingMode::Phong;		 m_->m_Models[1]->outlineEnabled = false;
+	//m_->m_Models[2]->modelShading = ShadingMode::Phong;        m_->m_Models[2]->outlineEnabled = false;
+	//m_->m_Models[3]->modelShading = ShadingMode::TextureOnly;  m_->m_Models[3]->outlineEnabled = false;
+	//m_->m_Models[4]->modelShading = ShadingMode::ToonShading;  m_->m_Models[4]->outlineEnabled = false;
+	//m_->m_Models[5]->modelShading = ShadingMode::Unlit;        m_->m_Models[5]->outlineEnabled = false;
+	//m_->m_Models[6]->modelShading = ShadingMode::Lambert;      m_->m_Models[6]->outlineEnabled = true;
+	//m_->m_Models[7]->modelShading = ShadingMode::BlinnPhong;   m_->m_Models[7]->outlineEnabled = true;
+	//m_->m_Models[8]->modelShading = ShadingMode::Phong;        m_->m_Models[8]->outlineEnabled = true;
+	//m_->m_Models[9]->modelShading = ShadingMode::TextureOnly;  m_->m_Models[9]->outlineEnabled = true;
+	//m_->m_Models[10]->modelShading = ShadingMode::ToonShading; m_->m_Models[10]->outlineEnabled = true;
+	//m_->m_Models[11]->modelShading = ShadingMode::Unlit;       m_->m_Models[11]->outlineEnabled = true;
 
 	// --------------------------------------------------------------------------------
 	// 애니메이션 실행 설정
@@ -758,78 +620,17 @@ bool App::OnInitialize()
 	// --------------------------------------------------------------------------------
 	// 1줄 (0..11)
 	m_->m_Models[0]->animator.SetCurrentIndex(0);  m_->m_Models[0]->uiAnimPlaying = true;
-	m_->m_Models[1]->animator.SetCurrentIndex(0);  m_->m_Models[1]->uiAnimPlaying = true;
-	m_->m_Models[2]->animator.SetCurrentIndex(0);  m_->m_Models[2]->uiAnimPlaying = true;
-	m_->m_Models[3]->animator.SetCurrentIndex(0);  m_->m_Models[3]->uiAnimPlaying = true;
-	m_->m_Models[4]->animator.SetCurrentIndex(0);  m_->m_Models[4]->uiAnimPlaying = true;
-	m_->m_Models[5]->animator.SetCurrentIndex(0);  m_->m_Models[5]->uiAnimPlaying = true;
-	m_->m_Models[6]->animator.SetCurrentIndex(0);  m_->m_Models[6]->uiAnimPlaying = true;
-	m_->m_Models[7]->animator.SetCurrentIndex(0);  m_->m_Models[7]->uiAnimPlaying = true;
-	m_->m_Models[8]->animator.SetCurrentIndex(0);  m_->m_Models[8]->uiAnimPlaying = true;
-	m_->m_Models[9]->animator.SetCurrentIndex(0);  m_->m_Models[9]->uiAnimPlaying = true;
-	m_->m_Models[10]->animator.SetCurrentIndex(0); m_->m_Models[10]->uiAnimPlaying = true;
-	m_->m_Models[11]->animator.SetCurrentIndex(0); m_->m_Models[11]->uiAnimPlaying = true;
-	// 2줄 (12..23)
-	//m_->m_Models[12]->animator.SetCurrentIndex(2);  m_->m_Models[12]->uiAnimPlaying = true;
-	//m_->m_Models[13]->animator.SetCurrentIndex(2);  m_->m_Models[13]->uiAnimPlaying = true;
-	//m_->m_Models[14]->animator.SetCurrentIndex(2);  m_->m_Models[14]->uiAnimPlaying = true;
-	//m_->m_Models[15]->animator.SetCurrentIndex(2);  m_->m_Models[15]->uiAnimPlaying = true;
-	//m_->m_Models[16]->animator.SetCurrentIndex(2);  m_->m_Models[16]->uiAnimPlaying = true;
-	//m_->m_Models[17]->animator.SetCurrentIndex(2);  m_->m_Models[17]->uiAnimPlaying = true;
-	//m_->m_Models[18]->animator.SetCurrentIndex(2);  m_->m_Models[18]->uiAnimPlaying = true;
-	//m_->m_Models[19]->animator.SetCurrentIndex(2);  m_->m_Models[19]->uiAnimPlaying = true;
-	//m_->m_Models[20]->animator.SetCurrentIndex(2);  m_->m_Models[20]->uiAnimPlaying = true;
-	//m_->m_Models[21]->animator.SetCurrentIndex(2);  m_->m_Models[21]->uiAnimPlaying = true;
-	//m_->m_Models[22]->animator.SetCurrentIndex(2);  m_->m_Models[22]->uiAnimPlaying = true;
-	//m_->m_Models[23]->animator.SetCurrentIndex(2);  m_->m_Models[23]->uiAnimPlaying = true;
-	//// 3줄 (24..35)
-	//m_->m_Models[24]->animator.SetCurrentIndex(1);  m_->m_Models[24]->uiAnimPlaying = true;
-	//m_->m_Models[25]->animator.SetCurrentIndex(1);  m_->m_Models[25]->uiAnimPlaying = true;
-	//m_->m_Models[26]->animator.SetCurrentIndex(1);  m_->m_Models[26]->uiAnimPlaying = true;
-	//m_->m_Models[27]->animator.SetCurrentIndex(1);  m_->m_Models[27]->uiAnimPlaying = true;
-	//m_->m_Models[28]->animator.SetCurrentIndex(1);  m_->m_Models[28]->uiAnimPlaying = true;
-	//m_->m_Models[29]->animator.SetCurrentIndex(1);  m_->m_Models[29]->uiAnimPlaying = true;
-	//m_->m_Models[30]->animator.SetCurrentIndex(1);  m_->m_Models[30]->uiAnimPlaying = true;
-	//m_->m_Models[31]->animator.SetCurrentIndex(1);  m_->m_Models[31]->uiAnimPlaying = true;
-	//m_->m_Models[32]->animator.SetCurrentIndex(1);  m_->m_Models[32]->uiAnimPlaying = true;
-	//m_->m_Models[33]->animator.SetCurrentIndex(1);  m_->m_Models[33]->uiAnimPlaying = true;
-	//m_->m_Models[34]->animator.SetCurrentIndex(1);  m_->m_Models[34]->uiAnimPlaying = true;
-	//m_->m_Models[35]->animator.SetCurrentIndex(1);  m_->m_Models[35]->uiAnimPlaying = true;
-	//
-	//// 4줄 (24..35)
-	//m_->m_Models[36]->animator.SetCurrentIndex(0);  m_->m_Models[36]->uiAnimPlaying = true;
-	//m_->m_Models[37]->animator.SetCurrentIndex(0);  m_->m_Models[37]->uiAnimPlaying = true;
-	//m_->m_Models[38]->animator.SetCurrentIndex(0);  m_->m_Models[38]->uiAnimPlaying = true;
-	//m_->m_Models[39]->animator.SetCurrentIndex(0);  m_->m_Models[39]->uiAnimPlaying = true;
-	//m_->m_Models[40]->animator.SetCurrentIndex(0);  m_->m_Models[40]->uiAnimPlaying = true;
-	//m_->m_Models[41]->animator.SetCurrentIndex(0);  m_->m_Models[41]->uiAnimPlaying = true;
-	//m_->m_Models[42]->animator.SetCurrentIndex(0);  m_->m_Models[42]->uiAnimPlaying = true;
-	//m_->m_Models[43]->animator.SetCurrentIndex(0);  m_->m_Models[43]->uiAnimPlaying = true;
-	//m_->m_Models[44]->animator.SetCurrentIndex(0);  m_->m_Models[44]->uiAnimPlaying = true;
-	//m_->m_Models[45]->animator.SetCurrentIndex(0);  m_->m_Models[45]->uiAnimPlaying = true;
-	//m_->m_Models[46]->animator.SetCurrentIndex(0);  m_->m_Models[46]->uiAnimPlaying = true;
-	//m_->m_Models[47]->animator.SetCurrentIndex(0);  m_->m_Models[47]->uiAnimPlaying = true;
-
-	// --------------------------------------------------------------------------------
-	// 4줄(36..47) 머티리얼 랜덤 설정 (ambient/diffuse/specular)
-	// --------------------------------------------------------------------------------
-	//{
-	//	std::random_device rd; std::mt19937 gen(rd());
-	//	std::uniform_real_distribution<float> d01(0.0f, 1.0f);
-	//	auto rc = [&](float a) { return XMFLOAT4(d01(gen), d01(gen), d01(gen), a); };
-	//	m_->m_Models[36]->useInstanceMaterial = true; m_->m_Models[36]->instanceMaterial.ambient = rc(1); m_->m_Models[36]->instanceMaterial.diffuse = rc(1); m_->m_Models[36]->instanceMaterial.specular = rc(16.0f);
-	//	m_->m_Models[37]->useInstanceMaterial = true; m_->m_Models[37]->instanceMaterial.ambient = rc(1); m_->m_Models[37]->instanceMaterial.diffuse = rc(1); m_->m_Models[37]->instanceMaterial.specular = rc(16.0f);
-	//	m_->m_Models[38]->useInstanceMaterial = true; m_->m_Models[38]->instanceMaterial.ambient = rc(1); m_->m_Models[38]->instanceMaterial.diffuse = rc(1); m_->m_Models[38]->instanceMaterial.specular = rc(16.0f);
-	//	m_->m_Models[39]->useInstanceMaterial = true; m_->m_Models[39]->instanceMaterial.ambient = rc(1); m_->m_Models[39]->instanceMaterial.diffuse = rc(1); m_->m_Models[39]->instanceMaterial.specular = rc(16.0f);
-	//	m_->m_Models[40]->useInstanceMaterial = true; m_->m_Models[40]->instanceMaterial.ambient = rc(1); m_->m_Models[40]->instanceMaterial.diffuse = rc(1); m_->m_Models[40]->instanceMaterial.specular = rc(16.0f);
-	//	m_->m_Models[41]->useInstanceMaterial = true; m_->m_Models[41]->instanceMaterial.ambient = rc(1); m_->m_Models[41]->instanceMaterial.diffuse = rc(1); m_->m_Models[41]->instanceMaterial.specular = rc(16.0f);
-	//	m_->m_Models[42]->useInstanceMaterial = true; m_->m_Models[42]->instanceMaterial.ambient = rc(1); m_->m_Models[42]->instanceMaterial.diffuse = rc(1); m_->m_Models[42]->instanceMaterial.specular = rc(16.0f);
-	//	m_->m_Models[43]->useInstanceMaterial = true; m_->m_Models[43]->instanceMaterial.ambient = rc(1); m_->m_Models[43]->instanceMaterial.diffuse = rc(1); m_->m_Models[43]->instanceMaterial.specular = rc(16.0f);
-	//	m_->m_Models[44]->useInstanceMaterial = true; m_->m_Models[44]->instanceMaterial.ambient = rc(1); m_->m_Models[44]->instanceMaterial.diffuse = rc(1); m_->m_Models[44]->instanceMaterial.specular = rc(16.0f);
-	//	m_->m_Models[45]->useInstanceMaterial = true; m_->m_Models[45]->instanceMaterial.ambient = rc(1); m_->m_Models[45]->instanceMaterial.diffuse = rc(1); m_->m_Models[45]->instanceMaterial.specular = rc(16.0f);
-	//	m_->m_Models[46]->useInstanceMaterial = true; m_->m_Models[46]->instanceMaterial.ambient = rc(1); m_->m_Models[46]->instanceMaterial.diffuse = rc(1); m_->m_Models[46]->instanceMaterial.specular = rc(16.0f);
-	//	m_->m_Models[47]->useInstanceMaterial = true; m_->m_Models[47]->instanceMaterial.ambient = rc(1); m_->m_Models[47]->instanceMaterial.diffuse = rc(1); m_->m_Models[47]->instanceMaterial.specular = rc(16.0f);
-	//}
+	//m_->m_Models[1]->animator.SetCurrentIndex(0);  m_->m_Models[1]->uiAnimPlaying = true;
+	//m_->m_Models[2]->animator.SetCurrentIndex(0);  m_->m_Models[2]->uiAnimPlaying = true;
+	//m_->m_Models[3]->animator.SetCurrentIndex(0);  m_->m_Models[3]->uiAnimPlaying = true;
+	//m_->m_Models[4]->animator.SetCurrentIndex(0);  m_->m_Models[4]->uiAnimPlaying = true;
+	//m_->m_Models[5]->animator.SetCurrentIndex(0);  m_->m_Models[5]->uiAnimPlaying = true;
+	//m_->m_Models[6]->animator.SetCurrentIndex(0);  m_->m_Models[6]->uiAnimPlaying = true;
+	//m_->m_Models[7]->animator.SetCurrentIndex(0);  m_->m_Models[7]->uiAnimPlaying = true;
+	//m_->m_Models[8]->animator.SetCurrentIndex(0);  m_->m_Models[8]->uiAnimPlaying = true;
+	//m_->m_Models[9]->animator.SetCurrentIndex(0);  m_->m_Models[9]->uiAnimPlaying = true;
+	//m_->m_Models[10]->animator.SetCurrentIndex(0); m_->m_Models[10]->uiAnimPlaying = true;
+	//m_->m_Models[11]->animator.SetCurrentIndex(0); m_->m_Models[11]->uiAnimPlaying = true;
 
 	// --------------------------------------------------------------------------------
 	// 공통 아웃라인 파라미터/색상 기본값
@@ -854,6 +655,41 @@ void App::OnUninitialize()
 
 void App::OnUpdate(const float& dt)
 {
+	// Shadow light view-projection (directional, orthographic, scene-anchored with texel snapping)
+	auto UpdateShadow = [this](XMFLOAT3& focusF) {
+		// 모델 중심을 포커스로 사용하여 카메라 움직임과 무관하게 안정화
+		XMVECTOR focus = XMLoadFloat3(&focusF);
+
+		XMVECTOR fwd = XMVector3Normalize(XMLoadFloat3(&m_->m_DirLight.direction)); // 라이트가 비추는 방향
+		float backDist = 60.0f;
+		XMVECTOR lightPos = XMVectorSubtract(focus, XMVectorScale(fwd, backDist));
+		XMVECTOR up = XMVectorSet(0, 1, 0, 0);
+		if (fabsf(XMVectorGetX(XMVector3Dot(up, fwd))) > 0.99f) up = XMVectorSet(0, 0, 1, 0);
+		XMMATRIX LView = XMMatrixLookToLH(lightPos, fwd, up);
+		float r = m_->m_ShadowOrthoRadius;
+		float nAbs = fabsf(m_->m_ShadowNear);
+		float fAbs = fabsf(m_->m_ShadowFar);
+		float zn = (std::min)(nAbs, fAbs);
+		float zf = (std::max)(nAbs, fAbs);
+		zn = (zn < 0.01f) ? 0.01f : zn;
+		if (zf <= zn) zf = zn + 0.01f;
+		XMMATRIX LProj = XMMatrixOrthographicOffCenterLH(-r, r, -r, r, zn, zf);
+
+		// 텍셀 스냅: 라이트 뷰 공간 XY를 섀도우맵 텍셀 그리드에 정렬
+		XMVECTOR focusLS = XMVector3TransformCoord(focus, LView);
+		float texelWorld = (2.0f * r) / (float)m_->m_ShadowSize;
+		float fx = XMVectorGetX(focusLS);
+		float fy = XMVectorGetY(focusLS);
+		float snapX = floorf(fx / texelWorld) * texelWorld;
+		float snapY = floorf(fy / texelWorld) * texelWorld;
+		XMMATRIX snap = XMMatrixTranslation(snapX - fx, snapY - fy, 0.0f);
+		LView = snap * LView;
+
+		XMMATRIX LVP = XMMatrixMultiply(LView, LProj);
+		m_->m_baseProjection.lightViewProj = XMMatrixTranspose(LVP);
+		};
+
+
     // 자동 회전 및 애니메이션 업데이트(공유 데이터는 중복 업데이트 방지)
     {
         std::unordered_set<SharedModelData*> updated;
@@ -899,6 +735,8 @@ void App::OnUpdate(const float& dt)
                 mdl.shared->pmx->UpdateAnimation(m_->m_pDeviceContext, dt);
                 updated.insert(mdl.shared.get());
             }
+
+			UpdateShadow(mdl.pos);
         }
     }
 	// 기본 카메라용 world0 (원점 단위행렬)
@@ -934,28 +772,6 @@ void App::OnUpdate(const float& dt)
 
 	m_->m_baseProjection.eyePos = m_->m_camera.GetPosition();
 	m_->m_baseProjection.pad = 0.0f;
-
-    // Shadow light view-projection (directional, orthographic, camera-follow)
-    {
-        XMFLOAT3 camPosF = m_->m_camera.GetPosition();
-        XMVECTOR camPos = XMLoadFloat3(&camPosF);
-        XMVECTOR dirL = XMVector3Normalize(XMLoadFloat3(&m_->m_DirLight.direction));
-        // Light looks along -dirL
-        XMVECTOR fwd = XMVectorNegate(dirL);
-        // Position the light a bit back along direction
-        float backDist = 30.0f;
-        XMVECTOR lightPos = XMVectorAdd(camPos, XMVectorScale(fwd, -backDist));
-        XMVECTOR up = XMVectorSet(0,1,0,0);
-        // Guard against parallel up
-        if (fabsf(XMVectorGetX(XMVector3Dot(up, fwd))) > 0.99f) up = XMVectorSet(0,0,1,0);
-        XMMATRIX LView = XMMatrixLookToLH(lightPos, fwd, up);
-        float r = m_->m_ShadowOrthoRadius;
-        float zn = (std::min)(m_->m_ShadowNear, m_->m_ShadowFar);
-        float zf = (std::max)(m_->m_ShadowNear, m_->m_ShadowFar);
-        XMMATRIX LProj = XMMatrixOrthographicOffCenterLH(-r, r, -r, r, zn, zf);
-        XMMATRIX LVP = XMMatrixMultiply(LView, LProj);
-        m_->m_baseProjection.lightViewProj = XMMatrixTranspose(LVP);
-    }
 
 	// 머티리얼을 기본 캐시에 반영해 둔다
 	m_->m_baseProjection.material = m_->m_Material;
@@ -1030,6 +846,11 @@ void App::OnRender()
     // ---------------- Shadow Pass (depth-only) ----------------
     if (m_->m_ShadowEnabled && m_->m_RenderMode == RenderMode::Model && !m_->m_Models.empty() && m_->m_pShadowDSV)
     {
+        // SRV/DSV 하자드 방지: 동일 리소스(섀도우 맵)를 DSV로 세팅하기 전에
+        // PS에서 사용 중인 SRV(t4)를 명시적으로 언바인드한다.
+        ID3D11ShaderResourceView* nullSRV = nullptr;
+        m_->m_pDeviceContext->PSSetShaderResources(4, 1, &nullSRV);
+
         // Save viewport
         UINT oldCount = 1; D3D11_VIEWPORT oldVP{}; m_->m_pDeviceContext->RSGetViewports(&oldCount, &oldVP);
         m_->m_pDeviceContext->RSSetViewports(1, &m_->m_ShadowViewport);
@@ -1191,7 +1012,7 @@ void App::OnRender()
 				&& (m_->m_pVertexShaderSkinned != nullptr)
 				&& (cbBones != nullptr);
 				// 이번 프로젝트 코드
-//////////////////////////////////////////////////////////////////////////
+				//////////////////////////////////////////////////////////////////////////
             // 1) (비활성화) 아웃라인을 먼저 그리던 경로는 사용하지 않음 → 본 패스 후로 이동
             if (false && m_->m_ShadingMode == ShadingMode::ToonShading && m_->m_OutlineThickness > 0.0f && m_->m_OutlineStrength > 0.0f)
             {
@@ -1809,7 +1630,7 @@ bool App::InitScene()
 	// 카메라(View/Proj)로 상수 버퍼를 준비합니다
 	m_->m_baseProjection.world = XMMatrixIdentity();
 	// 카메라 초기 프러스텀 값들 설정
-	m_->m_camera.SetFrustum(XMConvertToRadians(90.0f), AspectRatio(), 0.2f, 100.0f);
+	m_->m_camera.SetFrustum(XMConvertToRadians(90.0f), AspectRatio(), 0.1f, 100.0f);
 	m_->m_baseProjection.view = XMMatrixTranspose(m_->m_camera.GetViewMatrixXM());
 	m_->m_baseProjection.proj = XMMatrixTranspose(m_->m_camera.GetProjMatrixXM());
 	m_->m_baseProjection.worldInvTranspose = XMMatrixInverse(nullptr, XMMatrixTranspose(m_->m_baseProjection.world));
@@ -2399,24 +2220,27 @@ void App::RenderControlPannel()
 		{
 			m_->m_Material = { XMFLOAT4(1,1,1,1), XMFLOAT4(1,1,1,1), XMFLOAT4(1,1,1,32), XMFLOAT4(0,0,0,0) };
 		}
+	}
+	ImGui::End();
 
-		ImGui::Separator();
-		// Shadow controls and debug view
+	auto& io = ImGui::GetIO();
+	ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - 760, 20), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(370, 420), ImGuiCond_FirstUseEver);
+	// Shadow controls and debug view
+	if (ImGui::Begin("ShadowMap (Directional)")) 
+	{
+		ImGui::Checkbox("Enable Shadow", (bool*)&m_->m_ShadowEnabled);
+		ImGui::DragFloat("Bias", &m_->m_ShadowBias, 0.0001f, 0.0f, 0.01f, "%.5f");
+		ImGui::SliderFloat("PCF Radius(Texel)", &m_->m_ShadowPCFRadius, 0.0f, 3.0f, "%.2f");
+		ImGui::SliderFloat("Ortho Radius(m)", &m_->m_ShadowOrthoRadius, 1.0f, 200.0f, "%.1f");
+		ImGui::DragFloatRange2("Shadow Near/Far", &m_->m_ShadowNear, &m_->m_ShadowFar, 0.5f, -500.0f, 500.0f, "Near: %.1f", "Far: %.1f");
+		if (m_->m_pShadowSRV)
 		{
-			ImGui::Text("ShadowMap (Directional)");
-			ImGui::Checkbox("Enable Shadow", (bool*)&m_->m_ShadowEnabled);
-			ImGui::DragFloat("Bias", &m_->m_ShadowBias, 0.0001f, 0.0f, 0.01f, "%.5f");
-			ImGui::SliderFloat("PCF Radius(Texel)", &m_->m_ShadowPCFRadius, 0.0f, 3.0f, "%.2f");
-			ImGui::SliderFloat("Ortho Radius(m)", &m_->m_ShadowOrthoRadius, 1.0f, 200.0f, "%.1f");
-			ImGui::DragFloatRange2("Shadow Near/Far", &m_->m_ShadowNear, &m_->m_ShadowFar, 0.5f, -500.0f, 500.0f, "Near: %.1f", "Far: %.1f");
-			if (m_->m_pShadowSRV)
-			{
-				ImGui::Separator();
-				ImGui::Text("ShadowMap Debug");
-				ImVec2 avail = ImGui::GetContentRegionAvail();
-				float sz = std::min(avail.x, 256.0f);
-				ImGui::Image((ImTextureID)m_->m_pShadowSRV, ImVec2(sz, sz));
-			}
+			ImGui::Separator();
+			ImGui::Text("ShadowMap Debug");
+			ImVec2 avail = ImGui::GetContentRegionAvail();
+			float sz = std::min(avail.x, 256.0f);
+			ImGui::Image((ImTextureID)m_->m_pShadowSRV, ImVec2(sz, sz));
 		}
 	}
 	ImGui::End();

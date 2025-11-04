@@ -8,6 +8,8 @@ VertexOut main(VertexIn vIn)
 	vOut.posH = mul(posW, g_View);
 	vOut.posH = mul(vOut.posH, g_Proj);
 	vOut.posW = posW.xyz;
+    // 라이트 공간 투영 좌표 저장(PS에서 사용)
+    vOut.posShadowH = mul(posW, g_LightViewProj);
 
 	// 노말 매핑을 위한 월드 공간 변환
 	float3 nW = normalize(mul(vIn.normalL, (float3x3) g_WorldInvTranspose));
@@ -54,6 +56,7 @@ VertexOut VSSkinned(VertexInSkinned vIn)
 	float4 posW = mul(skinnedPos, g_World);
 	vOut.posH = mul(mul(posW, g_View), g_Proj);
 	vOut.posW = posW.xyz;
+    vOut.posShadowH = mul(posW, g_LightViewProj);
 	vOut.normalW = normalize(mul(skinnedN, (float3x3)g_WorldInvTranspose));
 	vOut.tangentW = mul(skinnedT, (float3x3)g_World);
 	vOut.bitanW   = mul(skinnedB, (float3x3)g_World);
@@ -78,6 +81,7 @@ VertexOut VSNoTBN(VertexInNoTBN vIn)
 	vOut.posH = mul(posW, g_View);
 	vOut.posH = mul(vOut.posH, g_Proj);
 	vOut.posW = posW.xyz;
+    vOut.posShadowH = mul(posW, g_LightViewProj);
 
 	vOut.normalW = normalize(mul(vIn.normalL, (float3x3) g_WorldInvTranspose));
 	vOut.tangentW = float3(1,0,0);
@@ -109,6 +113,7 @@ VertexOut VSLine(VertexInLine vIn)
 	vOut.bitanW   = float3(0,1,0);
 	vOut.tex = float2(0,0);
 	vOut.color = vIn.color;
+    vOut.posShadowH = mul(posW, g_LightViewProj);
 	return vOut;
 }
 
