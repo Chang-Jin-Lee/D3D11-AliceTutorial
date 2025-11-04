@@ -31,6 +31,7 @@ public:
 	bool InitImGui();
 	void RenderControlPannel();
 	void RenderModelPannel();
+	void RenderSceneCollection();
 	void RenderConsolPannel();
 	void RenderWidgetUI();
 

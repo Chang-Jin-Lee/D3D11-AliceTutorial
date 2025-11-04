@@ -2,7 +2,7 @@
 * @brief : fbx, pmx, obj 3D 모델을 연속으로 여러 개를 그리는 예제입니다.
 * @details :
 *		- 노말맵이 적용되어 있는 경우 노말맵을 반영해서 그립니다
-*		- 없는 경우는 반영하지 않습니다 
+*		- 없는 경우는 반영하지 않습니다
 */
 
 #include "App.h"
@@ -51,42 +51,40 @@ using namespace DirectX::SimpleMath;
 struct DirectionalLight { XMFLOAT4 ambient; XMFLOAT4 diffuse; XMFLOAT4 specular; XMFLOAT3 direction; float pad; };
 struct Material { XMFLOAT4 ambient; XMFLOAT4 diffuse; XMFLOAT4 specular; XMFLOAT4 reflect; };
 struct ConstantBuffer {
-    XMMATRIX world; XMMATRIX view; XMMATRIX proj; XMMATRIX worldInvTranspose;
-    Material material; DirectionalLight dirLight; XMFLOAT3 eyePos; float pad;
-    int shadingMode = 0; XMFLOAT3 pad2 = {0,0,0}; int enableNormalMap = 1; XMFLOAT3 pad3 = {0,0,0}; int useSpecularMap = 0; XMFLOAT3 pad4 = {0,0,0};
-	// 이번 프로젝트 코드
-//////////////////////////////////////////////////////////////////////////
-    float outlineWidth = 0.15f; float outlinePow = 1.0f; float outlineThickness = 0.014f; float _outlinePad0 = 0.0f; XMFLOAT4 outlineColor = XMFLOAT4(0,0,0,1); float outlineStrength = 1.0f; XMFLOAT3 _outlinePad2 = {0,0,0};
-    // Shadow params
-    XMMATRIX lightViewProj;
-    float    shadowBias = 0.0015f;
-    float    shadowMapSize = 2048.0f;
-    float    shadowPCFRadius = 1.0f;
-    int      shadowEnabled = 1;
+	XMMATRIX world; XMMATRIX view; XMMATRIX proj; XMMATRIX worldInvTranspose;
+	Material material; DirectionalLight dirLight; XMFLOAT3 eyePos; float pad;
+	int shadingMode = 0; XMFLOAT3 pad2 = { 0,0,0 }; int enableNormalMap = 1; XMFLOAT3 pad3 = { 0,0,0 }; int useSpecularMap = 0; XMFLOAT3 pad4 = { 0,0,0 };
+	float outlineWidth = 0.15f; float outlinePow = 1.0f; float outlineThickness = 0.014f; float _outlinePad0 = 0.0f; XMFLOAT4 outlineColor = XMFLOAT4(0, 0, 0, 1); float outlineStrength = 1.0f; XMFLOAT3 _outlinePad2 = { 0,0,0 };
+	// Shadow params
+	XMMATRIX lightViewProj;
+	float    shadowBias = 0.0015f;
+	float    shadowMapSize = 2048.0f;
+	float    shadowPCFRadius = 1.0f;
+	int      shadowEnabled = 1;
 };
-enum class ShadingMode { Phong=0, BlinnPhong=1, Lambert=2, Unlit=3, TextureOnly=4, ToonShading=5 };
+enum class ShadingMode { Phong = 0, BlinnPhong = 1, Lambert = 2, Unlit = 3, TextureOnly = 4, ToonShading = 5 };
 enum class RenderMode { None = 0, Cube = 1, Model = 2 };
 enum class ModelSource { FBX, OBJ, PMX, Custom };
 struct ModelSubset { uint32_t start; uint32_t count; uint32_t materialIndex; };
-// 간단한 메시 통계 구조체
+// 메시 통계 구조체
 struct MeshStats { uint32_t vertices = 0, edges = 0, faces = 0, triangles = 0; };
 
 // 3D 모델 리소스
 struct SharedModelData
 {
-    std::wstring pathW;
-    ModelSource source = ModelSource::Custom;
-    std::shared_ptr<FbxModel> fbx;  // FBX용 로더 (새 구조)
-    std::shared_ptr<ObjManager> obj;  // OBJ용 로더
-    std::shared_ptr<PmxManager> pmx;  // PMX용 로더
+	std::wstring pathW;
+	ModelSource source = ModelSource::Custom;
+	std::shared_ptr<FbxModel> fbx;		// FBX용 로더
+	std::shared_ptr<ObjManager> obj;	// OBJ용 로더
+	std::shared_ptr<PmxManager> pmx;	// PMX용 로더
 
-    // 그리는 자원들. 리소스를 모두 공유함
-    ID3D11Buffer* vb = nullptr;
-    ID3D11Buffer* ib = nullptr;
-    int           indexCount = 0;
-    UINT          stride = 0;
-    std::vector<ModelSubset> subsets;
-    std::vector<ID3D11ShaderResourceView*> materialSRVs; // 공유 텍스처
+	// 그리는 자원들. 리소스를 모두 공유함
+	ID3D11Buffer* vb = nullptr;
+	ID3D11Buffer* ib = nullptr;
+	int           indexCount = 0;
+	UINT          stride = 0;
+	std::vector<ModelSubset> subsets;
+	std::vector<ID3D11ShaderResourceView*> materialSRVs; // 공유 텍스처
 };
 
 // 여러 모델을 그리기 위한 구조체
@@ -94,31 +92,31 @@ struct ModelEntry
 {
 	std::wstring modelName{ L"" };
 	ModelSource source = ModelSource::Custom;     // 공유 데이터 동일 경로 모델끼리
-    std::shared_ptr<SharedModelData> shared;
+	std::shared_ptr<SharedModelData> shared;
 
-    // 드로우는 shared의 자원을 사용
+	// 드로우는 shared의 자원을 사용
 
 	// 트랜스폼
-	XMFLOAT3 pos = {0,0,0};
-	XMFLOAT3 scale = {1,1,1};
-	XMFLOAT3 rotDeg = {0,0,0}; // yaw=pitch=roll(deg)
+	XMFLOAT3 pos = { 0,0,0 };
+	XMFLOAT3 scale = { 1,1,1 };
+	XMFLOAT3 rotDeg = { 0,0,0 }; // yaw=pitch=roll(deg)
 	bool     autoRotate = false;
-    // 모델별 셰이딩 모드 개별로 선택가능함
-    ShadingMode modelShading = ShadingMode::ToonShading;
+	// 모델별 셰이딩 모드 개별로 선택가능함
+	ShadingMode modelShading = ShadingMode::Phong;
 	bool outlineEnabled = true;
 	bool showBoneDetails = false;
 
 	// 인스턴스 전용 애니메이터/머티리얼
 	FbxAnimation animator; // FBX 전용: per-instance bone palette
 	bool animatorInited = false;
-	Material instanceMaterial { {1,1,1,1}, {1,1,1,1}, {1,1,1,32}, {0,0,0,0} };
+	Material instanceMaterial{ {1,1,1,1}, {1,1,1,1}, {1,1,1,32}, {0,0,0,0} };
 	bool useInstanceMaterial = false;
 
 	// 사전 계산된 메시 통계
 	MeshStats meshStats{};
 	bool meshStatsValid = false;
 
-    // FBX 전용 애니메이션 UI 상태
+	// FBX 전용 애니메이션 UI 상태
 	// ImGui에서 보여주기 위함
 	int  uiSelectedAnim = -1;
 	bool uiAnimPlaying = false;
@@ -134,80 +132,80 @@ struct ModelEntry
 // 본 캐시/텍스트 일괄 구축 함수
 static void BuildBoneCacheStructure(ModelEntry& entry, const char* filter)
 {
-    entry.boneCache.clear();
-    entry.boneRoot = -1;
-    entry.boneCacheValid = false;
-    entry.boneDisplayText.clear();
+	entry.boneCache.clear();
+	entry.boneRoot = -1;
+	entry.boneCacheValid = false;
+	entry.boneDisplayText.clear();
 
-    // 캐시 생성
-    if (entry.source == ModelSource::FBX && entry.shared && entry.shared->fbx && entry.shared->fbx->HasSkeleton())
-    {
-        const auto& sk = entry.shared->fbx->GetSkeleton();
-        entry.boneCache.resize(sk.size());
-        for (size_t si = 0; si < sk.size(); ++si)
-        {
-            const auto& s = sk[si];
-            auto& c = entry.boneCache[si];
-            c.nameW = s.nameW;
-            c.nameU8 = Utf8FromWString(c.nameW);
-            c.isBone = s.isBone;
-            c.children = s.children;
-        }
-        entry.boneRoot = entry.shared->fbx->GetSkeletonRoot();
-        entry.boneCacheValid = (entry.boneRoot >= 0) && ((size_t)entry.boneRoot < entry.boneCache.size());
-    }
-    else if (entry.source == ModelSource::PMX && entry.shared && entry.shared->pmx && entry.shared->pmx->HasSkeleton())
-    {
-        const auto& sk = entry.shared->pmx->GetSkeleton();
-        entry.boneCache.resize(sk.size());
-        for (size_t si = 0; si < sk.size(); ++si)
-        {
-            const auto& s = sk[si];
-            auto& c = entry.boneCache[si];
-            c.nameW = s.nameW;
-            c.nameU8 = Utf8FromWString(c.nameW);
-            c.isBone = s.isBone;
-            c.children = s.children;
-        }
-        entry.boneRoot = entry.shared->pmx->GetSkeletonRoot();
-        entry.boneCacheValid = (entry.boneRoot >= 0) && ((size_t)entry.boneRoot < entry.boneCache.size());
-    }
+	// 캐시 생성
+	if (entry.source == ModelSource::FBX && entry.shared && entry.shared->fbx && entry.shared->fbx->HasSkeleton())
+	{
+		const auto& sk = entry.shared->fbx->GetSkeleton();
+		entry.boneCache.resize(sk.size());
+		for (size_t si = 0; si < sk.size(); ++si)
+		{
+			const auto& s = sk[si];
+			auto& c = entry.boneCache[si];
+			c.nameW = s.nameW;
+			c.nameU8 = Utf8FromWString(c.nameW);
+			c.isBone = s.isBone;
+			c.children = s.children;
+		}
+		entry.boneRoot = entry.shared->fbx->GetSkeletonRoot();
+		entry.boneCacheValid = (entry.boneRoot >= 0) && ((size_t)entry.boneRoot < entry.boneCache.size());
+	}
+	else if (entry.source == ModelSource::PMX && entry.shared && entry.shared->pmx && entry.shared->pmx->HasSkeleton())
+	{
+		const auto& sk = entry.shared->pmx->GetSkeleton();
+		entry.boneCache.resize(sk.size());
+		for (size_t si = 0; si < sk.size(); ++si)
+		{
+			const auto& s = sk[si];
+			auto& c = entry.boneCache[si];
+			c.nameW = s.nameW;
+			c.nameU8 = Utf8FromWString(c.nameW);
+			c.isBone = s.isBone;
+			c.children = s.children;
+		}
+		entry.boneRoot = entry.shared->pmx->GetSkeletonRoot();
+		entry.boneCacheValid = (entry.boneRoot >= 0) && ((size_t)entry.boneRoot < entry.boneCache.size());
+	}
 
-    if (!entry.boneCacheValid || entry.boneRoot < 0 || entry.boneRoot >= (int)entry.boneCache.size()) return;
+	if (!entry.boneCacheValid || entry.boneRoot < 0 || entry.boneRoot >= (int)entry.boneCache.size()) return;
 
-    // 출력 문자열 생성
-    const auto& cache = entry.boneCache;
-    const bool useFilter = (filter != nullptr && filter[0] != '\0');
-    std::string f = useFilter ? std::string(filter) : std::string();
+	// 출력 문자열 생성
+	const auto& cache = entry.boneCache;
+	const bool useFilter = (filter != nullptr && filter[0] != '\0');
+	std::string f = useFilter ? std::string(filter) : std::string();
 
-    entry.boneDisplayText += "Bone Count: ";
-    entry.boneDisplayText += std::to_string((unsigned)cache.size());
-    entry.boneDisplayText += "\n\n";
+	entry.boneDisplayText += "Bone Count: ";
+	entry.boneDisplayText += std::to_string((unsigned)cache.size());
+	entry.boneDisplayText += "\n\n";
 
-    std::function<bool(int)> subtreeContainsFilter = [&](int idx) -> bool {
-        if (!useFilter) return true;
-        if (idx < 0 || idx >= (int)cache.size()) return false;
-        if (cache[idx].nameU8.find(f) != std::string::npos) return true;
-        for (int ch : cache[idx].children) if (subtreeContainsFilter(ch)) return true;
-        return false;
-    };
+	std::function<bool(int)> subtreeContainsFilter = [&](int idx) -> bool {
+		if (!useFilter) return true;
+		if (idx < 0 || idx >= (int)cache.size()) return false;
+		if (cache[idx].nameU8.find(f) != std::string::npos) return true;
+		for (int ch : cache[idx].children) if (subtreeContainsFilter(ch)) return true;
+		return false;
+		};
 
-    std::function<void(int,int)> dfs = [&](int idx, int depth)
-    {
-        if (idx < 0 || idx >= (int)cache.size()) return;
-        if (useFilter && !subtreeContainsFilter(idx)) return;
-        const auto& n = cache[idx];
-        entry.boneDisplayText.append((size_t)depth * 2u, ' ');
-        entry.boneDisplayText += n.nameU8;
-        entry.boneDisplayText += '\n';
-        for (int ch : n.children) dfs(ch, depth + 1);
-    };
+	std::function<void(int, int)> dfs = [&](int idx, int depth)
+		{
+			if (idx < 0 || idx >= (int)cache.size()) return;
+			if (useFilter && !subtreeContainsFilter(idx)) return;
+			const auto& n = cache[idx];
+			entry.boneDisplayText.append((size_t)depth * 2u, ' ');
+			entry.boneDisplayText += n.nameU8;
+			entry.boneDisplayText += '\n';
+			for (int ch : n.children) dfs(ch, depth + 1);
+		};
 
-    dfs(entry.boneRoot, 0);
+	dfs(entry.boneRoot, 0);
 }
 
 
-// 인덱스 버퍼를 스테이징으로 복사해 통계 계산 (삼각형 리스트 가정)
+// 인덱스 버퍼를 스테이징으로 복사해 통계 계산 삼각형 리스트가 들어온다고 가정
 static bool ComputeMeshStats(ID3D11Device* device, ID3D11DeviceContext* ctx,
 	ID3D11Buffer* vb, UINT vertexStride, ID3D11Buffer* ib, int indexCount,
 	MeshStats& out)
@@ -234,7 +232,7 @@ static bool ComputeMeshStats(ID3D11Device* device, ID3D11DeviceContext* ctx,
 
 		std::unordered_set<uint64_t> edges;
 		edges.reserve(out.triangles * 2u);
-		auto addEdge = [&](uint32_t a, uint32_t b){ uint32_t lo = (a < b) ? a : b; uint32_t hi = (a < b) ? b : a; uint64_t key = ((uint64_t)hi << 32) | (uint64_t)lo; edges.insert(key); };
+		auto addEdge = [&](uint32_t a, uint32_t b) { uint32_t lo = (a < b) ? a : b; uint32_t hi = (a < b) ? b : a; uint64_t key = ((uint64_t)hi << 32) | (uint64_t)lo; edges.insert(key); };
 		for (int i = 0; i + 2 < ic; i += 3)
 		{
 			uint32_t i0 = idx[i + 0], i1 = idx[i + 1], i2 = idx[i + 2];
@@ -250,46 +248,44 @@ static bool ComputeMeshStats(ID3D11Device* device, ID3D11DeviceContext* ctx,
 
 // pImpl 정의
 struct App::Impl {
-    // D3D 핵심 객체
-    ID3D11Device*                 m_pDevice = nullptr;
-    ID3D11DeviceContext*          m_pDeviceContext = nullptr;
-    IDXGISwapChain*               m_pSwapChain = nullptr;
-    ID3D11RenderTargetView*       m_pRenderTargetView = nullptr;
+	// D3D에서 사용하는 중요한 객체
+	ID3D11Device* m_pDevice = nullptr;
+	ID3D11DeviceContext* m_pDeviceContext = nullptr;
+	IDXGISwapChain* m_pSwapChain = nullptr;
+	ID3D11RenderTargetView* m_pRenderTargetView = nullptr;
 
-    // 파이프라인 셰이더/입력 레이아웃. 기본/PMX/스카이박스/라인
-    ID3D11VertexShader*           m_pVertexShader = nullptr;
-    ID3D11PixelShader*            m_pPixelShader = nullptr;
-    ID3D11PixelShader*            m_pPixelShaderSolid = nullptr;     // 마커용 흰색 출력
-    ID3D11VertexShader*           m_pVertexShaderNoTBN = nullptr;    // PMX 전용 VS
-    ID3D11InputLayout*            m_pInputLayoutNoTBN = nullptr;     // PMX 전용 IL
-    // FBX GPU 스키닝용 VS/IL
-    ID3D11VertexShader*           m_pVertexShaderSkinned = nullptr;
-    ID3D11InputLayout*            m_pInputLayoutSkinned = nullptr;
-	// 이번 프로젝트 코드
-//////////////////////////////////////////////////////////////////////////
-    ID3D11VertexShader*           m_pVertexShaderOutline = nullptr;
-    ID3D11VertexShader*           m_pVertexShaderSkinnedOutline = nullptr;
-    ID3D11VertexShader*           m_pSkyBoxVertexShader = nullptr;
-    ID3D11PixelShader*            m_pSkyBoxPixelShader = nullptr;
-    ID3D11InputLayout*            m_pSkyBoxInputLayout = nullptr;
-    ID3D11VertexShader*           m_pLineVS = nullptr;
-    ID3D11InputLayout*            m_pLineInputLayout = nullptr;
-    ID3D11PixelShader*            m_pPixelShaderOutline = nullptr;
-    ID3D11InputLayout*            m_pOutlineInputLayout = nullptr;
+	// 파이프라인 셰이더/입력 레이아웃. 기본/PMX/스카이박스/라인
+	ID3D11VertexShader* m_pVertexShader = nullptr;
+	ID3D11PixelShader* m_pPixelShader = nullptr;
+	ID3D11PixelShader* m_pPixelShaderSolid = nullptr;     // 마커용 흰색 출력
+	ID3D11VertexShader* m_pVertexShaderNoTBN = nullptr;    // PMX 전용 VS
+	ID3D11InputLayout* m_pInputLayoutNoTBN = nullptr;     // PMX 전용 IL
+	// FBX GPU 스키닝용 VS/IL
+	ID3D11VertexShader* m_pVertexShaderSkinned = nullptr;
+	ID3D11InputLayout* m_pInputLayoutSkinned = nullptr;
+	ID3D11VertexShader* m_pVertexShaderOutline = nullptr;
+	ID3D11VertexShader* m_pVertexShaderSkinnedOutline = nullptr;
+	ID3D11VertexShader* m_pSkyBoxVertexShader = nullptr;
+	ID3D11PixelShader* m_pSkyBoxPixelShader = nullptr;
+	ID3D11InputLayout* m_pSkyBoxInputLayout = nullptr;
+	ID3D11VertexShader* m_pLineVS = nullptr;
+	ID3D11InputLayout* m_pLineInputLayout = nullptr;
+	ID3D11PixelShader* m_pPixelShaderOutline = nullptr;
+	ID3D11InputLayout* m_pOutlineInputLayout = nullptr;
 
-    // 샘플러/블렌드 상태
-    ID3D11SamplerState*           m_pSamplerState = nullptr;
-    ID3D11BlendState*             m_pAlphaBlendState = nullptr;
+	// 샘플러/블렌드 상태
+	ID3D11SamplerState* m_pSamplerState = nullptr;
+	ID3D11BlendState* m_pAlphaBlendState = nullptr;
 
-    // Skybox/큐브맵 자원 및 옵션
-    enum class SkyBoxChoice { Off = 0, Hanako = 1, CubeMap = 2 };
-    SkyBoxChoice                  m_SkyBoxChoice = SkyBoxChoice::Off;
-    ID3D11ShaderResourceView*     m_pSkyHanakoSRV = nullptr;
-    ID3D11ShaderResourceView*     m_pSkyCubeMapSRV = nullptr;
-    ID3D11ShaderResourceView*     m_pTextureSRV = nullptr;           // 현재 스카이박스 SRV
-    ID3D11ShaderResourceView*     m_pSkyFaceSRV[6] = {};
-    ImVec2                        m_SkyFaceSize = ImVec2(0, 0);
-    wchar_t                       m_CurrentSkyboxPath[260] = L"..\\Resource\\Skybox\\cubemap.dds";
+	// Skybox/큐브맵 자원 및 옵션
+	enum class SkyBoxChoice { Off = 0, Hanako = 1, CubeMap = 2 };
+	SkyBoxChoice                  m_SkyBoxChoice = SkyBoxChoice::Off;
+	ID3D11ShaderResourceView* m_pSkyHanakoSRV = nullptr;
+	ID3D11ShaderResourceView* m_pSkyCubeMapSRV = nullptr;
+	ID3D11ShaderResourceView* m_pTextureSRV = nullptr;           // 현재 스카이박스 SRV
+	ID3D11ShaderResourceView* m_pSkyFaceSRV[6] = {};
+	ImVec2                        m_SkyFaceSize = ImVec2(0, 0);
+	wchar_t                       m_CurrentSkyboxPath[260] = L"..\\Resource\\Skybox\\cubemap.dds";
 
 	// Cube 텍스처 경로
 	const wchar_t* facePaths[6] = {
@@ -319,138 +315,135 @@ struct App::Impl {
 		L"..\\Resource\\Image\\Bricks059_Specular.png"
 	};
 
-    // 기본 메시 버퍼/입력 레이아웃
-    ID3D11InputLayout*            m_pInputLayout = nullptr;
-    ID3D11Buffer*                 m_pVertexBuffer = nullptr;
-    UINT                          m_VertextBufferStride = 0;
-    UINT                          m_VertextBufferOffset = 0;
-    ID3D11Buffer*                 m_pIndexBuffer = nullptr;
-    int                           m_nIndices = 0;
+	// 기본 메시 버퍼/입력 레이아웃
+	ID3D11InputLayout* m_pInputLayout = nullptr;
+	ID3D11Buffer* m_pVertexBuffer = nullptr;
+	UINT                          m_VertextBufferStride = 0;
+	UINT                          m_VertextBufferOffset = 0;
+	ID3D11Buffer* m_pIndexBuffer = nullptr;
+	int                           m_nIndices = 0;
 
-    // 공용 상수 버퍼 (b0)
-    ID3D11Buffer*                 m_pConstantBuffer = nullptr;
-    std::vector<ConstantBuffer>   m_CBuffers;                        // 필요 시 확장용
-    ConstantBuffer                m_ConstantBuffer{};                // CPU 캐시
+	// 공용 상수 버퍼 (b0)
+	ID3D11Buffer* m_pConstantBuffer = nullptr;
+	std::vector<ConstantBuffer>   m_CBuffers;                        // 필요 시 확장용
+	ConstantBuffer                m_ConstantBuffer{};                // CPU 캐시
 
-    // 유틸 렌더러/디버그 박스
-    class LineRenderer*           m_LineRenderer = nullptr;
-    class Skybox*                 m_Skybox = nullptr;
-    ID3D11Buffer*                 m_pDebugBoxVB = nullptr;
-    ID3D11Buffer*                 m_pDebugBoxIB = nullptr;
-    int                           m_DebugBoxIndexCount = 0;
+	// 유틸 렌더러/디버그 박스
+	class LineRenderer* m_LineRenderer = nullptr;
+	class Skybox* m_Skybox = nullptr;
+	ID3D11Buffer* m_pDebugBoxVB = nullptr;
+	ID3D11Buffer* m_pDebugBoxIB = nullptr;
+	int                           m_DebugBoxIndexCount = 0;
 
-    // 깊이/래스터라이저 상태
-    ID3D11DepthStencilView*       m_pDepthStencilView = nullptr;
-    ID3D11DepthStencilState*      m_pDepthStencilState = nullptr;
-    ID3D11DepthStencilState*      m_pDepthStencilStateReadOnly = nullptr; // Outline용 깊이 읽기 전용
-    ID3D11RasterizerState*        RSNoCull = nullptr;
-    ID3D11RasterizerState*        RSCullClockWise = nullptr;
-    ID3D11RasterizerState*        RSCullFront = nullptr;
+	// 깊이/래스터라이저 상태
+	ID3D11DepthStencilView* m_pDepthStencilView = nullptr;
+	ID3D11DepthStencilState* m_pDepthStencilState = nullptr;
+	ID3D11DepthStencilState* m_pDepthStencilStateReadOnly = nullptr; // Outline용 깊이 읽기 전용
+	ID3D11RasterizerState* RSNoCull = nullptr;
+	ID3D11RasterizerState* RSCullClockWise = nullptr;
+	ID3D11RasterizerState* RSCullFront = nullptr;
 
-    // Shadow map resources
-    ID3D11Texture2D*              m_pShadowTex = nullptr;
-    ID3D11DepthStencilView*       m_pShadowDSV = nullptr;
-    ID3D11ShaderResourceView*     m_pShadowSRV = nullptr;
-    D3D11_VIEWPORT                m_ShadowViewport{};
-    ID3D11RasterizerState*        RSShadowBias = nullptr;
-    ID3D11SamplerState*           m_pShadowSampler = nullptr;
-    ID3D11VertexShader*           m_pVSShadow = nullptr;
-    ID3D11VertexShader*           m_pVSSkinnedShadow = nullptr;
-    // Shadow params (UI)
-    int                           m_ShadowEnabled = 1;
-    int                           m_ShadowSize = 4096;
-    float                         m_ShadowBias = 0.0015f;
-    float                         m_ShadowPCFRadius = 1.0f;
-    float                         m_ShadowOrthoRadius = 8.1f; // 카메라 중심 반경(m)
-    float                         m_ShadowNear = -26.0f;
-    float                         m_ShadowFar  =  50.0f;
+	// Shadow map
+	ID3D11Texture2D* m_pShadowTex = nullptr;
+	ID3D11DepthStencilView* m_pShadowDSV = nullptr;
+	ID3D11ShaderResourceView* m_pShadowSRV = nullptr;
+	D3D11_VIEWPORT                m_ShadowViewport{};
+	ID3D11RasterizerState* RSShadowBias = nullptr;
+	ID3D11SamplerState* m_pShadowSampler = nullptr;
+	ID3D11VertexShader* m_pVSShadow = nullptr;
+	ID3D11VertexShader* m_pVSSkinnedShadow = nullptr;
+	// Shadow params UI에서 띄우기 위함
+	int                           m_ShadowEnabled = 1;
+	int                           m_ShadowSize = 4096;
+	float                         m_ShadowBias = 0.0015f;
+	float                         m_ShadowPCFRadius = 1.0f;
+	float                         m_ShadowOrthoRadius = 8.1f; // 카메라 중심 반경(m)
+	float                         m_ShadowNear = -26.0f;
+	float                         m_ShadowFar = 50.0f;
 
-    // 데모/디버그용 텍스처 및 UI 표시 크기
-    ID3D11ShaderResourceView*     m_TexHanakoSRV = nullptr;
-    bool                          m_ShowHanako = false;
-    ImVec2                        m_HanakoDrawSize = ImVec2(128, 128);
-    ImVec2                        m_TexHanakoSize = ImVec2(0, 0);
+	// 데모/디버그용 텍스처 및 UI 표시 크기
+	ID3D11ShaderResourceView* m_TexHanakoSRV = nullptr;
+	bool                          m_ShowHanako = false;
+	ImVec2                        m_HanakoDrawSize = ImVec2(128, 128);
+	ImVec2                        m_TexHanakoSize = ImVec2(0, 0);
 
-    // 큐브 각 면 텍스처 Diffuse/Normal/Specular
-    ID3D11ShaderResourceView*     m_pCubeTextureSRVs[6] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
-    ID3D11ShaderResourceView*     m_pNormalSRVs[6]      = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
-    ID3D11ShaderResourceView*     m_pSpecularSRVs[6]    = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
+	// 큐브 각 면 텍스처 Diffuse/Normal/Specular
+	ID3D11ShaderResourceView* m_pCubeTextureSRVs[6] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
+	ID3D11ShaderResourceView* m_pNormalSRVs[6] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
+	ID3D11ShaderResourceView* m_pSpecularSRVs[6] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
 
-    // 시스템/카메라
-    SystemInfomation              m_SystemInfo;
-    Camera                        m_camera;
+	// 시스템/카메라
+	SystemInfomation              m_SystemInfo;
+	Camera                        m_camera;
 
-    // 큐브 트랜스폼
-    XMFLOAT3                      m_cubePos = { 0.0f, 0.0f, 0.0f };
-    XMFLOAT3                      m_cubeScale = { 1.0f, 1.0f, 1.0f };
-    XMFLOAT3                      m_cubeRotation = { 0.0f, 0.0f, 0.0f };
-    bool                          m_RotateModel = false;
+	// 큐브 트랜스폼
+	XMFLOAT3                      m_cubePos = { 0.0f, 0.0f, 0.0f };
+	XMFLOAT3                      m_cubeScale = { 1.0f, 1.0f, 1.0f };
+	XMFLOAT3                      m_cubeRotation = { 0.0f, 0.0f, 0.0f };
+	bool                          m_RotateModel = false;
 
-    // 미러 큐브 트랜스폼
-    XMFLOAT3                      m_mirrorCubePos = { 4.5f, 0.0f, 0.0f };
-    XMFLOAT3                      m_mirrorCubeRotation = { 0.0f, 0.0f, 0.0f };
-    float                         m_MirrorCubeScale = 2.0f;
+	// 미러 큐브 트랜스폼
+	XMFLOAT3                      m_mirrorCubePos = { 4.5f, 0.0f, 0.0f };
+	XMFLOAT3                      m_mirrorCubeRotation = { 0.0f, 0.0f, 0.0f };
+	float                         m_MirrorCubeScale = 2.0f;
 
-    // 조명/재질
-    DirectionalLight              m_DirLight = { {0,0,0,1}, {1,1,1,1}, {0.7,0.7,0.7,1}, {0,-1.1,1}, 0.0f };
-    Material                      m_Material = { {1,1,1,1}, {1,1,1,1}, {1,1,1,32}, {0,0,0,0} };
-    Material                      m_mirrorCubeMaterial = { {0,0,0,1}, {0,0,0,1}, {0,0,0,32}, {1,1,1,0.02f} };
+	// 조명/재질
+	DirectionalLight              m_DirLight = { {0,0,0,1}, {1,1,1,1}, {0.7,0.7,0.7,1}, {0,-1.1,1}, 0.0f };
+	Material                      m_Material = { {1,1,1,1}, {1,1,1,1}, {1,1,1,32}, {0,0,0,0} };
+	Material                      m_mirrorCubeMaterial = { {0,0,0,1}, {0,0,0,1}, {0,0,0,32}, {1,1,1,0.02f} };
 
-    // 라이트 마커 위치 / 카메라 기반 기본 행렬
-    XMFLOAT3                      m_LightPosition = { 4.0f, 4.0f, 0.0f };
-    ConstantBuffer                m_baseProjection{};
+	// 라이트 마커 위치 / 카메라 기반 기본 행렬
+	XMFLOAT3                      m_LightPosition = { 4.0f, 4.0f, 0.0f };
+	ConstantBuffer                m_baseProjection{};
 
-    // 셰이딩 옵션 / 클리어 컬러
-    ShadingMode                   m_ShadingMode = ShadingMode::ToonShading;
-    // Outline params ImGui에서 제어하는 용도도
-    // Rim 파라미터 제거 (멀티패스 지오메트리 아웃라인만 사용)
-    float                         m_OutlineThickness = 0.015f;
-    XMFLOAT4                      m_OutlineColor = XMFLOAT4(1.0, 0.7286, 0, 1);
-    float                         m_OutlineStrength = 1.0f;
-    int                           m_EnableNormalMap = 1;
-    int                           m_UseSpecularMap = 0;
-    int                           m_LegacyShading = 1;
-    XMFLOAT4                      m_ClearColor = { 0.125f, 0.125f, 0.125f, 1.0f };
+	// 셰이딩 옵션 / 클리어 컬러
+	ShadingMode                   m_ShadingMode = ShadingMode::Phong;
+	// Outline params ImGui에서 제어하는 용도도
+	// Rim 파라미터 제거. 멀티패스 지오메트리 아웃라인만 사용
+	float                         m_OutlineThickness = 0.015f;
+	XMFLOAT4                      m_OutlineColor = XMFLOAT4(1.0, 0.7286, 0, 1);
+	float                         m_OutlineStrength = 1.0f;
+	int                           m_EnableNormalMap = 1;
+	int                           m_UseSpecularMap = 0;
+	int                           m_LegacyShading = 1;
+	XMFLOAT4                      m_ClearColor = { 0.125f, 0.125f, 0.125f, 1.0f };
 
-    // 모델 로딩 및 렌더링 FBX/OBJ/PMX
-    RenderMode                    m_RenderMode = RenderMode::None;
-    std::vector<std::unique_ptr<ModelEntry>> m_Models;            // 모델들
-    ID3D11ShaderResourceView*     m_pFallbackWhite = nullptr;
-    ID3D11ShaderResourceView*     m_pFallbackNormal = nullptr;
-    ID3D11ShaderResourceView*     m_pFallbackBlack = nullptr;
-    std::string                   m_ModelPathInputUTF8;
+	// 모델 로딩 및 렌더링 FBX/OBJ/PMX
+	RenderMode                    m_RenderMode = RenderMode::None;
+	std::vector<std::unique_ptr<ModelEntry>> m_Models;            // 모델들
+	ID3D11ShaderResourceView* m_pFallbackWhite = nullptr;
+	ID3D11ShaderResourceView* m_pFallbackNormal = nullptr;
+	ID3D11ShaderResourceView* m_pFallbackBlack = nullptr;
+	std::string                   m_ModelPathInputUTF8;
 
-    // 경로 기반 공유 모델 캐시
-    std::unordered_map<std::wstring, std::weak_ptr<SharedModelData>> m_ModelCache;
-    
-    // 본 에디터 관련
-    int                           m_SelectedBoneIdx = -1;         // 선택된 본 인덱스
-    int                           m_SelectedModelIdx = -1;        // 선택된 모델 인덱스
+	// 경로 기반 공유 모델 캐시
+	std::unordered_map<std::wstring, std::weak_ptr<SharedModelData>> m_ModelCache;
 
-    // DockSpace 레이아웃
-    bool                          m_EnableDock = false;
-    bool                          m_DockBuilt = false;
-    ImGuiID                       m_DockMain = 0;
-    ImGuiID                       m_DockLeft = 0;
-    ImGuiID                       m_DockRight = 0;
-    ImGuiID                       m_DockBottom = 0;
-    ImGuiID                       m_DockCenter = 0;
+	// 본 에디터 관련
+	int                           m_SelectedBoneIdx = -1;         // 선택된 본 인덱스
+	int                           m_SelectedModelIdx = -1;        // 선택된 모델 인덱스
 
-    // Bone 필터/옵션
-    char                          m_BoneFilter[128] = {0};
-    bool                          m_BoneExpandAll = false;
+	// DockSpace 레이아웃
+	bool                          m_EnableDock = false;
+	bool                          m_DockBuilt = false;
+	ImGuiID                       m_DockMain = 0;
+	ImGuiID                       m_DockLeft = 0;
+	ImGuiID                       m_DockRight = 0;
+	ImGuiID                       m_DockBottom = 0;
+	ImGuiID                       m_DockCenter = 0;
 
-    // Console 로그
-    std::vector<std::string>      m_LogLines;
-    bool                          m_LogAutoScroll = true;
-    char                          m_LogFilter[128] = {0};
+	// Bone 필터/옵션
+	char                          m_BoneFilter[128] = { 0 };
+	bool                          m_BoneExpandAll = false;
+
+	// Console 로그
+	std::vector<std::string>      m_LogLines;
+	bool                          m_LogAutoScroll = true;
+	char                          m_LogFilter[128] = { 0 };
 
 	std::function<void(std::string)> PushLog = [&](const std::string& s) { m_LogLines.push_back(s); };
 };
 
-// 멤버 매핑 매크로 제거됨: 직접 m_-> 멤버 접근을 사용합니다.
-
-// ctor/dtor
 App::App() : m_(new Impl) {}
 App::~App() {}
 
@@ -477,70 +470,70 @@ static bool LoadTextureSRVAndSize(ID3D11Device* device, const std::wstring& path
 // 모델용 파일 선택 대화상자 (fbx/obj/pmx)
 static bool OpenFileDialogModel(std::wstring& outPath)
 {
-    wchar_t file[MAX_PATH] = {0};
-    OPENFILENAMEW ofn{};
-    ofn.lStructSize = sizeof(ofn);
-    ofn.hwndOwner = GameApp::m_hWnd;
-    ofn.lpstrFilter = L"Models (*.fbx;*.obj;*.pmx)\0*.fbx;*.obj;*.pmx\0All Files\0*.*\0\0";
-    ofn.lpstrFile = file;
-    ofn.nMaxFile = MAX_PATH;
-    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
-    if (GetOpenFileNameW(&ofn)) { outPath = file; return true; }
-    return false;
+	wchar_t file[MAX_PATH] = { 0 };
+	OPENFILENAMEW ofn{};
+	ofn.lStructSize = sizeof(ofn);
+	ofn.hwndOwner = GameApp::m_hWnd;
+	ofn.lpstrFilter = L"Models (*.fbx;*.obj;*.pmx)\0*.fbx;*.obj;*.pmx\0All Files\0*.*\0\0";
+	ofn.lpstrFile = file;
+	ofn.nMaxFile = MAX_PATH;
+	ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
+	if (GetOpenFileNameW(&ofn)) { outPath = file; return true; }
+	return false;
 }
 
 void App::PrepareSkyFaceSRVs()
 {
 	// 다른 스카이박스로 바꿀 수도 있으니 해제하고 다시 로드
 	for (int i = 0; i < 6; ++i) SAFE_RELEASE(m_->m_pSkyFaceSRV[i]);
-	    m_->m_SkyFaceSize = ImVec2(0, 0);
-	    if (!m_->m_pTextureSRV) return;
+	m_->m_SkyFaceSize = ImVec2(0, 0);
+	if (!m_->m_pTextureSRV) return;
 
 	Microsoft::WRL::ComPtr<ID3D11Resource> res;
 	m_->m_pTextureSRV->GetResource(res.GetAddressOf());
-    if (!res) return;
+	if (!res) return;
 
 	// 파괴됐는지 안됐는지 판단을 위해 Comptr이 필요하다
 	Microsoft::WRL::ComPtr<ID3D11Texture2D> tex2D;
 	HR_T(res.As(&tex2D));
 
-    D3D11_TEXTURE2D_DESC desc{};
-    tex2D->GetDesc(&desc);
+	D3D11_TEXTURE2D_DESC desc{};
+	tex2D->GetDesc(&desc);
 	// 큐브맵은 6개의 array slice를 가짐. (여러 큐브면 6의 배수)
-    if ((desc.ArraySize < 6)) return;
+	if ((desc.ArraySize < 6)) return;
 
 	// 크기 기록 (mip0 기준)
 	m_->m_SkyFaceSize = ImVec2((float)desc.Width, (float)desc.Height);
 
-    for (UINT face = 0; face < 6; ++face)
-    {
-        D3D11_SHADER_RESOURCE_VIEW_DESC sd{};
-        sd.Format = desc.Format;
-        sd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DARRAY;
-        sd.Texture2DArray.MostDetailedMip = 0;
-        sd.Texture2DArray.MipLevels = desc.MipLevels;
-        sd.Texture2DArray.FirstArraySlice = face;
-        sd.Texture2DArray.ArraySize = 1;
-        ID3D11ShaderResourceView* faceSRV = nullptr;
-        if (SUCCEEDED(m_->m_pDevice->CreateShaderResourceView(tex2D.Get(), &sd, &faceSRV)))
-        {
-            m_->m_pSkyFaceSRV[face] = faceSRV;
-        }
-    }
+	for (UINT face = 0; face < 6; ++face)
+	{
+		D3D11_SHADER_RESOURCE_VIEW_DESC sd{};
+		sd.Format = desc.Format;
+		sd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DARRAY;
+		sd.Texture2DArray.MostDetailedMip = 0;
+		sd.Texture2DArray.MipLevels = desc.MipLevels;
+		sd.Texture2DArray.FirstArraySlice = face;
+		sd.Texture2DArray.ArraySize = 1;
+		ID3D11ShaderResourceView* faceSRV = nullptr;
+		if (SUCCEEDED(m_->m_pDevice->CreateShaderResourceView(tex2D.Get(), &sd, &faceSRV)))
+		{
+			m_->m_pSkyFaceSRV[face] = faceSRV;
+		}
+	}
 }
 
 void App::ChangeSkyboxDDS(const wchar_t* ddsPath)
 {
-    if (m_->m_Skybox)
-    {
-        if (m_->m_Skybox->ChangeDDS(m_->m_pDevice, ddsPath))
-        {
-            // also set for face view and PS binding
-            m_->m_pTextureSRV = m_->m_Skybox->GetTexture();
-            PrepareSkyFaceSRVs();
-            wcscpy_s(m_->m_CurrentSkyboxPath, ddsPath);
-        }
-    }
+	if (m_->m_Skybox)
+	{
+		if (m_->m_Skybox->ChangeDDS(m_->m_pDevice, ddsPath))
+		{
+			// also set for face view and PS binding
+			m_->m_pTextureSRV = m_->m_Skybox->GetTexture();
+			PrepareSkyFaceSRVs();
+			wcscpy_s(m_->m_CurrentSkyboxPath, ddsPath);
+		}
+	}
 }
 
 bool App::OnInitialize()
@@ -559,83 +552,69 @@ bool App::OnInitialize()
 
 	if (!m_->m_SystemInfo.InitSysInfomation(m_->m_pDevice)) return false;
 
+	// 앨리스 로드
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 0
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 1
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 1
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 2
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 3
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 4
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 5
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 6
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 7
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 8
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 9
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 10
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 11
+
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Ground.fbx"); // 0
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 1
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 2
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 3
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 4
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 5
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 6
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 7
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 8
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 9
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 10
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 11
 
 	m_->m_camera.SetPosition(XMFLOAT3(0.0f, 1.0f, -1.0f));
-	m_->m_camera.SetSpeed(4);
+	m_->m_camera.SetSpeed(1.5);
 
-	// --------------------------------------------------------------------------------
-	// 위치 설정 (4줄 × 12개, X는 36 간격, Y는 줄마다 -60 간격)
-	// --------------------------------------------------------------------------------
-	// 1줄 (0..11, y=0)
-	m_->m_Models[0]->pos = XMFLOAT3(1.5f * 0, 1.5f, 0.0f);
-	//m_->m_Models[1]->pos = XMFLOAT3(1.5f * 1, 0.0f, 0.0f);
-	//m_->m_Models[2]->pos = XMFLOAT3(1.5f * 2, 0.0f, 0.0f);
-	//m_->m_Models[3]->pos = XMFLOAT3(1.5f * 3, 0.0f, 0.0f);
-	//m_->m_Models[4]->pos = XMFLOAT3(1.5f * 4, 0.0f, 0.0f);
-	//m_->m_Models[5]->pos = XMFLOAT3(1.5f * 5, 0.0f, 0.0f);
-	//m_->m_Models[6]->pos = XMFLOAT3(1.5f * 6, 0.0f, 0.0f);
-	//m_->m_Models[7]->pos = XMFLOAT3(1.5f * 7, 0.0f, 0.0f);
-	//m_->m_Models[8]->pos = XMFLOAT3(1.5f * 8, 0.0f, 0.0f);
-	//m_->m_Models[9]->pos = XMFLOAT3(1.5f * 9, 0.0f, 0.0f);
-	//m_->m_Models[10]->pos = XMFLOAT3(1.5f * 10, 0.0f, 0.0f);
-	//m_->m_Models[11]->pos = XMFLOAT3(1.5f * 11, 0.0f, 0.0f);
+	// 트랜스폼 설정
+	m_->m_Models[0]->pos = XMFLOAT3(1.5f * 0, 0.0f, 0.0f);
+	m_->m_Models[1]->pos = XMFLOAT3(1.5f * 1, 0.0f, 0.0f);
+	m_->m_Models[2]->pos = XMFLOAT3(1.5f * 2, 0.0f, 0.0f);
+	m_->m_Models[3]->pos = XMFLOAT3(1.5f * 3, 0.0f, 0.0f);
+	m_->m_Models[4]->pos = XMFLOAT3(1.5f * 4, 0.0f, 0.0f);
+	m_->m_Models[5]->pos = XMFLOAT3(1.5f * 5, 0.0f, 0.0f);
+	m_->m_Models[6]->pos = XMFLOAT3(1.5f * 6, 0.0f, 0.0f);
+	m_->m_Models[7]->pos = XMFLOAT3(1.5f * 7, 0.0f, 0.0f);
+	m_->m_Models[8]->pos = XMFLOAT3(1.5f * 8, 0.0f, 0.0f);
+	m_->m_Models[9]->pos = XMFLOAT3(1.5f * 9, 0.0f, 0.0f);
+	m_->m_Models[10]->pos = XMFLOAT3(1.5f * 10, 0.0f, 0.0f);
+	m_->m_Models[11]->pos = XMFLOAT3(1.5f * 11, 0.0f, 0.0f);
 
-	// --------------------------------------------------------------------------------
-	// 셰이딩 모드 및 Outline 설정 (각 줄 12개: 6개 셰이더 × Off/On)
-	// 순서: Lambert, BlinnPhong, Phong, TextureOnly, ToonShading, Unlit | 반복
-	// --------------------------------------------------------------------------------
-	// 1줄 (0..11)
-	m_->m_Models[0]->modelShading = ShadingMode::Phong;      m_->m_Models[0]->outlineEnabled = false;
-	m_->m_Models[1]->modelShading = ShadingMode::Phong;		 m_->m_Models[1]->outlineEnabled = false;
-	//m_->m_Models[2]->modelShading = ShadingMode::Phong;        m_->m_Models[2]->outlineEnabled = false;
-	//m_->m_Models[3]->modelShading = ShadingMode::TextureOnly;  m_->m_Models[3]->outlineEnabled = false;
-	//m_->m_Models[4]->modelShading = ShadingMode::ToonShading;  m_->m_Models[4]->outlineEnabled = false;
-	//m_->m_Models[5]->modelShading = ShadingMode::Unlit;        m_->m_Models[5]->outlineEnabled = false;
-	//m_->m_Models[6]->modelShading = ShadingMode::Lambert;      m_->m_Models[6]->outlineEnabled = true;
-	//m_->m_Models[7]->modelShading = ShadingMode::BlinnPhong;   m_->m_Models[7]->outlineEnabled = true;
-	//m_->m_Models[8]->modelShading = ShadingMode::Phong;        m_->m_Models[8]->outlineEnabled = true;
-	//m_->m_Models[9]->modelShading = ShadingMode::TextureOnly;  m_->m_Models[9]->outlineEnabled = true;
-	//m_->m_Models[10]->modelShading = ShadingMode::ToonShading; m_->m_Models[10]->outlineEnabled = true;
-	//m_->m_Models[11]->modelShading = ShadingMode::Unlit;       m_->m_Models[11]->outlineEnabled = true;
+	// 랜더 모드 설정
+	m_->m_Models[0]->modelShading = ShadingMode::Unlit;			m_->m_Models[0]->outlineEnabled = false;
+	m_->m_Models[1]->modelShading = ShadingMode::Lambert;			m_->m_Models[1]->outlineEnabled = false;
+	m_->m_Models[2]->modelShading = ShadingMode::Phong;			m_->m_Models[2]->outlineEnabled = false;
+	m_->m_Models[3]->modelShading = ShadingMode::TextureOnly;	m_->m_Models[3]->outlineEnabled = false;
+	m_->m_Models[4]->modelShading = ShadingMode::ToonShading;	m_->m_Models[4]->outlineEnabled = false;
+	m_->m_Models[5]->modelShading = ShadingMode::Unlit;			m_->m_Models[5]->outlineEnabled = false;
+	m_->m_Models[6]->modelShading = ShadingMode::Lambert;		m_->m_Models[6]->outlineEnabled = true;
+	m_->m_Models[7]->modelShading = ShadingMode::BlinnPhong;	m_->m_Models[7]->outlineEnabled = true;
+	m_->m_Models[8]->modelShading = ShadingMode::Phong;			m_->m_Models[8]->outlineEnabled = true;
+	m_->m_Models[9]->modelShading = ShadingMode::TextureOnly;	m_->m_Models[9]->outlineEnabled = true;
+	m_->m_Models[10]->modelShading = ShadingMode::ToonShading;	m_->m_Models[10]->outlineEnabled = true;
+	m_->m_Models[11]->modelShading = ShadingMode::Unlit;		m_->m_Models[11]->outlineEnabled = true;
+	m_->m_Models[12]->modelShading = ShadingMode::Phong;		m_->m_Models[12]->outlineEnabled = false;
 
-	// --------------------------------------------------------------------------------
-	// 애니메이션 실행 설정
-	// 1줄: index 2, 재생
-	// 2줄: index 3, 재생
-	// 3줄: index 4, 재생
-	// --------------------------------------------------------------------------------
-	// 1줄 (0..11)
+	// 현재 애니메이션 인덱스 설정
 	m_->m_Models[0]->animator.SetCurrentIndex(0);  m_->m_Models[0]->uiAnimPlaying = true;
-	//m_->m_Models[1]->animator.SetCurrentIndex(0);  m_->m_Models[1]->uiAnimPlaying = true;
-	//m_->m_Models[2]->animator.SetCurrentIndex(0);  m_->m_Models[2]->uiAnimPlaying = true;
-	//m_->m_Models[3]->animator.SetCurrentIndex(0);  m_->m_Models[3]->uiAnimPlaying = true;
-	//m_->m_Models[4]->animator.SetCurrentIndex(0);  m_->m_Models[4]->uiAnimPlaying = true;
-	//m_->m_Models[5]->animator.SetCurrentIndex(0);  m_->m_Models[5]->uiAnimPlaying = true;
-	//m_->m_Models[6]->animator.SetCurrentIndex(0);  m_->m_Models[6]->uiAnimPlaying = true;
-	//m_->m_Models[7]->animator.SetCurrentIndex(0);  m_->m_Models[7]->uiAnimPlaying = true;
-	//m_->m_Models[8]->animator.SetCurrentIndex(0);  m_->m_Models[8]->uiAnimPlaying = true;
-	//m_->m_Models[9]->animator.SetCurrentIndex(0);  m_->m_Models[9]->uiAnimPlaying = true;
-	//m_->m_Models[10]->animator.SetCurrentIndex(0); m_->m_Models[10]->uiAnimPlaying = true;
-	//m_->m_Models[11]->animator.SetCurrentIndex(0); m_->m_Models[11]->uiAnimPlaying = true;
+	m_->m_Models[1]->animator.SetCurrentIndex(0);  m_->m_Models[1]->uiAnimPlaying = true;
+	m_->m_Models[2]->animator.SetCurrentIndex(0);  m_->m_Models[2]->uiAnimPlaying = true;
+	m_->m_Models[3]->animator.SetCurrentIndex(0);  m_->m_Models[3]->uiAnimPlaying = true;
+	m_->m_Models[4]->animator.SetCurrentIndex(0);  m_->m_Models[4]->uiAnimPlaying = true;
+	m_->m_Models[5]->animator.SetCurrentIndex(0);  m_->m_Models[5]->uiAnimPlaying = true;
+	m_->m_Models[6]->animator.SetCurrentIndex(0);  m_->m_Models[6]->uiAnimPlaying = true;
+	m_->m_Models[7]->animator.SetCurrentIndex(0);  m_->m_Models[7]->uiAnimPlaying = true;
+	m_->m_Models[8]->animator.SetCurrentIndex(0);  m_->m_Models[8]->uiAnimPlaying = true;
+	m_->m_Models[9]->animator.SetCurrentIndex(0);  m_->m_Models[9]->uiAnimPlaying = true;
+	m_->m_Models[10]->animator.SetCurrentIndex(0); m_->m_Models[10]->uiAnimPlaying = true;
+	m_->m_Models[11]->animator.SetCurrentIndex(0); m_->m_Models[11]->uiAnimPlaying = true;
 
-	// --------------------------------------------------------------------------------
-	// 공통 아웃라인 파라미터/색상 기본값
-	// --------------------------------------------------------------------------------
-	m_->m_OutlineThickness = 0.003f;
+	m_->m_OutlineThickness = 0.001f;
 	m_->m_OutlineColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 1);
 
 	return true;
@@ -661,7 +640,7 @@ void App::OnUpdate(const float& dt)
 		XMVECTOR focus = XMLoadFloat3(&focusF);
 
 		XMVECTOR fwd = XMVector3Normalize(XMLoadFloat3(&m_->m_DirLight.direction)); // 라이트가 비추는 방향
-		float backDist = 60.0f;
+		float backDist = 30.0f;
 		XMVECTOR lightPos = XMVectorSubtract(focus, XMVectorScale(fwd, backDist));
 		XMVECTOR up = XMVectorSet(0, 1, 0, 0);
 		if (fabsf(XMVectorGetX(XMVector3Dot(up, fwd))) > 0.99f) up = XMVectorSet(0, 0, 1, 0);
@@ -690,55 +669,55 @@ void App::OnUpdate(const float& dt)
 		};
 
 
-    // 자동 회전 및 애니메이션 업데이트(공유 데이터는 중복 업데이트 방지)
-    {
-        std::unordered_set<SharedModelData*> updated;
-        for (auto& mdlPtr : m_->m_Models)
-        {
-            auto& mdl = *mdlPtr;
-            if (mdl.autoRotate)
-            {
-                mdl.rotDeg.y += 45.0f * dt;
-                mdl.rotDeg.y = std::fmod(mdl.rotDeg.y + 180.0f, 360.0f) - 180.0f;
-            }
-            if (!mdl.shared) continue;
-            if (updated.find(mdl.shared.get()) != updated.end()) continue;
-            if (mdl.source == ModelSource::FBX && mdl.shared->fbx)
-            {
-                // 인스턴스별 애니메이션 업데이트 (공유 지오메트리/스켈레톤 사용)
-                if (!mdl.animatorInited)
-                {
-                    mdl.animator.InitMetadata(mdl.shared->fbx->GetScenePtr());
-                    mdl.animator.SetSharedContext(
-                        mdl.shared->fbx->GetScenePtr(),
-                        mdl.shared->fbx->GetNodeIndexOfName(),
-                        &mdl.shared->fbx->GetBoneNames(),
-                        &mdl.shared->fbx->GetBoneOffsets(),
-                        &mdl.shared->fbx->GetGlobalInverse());
-                    auto t = mdl.shared->fbx->GetCurrentAnimationType();
-                    mdl.animator.SetType(t == FbxModel::AnimationType::Rigid ? FbxAnimation::AnimType::Rigid : (t == FbxModel::AnimationType::Skinned ? FbxAnimation::AnimType::Skinned : FbxAnimation::AnimType::None));
-                    mdl.animatorInited = true;
-                }
-                mdl.animator.SetPlaying(mdl.uiAnimPlaying);
-                mdl.animator.EnsureBoneCB(m_->m_pDevice, 1023);
-                mdl.animator.UpdateAndUpload(
-                    m_->m_pDeviceContext,
-                    dt,
-                    mdl.shared->fbx->GetScenePtr(),
-                    mdl.shared->fbx->GetNodeIndexOfName(),
-                    mdl.shared->fbx->GetBoneNames(),
-                    mdl.shared->fbx->GetBoneOffsets(),
-                    mdl.shared->fbx->GetGlobalInverse());
-            }
-            else if (mdl.source == ModelSource::PMX && mdl.shared->pmx)
-            {
-                mdl.shared->pmx->UpdateAnimation(m_->m_pDeviceContext, dt);
-                updated.insert(mdl.shared.get());
-            }
+	// 3D 모델 애니메이션 업데이트 (공유 데이터는 중복 업데이트 안함)
+	{
+		std::unordered_set<SharedModelData*> updated;
+		for (auto& mdlPtr : m_->m_Models)
+		{
+			auto& mdl = *mdlPtr;
+			if (mdl.autoRotate)
+			{
+				mdl.rotDeg.y += 45.0f * dt;
+				mdl.rotDeg.y = std::fmod(mdl.rotDeg.y + 180.0f, 360.0f) - 180.0f;
+			}
+			if (!mdl.shared) continue;
+			if (updated.find(mdl.shared.get()) != updated.end()) continue;
+			if (mdl.source == ModelSource::FBX && mdl.shared->fbx)
+			{
+				// 인스턴스별 애니메이션 업데이트 (공유 지오메트리/스켈레톤 사용)
+				if (!mdl.animatorInited)
+				{
+					mdl.animator.InitMetadata(mdl.shared->fbx->GetScenePtr());
+					mdl.animator.SetSharedContext(
+						mdl.shared->fbx->GetScenePtr(),
+						mdl.shared->fbx->GetNodeIndexOfName(),
+						&mdl.shared->fbx->GetBoneNames(),
+						&mdl.shared->fbx->GetBoneOffsets(),
+						&mdl.shared->fbx->GetGlobalInverse());
+					auto t = mdl.shared->fbx->GetCurrentAnimationType();
+					mdl.animator.SetType(t == FbxModel::AnimationType::Rigid ? FbxAnimation::AnimType::Rigid : (t == FbxModel::AnimationType::Skinned ? FbxAnimation::AnimType::Skinned : FbxAnimation::AnimType::None));
+					mdl.animatorInited = true;
+				}
+				mdl.animator.SetPlaying(mdl.uiAnimPlaying);
+				mdl.animator.EnsureBoneCB(m_->m_pDevice, 1023);
+				mdl.animator.UpdateAndUpload(
+					m_->m_pDeviceContext,
+					dt,
+					mdl.shared->fbx->GetScenePtr(),
+					mdl.shared->fbx->GetNodeIndexOfName(),
+					mdl.shared->fbx->GetBoneNames(),
+					mdl.shared->fbx->GetBoneOffsets(),
+					mdl.shared->fbx->GetGlobalInverse());
+			}
+			else if (mdl.source == ModelSource::PMX && mdl.shared->pmx)
+			{
+				mdl.shared->pmx->UpdateAnimation(m_->m_pDeviceContext, dt);
+				updated.insert(mdl.shared.get());
+			}
 
 			UpdateShadow(mdl.pos);
-        }
-    }
+		}
+	}
 	// 기본 카메라용 world0 (원점 단위행렬)
 	// 카메라 업데이트
 	ImGuiIO& io = ImGui::GetIO();
@@ -783,7 +762,7 @@ inline ImVec2 operator+(const ImVec2& lhs, const ImVec2& rhs)
 {
 	return ImVec2(lhs.x + rhs.x, lhs.y + rhs.y);
 }
-inline ImVec2 operator-(const ImVec2& lhs, const ImVec2& rhs) 
+inline ImVec2 operator-(const ImVec2& lhs, const ImVec2& rhs)
 {
 	return ImVec2(lhs.x - rhs.x, lhs.y - rhs.y);
 }
@@ -827,7 +806,7 @@ void App::OnRender()
 	// 2. 입력 레이아웃을 잡아주기
 	// 3. 인덱스 버퍼를 잡아주기
 	m_->m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    // 렌더 모드에 따라 VB/IB 바인딩 결정
+	// 렌더 모드에 따라 VB/IB 바인딩 결정
 	if (!(m_->m_RenderMode == RenderMode::Model && !m_->m_Models.empty()))
 	{
 		// 기본 큐브
@@ -837,96 +816,100 @@ void App::OnRender()
 	}
 
 	// 컬러 클리어 및 스카이박스/배경 선택
-    if (m_->m_SkyBoxChoice == App::Impl::SkyBoxChoice::Off)
+	if (m_->m_SkyBoxChoice == App::Impl::SkyBoxChoice::Off)
 	{
 		float clr[4] = { m_->m_ClearColor.x, m_->m_ClearColor.y, m_->m_ClearColor.z, m_->m_ClearColor.w };
 		m_->m_pDeviceContext->ClearRenderTargetView(m_->m_pRenderTargetView, clr);
 	}
 
-    // ---------------- Shadow Pass (depth-only) ----------------
-    if (m_->m_ShadowEnabled && m_->m_RenderMode == RenderMode::Model && !m_->m_Models.empty() && m_->m_pShadowDSV)
-    {
-        // SRV/DSV 하자드 방지: 동일 리소스(섀도우 맵)를 DSV로 세팅하기 전에
-        // PS에서 사용 중인 SRV(t4)를 명시적으로 언바인드한다.
-        ID3D11ShaderResourceView* nullSRV = nullptr;
-        m_->m_pDeviceContext->PSSetShaderResources(4, 1, &nullSRV);
+	// ---------------- Shadow Pass (depth-only) ----------------
+	if (m_->m_ShadowEnabled && m_->m_RenderMode == RenderMode::Model && !m_->m_Models.empty() && m_->m_pShadowDSV)
+	{
+		// SRV/DSV 하자드 방지: 동일 리소스(섀도우 맵)를 DSV로 세팅하기 전에
+		// PS에서 사용 중인 SRV(t4)를 명시적으로 언바인드한다.
+		ID3D11ShaderResourceView* nullSRV = nullptr;
+		m_->m_pDeviceContext->PSSetShaderResources(4, 1, &nullSRV);
 
-        // Save viewport
-        UINT oldCount = 1; D3D11_VIEWPORT oldVP{}; m_->m_pDeviceContext->RSGetViewports(&oldCount, &oldVP);
-        m_->m_pDeviceContext->RSSetViewports(1, &m_->m_ShadowViewport);
-        ID3D11RenderTargetView* nullRTV = nullptr;
-        m_->m_pDeviceContext->OMSetRenderTargets(0, &nullRTV, m_->m_pShadowDSV);
-        m_->m_pDeviceContext->ClearDepthStencilView(m_->m_pShadowDSV, D3D11_CLEAR_DEPTH, 1.0f, 0);
-        if (m_->RSShadowBias) m_->m_pDeviceContext->RSSetState(m_->RSShadowBias);
-        // PS off
-        m_->m_pDeviceContext->PSSetShader(nullptr, nullptr, 0);
+		// Save viewport
+		UINT oldCount = 1; D3D11_VIEWPORT oldVP{}; m_->m_pDeviceContext->RSGetViewports(&oldCount, &oldVP);
+		m_->m_pDeviceContext->RSSetViewports(1, &m_->m_ShadowViewport);
+		ID3D11RenderTargetView* nullRTV = nullptr;
+		m_->m_pDeviceContext->OMSetRenderTargets(0, &nullRTV, m_->m_pShadowDSV);
+		m_->m_pDeviceContext->ClearDepthStencilView(m_->m_pShadowDSV, D3D11_CLEAR_DEPTH, 1.0f, 0);
+		if (m_->RSShadowBias) m_->m_pDeviceContext->RSSetState(m_->RSShadowBias);
+		// PS off
+		m_->m_pDeviceContext->PSSetShader(nullptr, nullptr, 0);
 
-        for (auto& mdlPtr : m_->m_Models)
-        {
-            if (!mdlPtr->shared || !mdlPtr->shared->vb || !mdlPtr->shared->ib) continue;
-            UINT s = mdlPtr->shared->stride; UINT o = 0;
-            m_->m_pDeviceContext->IASetVertexBuffers(0, 1, &mdlPtr->shared->vb, &s, &o);
-            m_->m_pDeviceContext->IASetIndexBuffer(mdlPtr->shared->ib, DXGI_FORMAT_R32_UINT, 0);
+		for (auto& mdlPtr : m_->m_Models)
+		{
+			if (!mdlPtr->shared || !mdlPtr->shared->vb || !mdlPtr->shared->ib) continue;
+			UINT s = mdlPtr->shared->stride; UINT o = 0;
+			m_->m_pDeviceContext->IASetVertexBuffers(0, 1, &mdlPtr->shared->vb, &s, &o);
+			m_->m_pDeviceContext->IASetIndexBuffer(mdlPtr->shared->ib, DXGI_FORMAT_R32_UINT, 0);
 
-            // Choose VS
-            bool hasSkeleton = false; ID3D11Buffer* cbBones = nullptr;
-            if (mdlPtr->source == ModelSource::FBX && mdlPtr->shared && mdlPtr->shared->fbx)
-            { hasSkeleton = mdlPtr->shared->fbx->HasSkeleton(); cbBones = mdlPtr->animator.GetBoneCB(); }
-            else if (mdlPtr->source == ModelSource::PMX && mdlPtr->shared && mdlPtr->shared->pmx)
-            { hasSkeleton = mdlPtr->shared->pmx->HasSkeleton(); cbBones = mdlPtr->shared->pmx->GetBoneConstantBuffer(); }
+			// Choose VS
+			bool hasSkeleton = false; ID3D11Buffer* cbBones = nullptr;
+			if (mdlPtr->source == ModelSource::FBX && mdlPtr->shared && mdlPtr->shared->fbx)
+			{
+				hasSkeleton = mdlPtr->shared->fbx->HasSkeleton(); cbBones = mdlPtr->animator.GetBoneCB();
+			}
+			else if (mdlPtr->source == ModelSource::PMX && mdlPtr->shared && mdlPtr->shared->pmx)
+			{
+				hasSkeleton = mdlPtr->shared->pmx->HasSkeleton(); cbBones = mdlPtr->shared->pmx->GetBoneConstantBuffer();
+			}
 
-            if (hasSkeleton && m_->m_pVSSkinnedShadow)
-            {
-                m_->m_pDeviceContext->IASetInputLayout(m_->m_pInputLayoutSkinned);
-                m_->m_pDeviceContext->VSSetShader(m_->m_pVSSkinnedShadow, nullptr, 0);
-                if (cbBones) m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &cbBones);
-            }
-            else
-            {
-                m_->m_pDeviceContext->IASetInputLayout(m_->m_pInputLayout);
-                m_->m_pDeviceContext->VSSetShader(m_->m_pVSShadow, nullptr, 0);
-                ID3D11Buffer* nullCB = nullptr; m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &nullCB);
-            }
+			if (hasSkeleton && m_->m_pVSSkinnedShadow)
+			{
+				m_->m_pDeviceContext->IASetInputLayout(m_->m_pInputLayoutSkinned);
+				m_->m_pDeviceContext->VSSetShader(m_->m_pVSSkinnedShadow, nullptr, 0);
+				if (cbBones) m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &cbBones);
+			}
+			else
+			{
+				m_->m_pDeviceContext->IASetInputLayout(m_->m_pInputLayout);
+				m_->m_pDeviceContext->VSSetShader(m_->m_pVSShadow, nullptr, 0);
+				ID3D11Buffer* nullCB = nullptr; m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &nullCB);
+			}
 
-            // Per-model world
-            XMMATRIX rotYaw = XMMatrixRotationY(XMConvertToRadians(mdlPtr->rotDeg.y));
-            XMMATRIX rotPitch = XMMatrixRotationX(XMConvertToRadians(mdlPtr->rotDeg.x));
-            XMMATRIX rotRoll = XMMatrixRotationZ(XMConvertToRadians(mdlPtr->rotDeg.z));
-            XMMATRIX S = XMMatrixScaling(mdlPtr->scale.x, mdlPtr->scale.y, mdlPtr->scale.z);
-            XMMATRIX T = XMMatrixTranslation(mdlPtr->pos.x, mdlPtr->pos.y, mdlPtr->pos.z);
-            XMMATRIX W = S * rotPitch * rotYaw * rotRoll * T;
+			// Per-model world
+			XMMATRIX rotYaw = XMMatrixRotationY(XMConvertToRadians(mdlPtr->rotDeg.y));
+			XMMATRIX rotPitch = XMMatrixRotationX(XMConvertToRadians(mdlPtr->rotDeg.x));
+			XMMATRIX rotRoll = XMMatrixRotationZ(XMConvertToRadians(mdlPtr->rotDeg.z));
+			XMMATRIX S = XMMatrixScaling(mdlPtr->scale.x, mdlPtr->scale.y, mdlPtr->scale.z);
+			XMMATRIX T = XMMatrixTranslation(mdlPtr->pos.x, mdlPtr->pos.y, mdlPtr->pos.z);
+			XMMATRIX W = S * rotPitch * rotYaw * rotRoll * T;
 
-            // Fill CB
-            ConstantBuffer cb = m_->m_ConstantBuffer;
-            cb.world = XMMatrixTranspose(W);
-            cb.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(W)));
-            cb.lightViewProj = m_->m_baseProjection.lightViewProj;
-            cb.shadowBias = m_->m_ShadowBias;
-            cb.shadowMapSize = (float)m_->m_ShadowSize;
-            cb.shadowPCFRadius = m_->m_ShadowPCFRadius;
-            cb.shadowEnabled = m_->m_ShadowEnabled;
-            D3D11_MAPPED_SUBRESOURCE mapped{};
-            HR_T(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped));
-            memcpy(mapped.pData, &cb, sizeof(ConstantBuffer));
-            m_->m_pDeviceContext->Unmap(m_->m_pConstantBuffer, 0);
-            m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
+			// Fill CB
+			ConstantBuffer cb = m_->m_ConstantBuffer;
+			cb.world = XMMatrixTranspose(W);
+			cb.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(W)));
+			cb.lightViewProj = m_->m_baseProjection.lightViewProj;
+			cb.shadowBias = m_->m_ShadowBias;
+			cb.shadowMapSize = (float)m_->m_ShadowSize;
+			cb.shadowPCFRadius = m_->m_ShadowPCFRadius;
+			cb.shadowEnabled = m_->m_ShadowEnabled;
+			D3D11_MAPPED_SUBRESOURCE mapped{};
+			HR_T(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped));
+			memcpy(mapped.pData, &cb, sizeof(ConstantBuffer));
+			m_->m_pDeviceContext->Unmap(m_->m_pConstantBuffer, 0);
+			m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
 
-            for (const auto& sub : mdlPtr->shared->subsets)
-                m_->m_pDeviceContext->DrawIndexed(sub.count, sub.start, 0);
-        }
+			for (const auto& sub : mdlPtr->shared->subsets)
+				m_->m_pDeviceContext->DrawIndexed(sub.count, sub.start, 0);
+		}
 
-        // Restore
-        m_->m_pDeviceContext->RSSetState(nullptr);
-        m_->m_pDeviceContext->RSSetViewports(1, &oldVP);
-        m_->m_pDeviceContext->OMSetRenderTargets(1, &m_->m_pRenderTargetView, m_->m_pDepthStencilView);
-    }
+		// Restore
+		m_->m_pDeviceContext->RSSetState(nullptr);
+		m_->m_pDeviceContext->RSSetViewports(1, &oldVP);
+		m_->m_pDeviceContext->OMSetRenderTargets(1, &m_->m_pRenderTargetView, m_->m_pDepthStencilView);
+	}
 
 	m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShader, nullptr, 0);
 	m_->m_pDeviceContext->PSSetShader(m_->m_pPixelShader, nullptr, 0);
 
 	m_->m_ConstantBuffer.world = m_->m_baseProjection.world;
-	m_->m_ConstantBuffer.view  = m_->m_baseProjection.view;
-	m_->m_ConstantBuffer.proj  = m_->m_baseProjection.proj;
+	m_->m_ConstantBuffer.view = m_->m_baseProjection.view;
+	m_->m_ConstantBuffer.proj = m_->m_baseProjection.proj;
 	// Shadow params to CB
 	m_->m_ConstantBuffer.lightViewProj = m_->m_baseProjection.lightViewProj;
 	m_->m_ConstantBuffer.shadowBias = m_->m_ShadowBias;
@@ -954,18 +937,16 @@ void App::OnRender()
 	m_->m_ConstantBuffer.pad = 0.0f;
 	// 셰이딩 모드 전달
 	m_->m_ConstantBuffer.shadingMode = (int)m_->m_ShadingMode;
-	m_->m_ConstantBuffer.pad2 = XMFLOAT3(0,0,0);
+	m_->m_ConstantBuffer.pad2 = XMFLOAT3(0, 0, 0);
 	m_->m_ConstantBuffer.enableNormalMap = m_->m_EnableNormalMap;
-	m_->m_ConstantBuffer.pad3 = XMFLOAT3(0,0,0);
+	m_->m_ConstantBuffer.pad3 = XMFLOAT3(0, 0, 0);
 	m_->m_ConstantBuffer.useSpecularMap = m_->m_UseSpecularMap;
-	m_->m_ConstantBuffer.pad4 = XMFLOAT3(0,0,0);
-    // Outline params 업데이트
-    // Rim 파라미터 업로드 제거
-	// 이번 프로젝트 코드
-//////////////////////////////////////////////////////////////////////////
-    m_->m_ConstantBuffer.outlineThickness = m_->m_OutlineThickness;
-    m_->m_ConstantBuffer.outlineColor = m_->m_OutlineColor;
-    m_->m_ConstantBuffer.outlineStrength = m_->m_OutlineStrength;
+	m_->m_ConstantBuffer.pad4 = XMFLOAT3(0, 0, 0);
+	// Outline params 업데이트
+	// Rim 파라미터 업로드 제거
+	m_->m_ConstantBuffer.outlineThickness = m_->m_OutlineThickness;
+	m_->m_ConstantBuffer.outlineColor = m_->m_OutlineColor;
+	m_->m_ConstantBuffer.outlineStrength = m_->m_OutlineStrength;
 	// 머티리얼 채우기
 	m_->m_ConstantBuffer.material = m_->m_Material;
 
@@ -977,134 +958,131 @@ void App::OnRender()
 	m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
 	m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
 	m_->m_pDeviceContext->PSSetSamplers(0, 1, &m_->m_pSamplerState);
-    // Bind shadow sampler/SRV
-    if (m_->m_pShadowSampler) m_->m_pDeviceContext->PSSetSamplers(1, 1, &m_->m_pShadowSampler);
-    if (m_->m_pShadowSRV)     m_->m_pDeviceContext->PSSetShaderResources(4, 1, &m_->m_pShadowSRV);
-    // 큐브맵을 t1 슬롯에 바인딩 (픽셀 셰이더에서 g_TexCube : t1)
-    m_->m_pDeviceContext->PSSetShaderResources(1, 1, &m_->m_pTextureSRV);
+	// Bind shadow sampler/SRV
+	if (m_->m_pShadowSampler) m_->m_pDeviceContext->PSSetSamplers(1, 1, &m_->m_pShadowSampler);
+	if (m_->m_pShadowSRV)     m_->m_pDeviceContext->PSSetShaderResources(4, 1, &m_->m_pShadowSRV);
+	// 큐브맵을 t1 슬롯에 바인딩 (픽셀 셰이더에서 g_TexCube : t1)
+	m_->m_pDeviceContext->PSSetShaderResources(1, 1, &m_->m_pTextureSRV);
 
-	
-    if (m_->m_RenderMode == RenderMode::Model && !m_->m_Models.empty())
-    {
-        // 모든 모델 렌더
+
+	if (m_->m_RenderMode == RenderMode::Model && !m_->m_Models.empty())
+	{
+		// 모든 모델 렌더
 		for (auto& mdlPtr : m_->m_Models)
 		{
 			// IA 바인딩
-            UINT s = mdlPtr->shared ? mdlPtr->shared->stride : 0; UINT o = 0;
-            if (!mdlPtr->shared || !mdlPtr->shared->vb || !mdlPtr->shared->ib) continue;
-            m_->m_pDeviceContext->IASetVertexBuffers(0, 1, &mdlPtr->shared->vb, &s, &o);
-            // FBX/PMX 스켈레톤 여부 확인
-            ID3D11Buffer* cbBones = nullptr;
-            bool hasSkeleton = false;
-            if (mdlPtr->source == ModelSource::FBX && mdlPtr->shared && mdlPtr->shared->fbx)
-            {
-                cbBones = mdlPtr->animator.GetBoneCB();
-                hasSkeleton = mdlPtr->shared->fbx->HasSkeleton();
-            }
-            else if (mdlPtr->source == ModelSource::PMX && mdlPtr->shared && mdlPtr->shared->pmx)
-            {
-                cbBones = mdlPtr->shared->pmx->GetBoneConstantBuffer();
-                hasSkeleton = mdlPtr->shared->pmx->HasSkeleton();
-            }
-            bool useSkinned = hasSkeleton
-                && (mdlPtr->shared && (mdlPtr->shared->stride == sizeof(VertexSkinnedTBN)))
+			UINT s = mdlPtr->shared ? mdlPtr->shared->stride : 0; UINT o = 0;
+			if (!mdlPtr->shared || !mdlPtr->shared->vb || !mdlPtr->shared->ib) continue;
+			m_->m_pDeviceContext->IASetVertexBuffers(0, 1, &mdlPtr->shared->vb, &s, &o);
+			// FBX/PMX 스켈레톤 여부 확인
+			ID3D11Buffer* cbBones = nullptr;
+			bool hasSkeleton = false;
+			if (mdlPtr->source == ModelSource::FBX && mdlPtr->shared && mdlPtr->shared->fbx)
+			{
+				cbBones = mdlPtr->animator.GetBoneCB();
+				hasSkeleton = mdlPtr->shared->fbx->HasSkeleton();
+			}
+			else if (mdlPtr->source == ModelSource::PMX && mdlPtr->shared && mdlPtr->shared->pmx)
+			{
+				cbBones = mdlPtr->shared->pmx->GetBoneConstantBuffer();
+				hasSkeleton = mdlPtr->shared->pmx->HasSkeleton();
+			}
+			bool useSkinned = hasSkeleton
+				&& (mdlPtr->shared && (mdlPtr->shared->stride == sizeof(VertexSkinnedTBN)))
 				&& (m_->m_pInputLayoutSkinned != nullptr)
 				&& (m_->m_pVertexShaderSkinned != nullptr)
 				&& (cbBones != nullptr);
-				// 이번 프로젝트 코드
-				//////////////////////////////////////////////////////////////////////////
-            // 1) (비활성화) 아웃라인을 먼저 그리던 경로는 사용하지 않음 → 본 패스 후로 이동
-            if (false && m_->m_ShadingMode == ShadingMode::ToonShading && m_->m_OutlineThickness > 0.0f && m_->m_OutlineStrength > 0.0f)
-            {
-                // 월드행렬 계산(아웃라인 패스 전용)
-                XMMATRIX rotYaw = XMMatrixRotationY(XMConvertToRadians(mdlPtr->rotDeg.y));
-                XMMATRIX rotPitch = XMMatrixRotationX(XMConvertToRadians(mdlPtr->rotDeg.x));
-                XMMATRIX rotRoll = XMMatrixRotationZ(XMConvertToRadians(mdlPtr->rotDeg.z));
-                XMMATRIX S = XMMatrixScaling(mdlPtr->scale.x, mdlPtr->scale.y, mdlPtr->scale.z);
-                XMMATRIX T = XMMatrixTranslation(mdlPtr->pos.x, mdlPtr->pos.y, mdlPtr->pos.z);
-                XMMATRIX W = S * rotPitch * rotYaw * rotRoll * T;
+			// 1) (비활성화) 아웃라인을 먼저 그리던 경로는 사용하지 않음 → 본 패스 후로 이동
+			if (false && m_->m_ShadingMode == ShadingMode::ToonShading && m_->m_OutlineThickness > 0.0f && m_->m_OutlineStrength > 0.0f)
+			{
+				// 월드행렬 계산(아웃라인 패스 전용)
+				XMMATRIX rotYaw = XMMatrixRotationY(XMConvertToRadians(mdlPtr->rotDeg.y));
+				XMMATRIX rotPitch = XMMatrixRotationX(XMConvertToRadians(mdlPtr->rotDeg.x));
+				XMMATRIX rotRoll = XMMatrixRotationZ(XMConvertToRadians(mdlPtr->rotDeg.z));
+				XMMATRIX S = XMMatrixScaling(mdlPtr->scale.x, mdlPtr->scale.y, mdlPtr->scale.z);
+				XMMATRIX T = XMMatrixTranslation(mdlPtr->pos.x, mdlPtr->pos.y, mdlPtr->pos.z);
+				XMMATRIX W = S * rotPitch * rotYaw * rotRoll * T;
 
-                // 상수버퍼 구성 (pad=6.0 -> PS가 g_OutlineColor로 단색 출력)
-                ConstantBuffer cbOutline = m_->m_ConstantBuffer;
-                cbOutline.world = XMMatrixTranspose(W);
-                cbOutline.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(W)));
-                cbOutline.material = m_->m_Material;
-                cbOutline.shadingMode = (int)m_->m_ShadingMode;
-                cbOutline.enableNormalMap = 0;
-                cbOutline.useSpecularMap = 0;
-                cbOutline.pad = 6.0f;
-                // Rim 파라미터 제거
-                cbOutline.outlineThickness = m_->m_OutlineThickness;
-                cbOutline.outlineColor = m_->m_OutlineColor;
-                cbOutline.outlineStrength = m_->m_OutlineStrength;
-                D3D11_MAPPED_SUBRESOURCE mappedOL;
-                HR_T(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedOL));
-                memcpy_s(mappedOL.pData, sizeof(ConstantBuffer), &cbOutline, sizeof(ConstantBuffer));
-                m_->m_pDeviceContext->Unmap(m_->m_pConstantBuffer, 0);
-                m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
-                m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
+				// 상수버퍼 구성 (pad=6.0 -> PS가 g_OutlineColor로 단색 출력)
+				ConstantBuffer cbOutline = m_->m_ConstantBuffer;
+				cbOutline.world = XMMatrixTranspose(W);
+				cbOutline.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(W)));
+				cbOutline.material = m_->m_Material;
+				cbOutline.shadingMode = (int)m_->m_ShadingMode;
+				cbOutline.enableNormalMap = 0;
+				cbOutline.useSpecularMap = 0;
+				cbOutline.pad = 6.0f;
+				// Rim 파라미터 제거
+				cbOutline.outlineThickness = m_->m_OutlineThickness;
+				cbOutline.outlineColor = m_->m_OutlineColor;
+				cbOutline.outlineStrength = m_->m_OutlineStrength;
+				D3D11_MAPPED_SUBRESOURCE mappedOL;
+				HR_T(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedOL));
+				memcpy_s(mappedOL.pData, sizeof(ConstantBuffer), &cbOutline, sizeof(ConstantBuffer));
+				m_->m_pDeviceContext->Unmap(m_->m_pConstantBuffer, 0);
+				m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
+				m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
 
-                // Front Cull 적용
-                m_->m_pDeviceContext->RSSetState(m_->RSCullFront);
+				// Front Cull 적용
+				m_->m_pDeviceContext->RSSetState(m_->RSCullFront);
 
-                // 아웃라인 VS/IL 선택
-                if (useSkinned)
-                {
-                    m_->m_pDeviceContext->IASetInputLayout(m_->m_pInputLayoutSkinned);
-                    m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShaderSkinnedOutline, nullptr, 0);
-                    if (cbBones) m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &cbBones);
-                }
-                else
-                {
-                    m_->m_pDeviceContext->IASetInputLayout(m_->m_pOutlineInputLayout ? m_->m_pOutlineInputLayout : m_->m_pInputLayout);
-                    m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShaderOutline, nullptr, 0);
-                    ID3D11Buffer* nullCB = nullptr; m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &nullCB);
-                }
-                // Outline 전용 PS 바인딩
-                if (m_->m_pPixelShaderOutline)
-                    m_->m_pDeviceContext->PSSetShader(m_->m_pPixelShaderOutline, nullptr, 0);
+				// 아웃라인 VS/IL 선택
+				if (useSkinned)
+				{
+					m_->m_pDeviceContext->IASetInputLayout(m_->m_pInputLayoutSkinned);
+					m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShaderSkinnedOutline, nullptr, 0);
+					if (cbBones) m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &cbBones);
+				}
+				else
+				{
+					m_->m_pDeviceContext->IASetInputLayout(m_->m_pOutlineInputLayout ? m_->m_pOutlineInputLayout : m_->m_pInputLayout);
+					m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShaderOutline, nullptr, 0);
+					ID3D11Buffer* nullCB = nullptr; m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &nullCB);
+				}
+				// Outline 전용 PS 바인딩
+				if (m_->m_pPixelShaderOutline)
+					m_->m_pDeviceContext->PSSetShader(m_->m_pPixelShaderOutline, nullptr, 0);
 
-                // 단색 출력이므로 텍스처 바인딩이 불필요하지만, 컷아웃 테스트를 위해 t0 바인딩 유지 가능
-                if (mdlPtr->shared)
-                {
-                    for (const auto& sub : mdlPtr->shared->subsets)
-                    {
-                        m_->m_pDeviceContext->DrawIndexed(sub.count, sub.start, 0);
-                    }
-                }
+				// 단색 출력이므로 텍스처 바인딩이 불필요하지만, 컷아웃 테스트를 위해 t0 바인딩 유지 가능
+				if (mdlPtr->shared)
+				{
+					for (const auto& sub : mdlPtr->shared->subsets)
+					{
+						m_->m_pDeviceContext->DrawIndexed(sub.count, sub.start, 0);
+					}
+				}
+				// RS 복원
+				m_->m_pDeviceContext->RSSetState(nullptr);
+				// pad 복원
+				m_->m_ConstantBuffer.pad = 0.0f;
+			}
 
-                // RS 복원
-                m_->m_pDeviceContext->RSSetState(nullptr);
-                // pad 복원
-                m_->m_ConstantBuffer.pad = 0.0f;
-            }
-
-            if (useSkinned)
+			if (useSkinned)
 			{
 				m_->m_pDeviceContext->IASetInputLayout(m_->m_pInputLayoutSkinned);
 				m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShaderSkinned, nullptr, 0);
 				// 본 팔레트 상수버퍼에 바인딩하기
-                if (cbBones)
-                {
-                    // PMX, VMD 애니메이션이 없는 경우는 단위 팔레트 업로드
-                    if (mdlPtr->source == ModelSource::PMX && mdlPtr->shared && mdlPtr->shared->pmx && !mdlPtr->shared->pmx->HasAnimations())
-                    {
-                        mdlPtr->shared->pmx->UploadIdentityPalette(m_->m_pDeviceContext);
-                    }
-                    m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &cbBones);
-                }
+				if (cbBones)
+				{
+					// PMX, VMD 애니메이션이 없는 경우는 단위 팔레트 업로드
+					if (mdlPtr->source == ModelSource::PMX && mdlPtr->shared && mdlPtr->shared->pmx && !mdlPtr->shared->pmx->HasAnimations())
+					{
+						mdlPtr->shared->pmx->UploadIdentityPalette(m_->m_pDeviceContext);
+					}
+					m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &cbBones);
+				}
 			}
 			else
 			{
 				m_->m_pDeviceContext->IASetInputLayout(m_->m_pInputLayout);
 				m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShader, nullptr, 0);
-                // 스키닝 미사용 시 VS b1 해제(안전)
+				// 스키닝 미사용 시 VS b1 해제(안전)
 				ID3D11Buffer* nullCB = nullptr; m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &nullCB);
 			}
-            if (mdlPtr->shared)
-                m_->m_pDeviceContext->IASetIndexBuffer(mdlPtr->shared->ib, DXGI_FORMAT_R32_UINT, 0);
+			if (mdlPtr->shared)
+				m_->m_pDeviceContext->IASetIndexBuffer(mdlPtr->shared->ib, DXGI_FORMAT_R32_UINT, 0);
 
-			// 월드 행렬 (per-model)
+			// 월드 행렬 per-model
 			XMMATRIX rotYaw = XMMatrixRotationY(XMConvertToRadians(mdlPtr->rotDeg.y));
 			XMMATRIX rotPitch = XMMatrixRotationX(XMConvertToRadians(mdlPtr->rotDeg.x));
 			XMMATRIX rotRoll = XMMatrixRotationZ(XMConvertToRadians(mdlPtr->rotDeg.z));
@@ -1116,7 +1094,7 @@ void App::OnRender()
 			cb.world = XMMatrixTranspose(W);
 			cb.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(W)));
 			cb.material = (mdlPtr->useInstanceMaterial ? mdlPtr->instanceMaterial : m_->m_Material);
-            cb.shadingMode = (int)mdlPtr->modelShading;
+			cb.shadingMode = (int)mdlPtr->modelShading;
 			cb.enableNormalMap = m_->m_EnableNormalMap;
 			cb.useSpecularMap = m_->m_UseSpecularMap;
 
@@ -1128,10 +1106,10 @@ void App::OnRender()
 			m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
 
 			// 서브셋 텍스처 및 드로우
-            for (const auto& sub : (mdlPtr->shared ? mdlPtr->shared->subsets : std::vector<ModelSubset>{}))
+			for (const auto& sub : (mdlPtr->shared ? mdlPtr->shared->subsets : std::vector<ModelSubset>{}))
 			{
 				ID3D11ShaderResourceView* srvDiffuse = nullptr;
-                if (mdlPtr->shared && sub.materialIndex < mdlPtr->shared->materialSRVs.size()) srvDiffuse = mdlPtr->shared->materialSRVs[sub.materialIndex];
+				if (mdlPtr->shared && sub.materialIndex < mdlPtr->shared->materialSRVs.size()) srvDiffuse = mdlPtr->shared->materialSRVs[sub.materialIndex];
 				if (!srvDiffuse) srvDiffuse = m_->m_pFallbackWhite;
 				ID3D11ShaderResourceView* srvNormal = (m_->m_EnableNormalMap != 0) ? m_->m_pFallbackNormal : nullptr;
 				ID3D11ShaderResourceView* srvSpec = (m_->m_UseSpecularMap != 0) ? m_->m_pFallbackWhite : nullptr;
@@ -1142,76 +1120,76 @@ void App::OnRender()
 				m_->m_pDeviceContext->DrawIndexed(sub.count, sub.start, 0);
 			}
 
-            // 2) 아웃라인 패스: 본 패스 이후에 백페이스 확장 렌더 (깊이 읽기 전용)
-            if (mdlPtr->outlineEnabled && m_->m_OutlineThickness > 0.0f && m_->m_OutlineStrength > 0.0f)
-            {
-                // 월드행렬 재계산
-                XMMATRIX rotYaw = XMMatrixRotationY(XMConvertToRadians(mdlPtr->rotDeg.y));
-                XMMATRIX rotPitch = XMMatrixRotationX(XMConvertToRadians(mdlPtr->rotDeg.x));
-                XMMATRIX rotRoll = XMMatrixRotationZ(XMConvertToRadians(mdlPtr->rotDeg.z));
-                XMMATRIX S = XMMatrixScaling(mdlPtr->scale.x, mdlPtr->scale.y, mdlPtr->scale.z);
-                XMMATRIX T = XMMatrixTranslation(mdlPtr->pos.x, mdlPtr->pos.y, mdlPtr->pos.z);
-                XMMATRIX W = S * rotPitch * rotYaw * rotRoll * T;
+			// 2) 아웃라인 패스: 본 패스 이후에 백페이스 확장 렌더 (깊이 읽기 전용)
+			if (mdlPtr->outlineEnabled && m_->m_OutlineThickness > 0.0f && m_->m_OutlineStrength > 0.0f)
+			{
+				// 월드행렬 재계산
+				XMMATRIX rotYaw = XMMatrixRotationY(XMConvertToRadians(mdlPtr->rotDeg.y));
+				XMMATRIX rotPitch = XMMatrixRotationX(XMConvertToRadians(mdlPtr->rotDeg.x));
+				XMMATRIX rotRoll = XMMatrixRotationZ(XMConvertToRadians(mdlPtr->rotDeg.z));
+				XMMATRIX S = XMMatrixScaling(mdlPtr->scale.x, mdlPtr->scale.y, mdlPtr->scale.z);
+				XMMATRIX T = XMMatrixTranslation(mdlPtr->pos.x, mdlPtr->pos.y, mdlPtr->pos.z);
+				XMMATRIX W = S * rotPitch * rotYaw * rotRoll * T;
 
-                ConstantBuffer cbOutline = m_->m_ConstantBuffer;
-                cbOutline.world = XMMatrixTranspose(W);
-                cbOutline.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(W)));
-                cbOutline.material = m_->m_Material;
-                cbOutline.shadingMode = (int)mdlPtr->modelShading;
-                cbOutline.enableNormalMap = 0;
-                cbOutline.useSpecularMap = 0;
-                cbOutline.pad = 6.0f; // PSOutline 단색 출력
-                cbOutline.outlineThickness = m_->m_OutlineThickness;
-                cbOutline.outlineColor = m_->m_OutlineColor;
-                cbOutline.outlineStrength = m_->m_OutlineStrength;
-                D3D11_MAPPED_SUBRESOURCE mappedOL;
-                HR_T(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedOL));
-                memcpy_s(mappedOL.pData, sizeof(ConstantBuffer), &cbOutline, sizeof(ConstantBuffer));
-                m_->m_pDeviceContext->Unmap(m_->m_pConstantBuffer, 0);
-                m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
-                m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
+				ConstantBuffer cbOutline = m_->m_ConstantBuffer;
+				cbOutline.world = XMMatrixTranspose(W);
+				cbOutline.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(W)));
+				cbOutline.material = m_->m_Material;
+				cbOutline.shadingMode = (int)mdlPtr->modelShading;
+				cbOutline.enableNormalMap = 0;
+				cbOutline.useSpecularMap = 0;
+				cbOutline.pad = 6.0f; // PSOutline 단색 출력
+				cbOutline.outlineThickness = m_->m_OutlineThickness;
+				cbOutline.outlineColor = m_->m_OutlineColor;
+				cbOutline.outlineStrength = m_->m_OutlineStrength;
+				D3D11_MAPPED_SUBRESOURCE mappedOL;
+				HR_T(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedOL));
+				memcpy_s(mappedOL.pData, sizeof(ConstantBuffer), &cbOutline, sizeof(ConstantBuffer));
+				m_->m_pDeviceContext->Unmap(m_->m_pConstantBuffer, 0);
+				m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
+				m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
 
-                // 깊이: 읽기 전용, LESS_EQUAL
-                if (m_->m_pDepthStencilStateReadOnly)
-                    m_->m_pDeviceContext->OMSetDepthStencilState(m_->m_pDepthStencilStateReadOnly, 0);
+				// 깊이: 읽기 전용, LESS_EQUAL
+				if (m_->m_pDepthStencilStateReadOnly)
+					m_->m_pDeviceContext->OMSetDepthStencilState(m_->m_pDepthStencilStateReadOnly, 0);
 
-                // 프런트 컬링으로 백페이스 렌더
-                m_->m_pDeviceContext->RSSetState(m_->RSCullClockWise);
+				// 프런트 컬링으로 백페이스 렌더
+				m_->m_pDeviceContext->RSSetState(m_->RSCullClockWise);
 
-                // 입력/셰이더
-                if (useSkinned)
-                {
-                    m_->m_pDeviceContext->IASetInputLayout(m_->m_pInputLayoutSkinned);
-                    m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShaderSkinnedOutline, nullptr, 0);
-                    if (cbBones) m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &cbBones);
-                }
-                else
-                {
-                    m_->m_pDeviceContext->IASetInputLayout(m_->m_pOutlineInputLayout ? m_->m_pOutlineInputLayout : m_->m_pInputLayout);
-                    m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShaderOutline, nullptr, 0);
-                    ID3D11Buffer* nullCB = nullptr; m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &nullCB);
-                }
-                if (m_->m_pPixelShaderOutline)
-                    m_->m_pDeviceContext->PSSetShader(m_->m_pPixelShaderOutline, nullptr, 0);
+				// 입력/셰이더
+				if (useSkinned)
+				{
+					m_->m_pDeviceContext->IASetInputLayout(m_->m_pInputLayoutSkinned);
+					m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShaderSkinnedOutline, nullptr, 0);
+					if (cbBones) m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &cbBones);
+				}
+				else
+				{
+					m_->m_pDeviceContext->IASetInputLayout(m_->m_pOutlineInputLayout ? m_->m_pOutlineInputLayout : m_->m_pInputLayout);
+					m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShaderOutline, nullptr, 0);
+					ID3D11Buffer* nullCB = nullptr; m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &nullCB);
+				}
+				if (m_->m_pPixelShaderOutline)
+					m_->m_pDeviceContext->PSSetShader(m_->m_pPixelShaderOutline, nullptr, 0);
 
-                for (const auto& sub : (mdlPtr->shared ? mdlPtr->shared->subsets : std::vector<ModelSubset>{}))
-                {
-                    m_->m_pDeviceContext->DrawIndexed(sub.count, sub.start, 0);
-                }
+				for (const auto& sub : (mdlPtr->shared ? mdlPtr->shared->subsets : std::vector<ModelSubset>{}))
+				{
+					m_->m_pDeviceContext->DrawIndexed(sub.count, sub.start, 0);
+				}
 
-                // 상태 복원
-                m_->m_pDeviceContext->RSSetState(nullptr);
-                if (m_->m_pDepthStencilState)
-                    m_->m_pDeviceContext->OMSetDepthStencilState(m_->m_pDepthStencilState, 0);
-                m_->m_ConstantBuffer.pad = 0.0f;
-                // PS/VS 본 패스에서 사용하던 기본 셰이더로 바꿔야함
-                m_->m_pDeviceContext->PSSetShader(m_->m_pPixelShader, nullptr, 0);
-                m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShader, nullptr, 0);
-                ID3D11Buffer* nullCB = nullptr; m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &nullCB);
-            }
-            // 모델별 루프 끝에서 VS/IL 복원은 다음 모델에서 다시 설정되므로 별도 복원 불필요
+				// 상태 복원
+				m_->m_pDeviceContext->RSSetState(nullptr);
+				if (m_->m_pDepthStencilState)
+					m_->m_pDeviceContext->OMSetDepthStencilState(m_->m_pDepthStencilState, 0);
+				m_->m_ConstantBuffer.pad = 0.0f;
+				// PS/VS 본 패스에서 사용하던 기본 셰이더로 바꿔야함
+				m_->m_pDeviceContext->PSSetShader(m_->m_pPixelShader, nullptr, 0);
+				m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShader, nullptr, 0);
+				ID3D11Buffer* nullCB = nullptr; m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &nullCB);
+			}
+			// 모델별 루프 끝에서 VS/IL 복원은 다음 모델에서 다시 설정되므로 별도 복원 불필요
 		}
-    }
+	}
 	else if (m_->m_RenderMode == RenderMode::Cube)
 	{
 		for (int face = 0; face < 6; ++face)
@@ -1225,9 +1203,8 @@ void App::OnRender()
 			m_->m_pDeviceContext->DrawIndexed(6, face * 6, 0);
 		}
 	}
-	
 
-    // Mirror Cube: 모델 모드일 때는 생략하고, 큐브 모드에서만 거울 큐브 표시
+	// Mirror Cube: 모델 모드일 때는 생략하고, 큐브 모드에서만 거울 큐브 표시
 	if (m_->m_RenderMode == RenderMode::Cube)
 	{
 		ConstantBuffer mirrorCB = m_->m_ConstantBuffer;
@@ -1268,7 +1245,7 @@ void App::OnRender()
 		m_->m_ConstantBuffer.pad = 0.0f;
 	}
 
-    // 라이트 위치 마커 큐브 그리기 (작은 스케일, 흰색) - 항상
+	// 라이트 위치 마커 큐브 그리기 (작은 스케일, 흰색) - 항상
 	{
 		ConstantBuffer marker = m_->m_ConstantBuffer;
 		XMMATRIX S = XMMatrixScaling(1.0f, 1.0f, 1.0f);
@@ -1329,7 +1306,7 @@ void App::OnRender()
 		m_->m_pDeviceContext->IASetInputLayout(prevIL);
 	}
 
-    // SkyBox 렌더링 (상태 보존/복구)
+	// SkyBox 렌더링 (상태 보존/복구)
 	if (m_->m_SkyBoxChoice != App::Impl::SkyBoxChoice::Off)
 	{
 		UINT stride = m_->m_VertextBufferStride;
@@ -1364,13 +1341,14 @@ void App::OnRender()
 	ImGui::NewFrame();
 
 	RenderControlPannel();
+	RenderSceneCollection();
 	RenderModelPannel();
 	RenderConsolPannel();
 	m_->m_SystemInfo.RenderUI();
 
 	RenderWidgetUI();
 
-    ImGui::Render();
+	ImGui::Render();
 
 	ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 	m_->m_pSwapChain->Present(0, 0);
@@ -1381,19 +1359,19 @@ bool App::InitD3D()
 	HRESULT hr = S_OK;
 
 	// 스왑체인의 값들을 설정할 구조체를 만듭니다
-    DXGI_SWAP_CHAIN_DESC swapDesc = {};
-    swapDesc.BufferCount = 1;
+	DXGI_SWAP_CHAIN_DESC swapDesc = {};
+	swapDesc.BufferCount = 1;
 	swapDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
 	swapDesc.OutputWindow = m_hWnd;
 	swapDesc.Windowed = true;
 	swapDesc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 	swapDesc.BufferDesc.Width = m_ClientWidth;
 	swapDesc.BufferDesc.Height = m_ClientHeight;
-    swapDesc.BufferDesc.RefreshRate.Numerator = 60;
-    swapDesc.BufferDesc.RefreshRate.Denominator = 1;
+	swapDesc.BufferDesc.RefreshRate.Numerator = 60;
+	swapDesc.BufferDesc.RefreshRate.Denominator = 1;
 	swapDesc.SampleDesc.Count = 1;
 	swapDesc.SampleDesc.Quality = 0;
-    swapDesc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+	swapDesc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
 
 	// 디버그 창을 띄우기 위함입니다.
 	UINT creationFlags = 0;
@@ -1454,13 +1432,13 @@ bool App::InitD3D()
 	HR_T(m_->m_pDevice->CreateDepthStencilState(&dssDesc, &m_->m_pDepthStencilState));
 	m_->m_pDeviceContext->OMSetDepthStencilState(m_->m_pDepthStencilState, 0);
 
-    // Outline용: 깊이 읽기 전용(LESS_EQUAL), 깊이 쓰기 금지
-    dssDesc = {};
-    dssDesc.DepthEnable = TRUE;
-    dssDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
-    dssDesc.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
-    dssDesc.StencilEnable = FALSE;
-    HR_T(m_->m_pDevice->CreateDepthStencilState(&dssDesc, &m_->m_pDepthStencilStateReadOnly));
+	// Outline용: 깊이 읽기 전용(LESS_EQUAL), 깊이 쓰기 금지
+	dssDesc = {};
+	dssDesc.DepthEnable = TRUE;
+	dssDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+	dssDesc.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
+	dssDesc.StencilEnable = FALSE;
+	HR_T(m_->m_pDevice->CreateDepthStencilState(&dssDesc, &m_->m_pDepthStencilStateReadOnly));
 
 	// 렌더 타겟/DSV 바인딩
 	m_->m_pDeviceContext->OMSetRenderTargets(1, &m_->m_pRenderTargetView, m_->m_pDepthStencilView);
@@ -1483,7 +1461,7 @@ bool App::InitD3D()
 	m_->m_pDeviceContext->RSSetViewports(1, &viewport);
 
 	// 컬링 설정 (양면 렌더링/후면 컬링)
-    CD3D11_RASTERIZER_DESC rasterizerDesc(CD3D11_DEFAULT{});
+	CD3D11_RASTERIZER_DESC rasterizerDesc(CD3D11_DEFAULT{});
 	rasterizerDesc.FillMode = D3D11_FILL_SOLID;
 	rasterizerDesc.CullMode = D3D11_CULL_NONE;
 	rasterizerDesc.FrontCounterClockwise = false;
@@ -1491,13 +1469,13 @@ bool App::InitD3D()
 	rasterizerDesc.FillMode = D3D11_FILL_SOLID;
 	rasterizerDesc.CullMode = D3D11_CULL_BACK;
 	rasterizerDesc.FrontCounterClockwise = true;
-    HR_T(m_->m_pDevice->CreateRasterizerState(&rasterizerDesc, &m_->RSCullClockWise));
+	HR_T(m_->m_pDevice->CreateRasterizerState(&rasterizerDesc, &m_->RSCullClockWise));
 	// 이번 프로젝트 코드
 //////////////////////////////////////////////////////////////////////////
-    // Outline용 Front Cull (백페이스 표시)
-    rasterizerDesc.CullMode = D3D11_CULL_FRONT;
-    rasterizerDesc.FrontCounterClockwise = true;
-    HR_T(m_->m_pDevice->CreateRasterizerState(&rasterizerDesc, &m_->RSCullFront));
+	// Outline용 Front Cull (백페이스 표시)
+	rasterizerDesc.CullMode = D3D11_CULL_FRONT;
+	rasterizerDesc.FrontCounterClockwise = true;
+	HR_T(m_->m_pDevice->CreateRasterizerState(&rasterizerDesc, &m_->RSCullFront));
 
 	// 알파 블렌딩 상태 생성 SrcAlpha/InvSrcAlpha
 	{
@@ -1515,7 +1493,7 @@ bool App::InitD3D()
 		rt.RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
 		HR_T(m_->m_pDevice->CreateBlendState(&bd, &m_->m_pAlphaBlendState));
 	}
- 
+
 	return true;
 }
 
@@ -1553,11 +1531,11 @@ bool App::InitScene()
 	m_->m_VertextBufferStride = sizeof(VertexLightTex);
 	m_->m_VertextBufferOffset = 0;
 	// ***********************************************************************************************
-    // 작은 큐브 데이터 설정 (TBN 정점)
-    StaticMeshData cube = StaticMesh::CreateBox(XMFLOAT4(1,1,1,1));
-    m_->m_VertextBufferStride = sizeof(VertexTBN);
-    StaticMesh::AssignMemory(m_->m_pDevice, m_->m_pVertexBuffer, cube);
-    StaticMesh::AssignIndexMemory(m_->m_pDevice, m_->m_pIndexBuffer, cube, m_->m_nIndices);
+	// 작은 큐브 데이터 설정 (TBN 정점)
+	StaticMeshData cube = StaticMesh::CreateBox(XMFLOAT4(1, 1, 1, 1));
+	m_->m_VertextBufferStride = sizeof(VertexTBN);
+	StaticMesh::AssignMemory(m_->m_pDevice, m_->m_pVertexBuffer, cube);
+	StaticMesh::AssignIndexMemory(m_->m_pDevice, m_->m_pIndexBuffer, cube, m_->m_nIndices);
 
 	// ***********************************************************************************************
 	// 상수 버퍼 설정
@@ -1571,12 +1549,12 @@ bool App::InitScene()
 	// 단일 상수 버퍼 생성 (VS/PS 공용, b0)
 	HR_T(m_->m_pDevice->CreateBuffer(&cbd, nullptr, &m_->m_pConstantBuffer));
 
-		// ***********************************************************************************************
-	// 스카이 박스 큐브 설정
-    HR_T(CreateDDSTextureFromFile(m_->m_pDevice, L"..\\Resource\\Skybox\\Hanako.dds", nullptr, &m_->m_pSkyHanakoSRV));
-    HR_T(CreateDDSTextureFromFile(m_->m_pDevice, L"..\\Resource\\Skybox\\cubemap.dds", nullptr, &m_->m_pSkyCubeMapSRV));
-    m_->m_pTextureSRV = m_->m_pSkyCubeMapSRV;
-	
+	// ***********************************************************************************************
+// 스카이 박스 큐브 설정
+	HR_T(CreateDDSTextureFromFile(m_->m_pDevice, L"..\\Resource\\Skybox\\Hanako.dds", nullptr, &m_->m_pSkyHanakoSRV));
+	HR_T(CreateDDSTextureFromFile(m_->m_pDevice, L"..\\Resource\\Skybox\\cubemap.dds", nullptr, &m_->m_pSkyCubeMapSRV));
+	m_->m_pTextureSRV = m_->m_pSkyCubeMapSRV;
+
 	// 샘플러 생성
 	D3D11_SAMPLER_DESC sampDesc = {};
 	sampDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
@@ -1586,44 +1564,44 @@ bool App::InitScene()
 	sampDesc.MaxLOD = D3D11_FLOAT32_MAX;
 	HR_T(m_->m_pDevice->CreateSamplerState(&sampDesc, &m_->m_pSamplerState));
 
-    // Shadow resources
-    {
-        // Texture2D typeless for DSV+SRV
-        D3D11_TEXTURE2D_DESC td{};
-        td.Width = (UINT)m_->m_ShadowSize;
-        td.Height = (UINT)m_->m_ShadowSize;
-        td.MipLevels = 1; td.ArraySize = 1;
-        td.Format = DXGI_FORMAT_R32_TYPELESS;
-        td.SampleDesc.Count = 1; td.Usage = D3D11_USAGE_DEFAULT;
-        td.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
-        HR_T(m_->m_pDevice->CreateTexture2D(&td, nullptr, &m_->m_pShadowTex));
+	// Shadow resources
+	{
+		// Texture2D typeless for DSV+SRV
+		D3D11_TEXTURE2D_DESC td{};
+		td.Width = (UINT)m_->m_ShadowSize;
+		td.Height = (UINT)m_->m_ShadowSize;
+		td.MipLevels = 1; td.ArraySize = 1;
+		td.Format = DXGI_FORMAT_R32_TYPELESS;
+		td.SampleDesc.Count = 1; td.Usage = D3D11_USAGE_DEFAULT;
+		td.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
+		HR_T(m_->m_pDevice->CreateTexture2D(&td, nullptr, &m_->m_pShadowTex));
 
-        D3D11_DEPTH_STENCIL_VIEW_DESC dsvd{};
-        dsvd.Format = DXGI_FORMAT_D32_FLOAT;
-        dsvd.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
-        HR_T(m_->m_pDevice->CreateDepthStencilView(m_->m_pShadowTex, &dsvd, &m_->m_pShadowDSV));
+		D3D11_DEPTH_STENCIL_VIEW_DESC dsvd{};
+		dsvd.Format = DXGI_FORMAT_D32_FLOAT;
+		dsvd.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+		HR_T(m_->m_pDevice->CreateDepthStencilView(m_->m_pShadowTex, &dsvd, &m_->m_pShadowDSV));
 
-        D3D11_SHADER_RESOURCE_VIEW_DESC srvd{};
-        srvd.Format = DXGI_FORMAT_R32_FLOAT;
-        srvd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-        srvd.Texture2D.MipLevels = 1;
-        HR_T(m_->m_pDevice->CreateShaderResourceView(m_->m_pShadowTex, &srvd, &m_->m_pShadowSRV));
+		D3D11_SHADER_RESOURCE_VIEW_DESC srvd{};
+		srvd.Format = DXGI_FORMAT_R32_FLOAT;
+		srvd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+		srvd.Texture2D.MipLevels = 1;
+		HR_T(m_->m_pDevice->CreateShaderResourceView(m_->m_pShadowTex, &srvd, &m_->m_pShadowSRV));
 
-        // Shadow viewport
-        m_->m_ShadowViewport = { 0.0f, 0.0f, (float)m_->m_ShadowSize, (float)m_->m_ShadowSize, 0.0f, 1.0f };
+		// Shadow viewport
+		m_->m_ShadowViewport = { 0.0f, 0.0f, (float)m_->m_ShadowSize, (float)m_->m_ShadowSize, 0.0f, 1.0f };
 
-        // Depth-bias rasterizer
-        D3D11_RASTERIZER_DESC rd{}; rd.FillMode = D3D11_FILL_SOLID; rd.CullMode = D3D11_CULL_BACK;
-        rd.FrontCounterClockwise = true; rd.DepthBias = 1000; rd.SlopeScaledDepthBias = 1.0f; rd.DepthBiasClamp = 0.0f;
-        rd.DepthClipEnable = TRUE; rd.MultisampleEnable = FALSE; rd.ScissorEnable = FALSE; rd.AntialiasedLineEnable = FALSE;
-        HR_T(m_->m_pDevice->CreateRasterizerState(&rd, &m_->RSShadowBias));
+		// Depth-bias rasterizer
+		D3D11_RASTERIZER_DESC rd{}; rd.FillMode = D3D11_FILL_SOLID; rd.CullMode = D3D11_CULL_BACK;
+		rd.FrontCounterClockwise = true; rd.DepthBias = 1000; rd.SlopeScaledDepthBias = 1.0f; rd.DepthBiasClamp = 0.0f;
+		rd.DepthClipEnable = TRUE; rd.MultisampleEnable = FALSE; rd.ScissorEnable = FALSE; rd.AntialiasedLineEnable = FALSE;
+		HR_T(m_->m_pDevice->CreateRasterizerState(&rd, &m_->RSShadowBias));
 
-        // Shadow sampler (linear, clamp)
-        D3D11_SAMPLER_DESC ssd{}; ssd.Filter = D3D11_FILTER_MIN_MAG_LINEAR_MIP_POINT;
-        ssd.AddressU = ssd.AddressV = ssd.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP; ssd.MaxLOD = D3D11_FLOAT32_MAX;
-        ssd.ComparisonFunc = D3D11_COMPARISON_ALWAYS;
-        HR_T(m_->m_pDevice->CreateSamplerState(&ssd, &m_->m_pShadowSampler));
-    }
+		// Shadow sampler (linear, clamp)
+		D3D11_SAMPLER_DESC ssd{}; ssd.Filter = D3D11_FILTER_MIN_MAG_LINEAR_MIP_POINT;
+		ssd.AddressU = ssd.AddressV = ssd.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP; ssd.MaxLOD = D3D11_FLOAT32_MAX;
+		ssd.ComparisonFunc = D3D11_COMPARISON_ALWAYS;
+		HR_T(m_->m_pDevice->CreateSamplerState(&ssd, &m_->m_pShadowSampler));
+	}
 
 	// ***********************************************************************************************
 	// 카메라 설정
@@ -1635,10 +1613,10 @@ bool App::InitScene()
 	m_->m_baseProjection.proj = XMMatrixTranspose(m_->m_camera.GetProjMatrixXM());
 	m_->m_baseProjection.worldInvTranspose = XMMatrixInverse(nullptr, XMMatrixTranspose(m_->m_baseProjection.world));
 	// DirectionalLight 초기값 필드 대입
-	m_->m_baseProjection.dirLight.ambient = DirectX::XMFLOAT4(0,0,0,1);
-	m_->m_baseProjection.dirLight.diffuse = DirectX::XMFLOAT4(1,1,1,1);
-	m_->m_baseProjection.dirLight.specular = DirectX::XMFLOAT4(1,1,1,1);
-	m_->m_baseProjection.dirLight.direction = DirectX::XMFLOAT3(0,-1,1);
+	m_->m_baseProjection.dirLight.ambient = DirectX::XMFLOAT4(0, 0, 0, 1);
+	m_->m_baseProjection.dirLight.diffuse = DirectX::XMFLOAT4(1, 1, 1, 1);
+	m_->m_baseProjection.dirLight.specular = DirectX::XMFLOAT4(1, 1, 1, 1);
+	m_->m_baseProjection.dirLight.direction = DirectX::XMFLOAT3(0, -1, 1);
 	m_->m_baseProjection.dirLight.pad = 0.0f;
 	m_->m_baseProjection.eyePos = m_->m_camera.GetPosition();
 	m_->m_baseProjection.pad = 0.0f;
@@ -1648,14 +1626,14 @@ bool App::InitScene()
 	if (!m_->m_LineRenderer) m_->m_LineRenderer = new LineRenderer();
 	m_->m_LineRenderer->Initialize(m_->m_pDevice);
 
-    // Skybox: 기존 Hanako를 기본으로 초기화 (선호 DDS를 설정)
+	// Skybox는 기존 Hanako를 기본으로 초기화
 	if (!m_->m_Skybox) m_->m_Skybox = new Skybox();
 	// Skybox는 이미 CreateDDSTextureFromFile로 SRV가 생성되어 있으므로, 여기선 현재 선택된 SRV를 사용하도록 Initialize는 경로 기반 대신 스킵할 수 있습니다.
 	// 간편화를 위해 cubemap.dds로 초기화
 	m_->m_Skybox->Initialize(m_->m_pDevice, m_->m_CurrentSkyboxPath, m_->m_pSkyBoxVertexShader, m_->m_pSkyBoxPixelShader, m_->m_pSkyBoxInputLayout, m_->m_pConstantBuffer);
 
 	// Debug box buffers for light position marker
-	StaticMesh::CreateDebugBoxBuffersLightTex(m_->m_pDevice, XMFLOAT4(1,1,1,1), 0.2f, &m_->m_pDebugBoxVB, &m_->m_pDebugBoxIB, &m_->m_DebugBoxIndexCount);
+	StaticMesh::CreateDebugBoxBuffersLightTex(m_->m_pDevice, XMFLOAT4(1, 1, 1, 1), 0.2f, &m_->m_pDebugBoxVB, &m_->m_pDebugBoxIB, &m_->m_DebugBoxIndexCount);
 
 	return true;
 }
@@ -1666,8 +1644,6 @@ void App::UninitScene()
 	SAFE_RELEASE(m_->m_pIndexBuffer);
 	SAFE_RELEASE(m_->m_pInputLayout);
 	SAFE_RELEASE(m_->m_pVertexShader);
-	// 이번 프로젝트 코드
-//////////////////////////////////////////////////////////////////////////
 	SAFE_RELEASE(m_->m_pVertexShaderNoTBN);
 	SAFE_RELEASE(m_->m_pVertexShaderSkinned);
 	SAFE_RELEASE(m_->m_pVertexShaderOutline);
@@ -1678,14 +1654,14 @@ void App::UninitScene()
 	SAFE_RELEASE(m_->m_pConstantBuffer);
 	SAFE_RELEASE(m_->m_pSamplerState);
 
-    // Shadow
-    SAFE_RELEASE(m_->m_pVSShadow);
-    SAFE_RELEASE(m_->m_pVSSkinnedShadow);
-    SAFE_RELEASE(m_->m_pShadowSampler);
-    SAFE_RELEASE(m_->RSShadowBias);
-    SAFE_RELEASE(m_->m_pShadowSRV);
-    SAFE_RELEASE(m_->m_pShadowDSV);
-    SAFE_RELEASE(m_->m_pShadowTex);
+	// Shadow
+	SAFE_RELEASE(m_->m_pVSShadow);
+	SAFE_RELEASE(m_->m_pVSSkinnedShadow);
+	SAFE_RELEASE(m_->m_pShadowSampler);
+	SAFE_RELEASE(m_->RSShadowBias);
+	SAFE_RELEASE(m_->m_pShadowSRV);
+	SAFE_RELEASE(m_->m_pShadowDSV);
+	SAFE_RELEASE(m_->m_pShadowTex);
 
 	SAFE_RELEASE(m_->m_pSkyBoxInputLayout);
 	SAFE_RELEASE(m_->m_pSkyBoxVertexShader);
@@ -1695,7 +1671,7 @@ void App::UninitScene()
 	SAFE_RELEASE(m_->m_pSkyCubeMapSRV);
 
 	for (int i = 0; i < 6; ++i) SAFE_RELEASE(m_->m_pCubeTextureSRVs[i]);
-	    for (int i = 0; i < 6; ++i) SAFE_RELEASE(m_->m_pSkyFaceSRV[i]);
+	for (int i = 0; i < 6; ++i) SAFE_RELEASE(m_->m_pSkyFaceSRV[i]);
 
 	SAFE_RELEASE(m_->m_pFallbackWhite);
 	SAFE_RELEASE(m_->m_pFallbackNormal);
@@ -1706,7 +1682,7 @@ void App::UninitScene()
 	if (m_->m_LineRenderer) { m_->m_LineRenderer->Release(); delete m_->m_LineRenderer; m_->m_LineRenderer = nullptr; }
 	if (m_->m_Skybox) { m_->m_Skybox->Release(); delete m_->m_Skybox; m_->m_Skybox = nullptr; }
 
-    // 모델 리소스 해제
+	// 모델 리소스 해제
 	UnloadModel();
 }
 
@@ -1764,15 +1740,17 @@ void App::RenderWidgetUI()
 		auto view = m_->m_camera.GetViewMatrixXM();
 		auto proj = m_->m_camera.GetProjMatrixXM();
 		ImDrawList* dl = ImGui::GetForegroundDrawList();
+		int idx{ 0 };
 		for (const auto& mdlPtr : m_->m_Models)
 		{
 			const auto& mdl = *mdlPtr;
 			const char* typeStr = (mdl.source == ModelSource::FBX) ? "FBX" : (mdl.source == ModelSource::PMX) ? "PMX" : (mdl.source == ModelSource::OBJ) ? "OBJ" : "MODEL";
-			std::string label = std::string(typeStr) + ": " + Utf8FromWString(mdl.modelName);
+			std::string label = std::string(typeStr) + ": " + std::to_string(idx) + " " + Utf8FromWString(mdl.modelName);
+			idx++;
 			auto shaderModeToString = [](ShadingMode m) -> const char*
-			{
-				switch (m)
 				{
+					switch (m)
+					{
 					case ShadingMode::Phong: return "Phong";
 					case ShadingMode::BlinnPhong: return "Blinn-Phong";
 					case ShadingMode::Lambert: return "Lambert";
@@ -1780,15 +1758,15 @@ void App::RenderWidgetUI()
 					case ShadingMode::TextureOnly: return "TextureOnly";
 					case ShadingMode::ToonShading: return "ToonShading";
 					default: return "Unknown";
-				}
-			};
+					}
+				};
 			std::string modeLine = std::string("Shader Mode: ") + shaderModeToString(mdl.modelShading);
 			std::string outline = std::string("Outline: ") + (mdl.outlineEnabled ? "On" : "Off");
 			ImVec2 sp;
 			if (WorldToScreen(mdl.pos, view, proj, io.DisplaySize.x, io.DisplaySize.y, sp))
 			{
 				ImVec2 szLabel = ImGui::CalcTextSize(label.c_str());
-				ImVec2 szMode  = ImGui::CalcTextSize(modeLine.c_str());
+				ImVec2 szMode = ImGui::CalcTextSize(modeLine.c_str());
 				ImVec2 szOutline = ImGui::CalcTextSize(outline.c_str());
 				float boxW = szLabel.x;
 				if (szMode.x > boxW) boxW = szMode.x;
@@ -1834,12 +1812,12 @@ bool App::InitBasicEffect()
 	};
 
 	ID3D10Blob* vertexShaderBuffer = nullptr;
-    HR_T(CompileShaderFromFile(L"26_BasicVS.hlsl", "main", "vs_5_0", &vertexShaderBuffer));
+	HR_T(CompileShaderFromFile(L"26_BasicVS.hlsl", "main", "vs_5_0", &vertexShaderBuffer));
 	HR_T(m_->m_pDevice->CreateInputLayout(layout, ARRAYSIZE(layout),
-	vertexShaderBuffer->GetBufferPointer(), vertexShaderBuffer->GetBufferSize(), &m_->m_pInputLayout));
+		vertexShaderBuffer->GetBufferPointer(), vertexShaderBuffer->GetBufferSize(), &m_->m_pInputLayout));
 
 	HR_T(m_->m_pDevice->CreateVertexShader(vertexShaderBuffer->GetBufferPointer(),
-	vertexShaderBuffer->GetBufferSize(), NULL, &m_->m_pVertexShader));
+		vertexShaderBuffer->GetBufferSize(), NULL, &m_->m_pVertexShader));
 	SAFE_RELEASE(vertexShaderBuffer);	// 컴파일 버퍼 해제
 
 	// PMX 전용: NoTBN 입력용 VS/IL 생성
@@ -1851,7 +1829,7 @@ bool App::InitBasicEffect()
 		{ "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 	};
 	ID3D10Blob* vsNoTBN = nullptr;
-    HR_T(CompileShaderFromFile(L"26_BasicVS.hlsl", "VSNoTBN", "vs_5_0", &vsNoTBN));
+	HR_T(CompileShaderFromFile(L"26_BasicVS.hlsl", "VSNoTBN", "vs_5_0", &vsNoTBN));
 	HR_T(m_->m_pDevice->CreateInputLayout(layoutNoTBN, ARRAYSIZE(layoutNoTBN), vsNoTBN->GetBufferPointer(), vsNoTBN->GetBufferSize(), &m_->m_pInputLayoutNoTBN));
 	HR_T(m_->m_pDevice->CreateVertexShader(vsNoTBN->GetBufferPointer(), vsNoTBN->GetBufferSize(), nullptr, &m_->m_pVertexShaderNoTBN));
 	SAFE_RELEASE(vsNoTBN);
@@ -1864,65 +1842,65 @@ bool App::InitBasicEffect()
 		{ "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 	};
 	ID3D10Blob* vsLine = nullptr;
-    HR_T(CompileShaderFromFile(L"26_BasicVS.hlsl", "VSLine", "vs_5_0", &vsLine));
+	HR_T(CompileShaderFromFile(L"26_BasicVS.hlsl", "VSLine", "vs_5_0", &vsLine));
 
-    // FBX GPU 스키닝용 VS/IL 생성 (POSITION,NORMAL,TANGENT,BINORMAL,COLOR,TEXCOORD,BLENDINDICES,BLENDWEIGHT)
-    {
-        D3D11_INPUT_ELEMENT_DESC layoutSkinned[] =
-        {
-            { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 0,  D3D11_INPUT_PER_VERTEX_DATA, 0 },
-            { "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT,    0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-            { "TANGENT",  0, DXGI_FORMAT_R32G32B32_FLOAT,    0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-            { "BINORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT,    0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-            { "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-            { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,        0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-            { "BLENDINDICES", 0, DXGI_FORMAT_R16G16B16A16_UINT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-            { "BLENDWEIGHT",  0, DXGI_FORMAT_R32G32B32A32_FLOAT,0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-        };
-        ID3D10Blob* vsSkinned = nullptr;
-        HR_T(CompileShaderFromFile(L"26_BasicVS.hlsl", "VSSkinned", "vs_5_0", &vsSkinned));
-        HR_T(m_->m_pDevice->CreateInputLayout(layoutSkinned, ARRAYSIZE(layoutSkinned), vsSkinned->GetBufferPointer(), vsSkinned->GetBufferSize(), &m_->m_pInputLayoutSkinned));
-        HR_T(m_->m_pDevice->CreateVertexShader(vsSkinned->GetBufferPointer(), vsSkinned->GetBufferSize(), nullptr, &m_->m_pVertexShaderSkinned));
-        SAFE_RELEASE(vsSkinned);
-    }
-    HR_T(m_->m_pDevice->CreateInputLayout(lineLayout, ARRAYSIZE(lineLayout), vsLine->GetBufferPointer(), vsLine->GetBufferSize(), &m_->m_pLineInputLayout));
-    HR_T(m_->m_pDevice->CreateVertexShader(vsLine->GetBufferPointer(), vsLine->GetBufferSize(), nullptr, &m_->m_pLineVS));
-    SAFE_RELEASE(vsLine);
+	// FBX GPU 스키닝용 VS/IL 생성 (POSITION,NORMAL,TANGENT,BINORMAL,COLOR,TEXCOORD,BLENDINDICES,BLENDWEIGHT)
+	{
+		D3D11_INPUT_ELEMENT_DESC layoutSkinned[] =
+		{
+			{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 0,  D3D11_INPUT_PER_VERTEX_DATA, 0 },
+			{ "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT,    0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+			{ "TANGENT",  0, DXGI_FORMAT_R32G32B32_FLOAT,    0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+			{ "BINORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT,    0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+			{ "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+			{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,        0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+			{ "BLENDINDICES", 0, DXGI_FORMAT_R16G16B16A16_UINT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+			{ "BLENDWEIGHT",  0, DXGI_FORMAT_R32G32B32A32_FLOAT,0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		};
+		ID3D10Blob* vsSkinned = nullptr;
+		HR_T(CompileShaderFromFile(L"26_BasicVS.hlsl", "VSSkinned", "vs_5_0", &vsSkinned));
+		HR_T(m_->m_pDevice->CreateInputLayout(layoutSkinned, ARRAYSIZE(layoutSkinned), vsSkinned->GetBufferPointer(), vsSkinned->GetBufferSize(), &m_->m_pInputLayoutSkinned));
+		HR_T(m_->m_pDevice->CreateVertexShader(vsSkinned->GetBufferPointer(), vsSkinned->GetBufferSize(), nullptr, &m_->m_pVertexShaderSkinned));
+		SAFE_RELEASE(vsSkinned);
+	}
+	HR_T(m_->m_pDevice->CreateInputLayout(lineLayout, ARRAYSIZE(lineLayout), vsLine->GetBufferPointer(), vsLine->GetBufferSize(), &m_->m_pLineInputLayout));
+	HR_T(m_->m_pDevice->CreateVertexShader(vsLine->GetBufferPointer(), vsLine->GetBufferSize(), nullptr, &m_->m_pLineVS));
+	SAFE_RELEASE(vsLine);
 
 	// 이번 프로젝트 코드
 //////////////////////////////////////////////////////////////////////////
-    // Outline VS
-    {
-        ID3D10Blob* vsOutline = nullptr;
-        HR_T(CompileShaderFromFile(L"26_BasicVS.hlsl", "VSOutline", "vs_5_0", &vsOutline));
-        HR_T(m_->m_pDevice->CreateVertexShader(vsOutline->GetBufferPointer(), vsOutline->GetBufferSize(), nullptr, &m_->m_pVertexShaderOutline));
-        SAFE_RELEASE(vsOutline);
+	// Outline VS
+	{
+		ID3D10Blob* vsOutline = nullptr;
+		HR_T(CompileShaderFromFile(L"26_BasicVS.hlsl", "VSOutline", "vs_5_0", &vsOutline));
+		HR_T(m_->m_pDevice->CreateVertexShader(vsOutline->GetBufferPointer(), vsOutline->GetBufferSize(), nullptr, &m_->m_pVertexShaderOutline));
+		SAFE_RELEASE(vsOutline);
 
-        ID3D10Blob* vsSkinnedOutline = nullptr;
-        HR_T(CompileShaderFromFile(L"26_BasicVS.hlsl", "VSSkinnedOutline", "vs_5_0", &vsSkinnedOutline));
-        HR_T(m_->m_pDevice->CreateVertexShader(vsSkinnedOutline->GetBufferPointer(), vsSkinnedOutline->GetBufferSize(), nullptr, &m_->m_pVertexShaderSkinnedOutline));
-        SAFE_RELEASE(vsSkinnedOutline);
-    }
+		ID3D10Blob* vsSkinnedOutline = nullptr;
+		HR_T(CompileShaderFromFile(L"26_BasicVS.hlsl", "VSSkinnedOutline", "vs_5_0", &vsSkinnedOutline));
+		HR_T(m_->m_pDevice->CreateVertexShader(vsSkinnedOutline->GetBufferPointer(), vsSkinnedOutline->GetBufferSize(), nullptr, &m_->m_pVertexShaderSkinnedOutline));
+		SAFE_RELEASE(vsSkinnedOutline);
+	}
 
-    // Shadow VS (depth-only)
-    {
-        ID3D10Blob* vsShadow = nullptr;
-        HR_T(CompileShaderFromFile(L"26_BasicVS.hlsl", "VSShadow", "vs_5_0", &vsShadow));
-        HR_T(m_->m_pDevice->CreateVertexShader(vsShadow->GetBufferPointer(), vsShadow->GetBufferSize(), nullptr, &m_->m_pVSShadow));
-        SAFE_RELEASE(vsShadow);
+	// Shadow VS (depth-only)
+	{
+		ID3D10Blob* vsShadow = nullptr;
+		HR_T(CompileShaderFromFile(L"26_BasicVS.hlsl", "VSShadow", "vs_5_0", &vsShadow));
+		HR_T(m_->m_pDevice->CreateVertexShader(vsShadow->GetBufferPointer(), vsShadow->GetBufferSize(), nullptr, &m_->m_pVSShadow));
+		SAFE_RELEASE(vsShadow);
 
-        ID3D10Blob* vsSkinnedShadow = nullptr;
-        HR_T(CompileShaderFromFile(L"26_BasicVS.hlsl", "VSSkinnedShadow", "vs_5_0", &vsSkinnedShadow));
-        HR_T(m_->m_pDevice->CreateVertexShader(vsSkinnedShadow->GetBufferPointer(), vsSkinnedShadow->GetBufferSize(), nullptr, &m_->m_pVSSkinnedShadow));
-        SAFE_RELEASE(vsSkinnedShadow);
-    }
+		ID3D10Blob* vsSkinnedShadow = nullptr;
+		HR_T(CompileShaderFromFile(L"26_BasicVS.hlsl", "VSSkinnedShadow", "vs_5_0", &vsSkinnedShadow));
+		HR_T(m_->m_pDevice->CreateVertexShader(vsSkinnedShadow->GetBufferPointer(), vsSkinnedShadow->GetBufferSize(), nullptr, &m_->m_pVSSkinnedShadow));
+		SAFE_RELEASE(vsSkinnedShadow);
+	}
 
 
 	// Pixel Shader -------------------------------------
 	ID3D10Blob* pixelShaderBuffer = nullptr;
-    HR_T(CompileShaderFromFile(L"26_BasicPS.hlsl", "main", "ps_4_0", &pixelShaderBuffer));
+	HR_T(CompileShaderFromFile(L"26_BasicPS.hlsl", "main", "ps_4_0", &pixelShaderBuffer));
 	HR_T(m_->m_pDevice->CreatePixelShader(pixelShaderBuffer->GetBufferPointer(),
-	pixelShaderBuffer->GetBufferSize(), NULL, &m_->m_pPixelShader));
+		pixelShaderBuffer->GetBufferSize(), NULL, &m_->m_pPixelShader));
 	SAFE_RELEASE(pixelShaderBuffer);	// 픽셀 셰이더 버퍼 더이상 필요없음
 
 	// Outline 전용 Pixel Shader (PSOutline)
@@ -1944,19 +1922,19 @@ bool App::InitSkyBoxEffect()
 	};
 
 	ID3D10Blob* vertexShaderBuffer = nullptr;
-    HR_T(CompileShaderFromFile(L"26_SkyBoxVS.hlsl", "VS", "vs_4_0", &vertexShaderBuffer));
+	HR_T(CompileShaderFromFile(L"26_SkyBoxVS.hlsl", "VS", "vs_4_0", &vertexShaderBuffer));
 	HR_T(m_->m_pDevice->CreateInputLayout(layout, ARRAYSIZE(layout),
-	vertexShaderBuffer->GetBufferPointer(), vertexShaderBuffer->GetBufferSize(), &m_->m_pSkyBoxInputLayout));
+		vertexShaderBuffer->GetBufferPointer(), vertexShaderBuffer->GetBufferSize(), &m_->m_pSkyBoxInputLayout));
 
 	HR_T(m_->m_pDevice->CreateVertexShader(vertexShaderBuffer->GetBufferPointer(),
-	vertexShaderBuffer->GetBufferSize(), NULL, &m_->m_pSkyBoxVertexShader));
+		vertexShaderBuffer->GetBufferSize(), NULL, &m_->m_pSkyBoxVertexShader));
 	SAFE_RELEASE(vertexShaderBuffer);	// 컴파일 버퍼 해제
 
 	// Pixel Shader -------------------------------------
 	ID3D10Blob* pixelShaderBuffer = nullptr;
-    HR_T(CompileShaderFromFile(L"26_SkyBoxPS.hlsl", "PS", "ps_4_0", &pixelShaderBuffer));
+	HR_T(CompileShaderFromFile(L"26_SkyBoxPS.hlsl", "PS", "ps_4_0", &pixelShaderBuffer));
 	HR_T(m_->m_pDevice->CreatePixelShader(pixelShaderBuffer->GetBufferPointer(),
-	pixelShaderBuffer->GetBufferSize(), NULL, &m_->m_pSkyBoxPixelShader));
+		pixelShaderBuffer->GetBufferSize(), NULL, &m_->m_pSkyBoxPixelShader));
 	SAFE_RELEASE(pixelShaderBuffer);	// 픽셀 셰이더 버퍼 더이상 필요없음
 	return true;
 }
@@ -1964,13 +1942,13 @@ bool App::InitSkyBoxEffect()
 // ------------------------- Model Loader (FBX/OBJ/PMX via Assimp) -------------------------
 bool App::LoadModelFromFile(const std::wstring& pathW)
 {
-    // 새 모델델 추가
+	// 새 모델델 추가
 
-    // 폴백 텍스처 생성(최초 1회)
+	// 폴백 텍스처 생성(최초 1회)
 	UINT fallBackColor = 0x000000FF;
-    if (!m_->m_pFallbackWhite) fallBackColor = 0xFFFFFFFF;
-    if (!m_->m_pFallbackBlack) fallBackColor = 0x000000FF; // a=1
-    if (!m_->m_pFallbackNormal) fallBackColor = 0x8080FFFF; // (0.5,0.5,1,1) in RGBA8
+	if (!m_->m_pFallbackWhite) fallBackColor = 0xFFFFFFFF;
+	if (!m_->m_pFallbackBlack) fallBackColor = 0x000000FF; // a=1
+	if (!m_->m_pFallbackNormal) fallBackColor = 0x8080FFFF; // (0.5,0.5,1,1) in RGBA8
 
 	D3D11_TEXTURE2D_DESC td{}; td.Width = 1; td.Height = 1; td.MipLevels = 1; td.ArraySize = 1;
 	td.Format = DXGI_FORMAT_R8G8B8A8_UNORM; td.SampleDesc.Count = 1; td.Usage = D3D11_USAGE_IMMUTABLE; td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
@@ -1980,136 +1958,136 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
 	HR_T(m_->m_pDevice->CreateShaderResourceView(tex.Get(), &srvd, &m_->m_pFallbackNormal));
 
 	// 받은 경로에서 이름, 확장자 추출
-	std::wstring ext{L""}, fileName{L""};
-    if (!pathW.empty())
-    {
-        size_t dot = pathW.find_last_of(L'.');
-        if (dot != std::wstring::npos) 
-		{ 
+	std::wstring ext{ L"" }, fileName{ L"" };
+	if (!pathW.empty())
+	{
+		size_t dot = pathW.find_last_of(L'.');
+		if (dot != std::wstring::npos)
+		{
 			ext = pathW.substr(dot); std::transform(ext.begin(), ext.end(), ext.begin(), ::towlower);
 			size_t sep = pathW.find_last_of(L"\\/");
 			if (sep != std::wstring::npos) fileName = pathW.substr(sep + 1, dot - sep - 1);
 			else fileName = pathW.substr(0, dot);
 		}
-    }
+	}
 
-    bool ok = false;
-    auto entry = std::make_unique<ModelEntry>();
-    entry->modelName = fileName;
+	bool ok = false;
+	auto entry = std::make_unique<ModelEntry>();
+	entry->modelName = fileName;
 
-    // 캐시 확인
-    std::shared_ptr<SharedModelData> shared;
-    if (auto it = m_->m_ModelCache.find(pathW); it != m_->m_ModelCache.end()) shared = it->second.lock();
+	// 캐시 확인
+	std::shared_ptr<SharedModelData> shared;
+	if (auto it = m_->m_ModelCache.find(pathW); it != m_->m_ModelCache.end()) shared = it->second.lock();
 
-    if (!shared)
-    {
-        shared = std::make_shared<SharedModelData>();
-        shared->pathW = pathW;
-        // 로드 경로에 따라 매니저 준비
-        if (ext == L".fbx")
-        {
-            shared->source = ModelSource::FBX;
-            shared->fbx = std::make_shared<FbxModel>();
-            if (ok = shared->fbx->Load(m_->m_pDevice, pathW))
-            {
-                m_->PushLog("[OK] Loaded FBX(shared): " + Utf8FromWString(fileName));
-                shared->stride = shared->fbx->GetVertexStride();
-                shared->vb = shared->fbx->GetVertexBuffer();
-                shared->ib = shared->fbx->GetIndexBuffer();
-                shared->indexCount = shared->fbx->GetIndexCount();
-                shared->subsets.clear();
-                for (auto& s : shared->fbx->GetSubsets()) shared->subsets.push_back({ s.startIndex, s.indexCount, s.materialIndex });
-                shared->materialSRVs = shared->fbx->GetMaterialSRVs();
-            }
-            else { m_->PushLog("[ERR] Failed FBX: " + Utf8FromWString(fileName)); }
-        }
-        else if (ext == L".obj")
-        {
-            shared->source = ModelSource::OBJ;
-            shared->obj = std::make_shared<ObjManager>();
-            if (ok = shared->obj->Load(m_->m_pDevice, pathW))
-            {
-                m_->PushLog("[OK] Loaded OBJ(shared): " + Utf8FromWString(fileName));
-                shared->stride = shared->obj->GetVertexStride();
-                shared->vb = shared->obj->GetVertexBuffer();
-                shared->ib = shared->obj->GetIndexBuffer();
-                shared->indexCount = shared->obj->GetIndexCount();
-                shared->subsets.clear();
-                const auto& subs = shared->obj->GetSubsets();
-                for (auto& s : subs) shared->subsets.push_back({ s.startIndex, s.indexCount, s.materialIndex });
-                shared->materialSRVs = shared->obj->GetMaterialSRVs();
-            }
-            else { m_->PushLog("[ERR] Failed OBJ: " + Utf8FromWString(fileName)); }
-        }
-        else if (ext == L".pmx")
-        {
-            shared->source = ModelSource::PMX;
-            shared->pmx = std::make_shared<PmxManager>();
-            if (ok = shared->pmx->Load(m_->m_pDevice, pathW))
-            {
-                m_->PushLog("[OK] Loaded PMX(shared): " + Utf8FromWString(fileName));
-                shared->stride = shared->pmx->GetVertexStride();
-                shared->vb = shared->pmx->GetVertexBuffer();
-                shared->ib = shared->pmx->GetIndexBuffer();
-                shared->indexCount = shared->pmx->GetIndexCount();
-                shared->subsets.clear();
-                const auto& subs = shared->pmx->GetSubsets();
-                for (auto& s : subs) shared->subsets.push_back({ s.startIndex, s.indexCount, s.materialIndex });
-                shared->materialSRVs = shared->pmx->GetMaterialSRVs();
-            }
-            else { m_->PushLog("[ERR] Failed PMX: " + Utf8FromWString(fileName)); }
-        }
+	if (!shared)
+	{
+		shared = std::make_shared<SharedModelData>();
+		shared->pathW = pathW;
+		// 로드 경로에 따라 매니저 준비
+		if (ext == L".fbx")
+		{
+			shared->source = ModelSource::FBX;
+			shared->fbx = std::make_shared<FbxModel>();
+			if (ok = shared->fbx->Load(m_->m_pDevice, pathW))
+			{
+				m_->PushLog("[OK] Loaded FBX(shared): " + Utf8FromWString(fileName));
+				shared->stride = shared->fbx->GetVertexStride();
+				shared->vb = shared->fbx->GetVertexBuffer();
+				shared->ib = shared->fbx->GetIndexBuffer();
+				shared->indexCount = shared->fbx->GetIndexCount();
+				shared->subsets.clear();
+				for (auto& s : shared->fbx->GetSubsets()) shared->subsets.push_back({ s.startIndex, s.indexCount, s.materialIndex });
+				shared->materialSRVs = shared->fbx->GetMaterialSRVs();
+			}
+			else { m_->PushLog("[ERR] Failed FBX: " + Utf8FromWString(fileName)); }
+		}
+		else if (ext == L".obj")
+		{
+			shared->source = ModelSource::OBJ;
+			shared->obj = std::make_shared<ObjManager>();
+			if (ok = shared->obj->Load(m_->m_pDevice, pathW))
+			{
+				m_->PushLog("[OK] Loaded OBJ(shared): " + Utf8FromWString(fileName));
+				shared->stride = shared->obj->GetVertexStride();
+				shared->vb = shared->obj->GetVertexBuffer();
+				shared->ib = shared->obj->GetIndexBuffer();
+				shared->indexCount = shared->obj->GetIndexCount();
+				shared->subsets.clear();
+				const auto& subs = shared->obj->GetSubsets();
+				for (auto& s : subs) shared->subsets.push_back({ s.startIndex, s.indexCount, s.materialIndex });
+				shared->materialSRVs = shared->obj->GetMaterialSRVs();
+			}
+			else { m_->PushLog("[ERR] Failed OBJ: " + Utf8FromWString(fileName)); }
+		}
+		else if (ext == L".pmx")
+		{
+			shared->source = ModelSource::PMX;
+			shared->pmx = std::make_shared<PmxManager>();
+			if (ok = shared->pmx->Load(m_->m_pDevice, pathW))
+			{
+				m_->PushLog("[OK] Loaded PMX(shared): " + Utf8FromWString(fileName));
+				shared->stride = shared->pmx->GetVertexStride();
+				shared->vb = shared->pmx->GetVertexBuffer();
+				shared->ib = shared->pmx->GetIndexBuffer();
+				shared->indexCount = shared->pmx->GetIndexCount();
+				shared->subsets.clear();
+				const auto& subs = shared->pmx->GetSubsets();
+				for (auto& s : subs) shared->subsets.push_back({ s.startIndex, s.indexCount, s.materialIndex });
+				shared->materialSRVs = shared->pmx->GetMaterialSRVs();
+			}
+			else { m_->PushLog("[ERR] Failed PMX: " + Utf8FromWString(fileName)); }
+		}
 
-        if (ok)
-        {
-            m_->m_ModelCache[pathW] = shared; // 캐시 등록
-        }
-    }
-    else
-    {
-        ok = true;
-        m_->PushLog("[OK] Reused cached model: " + Utf8FromWString(fileName));
-    }
+		if (ok)
+		{
+			m_->m_ModelCache[pathW] = shared; // 캐시 등록
+		}
+	}
+	else
+	{
+		ok = true;
+		m_->PushLog("[OK] Reused cached model: " + Utf8FromWString(fileName));
+	}
 
-    if (ok && shared)
-    {
-        entry->shared = shared;
-        entry->source = shared->source;
-        // 본 캐시/출력텍스트 일괄 구축
-        BuildBoneCacheStructure(*entry, nullptr);
-        // 통계 사전 계산(IB/VB 공유)
-        entry->meshStatsValid = ComputeMeshStats(m_->m_pDevice, m_->m_pDeviceContext, shared->vb, shared->stride, shared->ib, shared->indexCount, entry->meshStats);
-        // 모델별 셰이딩 초기값 = 현재 글로벌 셰이딩, 아웃라인 기본은 Toon일 때만 ON
-        entry->modelShading = m_->m_ShadingMode;
-        entry->outlineEnabled = (entry->modelShading == ShadingMode::ToonShading);
+	if (ok && shared)
+	{
+		entry->shared = shared;
+		entry->source = shared->source;
+		// 본 캐시/출력텍스트 일괄 구축
+		BuildBoneCacheStructure(*entry, nullptr);
+		// 통계 사전 계산(IB/VB 공유)
+		entry->meshStatsValid = ComputeMeshStats(m_->m_pDevice, m_->m_pDeviceContext, shared->vb, shared->stride, shared->ib, shared->indexCount, entry->meshStats);
+		// 모델별 셰이딩 초기값 = 현재 글로벌 셰이딩, 아웃라인 기본은 Toon일 때만 ON
+		entry->modelShading = m_->m_ShadingMode;
+		entry->outlineEnabled = (entry->modelShading == ShadingMode::ToonShading);
 
-        // FBX 인스턴스 애니메이터를 로드 시점에 1회 초기화
-        if (entry->source == ModelSource::FBX && entry->shared && entry->shared->fbx)
-        {
-            entry->animator.InitMetadata(entry->shared->fbx->GetScenePtr());
-            entry->animator.SetSharedContext(
-                entry->shared->fbx->GetScenePtr(),
-                entry->shared->fbx->GetNodeIndexOfName(),
-                &entry->shared->fbx->GetBoneNames(),
-                &entry->shared->fbx->GetBoneOffsets(),
-                &entry->shared->fbx->GetGlobalInverse());
-            auto t = entry->shared->fbx->GetCurrentAnimationType();
-            entry->animator.SetType(t == FbxModel::AnimationType::Rigid ? FbxAnimation::AnimType::Rigid : (t == FbxModel::AnimationType::Skinned ? FbxAnimation::AnimType::Skinned : FbxAnimation::AnimType::None));
-            entry->animatorInited = true;
-        }
+		// FBX 인스턴스 애니메이터를 로드 시점에 1회 초기화
+		if (entry->source == ModelSource::FBX && entry->shared && entry->shared->fbx)
+		{
+			entry->animator.InitMetadata(entry->shared->fbx->GetScenePtr());
+			entry->animator.SetSharedContext(
+				entry->shared->fbx->GetScenePtr(),
+				entry->shared->fbx->GetNodeIndexOfName(),
+				&entry->shared->fbx->GetBoneNames(),
+				&entry->shared->fbx->GetBoneOffsets(),
+				&entry->shared->fbx->GetGlobalInverse());
+			auto t = entry->shared->fbx->GetCurrentAnimationType();
+			entry->animator.SetType(t == FbxModel::AnimationType::Rigid ? FbxAnimation::AnimType::Rigid : (t == FbxModel::AnimationType::Skinned ? FbxAnimation::AnimType::Skinned : FbxAnimation::AnimType::None));
+			entry->animatorInited = true;
+		}
 
-        m_->m_Models.push_back(std::move(entry));
-        m_->m_RenderMode = RenderMode::Model;
-    }
+		m_->m_Models.push_back(std::move(entry));
+		m_->m_RenderMode = RenderMode::Model;
+	}
 
-    return ok;
+	return ok;
 }
 
 void App::UnloadModel()
 {
-    m_->m_Models.clear();
-    m_->m_SelectedModelIdx = -1;
-    m_->m_SelectedBoneIdx = -1;
+	m_->m_Models.clear();
+	m_->m_SelectedModelIdx = -1;
+	m_->m_SelectedBoneIdx = -1;
 }
 
 void App::RenderControlPannel()
@@ -2145,12 +2123,6 @@ void App::RenderControlPannel()
 				ImGui::ColorEdit4("Background Color", &m_->m_ClearColor.x);
 			}
 		}
-		ImGui::Text("Cube Transforms");
-		ImGui::Checkbox("Rotate Cube", &m_->m_RotateModel);
-		ImGui::DragFloat3("Cube Scale", &m_->m_cubeScale.x, 0.1f, 20.0f);
-		ImGui::DragFloat3("Cube Pos (x,y,z)", &m_->m_cubePos.x, 0.1f);
-		// 모델 회전(도) 편집
-		ImGui::DragFloat3("Cube Rotation (deg)", &m_->m_cubeRotation.x, 1.0f, -360.0f, 360.0f, "%.1f");
 		ImGui::Separator();
 		ImGui::Text("Camera");
 		{
@@ -2158,7 +2130,7 @@ void App::RenderControlPannel()
 			{
 				m_->m_camera.Reset();
 			}
-			ImGui::SliderFloat("Camera Speed", &m_->m_camera.m_MoveSpeed, 10.0f, 500.0f, "%.1f");
+			ImGui::SliderFloat("Camera Speed", &m_->m_camera.m_MoveSpeed, 1.0f, 500.0f, "%.1f");
 			DirectX::XMFLOAT3 pos = m_->m_camera.GetPosition();
 			if (ImGui::DragFloat3("Camera Pos (x,y,z)", &pos.x, 0.1f))
 			{
@@ -2180,22 +2152,20 @@ void App::RenderControlPannel()
 		ImGui::Text("Shading");
 		{
 			int mode = (int)m_->m_ShadingMode;
-            const char* modes[] = { "Phong", "Blinn-Phong", "Lambert", "Unlit", "TextureOnly", "ToonShading" };
+			const char* modes[] = { "Phong", "Blinn-Phong", "Lambert", "Unlit", "TextureOnly", "ToonShading" };
 			if (ImGui::Combo("Shading Mode", &mode, modes, IM_ARRAYSIZE(modes)))
 			{
 				m_->m_ShadingMode = (ShadingMode)mode;
 			}
-            if (m_->m_ShadingMode == ShadingMode::ToonShading)
-            {
-				// 이번 프로젝트 코드
-//////////////////////////////////////////////////////////////////////////
-                ImGui::Separator();
-                ImGui::Text("Outline (Toon + Multipass)");
-                // Multipass 아웃라인 파라미터
-                ImGui::SliderFloat("Thickness", &m_->m_OutlineThickness, 0.0f, 2.0f, "%.3f");
-                ImGui::ColorEdit3("Color", &m_->m_OutlineColor.x);
-                ImGui::SliderFloat("Strength", &m_->m_OutlineStrength, 0.0f, 4.0f, "%.2f");
-            }
+
+			{
+				ImGui::Separator();
+				ImGui::Text("Outline (Toon + Multipass)");
+				// Multipass 아웃라인 파라미터
+				ImGui::DragFloat("Thickness", &m_->m_OutlineThickness, 0.0f, 2.0f);
+				ImGui::ColorEdit3("Color", &m_->m_OutlineColor.x);
+				ImGui::SliderFloat("Strength", &m_->m_OutlineStrength, 0.0f, 4.0f, "%.2f");
+			}
 			ImGui::Checkbox("Enable Normal Map", (bool*)&m_->m_EnableNormalMap);
 			ImGui::Checkbox("Use Specular Map", (bool*)&m_->m_UseSpecularMap);
 		}
@@ -2220,14 +2190,22 @@ void App::RenderControlPannel()
 		{
 			m_->m_Material = { XMFLOAT4(1,1,1,1), XMFLOAT4(1,1,1,1), XMFLOAT4(1,1,1,32), XMFLOAT4(0,0,0,0) };
 		}
+
+		ImGui::Separator();
+		ImGui::Text("Cube Transforms");
+		ImGui::Checkbox("Rotate Cube", &m_->m_RotateModel);
+		ImGui::DragFloat3("Cube Scale", &m_->m_cubeScale.x, 0.1f, 20.0f);
+		ImGui::DragFloat3("Cube Pos (x,y,z)", &m_->m_cubePos.x, 0.1f);
+		// 모델 회전(도) 편집
+		ImGui::DragFloat3("Cube Rotation (deg)", &m_->m_cubeRotation.x, 1.0f, -360.0f, 360.0f, "%.1f");
 	}
 	ImGui::End();
 
 	auto& io = ImGui::GetIO();
-	ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - 760, 20), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(370, 420), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowPos(ImVec2(10, 390), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(370, 360), ImGuiCond_FirstUseEver);
 	// Shadow controls and debug view
-	if (ImGui::Begin("ShadowMap (Directional)")) 
+	if (ImGui::Begin("ShadowMap (Directional)"))
 	{
 		ImGui::Checkbox("Enable Shadow", (bool*)&m_->m_ShadowEnabled);
 		ImGui::DragFloat("Bias", &m_->m_ShadowBias, 0.0001f, 0.0f, 0.01f, "%.5f");
@@ -2249,171 +2227,200 @@ void App::RenderControlPannel()
 void App::RenderModelPannel()
 {
 	// Models 독립 창
-	ImGui::SetNextWindowPos(ImVec2(10, 400), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(300, 300), ImGuiCond_FirstUseEver);
-	ImGui::Begin("Model Loader (FBX / OBJ / PMX)");
-	// 렌더 모드 선택
+	auto& io = ImGui::GetIO();
+	ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - 330, 380), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(320, 360), ImGuiCond_FirstUseEver);
+	if (ImGui::Begin("Details"))
 	{
-		int curMode = (m_->m_RenderMode == RenderMode::None) ? 0 : (m_->m_RenderMode == RenderMode::Cube ? 1 : 2);
-		const char* items[] = { "None", "Cube", "Model" };
-		if (ImGui::Combo("Render Mode", &curMode, items, IM_ARRAYSIZE(items)))
+		// 렌더 모드 선택
 		{
-			m_->m_RenderMode = (curMode == 0) ? RenderMode::None : (curMode == 1 ? RenderMode::Cube : RenderMode::Model);
-		}
-	}
-
-	if (ImGui::Button("Browse Model..."))
-	{
-		std::wstring pathW;
-		if (OpenFileDialogModel(pathW))
-		{
-			if (LoadModelFromFile(pathW)) 
-			{ 
-				m_->PushLog("[OK] Model Selected " + Utf8FromWString(pathW));
-				m_->m_RenderMode = RenderMode::Model;
+			int curMode = (m_->m_RenderMode == RenderMode::None) ? 0 : (m_->m_RenderMode == RenderMode::Cube ? 1 : 2);
+			const char* items[] = { "None", "Cube", "Model" };
+			if (ImGui::Combo("Render Mode", &curMode, items, IM_ARRAYSIZE(items)))
+			{
+				m_->m_RenderMode = (curMode == 0) ? RenderMode::None : (curMode == 1 ? RenderMode::Cube : RenderMode::Model);
 			}
-			else { m_->PushLog("[ERR] Load failed (Browse) | file extension must be fbx, obj, pmx"); }
 		}
-	}
-
-	ImGui::SameLine();
-	if (ImGui::Button("Unload Model"))
-	{
-		UnloadModel();
-		m_->m_RenderMode = RenderMode::None; // 시작/언로드시 아무것도 렌더 X
-		m_->PushLog("[OK] Unloaded models");
-	}
-
-	if (!m_->m_Models.empty())
-	{
-		ImGui::Text("Models");
-		for (size_t i = 0; i < m_->m_Models.size(); ++i)
+		if (m_->m_SelectedModelIdx >= 0 && m_->m_SelectedModelIdx < (int)m_->m_Models.size())
 		{
+			int i = m_->m_SelectedModelIdx;
 			auto& mdl = *m_->m_Models[i];
-			ImGui::PushID((int)i);
+			ImGui::Text("Model #%d : %s", i, Utf8FromWString(m_->m_Models[i]->modelName).c_str());
 			ImGui::Separator();
-			ImGui::Text("Model #%d : %s", (int)i, Utf8FromWString(m_->m_Models[i]->modelName).c_str());
+			ImGui::PushID(i);
 			ImGui::DragFloat3("Position", &mdl.pos.x, 0.1f);
 			ImGui::DragFloat3("Rotation (deg)", &mdl.rotDeg.x, 1.0f, -360.0f, 360.0f, "%.1f");
 			ImGui::DragFloat3("Scale", &mdl.scale.x, 0.01f, 0.001f, 100.0f, "%.3f");
 			ImGui::Checkbox("Auto Rotate (Yaw)", &mdl.autoRotate);
-            if (mdl.source == ModelSource::FBX && mdl.shared && mdl.shared->fbx)
-            {
-                if (mdl.shared->fbx->HasAnimations())
+			if (mdl.source == ModelSource::FBX && mdl.shared && mdl.shared->fbx)
+			{
+				if (mdl.shared->fbx->HasAnimations())
 				{
-                    const auto& names = mdl.shared->fbx->GetAnimationNames();
-                    if (mdl.uiSelectedAnim < 0 || mdl.uiSelectedAnim >= (int)names.size()) mdl.uiSelectedAnim = mdl.animator.GetCurrentIndex();
+					const auto& names = mdl.shared->fbx->GetAnimationNames();
+					if (mdl.uiSelectedAnim < 0 || mdl.uiSelectedAnim >= (int)names.size()) mdl.uiSelectedAnim = mdl.animator.GetCurrentIndex();
 					ImGui::Text("FBX Animations");
 					if (ImGui::BeginListBox("##AnimList", ImVec2(-FLT_MIN, 4 * ImGui::GetTextLineHeightWithSpacing())))
 					{
 						for (int a = 0; a < (int)names.size(); ++a)
 						{
 							bool sel = (a == mdl.uiSelectedAnim);
-                            if (ImGui::Selectable(names[a].c_str(), sel))
+							if (ImGui::Selectable(names[a].c_str(), sel))
 							{
-                                mdl.uiSelectedAnim = a;
-                                mdl.animator.SetCurrentIndex(a);
+								mdl.uiSelectedAnim = a;
+								mdl.animator.SetCurrentIndex(a);
 								m_->PushLog(std::string("[OK] FBX Anim -> ") + names[a]);
 							}
 							if (sel) ImGui::SetItemDefaultFocus();
 						}
 						ImGui::EndListBox();
 					}
-                    bool playFBX = mdl.animator.IsPlaying();
-                    if (ImGui::Checkbox("Play", &playFBX)) { mdl.animator.SetPlaying(playFBX); mdl.uiAnimPlaying = playFBX; }
-                    double cur = mdl.animator.GetTimeSec();
-                    double dur = mdl.animator.GetClipDurationSec(mdl.animator.GetCurrentIndex());
+					bool playFBX = mdl.animator.IsPlaying();
+					if (ImGui::Checkbox("Play", &playFBX)) { mdl.animator.SetPlaying(playFBX); mdl.uiAnimPlaying = playFBX; }
+					double cur = mdl.animator.GetTimeSec();
+					double dur = mdl.animator.GetClipDurationSec(mdl.animator.GetCurrentIndex());
 					float curF = (float)cur, durF = (float)dur;
 					if (durF > 0.0f)
 					{
-                        if (ImGui::SliderFloat("Time (s)", &curF, 0.0f, durF)) mdl.animator.SetTimeSec((double)curF);
+						if (ImGui::SliderFloat("Time (s)", &curF, 0.0f, durF)) mdl.animator.SetTimeSec((double)curF);
 					}
 				}
-			}
-            else if (mdl.source == ModelSource::PMX && mdl.shared && mdl.shared->pmx)
-			{
-				if (ImGui::Button("Load VMD..."))
+				else if (mdl.source == ModelSource::PMX && mdl.shared && mdl.shared->pmx)
 				{
-					std::wstring vmdPath;
-					wchar_t file[MAX_PATH] = { 0 };
-					OPENFILENAMEW ofn{}; ofn.lStructSize = sizeof(ofn); ofn.hwndOwner = GameApp::m_hWnd; ofn.lpstrFilter = L"VMD Files (*.vmd)\0*.vmd\0All Files\0*.*\0\0"; ofn.lpstrFile = file; ofn.nMaxFile = MAX_PATH; ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
-					if (GetOpenFileNameW(&ofn))
+					if (ImGui::Button("Load VMD..."))
 					{
-                        if (mdl.shared->pmx->LoadVMD(m_->m_pDevice, file))
+						std::wstring vmdPath;
+						wchar_t file[MAX_PATH] = { 0 };
+						OPENFILENAMEW ofn{}; ofn.lStructSize = sizeof(ofn); ofn.hwndOwner = GameApp::m_hWnd; ofn.lpstrFilter = L"VMD Files (*.vmd)\0*.vmd\0All Files\0*.*\0\0"; ofn.lpstrFile = file; ofn.nMaxFile = MAX_PATH; ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
+						if (GetOpenFileNameW(&ofn))
 						{
-							m_->PushLog("[OK] VMD loaded");
-							mdl.uiAnimPlaying = true;
+							if (mdl.shared->pmx->LoadVMD(m_->m_pDevice, file))
+							{
+								m_->PushLog("[OK] VMD loaded");
+								mdl.uiAnimPlaying = true;
+							}
+							else { m_->PushLog("[ERR] VMD load failed"); }
 						}
-						else { m_->PushLog("[ERR] VMD load failed"); }
+					}
+					bool playPMX = mdl.shared->pmx->IsAnimationPlaying();
+					if (ImGui::Checkbox("Play##PMX", &playPMX)) mdl.shared->pmx->SetAnimationPlaying(playPMX);
+					double cur = mdl.shared->pmx->GetAnimationTimeSeconds();
+					double dur = mdl.shared->pmx->GetClipDurationSec();
+					float curF = (float)cur, durF = (float)dur;
+					if (durF > 0.0f)
+					{
+						if (ImGui::SliderFloat("Time (s)##PMX", &curF, 0.0f, durF)) mdl.shared->pmx->SetAnimationTimeSeconds((double)curF);
 					}
 				}
-                bool playPMX = mdl.shared->pmx->IsAnimationPlaying();
-                if (ImGui::Checkbox("Play##PMX", &playPMX)) mdl.shared->pmx->SetAnimationPlaying(playPMX);
-                double cur = mdl.shared->pmx->GetAnimationTimeSeconds();
-                double dur = mdl.shared->pmx->GetClipDurationSec();
-				float curF = (float)cur, durF = (float)dur;
-				if (durF > 0.0f)
-				{
-                    if (ImGui::SliderFloat("Time (s)##PMX", &curF, 0.0f, durF)) mdl.shared->pmx->SetAnimationTimeSeconds((double)curF);
-				}
-			}
 
-			// 셰이딩 모드 선택 UI 
-			{
-				int modePer = (int)mdl.modelShading;
-				const char* modes[] = { "Phong", "Blinn-Phong", "Lambert", "Unlit", "TextureOnly", "ToonShading" };
-				if (ImGui::Combo("Shading Mode", &modePer, modes, IM_ARRAYSIZE(modes)))
+				// 셰이딩 모드 선택 UI 
 				{
-					mdl.modelShading = (ShadingMode)modePer;
+					int modePer = (int)mdl.modelShading;
+					const char* modes[] = { "Phong", "Blinn-Phong", "Lambert", "Unlit", "TextureOnly", "ToonShading" };
+					if (ImGui::Combo("Shading Mode", &modePer, modes, IM_ARRAYSIZE(modes)))
+					{
+						mdl.modelShading = (ShadingMode)modePer;
+					}
 				}
-			}
-			// Outline 적용 토글
-			ImGui::Checkbox("Outline", &mdl.outlineEnabled);
+				// Outline 적용 토글
+				ImGui::Checkbox("Outline", &mdl.outlineEnabled);
 
-            // 인스턴스 머티리얼
-            ImGui::Checkbox("Use Instance Material", &mdl.useInstanceMaterial);
-            if (mdl.useInstanceMaterial)
-            {
-                ImGui::ColorEdit4("Ambient (ka)##inst", &mdl.instanceMaterial.ambient.x);
-                ImGui::ColorEdit4("Diffuse (kd)##inst", &mdl.instanceMaterial.diffuse.x);
-                ImGui::ColorEdit4("Specular (ks)##inst", &mdl.instanceMaterial.specular.x);
-                ImGui::DragFloat("Shininess (alpha)##inst", &mdl.instanceMaterial.specular.w, 0.05f, 1.0f, 256.0f);
-                ImGui::ColorEdit4("Reflect (kr,a)##inst", &mdl.instanceMaterial.reflect.x);
-            }
-			if (ImGui::Button("Remove"))
+				// 인스턴스 머티리얼
+				ImGui::Checkbox("Use Instance Material", &mdl.useInstanceMaterial);
+				if (mdl.useInstanceMaterial)
+				{
+					ImGui::ColorEdit4("Ambient (ka)##inst", &mdl.instanceMaterial.ambient.x);
+					ImGui::ColorEdit4("Diffuse (kd)##inst", &mdl.instanceMaterial.diffuse.x);
+					ImGui::ColorEdit4("Specular (ks)##inst", &mdl.instanceMaterial.specular.x);
+					ImGui::DragFloat("Shininess (alpha)##inst", &mdl.instanceMaterial.specular.w, 0.05f, 1.0f, 256.0f);
+					ImGui::ColorEdit4("Reflect (kr,a)##inst", &mdl.instanceMaterial.reflect.x);
+				}
+
+				ImGui::Separator();
+				if (mdl.meshStatsValid)
+				{
+					ImGui::Text("Vertex: %u   Edge: %u   Face: %u   Tri: %u", mdl.meshStats.vertices, mdl.meshStats.edges, mdl.meshStats.faces, mdl.meshStats.triangles);
+				}
+
+				// 본 구조 카드
+				const auto& cache = mdl.boneCache;
+				int rootIdx = mdl.boneRoot;
+				bool hasSkeleton = mdl.boneCacheValid && rootIdx >= 0 && rootIdx < (int)cache.size();
+				if (hasSkeleton && rootIdx >= 0)
+				{
+					ImGui::Checkbox("Show Bone Details", &mdl.showBoneDetails);
+					if (mdl.showBoneDetails)
+					{
+						ImGui::BeginChild("BoneCard", ImVec2(0, 240), true, ImGuiWindowFlags_HorizontalScrollbar);
+						ImGui::TextUnformatted(mdl.boneDisplayText.c_str());
+						ImGui::EndChild();
+					}
+				}
+
+				ImGui::PopID();
+			}
+			else
 			{
-				m_->PushLog("[OK] Removed model : " + Utf8FromWString(m_->m_Models[i]->modelName));
-				m_->m_Models.erase(m_->m_Models.begin() + (ptrdiff_t)i);
+				ImGui::TextUnformatted("Select a model in Scene Collection.");
+			}
+		}
+		ImGui::End();
+	}
+}
+
+void App::RenderSceneCollection()
+{
+	auto& io = ImGui::GetIO();
+	// Scene Collection 블렌더의 Hierarchy창
+	ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - 330, 20), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(320, 360), ImGuiCond_FirstUseEver);
+	if (ImGui::Begin("Scene Collection"))
+	{
+		if (ImGui::Button("Browse Model..."))
+		{
+			std::wstring pathW;
+			if (OpenFileDialogModel(pathW))
+			{
+				if (LoadModelFromFile(pathW))
+				{
+					m_->PushLog("[OK] Model Selected " + Utf8FromWString(pathW));
+					m_->m_RenderMode = RenderMode::Model;
+					m_->m_SelectedModelIdx = (int)m_->m_Models.size() - 1;
+				}
+				else { m_->PushLog("[ERR] Load failed (Browse) | file extension must be fbx, obj, pmx"); }
+			}
+		}
+
+		ImGui::SameLine();
+		if (ImGui::Button("Unload Model All"))
+		{
+			UnloadModel();
+			m_->m_RenderMode = RenderMode::None; // 시작/언로드시 아무것도 렌더 안함
+			m_->PushLog("[OK] Unloaded models All");
+		}
+
+		ImGui::Separator();
+		ImGui::Text("Objects");
+		ImGui::BeginChild("##SceneList", ImVec2(0, 0), true, ImGuiWindowFlags_HorizontalScrollbar);
+		for (int i = 0; i < (int)m_->m_Models.size(); ++i)
+		{
+			ImGui::PushID(i);
+			std::string label = std::to_string(i) + std::string("  ") + Utf8FromWString(m_->m_Models[i]->modelName);
+			bool sel = (i == m_->m_SelectedModelIdx);
+			if (ImGui::Selectable(label.c_str(), sel)) m_->m_SelectedModelIdx = i;
+			ImGui::SameLine();
+			if (ImGui::SmallButton("Unload"))
+			{
+				m_->PushLog("[OK] Unloaded: " + Utf8FromWString(m_->m_Models[i]->modelName));
+				m_->m_Models.erase(m_->m_Models.begin() + i);
+				if (m_->m_SelectedModelIdx >= (int)m_->m_Models.size()) m_->m_SelectedModelIdx = (int)m_->m_Models.size() - 1;
 				ImGui::PopID();
 				break;
 			}
-
-			ImGui::Separator();
-			if (mdl.meshStatsValid)
-			{
-				ImGui::Text("Vertex: %u   Edge: %u   Face: %u   Tri: %u", mdl.meshStats.vertices, mdl.meshStats.edges, mdl.meshStats.faces, mdl.meshStats.triangles);
-			}
-
-			// 본 구조 카드: 자세히 보기 토글
-			const auto& cache = mdl.boneCache;
-			int rootIdx = mdl.boneRoot;
-			bool hasSkeleton = mdl.boneCacheValid && rootIdx >= 0 && rootIdx < (int)cache.size();
-            if (hasSkeleton && rootIdx >= 0)
-			{
-				ImGui::Checkbox("Show Bone Details", &mdl.showBoneDetails);
-				if (mdl.showBoneDetails)
-				{
-					ImGui::BeginChild("BoneCard", ImVec2(0, 240), true, ImGuiWindowFlags_HorizontalScrollbar);
-					ImGui::TextUnformatted(mdl.boneDisplayText.c_str());
-					ImGui::EndChild();
-				}
-			}
-
 			ImGui::PopID();
 		}
+		ImGui::EndChild();
 	}
 	ImGui::End();
-
 }
 
 void App::RenderConsolPannel()
@@ -2421,8 +2428,8 @@ void App::RenderConsolPannel()
 	// Console
 	{
 		auto& io = ImGui::GetIO();
-		ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - 340, 200), ImGuiCond_FirstUseEver);
-		ImGui::SetNextWindowSize(ImVec2(330, 260), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x / 2 - 415, io.DisplaySize.y - 210), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(830, 200), ImGuiCond_FirstUseEver);
 
 		if (ImGui::Begin("Console"))
 		{

@@ -97,7 +97,7 @@ float4 main(VertexOut pIn) : SV_Target
     {
         // VS에서 가져온 라이트 공간 좌표 사용.동차좌표계
         float3 sh = pIn.posShadowH.xyz / pIn.posShadowH.w;          // NDC
-        float2 uv = sh.xy * 0.5f + 0.5f;        // [0,1]
+        float2 uv = sh.xy * float2(0.5f, -0.5f) + float2(0.5f, 0.5f);        // [0,1]
         float  depth = sh.z;                    // light clip depth
 
         // Early out if outside
