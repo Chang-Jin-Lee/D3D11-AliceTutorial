@@ -53,6 +53,10 @@ public:
 	XMFLOAT3 GetPosition() const;
 	void SetPosition(const XMFLOAT3& pos) { m_Position = pos; }
 
+	// Rotation (degrees in public API)
+	XMFLOAT3 GetRotation() const;                 // returns degrees (pitch,yaw,roll)
+	void SetRotation(const XMFLOAT3& rotDeg);     // accepts degrees (pitch,yaw,roll)
+
 	void AddInputVector(const XMFLOAT3& input);
 	void SetSpeed(float speed) { m_MoveSpeed = speed; }
 	void AddPitch(float valueRad);

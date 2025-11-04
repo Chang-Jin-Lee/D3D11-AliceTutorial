@@ -25,6 +25,22 @@ DirectX::XMFLOAT3 Camera::GetPosition() const
 	return m_Position;
 }
 
+XMFLOAT3 Camera::GetRotation() const
+{
+    return XMFLOAT3(
+        XMConvertToDegrees(m_Rotation.x),
+        XMConvertToDegrees(m_Rotation.y),
+        XMConvertToDegrees(m_Rotation.z));
+}
+
+void Camera::SetRotation(const XMFLOAT3& rotDeg)
+{
+    m_Rotation = XMFLOAT3(
+        XMConvertToRadians(rotDeg.x),
+        XMConvertToRadians(rotDeg.y),
+        XMConvertToRadians(rotDeg.z));
+}
+
 XMVECTOR Camera::GetForwardXM() const
 {
 	// World forward: +Z axis in LH. For identity world, returns (0,0,1).
