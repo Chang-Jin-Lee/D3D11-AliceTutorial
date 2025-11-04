@@ -357,9 +357,8 @@ struct App::Impl {
 	int                           m_ShadowSize = 4096;
 	float                         m_ShadowBias = 0.0015f;
 	float                         m_ShadowPCFRadius = 1.0f;
-	float                         m_ShadowOrthoRadius = 10.0f; // 카메라 중심 반경(m)
-	float                         m_ShadowNear = -26.0f;
-	float                         m_ShadowFar = 50.0f;
+	float                         m_ShadowOrthoRadius = 1000.0f; // 카메라 중심 반경(m)
+
 
 	// 데모/디버그용 텍스처 및 UI 표시 크기
 	ID3D11ShaderResourceView* m_TexHanakoSRV = nullptr;
@@ -400,7 +399,7 @@ struct App::Impl {
 	ShadingMode                   m_ShadingMode = ShadingMode::Phong;
 	// Outline params ImGui에서 제어하는 용도도
 	// Rim 파라미터 제거. 멀티패스 지오메트리 아웃라인만 사용
-	float                         m_OutlineThickness = 0.015f;
+	float                         m_OutlineThickness = 0.08f;
 	XMFLOAT4                      m_OutlineColor = XMFLOAT4(1.0, 0.7286, 0, 1);
 	float                         m_OutlineStrength = 1.0f;
 	int                           m_EnableNormalMap = 1;
@@ -553,174 +552,61 @@ bool App::OnInitialize()
 	if (!m_->m_SystemInfo.InitSysInfomation(m_->m_pDevice)) return false;
 
 	// 앨리스 로드
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 0
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 1
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 2
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 3
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 4
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 5
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 6
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 7
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 8
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 9
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 10
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 11
-
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 12
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 13
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 14
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 15
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 16
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 17
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 18
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 19
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 20
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 21
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 22
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 23
-
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 24
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 25
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 26
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 27
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 28
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 29
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 30
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 31
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 32
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 33
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 34
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 35
+	LoadModelFromFile(L"..\\Resource\\fbx\\SkinningTest.fbx"); // 0
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping_idle_walk_run.fbx"); // 1
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping_idle_walk_run.fbx"); // 2
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping_idle_walk_run.fbx"); // 3
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping_idle_walk_run.fbx"); // 4
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping_idle_walk_run.fbx"); // 5
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping_idle_walk_run.fbx"); // 6
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping_idle_walk_run.fbx"); // 7
 
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Ground.fbx"); // 0
 
-	m_->m_camera.SetPosition(XMFLOAT3(1.5f * -6, 1.0f, -1.0f));
-	m_->m_camera.SetSpeed(1.5);
+	m_->m_camera.SetPosition(XMFLOAT3(40, 208.0f, -184.0f));
+	m_->m_camera.SetSpeed(200.5);
+	m_->m_camera.SetRotation(XMFLOAT3(49.0f, -6.0f, 0.0f));
 
 	// 트랜스폼 설정
-	m_->m_Models[0]->pos = XMFLOAT3(1.5f * -6, 0.0f, 0.0f);
-	m_->m_Models[1]->pos = XMFLOAT3(1.5f * -5, 0.0f, 0.0f);
-	m_->m_Models[2]->pos = XMFLOAT3(1.5f * -4, 0.0f, 0.0f);
-	m_->m_Models[3]->pos = XMFLOAT3(1.5f * -3, 0.0f, 0.0f);
-	m_->m_Models[4]->pos = XMFLOAT3(1.5f * -2, 0.0f, 0.0f);
-	m_->m_Models[5]->pos = XMFLOAT3(1.5f * -1, 0.0f, 0.0f);
-	m_->m_Models[6]->pos = XMFLOAT3(1.5f * 1, 0.0f, 0.0f);
-	m_->m_Models[7]->pos = XMFLOAT3(1.5f * 2, 0.0f, 0.0f);
-	m_->m_Models[8]->pos = XMFLOAT3(1.5f * 3, 0.0f, 0.0f);
-	m_->m_Models[9]->pos = XMFLOAT3(1.5f * 4, 0.0f, 0.0f);
-	m_->m_Models[10]->pos = XMFLOAT3(1.5f * 5, 0.0f, 0.0f);
-	m_->m_Models[11]->pos = XMFLOAT3(1.5f * 6, 0.0f, 0.0f);
+	m_->m_Models[0]->pos = XMFLOAT3(115.0f * 0, 0.0f, 0.0f);
+	m_->m_Models[1]->pos = XMFLOAT3(115.0f * -3, 0.0f, 180.0f);
+	m_->m_Models[2]->pos = XMFLOAT3(115.0f * -2, 0.0f, 180.0f);
+	m_->m_Models[3]->pos = XMFLOAT3(115.0f * -1, 0.0f, 180.0f);
+	m_->m_Models[4]->pos = XMFLOAT3(115.0f * 0, 0.0f, 180.0f);
+	m_->m_Models[5]->pos = XMFLOAT3(115.0f * 1, 0.0f, 180.0f);
+	m_->m_Models[6]->pos = XMFLOAT3(115.0f * 2, 0.0f, 180.0f);
+	m_->m_Models[7]->pos = XMFLOAT3(115.0f * 3, 0.0f, 180.0f);
 
-	m_->m_Models[12]->pos = XMFLOAT3(1.5f * -6, 0.0f, 2.0f);
-	m_->m_Models[13]->pos = XMFLOAT3(1.5f * -5, 0.0f, 2.0f);
-	m_->m_Models[14]->pos = XMFLOAT3(1.5f * -4, 0.0f, 2.0f);
-	m_->m_Models[15]->pos = XMFLOAT3(1.5f * -3, 0.0f, 2.0f);
-	m_->m_Models[16]->pos = XMFLOAT3(1.5f * -2, 0.0f, 2.0f);
-	m_->m_Models[17]->pos = XMFLOAT3(1.5f * -1, 0.0f, 2.0f);
-	m_->m_Models[18]->pos = XMFLOAT3(1.5f * 1, 0.0f, 2.0f);
-	m_->m_Models[19]->pos = XMFLOAT3(1.5f * 2, 0.0f, 2.0f);
-	m_->m_Models[20]->pos = XMFLOAT3(1.5f * 3, 0.0f, 2.0f);
-	m_->m_Models[21]->pos = XMFLOAT3(1.5f * 4,  0.0f, 2.0f);
-	m_->m_Models[22]->pos = XMFLOAT3(1.5f * 5, 0.0f, 2.0f);
-	m_->m_Models[23]->pos = XMFLOAT3(1.5f * 6, 0.0f, 2.0f);
-
-	m_->m_Models[24]->pos = XMFLOAT3(1.5f * -6, 0.0f, 4.0f);
-	m_->m_Models[25]->pos = XMFLOAT3(1.5f * -5, 0.0f, 4.0f);
-	m_->m_Models[26]->pos = XMFLOAT3(1.5f * -4, 0.0f, 4.0f);
-	m_->m_Models[27]->pos = XMFLOAT3(1.5f * -3, 0.0f, 4.0f);
-	m_->m_Models[28]->pos = XMFLOAT3(1.5f * -2, 0.0f, 4.0f);
-	m_->m_Models[29]->pos = XMFLOAT3(1.5f * -1, 0.0f, 4.0f);
-	m_->m_Models[30]->pos = XMFLOAT3(1.5f * 1, 0.0f, 4.0f);
-	m_->m_Models[31]->pos = XMFLOAT3(1.5f * 2, 0.0f, 4.0f);
-	m_->m_Models[32]->pos = XMFLOAT3(1.5f * 3, 0.0f, 4.0f);
-	m_->m_Models[33]->pos = XMFLOAT3(1.5f * 4, 0.0f, 4.0f);
-	m_->m_Models[34]->pos = XMFLOAT3(1.5f * 5, 0.0f, 4.0f);
-	m_->m_Models[35]->pos = XMFLOAT3(1.5f * 6, 0.0f, 4.0f);
+	m_->m_Models[8]->scale = XMFLOAT3(2.0f, 1.0f, 8.0f);
 
 	// 랜더 모드 설정
-	m_->m_Models[0]->modelShading = ShadingMode::Lambert;		m_->m_Models[0]->outlineEnabled = false;
-	m_->m_Models[1]->modelShading = ShadingMode::BlinnPhong;	m_->m_Models[1]->outlineEnabled = false;
-	m_->m_Models[2]->modelShading = ShadingMode::Phong;			m_->m_Models[2]->outlineEnabled = false;
-	m_->m_Models[3]->modelShading = ShadingMode::TextureOnly;	m_->m_Models[3]->outlineEnabled = false;
-	m_->m_Models[4]->modelShading = ShadingMode::ToonShading;	m_->m_Models[4]->outlineEnabled = false;
-	m_->m_Models[5]->modelShading = ShadingMode::Unlit;			m_->m_Models[5]->outlineEnabled = false;
+	m_->m_Models[0]->modelShading = ShadingMode::ToonShading;	m_->m_Models[0]->outlineEnabled = false;
+	m_->m_Models[1]->modelShading = ShadingMode::ToonShading;	m_->m_Models[1]->outlineEnabled = true;
+	m_->m_Models[2]->modelShading = ShadingMode::TextureOnly;	m_->m_Models[2]->outlineEnabled = false;
+	m_->m_Models[3]->modelShading = ShadingMode::TextureOnly;	m_->m_Models[3]->outlineEnabled = true;
+	m_->m_Models[4]->modelShading = ShadingMode::Phong;			m_->m_Models[4]->outlineEnabled = false;
+	m_->m_Models[5]->modelShading = ShadingMode::BlinnPhong;	m_->m_Models[5]->outlineEnabled = false;
 	m_->m_Models[6]->modelShading = ShadingMode::Lambert;		m_->m_Models[6]->outlineEnabled = true;
-	m_->m_Models[7]->modelShading = ShadingMode::BlinnPhong;	m_->m_Models[7]->outlineEnabled = true;
-	m_->m_Models[8]->modelShading = ShadingMode::Phong;			m_->m_Models[8]->outlineEnabled = true;
-	m_->m_Models[9]->modelShading = ShadingMode::TextureOnly;	m_->m_Models[9]->outlineEnabled = true;
-	m_->m_Models[10]->modelShading = ShadingMode::ToonShading;	m_->m_Models[10]->outlineEnabled = true;
-	m_->m_Models[11]->modelShading = ShadingMode::Unlit;		m_->m_Models[11]->outlineEnabled = true;
-
-	// 2줄 (12..23)
-	m_->m_Models[12]->modelShading = ShadingMode::Lambert;      m_->m_Models[12]->outlineEnabled = false;
-	m_->m_Models[13]->modelShading = ShadingMode::BlinnPhong;   m_->m_Models[13]->outlineEnabled = false;
-	m_->m_Models[14]->modelShading = ShadingMode::Phong;        m_->m_Models[14]->outlineEnabled = false;
-	m_->m_Models[15]->modelShading = ShadingMode::TextureOnly;  m_->m_Models[15]->outlineEnabled = false;
-	m_->m_Models[16]->modelShading = ShadingMode::ToonShading;  m_->m_Models[16]->outlineEnabled = false;
-	m_->m_Models[17]->modelShading = ShadingMode::Unlit;        m_->m_Models[17]->outlineEnabled = false;
-	m_->m_Models[18]->modelShading = ShadingMode::Lambert;      m_->m_Models[18]->outlineEnabled = true;
-	m_->m_Models[19]->modelShading = ShadingMode::BlinnPhong;   m_->m_Models[19]->outlineEnabled = true;
-	m_->m_Models[20]->modelShading = ShadingMode::Phong;        m_->m_Models[20]->outlineEnabled = true;
-	m_->m_Models[21]->modelShading = ShadingMode::TextureOnly;  m_->m_Models[21]->outlineEnabled = true;
-	m_->m_Models[22]->modelShading = ShadingMode::ToonShading;  m_->m_Models[22]->outlineEnabled = true;
-	m_->m_Models[23]->modelShading = ShadingMode::Unlit;        m_->m_Models[23]->outlineEnabled = true;
-	// 3줄 (24..35)
-	m_->m_Models[24]->modelShading = ShadingMode::Lambert;      m_->m_Models[24]->outlineEnabled = false;
-	m_->m_Models[25]->modelShading = ShadingMode::BlinnPhong;   m_->m_Models[25]->outlineEnabled = false;
-	m_->m_Models[26]->modelShading = ShadingMode::Phong;        m_->m_Models[26]->outlineEnabled = false;
-	m_->m_Models[27]->modelShading = ShadingMode::TextureOnly;  m_->m_Models[27]->outlineEnabled = false;
-	m_->m_Models[28]->modelShading = ShadingMode::ToonShading;  m_->m_Models[28]->outlineEnabled = false;
-	m_->m_Models[29]->modelShading = ShadingMode::Unlit;        m_->m_Models[29]->outlineEnabled = false;
-	m_->m_Models[30]->modelShading = ShadingMode::Lambert;      m_->m_Models[30]->outlineEnabled = true;
-	m_->m_Models[31]->modelShading = ShadingMode::BlinnPhong;   m_->m_Models[31]->outlineEnabled = true;
-	m_->m_Models[32]->modelShading = ShadingMode::Phong;        m_->m_Models[32]->outlineEnabled = true;
-	m_->m_Models[33]->modelShading = ShadingMode::TextureOnly;  m_->m_Models[33]->outlineEnabled = true;
-	m_->m_Models[34]->modelShading = ShadingMode::ToonShading;  m_->m_Models[34]->outlineEnabled = true;
-	m_->m_Models[35]->modelShading = ShadingMode::Unlit;        m_->m_Models[35]->outlineEnabled = true;
-
+	m_->m_Models[7]->modelShading = ShadingMode::Unlit;			m_->m_Models[7]->outlineEnabled = true;
 
 	// 현재 애니메이션 인덱스 설정
 	m_->m_Models[0]->animator.SetCurrentIndex(0);  m_->m_Models[0]->uiAnimPlaying = true;
-	m_->m_Models[1]->animator.SetCurrentIndex(0);  m_->m_Models[1]->uiAnimPlaying = true;
-	m_->m_Models[2]->animator.SetCurrentIndex(0);  m_->m_Models[2]->uiAnimPlaying = true;
-	m_->m_Models[3]->animator.SetCurrentIndex(0);  m_->m_Models[3]->uiAnimPlaying = true;
-	m_->m_Models[4]->animator.SetCurrentIndex(0);  m_->m_Models[4]->uiAnimPlaying = true;
-	m_->m_Models[5]->animator.SetCurrentIndex(0);  m_->m_Models[5]->uiAnimPlaying = true;
-	m_->m_Models[6]->animator.SetCurrentIndex(0);  m_->m_Models[6]->uiAnimPlaying = true;
-	m_->m_Models[7]->animator.SetCurrentIndex(0);  m_->m_Models[7]->uiAnimPlaying = true;
-	m_->m_Models[8]->animator.SetCurrentIndex(0);  m_->m_Models[8]->uiAnimPlaying = true;
-	m_->m_Models[9]->animator.SetCurrentIndex(0);  m_->m_Models[9]->uiAnimPlaying = true;
-	m_->m_Models[10]->animator.SetCurrentIndex(0); m_->m_Models[10]->uiAnimPlaying = true;
-	m_->m_Models[11]->animator.SetCurrentIndex(0); m_->m_Models[11]->uiAnimPlaying = true;
+	m_->m_Models[1]->animator.SetCurrentIndex(2);  m_->m_Models[1]->uiAnimPlaying = true;
+	m_->m_Models[2]->animator.SetCurrentIndex(1);  m_->m_Models[2]->uiAnimPlaying = true;
+	m_->m_Models[3]->animator.SetCurrentIndex(2);  m_->m_Models[3]->uiAnimPlaying = true;
+	m_->m_Models[4]->animator.SetCurrentIndex(1);  m_->m_Models[4]->uiAnimPlaying = true;
+	m_->m_Models[5]->animator.SetCurrentIndex(2);  m_->m_Models[5]->uiAnimPlaying = true;
+	m_->m_Models[6]->animator.SetCurrentIndex(2);  m_->m_Models[6]->uiAnimPlaying = true;
+	m_->m_Models[7]->animator.SetCurrentIndex(2);  m_->m_Models[7]->uiAnimPlaying = true;
 
-	m_->m_Models[12]->animator.SetCurrentIndex(2);  m_->m_Models[12]->uiAnimPlaying = true;
-	m_->m_Models[13]->animator.SetCurrentIndex(2);  m_->m_Models[13]->uiAnimPlaying = true;
-	m_->m_Models[14]->animator.SetCurrentIndex(2);  m_->m_Models[14]->uiAnimPlaying = true;
-	m_->m_Models[15]->animator.SetCurrentIndex(2);  m_->m_Models[15]->uiAnimPlaying = true;
-	m_->m_Models[16]->animator.SetCurrentIndex(2);  m_->m_Models[16]->uiAnimPlaying = true;
-	m_->m_Models[17]->animator.SetCurrentIndex(2);  m_->m_Models[17]->uiAnimPlaying = true;
-	m_->m_Models[18]->animator.SetCurrentIndex(2);  m_->m_Models[18]->uiAnimPlaying = true;
-	m_->m_Models[19]->animator.SetCurrentIndex(2);  m_->m_Models[19]->uiAnimPlaying = true;
-	m_->m_Models[20]->animator.SetCurrentIndex(2);  m_->m_Models[20]->uiAnimPlaying = true;
-	m_->m_Models[21]->animator.SetCurrentIndex(2);  m_->m_Models[21]->uiAnimPlaying = true;
-	m_->m_Models[22]->animator.SetCurrentIndex(2);  m_->m_Models[22]->uiAnimPlaying = true;
-	m_->m_Models[23]->animator.SetCurrentIndex(2);  m_->m_Models[23]->uiAnimPlaying = true;
-	// 3줄 (24..35)
-	m_->m_Models[24]->animator.SetCurrentIndex(1);  m_->m_Models[24]->uiAnimPlaying = true;
-	m_->m_Models[25]->animator.SetCurrentIndex(1);  m_->m_Models[25]->uiAnimPlaying = true;
-	m_->m_Models[26]->animator.SetCurrentIndex(1);  m_->m_Models[26]->uiAnimPlaying = true;
-	m_->m_Models[27]->animator.SetCurrentIndex(1);  m_->m_Models[27]->uiAnimPlaying = true;
-	m_->m_Models[28]->animator.SetCurrentIndex(1);  m_->m_Models[28]->uiAnimPlaying = true;
-	m_->m_Models[29]->animator.SetCurrentIndex(1);  m_->m_Models[29]->uiAnimPlaying = true;
-	m_->m_Models[30]->animator.SetCurrentIndex(1);  m_->m_Models[30]->uiAnimPlaying = true;
-	m_->m_Models[31]->animator.SetCurrentIndex(1);  m_->m_Models[31]->uiAnimPlaying = true;
-	m_->m_Models[32]->animator.SetCurrentIndex(1);  m_->m_Models[32]->uiAnimPlaying = true;
-	m_->m_Models[33]->animator.SetCurrentIndex(1);  m_->m_Models[33]->uiAnimPlaying = true;
-	m_->m_Models[34]->animator.SetCurrentIndex(1);  m_->m_Models[34]->uiAnimPlaying = true;
-	m_->m_Models[35]->animator.SetCurrentIndex(1);  m_->m_Models[35]->uiAnimPlaying = true;
+	{
+		m_->m_Models[0]->useInstanceMaterial = true;
+		m_->m_Models[0]->instanceMaterial.ambient = XMFLOAT4(0.02f, 0.05f, 0.06f, 1.0f);
+		m_->m_Models[0]->instanceMaterial.diffuse = XMFLOAT4(0.15f, 0.70f, 0.85f, 1.0f);
+		m_->m_Models[0]->instanceMaterial.specular = XMFLOAT4(0.90f, 0.90f, 0.90f, 64.0f);
+	}
 
-
-	m_->m_OutlineThickness = 0.001f;
+	m_->m_OutlineThickness = 0.08f;
 	m_->m_OutlineColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 1);
 
 	return true;
@@ -746,21 +632,35 @@ void App::OnUpdate(const float& dt)
 		XMVECTOR focus = XMLoadFloat3(&focusF);
 
 		XMVECTOR fwd = XMVector3Normalize(XMLoadFloat3(&m_->m_DirLight.direction)); // 라이트가 비추는 방향
-		float backDist = 30.0f;
+		float r = m_->m_ShadowOrthoRadius;
+		// 큰 오브젝트에서도 라이트 카메라가 항상 AABB 뒤쪽에 위치하도록 반경만큼 뒤로 물린다
+		float backDist = r;
 		XMVECTOR lightPos = XMVectorSubtract(focus, XMVectorScale(fwd, backDist));
 		XMVECTOR up = XMVectorSet(0, 1, 0, 0);
 		if (fabsf(XMVectorGetX(XMVector3Dot(up, fwd))) > 0.99f) up = XMVectorSet(0, 0, 1, 0);
 		XMMATRIX LView = XMMatrixLookToLH(lightPos, fwd, up);
-		float r = m_->m_ShadowOrthoRadius;
-		float nAbs = fabsf(m_->m_ShadowNear);
-		float fAbs = fabsf(m_->m_ShadowFar);
-		float zn = (std::min)(nAbs, fAbs);
-		float zf = (std::max)(nAbs, fAbs);
-		zn = (zn < 0.01f) ? 0.01f : zn;
+
+		// 라이트 뷰 공간에서 포커스 주변 AABB(±r)를 투영해 동적으로 near/far 계산
+		float minZ = 1e9f, maxZ = -1e9f;
+		for (int sx = -1; sx <= 1; sx += 2)
+		for (int sy = -1; sy <= 1; sy += 2)
+		for (int sz = -1; sz <= 1; sz += 2)
+		{
+			XMVECTOR cornerWS = XMVectorSet(focusF.x + sx * r, focusF.y + sy * r, focusF.z + sz * r, 1.0f);
+			XMVECTOR cornerLS = XMVector3TransformCoord(cornerWS, LView);
+			float z = XMVectorGetZ(cornerLS);
+			minZ = (z < minZ) ? z : minZ;
+			maxZ = (z > maxZ) ? z : maxZ;
+		}
+		// 여유 패딩(5%)을 주고 near는 0.01 이상으로 고정
+		float zPad = r * 0.05f;
+		float zn = (minZ - zPad);
+		if (zn < 0.01f) zn = 0.01f;
+		float zf = maxZ + zPad;
 		if (zf <= zn) zf = zn + 0.01f;
 		XMMATRIX LProj = XMMatrixOrthographicOffCenterLH(-r, r, -r, r, zn, zf);
 
-		// 텍셀 스냅: 라이트 뷰 공간 XY를 섀도우맵 텍셀 그리드에 정렬
+		// 텍셀 스냅: 라이트 뷰 공간 XY를 섀도우맵 텍셀 그리드에 정렬(near/far에는 영향 없음)
 		XMVECTOR focusLS = XMVector3TransformCoord(focus, LView);
 		float texelWorld = (2.0f * r) / (float)m_->m_ShadowSize;
 		float fx = XMVectorGetX(focusLS);
@@ -1227,7 +1127,10 @@ void App::OnRender()
 			}
 
 			// 2) 아웃라인 패스: 본 패스 이후에 백페이스 확장 렌더 (깊이 읽기 전용)
-			if (mdlPtr->outlineEnabled && m_->m_OutlineThickness > 0.0f && m_->m_OutlineStrength > 0.0f)
+			{
+				bool isSelected = (m_->m_SelectedModelIdx >= 0 && m_->m_SelectedModelIdx < (int)m_->m_Models.size() && mdlPtr.get() == m_->m_Models[m_->m_SelectedModelIdx].get());
+				bool doOutline = (mdlPtr->outlineEnabled || isSelected) && m_->m_OutlineStrength > 0.0f;
+				if (doOutline)
 			{
 				// 월드행렬 재계산
 				XMMATRIX rotYaw = XMMatrixRotationY(XMConvertToRadians(mdlPtr->rotDeg.y));
@@ -1245,8 +1148,10 @@ void App::OnRender()
 				cbOutline.enableNormalMap = 0;
 				cbOutline.useSpecularMap = 0;
 				cbOutline.pad = 6.0f; // PSOutline 단색 출력
-				cbOutline.outlineThickness = m_->m_OutlineThickness;
-				cbOutline.outlineColor = m_->m_OutlineColor;
+				float thickness = m_->m_OutlineThickness;
+				if (isSelected) thickness = (std::max)(thickness, 2.0f);
+				cbOutline.outlineThickness = thickness;
+				cbOutline.outlineColor = isSelected ? XMFLOAT4(1.0f, 0.9f, 0.2f, 1.0f) : m_->m_OutlineColor; // 선택 하이라이트: 노란색
 				cbOutline.outlineStrength = m_->m_OutlineStrength;
 				D3D11_MAPPED_SUBRESOURCE mappedOL;
 				HR_T(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedOL));
@@ -1292,6 +1197,7 @@ void App::OnRender()
 				m_->m_pDeviceContext->PSSetShader(m_->m_pPixelShader, nullptr, 0);
 				m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShader, nullptr, 0);
 				ID3D11Buffer* nullCB = nullptr; m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &nullCB);
+			}
 			}
 			// 모델별 루프 끝에서 VS/IL 복원은 다음 모델에서 다시 설정되므로 별도 복원 불필요
 		}
@@ -1714,7 +1620,7 @@ bool App::InitScene()
 	// 카메라(View/Proj)로 상수 버퍼를 준비합니다
 	m_->m_baseProjection.world = XMMatrixIdentity();
 	// 카메라 초기 프러스텀 값들 설정
-	m_->m_camera.SetFrustum(XMConvertToRadians(90.0f), AspectRatio(), 0.1f, 100.0f);
+	m_->m_camera.SetFrustum(XMConvertToRadians(90.0f), AspectRatio(), 1.0f, 1000.0f);
 	m_->m_baseProjection.view = XMMatrixTranspose(m_->m_camera.GetViewMatrixXM());
 	m_->m_baseProjection.proj = XMMatrixTranspose(m_->m_camera.GetProjMatrixXM());
 	m_->m_baseProjection.worldInvTranspose = XMMatrixInverse(nullptr, XMMatrixTranspose(m_->m_baseProjection.world));
@@ -2253,6 +2159,14 @@ void App::RenderControlPannel()
 			{
 				m_->m_camera.SetFrustum(m_->m_camera.GetFovYRad(), AspectRatio(), nearZ, farZ);
 			}
+			// 카메라 회전(도) 표시 및 편집: pitch, yaw, roll (API로 일원화)
+			{
+				XMFLOAT3 rotDeg = m_->m_camera.GetRotation();
+				if (ImGui::DragFloat3("Camera Rot (deg)", &rotDeg.x, 1.0f, -180.0f, 180.0f, "%.1f"))
+				{
+					m_->m_camera.SetRotation(rotDeg);
+				}
+			}
 		}
 		ImGui::Separator();
 		ImGui::Text("Shading");
@@ -2314,10 +2228,9 @@ void App::RenderControlPannel()
 	if (ImGui::Begin("ShadowMap (Directional)"))
 	{
 		ImGui::Checkbox("Enable Shadow", (bool*)&m_->m_ShadowEnabled);
-		ImGui::DragFloat("Bias", &m_->m_ShadowBias, 0.0001f, 0.0f, 0.01f, "%.5f");
+		ImGui::DragFloat("Bias", &m_->m_ShadowBias, 0.0001f, 0.0f, .1f, "%.5f");
 		ImGui::SliderFloat("PCF Radius(Texel)", &m_->m_ShadowPCFRadius, 0.0f, 3.0f, "%.2f");
-		ImGui::SliderFloat("Ortho Radius(m)", &m_->m_ShadowOrthoRadius, 1.0f, 200.0f, "%.1f");
-		ImGui::DragFloatRange2("Shadow Near/Far", &m_->m_ShadowNear, &m_->m_ShadowFar, 0.5f, -500.0f, 500.0f, "Near: %.1f", "Far: %.1f");
+		ImGui::SliderFloat("Ortho Radius(m)", &m_->m_ShadowOrthoRadius, 1.0f, 3000.0f, "%.1f");
 		if (m_->m_pShadowSRV)
 		{
 			ImGui::Separator();
@@ -2512,8 +2425,9 @@ void App::RenderSceneCollection()
 			ImGui::PushID(i);
 			std::string label = std::to_string(i) + std::string("  ") + Utf8FromWString(m_->m_Models[i]->modelName);
 			bool sel = (i == m_->m_SelectedModelIdx);
-			if (ImGui::Selectable(label.c_str(), sel)) m_->m_SelectedModelIdx = i;
+			if (ImGui::Selectable(label.c_str(), sel, ImGuiSelectableFlags_AllowItemOverlap)) m_->m_SelectedModelIdx = i;
 			ImGui::SameLine();
+			ImGui::SetItemAllowOverlap();
 			if (ImGui::SmallButton("Unload"))
 			{
 				m_->PushLog("[OK] Unloaded: " + Utf8FromWString(m_->m_Models[i]->modelName));
