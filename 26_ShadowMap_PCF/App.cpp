@@ -357,7 +357,7 @@ struct App::Impl {
 	int                           m_ShadowSize = 4096;
 	float                         m_ShadowBias = 0.0015f;
 	float                         m_ShadowPCFRadius = 1.0f;
-	float                         m_ShadowOrthoRadius = 8.1f; // 카메라 중심 반경(m)
+	float                         m_ShadowOrthoRadius = 10.0f; // 카메라 중심 반경(m)
 	float                         m_ShadowNear = -26.0f;
 	float                         m_ShadowFar = 50.0f;
 
@@ -566,28 +566,80 @@ bool App::OnInitialize()
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 10
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 11
 
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 12
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 13
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 14
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 15
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 16
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 17
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 18
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 19
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 20
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 21
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 22
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 23
+
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 24
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 25
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 26
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 27
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 28
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 29
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 30
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 31
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 32
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 33
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 34
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 35
+
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Ground.fbx"); // 0
 
-	m_->m_camera.SetPosition(XMFLOAT3(0.0f, 1.0f, -1.0f));
+	m_->m_camera.SetPosition(XMFLOAT3(1.5f * -6, 1.0f, -1.0f));
 	m_->m_camera.SetSpeed(1.5);
 
 	// 트랜스폼 설정
-	m_->m_Models[0]->pos = XMFLOAT3(1.5f * 0, 0.0f, 0.0f);
-	m_->m_Models[1]->pos = XMFLOAT3(1.5f * 1, 0.0f, 0.0f);
-	m_->m_Models[2]->pos = XMFLOAT3(1.5f * 2, 0.0f, 0.0f);
-	m_->m_Models[3]->pos = XMFLOAT3(1.5f * 3, 0.0f, 0.0f);
-	m_->m_Models[4]->pos = XMFLOAT3(1.5f * 4, 0.0f, 0.0f);
-	m_->m_Models[5]->pos = XMFLOAT3(1.5f * 5, 0.0f, 0.0f);
-	m_->m_Models[6]->pos = XMFLOAT3(1.5f * 6, 0.0f, 0.0f);
-	m_->m_Models[7]->pos = XMFLOAT3(1.5f * 7, 0.0f, 0.0f);
-	m_->m_Models[8]->pos = XMFLOAT3(1.5f * 8, 0.0f, 0.0f);
-	m_->m_Models[9]->pos = XMFLOAT3(1.5f * 9, 0.0f, 0.0f);
-	m_->m_Models[10]->pos = XMFLOAT3(1.5f * 10, 0.0f, 0.0f);
-	m_->m_Models[11]->pos = XMFLOAT3(1.5f * 11, 0.0f, 0.0f);
+	m_->m_Models[0]->pos = XMFLOAT3(1.5f * -6, 0.0f, 0.0f);
+	m_->m_Models[1]->pos = XMFLOAT3(1.5f * -5, 0.0f, 0.0f);
+	m_->m_Models[2]->pos = XMFLOAT3(1.5f * -4, 0.0f, 0.0f);
+	m_->m_Models[3]->pos = XMFLOAT3(1.5f * -3, 0.0f, 0.0f);
+	m_->m_Models[4]->pos = XMFLOAT3(1.5f * -2, 0.0f, 0.0f);
+	m_->m_Models[5]->pos = XMFLOAT3(1.5f * -1, 0.0f, 0.0f);
+	m_->m_Models[6]->pos = XMFLOAT3(1.5f * 1, 0.0f, 0.0f);
+	m_->m_Models[7]->pos = XMFLOAT3(1.5f * 2, 0.0f, 0.0f);
+	m_->m_Models[8]->pos = XMFLOAT3(1.5f * 3, 0.0f, 0.0f);
+	m_->m_Models[9]->pos = XMFLOAT3(1.5f * 4, 0.0f, 0.0f);
+	m_->m_Models[10]->pos = XMFLOAT3(1.5f * 5, 0.0f, 0.0f);
+	m_->m_Models[11]->pos = XMFLOAT3(1.5f * 6, 0.0f, 0.0f);
+
+	m_->m_Models[12]->pos = XMFLOAT3(1.5f * -6, 0.0f, 2.0f);
+	m_->m_Models[13]->pos = XMFLOAT3(1.5f * -5, 0.0f, 2.0f);
+	m_->m_Models[14]->pos = XMFLOAT3(1.5f * -4, 0.0f, 2.0f);
+	m_->m_Models[15]->pos = XMFLOAT3(1.5f * -3, 0.0f, 2.0f);
+	m_->m_Models[16]->pos = XMFLOAT3(1.5f * -2, 0.0f, 2.0f);
+	m_->m_Models[17]->pos = XMFLOAT3(1.5f * -1, 0.0f, 2.0f);
+	m_->m_Models[18]->pos = XMFLOAT3(1.5f * 1, 0.0f, 2.0f);
+	m_->m_Models[19]->pos = XMFLOAT3(1.5f * 2, 0.0f, 2.0f);
+	m_->m_Models[20]->pos = XMFLOAT3(1.5f * 3, 0.0f, 2.0f);
+	m_->m_Models[21]->pos = XMFLOAT3(1.5f * 4,  0.0f, 2.0f);
+	m_->m_Models[22]->pos = XMFLOAT3(1.5f * 5, 0.0f, 2.0f);
+	m_->m_Models[23]->pos = XMFLOAT3(1.5f * 6, 0.0f, 2.0f);
+
+	m_->m_Models[24]->pos = XMFLOAT3(1.5f * -6, 0.0f, 4.0f);
+	m_->m_Models[25]->pos = XMFLOAT3(1.5f * -5, 0.0f, 4.0f);
+	m_->m_Models[26]->pos = XMFLOAT3(1.5f * -4, 0.0f, 4.0f);
+	m_->m_Models[27]->pos = XMFLOAT3(1.5f * -3, 0.0f, 4.0f);
+	m_->m_Models[28]->pos = XMFLOAT3(1.5f * -2, 0.0f, 4.0f);
+	m_->m_Models[29]->pos = XMFLOAT3(1.5f * -1, 0.0f, 4.0f);
+	m_->m_Models[30]->pos = XMFLOAT3(1.5f * 1, 0.0f, 4.0f);
+	m_->m_Models[31]->pos = XMFLOAT3(1.5f * 2, 0.0f, 4.0f);
+	m_->m_Models[32]->pos = XMFLOAT3(1.5f * 3, 0.0f, 4.0f);
+	m_->m_Models[33]->pos = XMFLOAT3(1.5f * 4, 0.0f, 4.0f);
+	m_->m_Models[34]->pos = XMFLOAT3(1.5f * 5, 0.0f, 4.0f);
+	m_->m_Models[35]->pos = XMFLOAT3(1.5f * 6, 0.0f, 4.0f);
 
 	// 랜더 모드 설정
-	m_->m_Models[0]->modelShading = ShadingMode::Unlit;			m_->m_Models[0]->outlineEnabled = false;
-	m_->m_Models[1]->modelShading = ShadingMode::Lambert;			m_->m_Models[1]->outlineEnabled = false;
+	m_->m_Models[0]->modelShading = ShadingMode::Lambert;		m_->m_Models[0]->outlineEnabled = false;
+	m_->m_Models[1]->modelShading = ShadingMode::BlinnPhong;	m_->m_Models[1]->outlineEnabled = false;
 	m_->m_Models[2]->modelShading = ShadingMode::Phong;			m_->m_Models[2]->outlineEnabled = false;
 	m_->m_Models[3]->modelShading = ShadingMode::TextureOnly;	m_->m_Models[3]->outlineEnabled = false;
 	m_->m_Models[4]->modelShading = ShadingMode::ToonShading;	m_->m_Models[4]->outlineEnabled = false;
@@ -598,7 +650,34 @@ bool App::OnInitialize()
 	m_->m_Models[9]->modelShading = ShadingMode::TextureOnly;	m_->m_Models[9]->outlineEnabled = true;
 	m_->m_Models[10]->modelShading = ShadingMode::ToonShading;	m_->m_Models[10]->outlineEnabled = true;
 	m_->m_Models[11]->modelShading = ShadingMode::Unlit;		m_->m_Models[11]->outlineEnabled = true;
-	m_->m_Models[12]->modelShading = ShadingMode::Phong;		m_->m_Models[12]->outlineEnabled = false;
+
+	// 2줄 (12..23)
+	m_->m_Models[12]->modelShading = ShadingMode::Lambert;      m_->m_Models[12]->outlineEnabled = false;
+	m_->m_Models[13]->modelShading = ShadingMode::BlinnPhong;   m_->m_Models[13]->outlineEnabled = false;
+	m_->m_Models[14]->modelShading = ShadingMode::Phong;        m_->m_Models[14]->outlineEnabled = false;
+	m_->m_Models[15]->modelShading = ShadingMode::TextureOnly;  m_->m_Models[15]->outlineEnabled = false;
+	m_->m_Models[16]->modelShading = ShadingMode::ToonShading;  m_->m_Models[16]->outlineEnabled = false;
+	m_->m_Models[17]->modelShading = ShadingMode::Unlit;        m_->m_Models[17]->outlineEnabled = false;
+	m_->m_Models[18]->modelShading = ShadingMode::Lambert;      m_->m_Models[18]->outlineEnabled = true;
+	m_->m_Models[19]->modelShading = ShadingMode::BlinnPhong;   m_->m_Models[19]->outlineEnabled = true;
+	m_->m_Models[20]->modelShading = ShadingMode::Phong;        m_->m_Models[20]->outlineEnabled = true;
+	m_->m_Models[21]->modelShading = ShadingMode::TextureOnly;  m_->m_Models[21]->outlineEnabled = true;
+	m_->m_Models[22]->modelShading = ShadingMode::ToonShading;  m_->m_Models[22]->outlineEnabled = true;
+	m_->m_Models[23]->modelShading = ShadingMode::Unlit;        m_->m_Models[23]->outlineEnabled = true;
+	// 3줄 (24..35)
+	m_->m_Models[24]->modelShading = ShadingMode::Lambert;      m_->m_Models[24]->outlineEnabled = false;
+	m_->m_Models[25]->modelShading = ShadingMode::BlinnPhong;   m_->m_Models[25]->outlineEnabled = false;
+	m_->m_Models[26]->modelShading = ShadingMode::Phong;        m_->m_Models[26]->outlineEnabled = false;
+	m_->m_Models[27]->modelShading = ShadingMode::TextureOnly;  m_->m_Models[27]->outlineEnabled = false;
+	m_->m_Models[28]->modelShading = ShadingMode::ToonShading;  m_->m_Models[28]->outlineEnabled = false;
+	m_->m_Models[29]->modelShading = ShadingMode::Unlit;        m_->m_Models[29]->outlineEnabled = false;
+	m_->m_Models[30]->modelShading = ShadingMode::Lambert;      m_->m_Models[30]->outlineEnabled = true;
+	m_->m_Models[31]->modelShading = ShadingMode::BlinnPhong;   m_->m_Models[31]->outlineEnabled = true;
+	m_->m_Models[32]->modelShading = ShadingMode::Phong;        m_->m_Models[32]->outlineEnabled = true;
+	m_->m_Models[33]->modelShading = ShadingMode::TextureOnly;  m_->m_Models[33]->outlineEnabled = true;
+	m_->m_Models[34]->modelShading = ShadingMode::ToonShading;  m_->m_Models[34]->outlineEnabled = true;
+	m_->m_Models[35]->modelShading = ShadingMode::Unlit;        m_->m_Models[35]->outlineEnabled = true;
+
 
 	// 현재 애니메이션 인덱스 설정
 	m_->m_Models[0]->animator.SetCurrentIndex(0);  m_->m_Models[0]->uiAnimPlaying = true;
@@ -613,6 +692,33 @@ bool App::OnInitialize()
 	m_->m_Models[9]->animator.SetCurrentIndex(0);  m_->m_Models[9]->uiAnimPlaying = true;
 	m_->m_Models[10]->animator.SetCurrentIndex(0); m_->m_Models[10]->uiAnimPlaying = true;
 	m_->m_Models[11]->animator.SetCurrentIndex(0); m_->m_Models[11]->uiAnimPlaying = true;
+
+	m_->m_Models[12]->animator.SetCurrentIndex(2);  m_->m_Models[12]->uiAnimPlaying = true;
+	m_->m_Models[13]->animator.SetCurrentIndex(2);  m_->m_Models[13]->uiAnimPlaying = true;
+	m_->m_Models[14]->animator.SetCurrentIndex(2);  m_->m_Models[14]->uiAnimPlaying = true;
+	m_->m_Models[15]->animator.SetCurrentIndex(2);  m_->m_Models[15]->uiAnimPlaying = true;
+	m_->m_Models[16]->animator.SetCurrentIndex(2);  m_->m_Models[16]->uiAnimPlaying = true;
+	m_->m_Models[17]->animator.SetCurrentIndex(2);  m_->m_Models[17]->uiAnimPlaying = true;
+	m_->m_Models[18]->animator.SetCurrentIndex(2);  m_->m_Models[18]->uiAnimPlaying = true;
+	m_->m_Models[19]->animator.SetCurrentIndex(2);  m_->m_Models[19]->uiAnimPlaying = true;
+	m_->m_Models[20]->animator.SetCurrentIndex(2);  m_->m_Models[20]->uiAnimPlaying = true;
+	m_->m_Models[21]->animator.SetCurrentIndex(2);  m_->m_Models[21]->uiAnimPlaying = true;
+	m_->m_Models[22]->animator.SetCurrentIndex(2);  m_->m_Models[22]->uiAnimPlaying = true;
+	m_->m_Models[23]->animator.SetCurrentIndex(2);  m_->m_Models[23]->uiAnimPlaying = true;
+	// 3줄 (24..35)
+	m_->m_Models[24]->animator.SetCurrentIndex(1);  m_->m_Models[24]->uiAnimPlaying = true;
+	m_->m_Models[25]->animator.SetCurrentIndex(1);  m_->m_Models[25]->uiAnimPlaying = true;
+	m_->m_Models[26]->animator.SetCurrentIndex(1);  m_->m_Models[26]->uiAnimPlaying = true;
+	m_->m_Models[27]->animator.SetCurrentIndex(1);  m_->m_Models[27]->uiAnimPlaying = true;
+	m_->m_Models[28]->animator.SetCurrentIndex(1);  m_->m_Models[28]->uiAnimPlaying = true;
+	m_->m_Models[29]->animator.SetCurrentIndex(1);  m_->m_Models[29]->uiAnimPlaying = true;
+	m_->m_Models[30]->animator.SetCurrentIndex(1);  m_->m_Models[30]->uiAnimPlaying = true;
+	m_->m_Models[31]->animator.SetCurrentIndex(1);  m_->m_Models[31]->uiAnimPlaying = true;
+	m_->m_Models[32]->animator.SetCurrentIndex(1);  m_->m_Models[32]->uiAnimPlaying = true;
+	m_->m_Models[33]->animator.SetCurrentIndex(1);  m_->m_Models[33]->uiAnimPlaying = true;
+	m_->m_Models[34]->animator.SetCurrentIndex(1);  m_->m_Models[34]->uiAnimPlaying = true;
+	m_->m_Models[35]->animator.SetCurrentIndex(1);  m_->m_Models[35]->uiAnimPlaying = true;
+
 
 	m_->m_OutlineThickness = 0.001f;
 	m_->m_OutlineColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 1);
@@ -1763,7 +1869,7 @@ void App::RenderWidgetUI()
 			std::string modeLine = std::string("Shader Mode: ") + shaderModeToString(mdl.modelShading);
 			std::string outline = std::string("Outline: ") + (mdl.outlineEnabled ? "On" : "Off");
 			ImVec2 sp;
-			if (WorldToScreen(mdl.pos, view, proj, io.DisplaySize.x, io.DisplaySize.y, sp))
+			if (WorldToScreen(mdl.pos + XMFLOAT3(0,1.6,0), view, proj, io.DisplaySize.x, io.DisplaySize.y, sp))
 			{
 				ImVec2 szLabel = ImGui::CalcTextSize(label.c_str());
 				ImVec2 szMode = ImGui::CalcTextSize(modeLine.c_str());
