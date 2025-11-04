@@ -1127,7 +1127,10 @@ void App::OnRender()
 			}
 
 			// 2) 아웃라인 패스: 본 패스 이후에 백페이스 확장 렌더 (깊이 읽기 전용)
-			if (mdlPtr->outlineEnabled && m_->m_OutlineThickness > 0.0f && m_->m_OutlineStrength > 0.0f)
+			{
+				bool isSelected = (m_->m_SelectedModelIdx >= 0 && m_->m_SelectedModelIdx < (int)m_->m_Models.size() && mdlPtr.get() == m_->m_Models[m_->m_SelectedModelIdx].get());
+				bool doOutline = (mdlPtr->outlineEnabled || isSelected) && m_->m_OutlineStrength > 0.0f;
+				if (doOutline)
 			{
 				// 월드행렬 재계산
 				XMMATRIX rotYaw = XMMatrixRotationY(XMConvertToRadians(mdlPtr->rotDeg.y));
@@ -1145,8 +1148,10 @@ void App::OnRender()
 				cbOutline.enableNormalMap = 0;
 				cbOutline.useSpecularMap = 0;
 				cbOutline.pad = 6.0f; // PSOutline 단색 출력
-				cbOutline.outlineThickness = m_->m_OutlineThickness;
-				cbOutline.outlineColor = m_->m_OutlineColor;
+				float thickness = m_->m_OutlineThickness;
+				if (isSelected) thickness = (std::max)(thickness, 2.0f);
+				cbOutline.outlineThickness = thickness;
+				cbOutline.outlineColor = isSelected ? XMFLOAT4(1.0f, 0.9f, 0.2f, 1.0f) : m_->m_OutlineColor; // 선택 하이라이트: 노란색
 				cbOutline.outlineStrength = m_->m_OutlineStrength;
 				D3D11_MAPPED_SUBRESOURCE mappedOL;
 				HR_T(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedOL));
@@ -1192,6 +1197,7 @@ void App::OnRender()
 				m_->m_pDeviceContext->PSSetShader(m_->m_pPixelShader, nullptr, 0);
 				m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShader, nullptr, 0);
 				ID3D11Buffer* nullCB = nullptr; m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &nullCB);
+			}
 			}
 			// 모델별 루프 끝에서 VS/IL 복원은 다음 모델에서 다시 설정되므로 별도 복원 불필요
 		}
