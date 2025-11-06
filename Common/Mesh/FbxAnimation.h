@@ -57,10 +57,6 @@ public:
 		const std::vector<DirectX::XMFLOAT4X4>& boneOffsets,
 		const DirectX::XMFLOAT4X4& globalInverse);
 
-	// 현재 시간(m_TimeSec) 기준의 전체 노드 Global 행렬들을 out에 돌려줍니다.
-	// 내부 캐시를 사용해 즉시 평가합니다.
-	bool GetCurrentGlobalTransforms(std::vector<DirectX::XMFLOAT4X4>& out);
-
 	// Rigid-only palette upload (no offsets)
 	void UploadRigid(ID3D11DeviceContext* ctx,
 		const aiScene* scene,
