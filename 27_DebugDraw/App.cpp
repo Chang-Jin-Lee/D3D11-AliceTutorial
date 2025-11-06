@@ -55,7 +55,7 @@ struct Material { XMFLOAT4 ambient; XMFLOAT4 diffuse; XMFLOAT4 specular; XMFLOAT
 struct ConstantBuffer {
 	XMMATRIX world; XMMATRIX view; XMMATRIX proj; XMMATRIX worldInvTranspose;
 	Material material; DirectionalLight dirLight; XMFLOAT3 eyePos; float pad;
-	int shadingMode = 0; XMFLOAT3 pad2 = { 0,0,0 }; int enableNormalMap = 1; XMFLOAT3 pad3 = { 0,0,0 }; int useSpecularMap = 0; XMFLOAT3 pad4 = { 0,0,0 };
+	int shadingMode = 0; XMFLOAT3 pad2 = { 0,0,0 }; int enableNormalMap = 1; XMFLOAT3 pad3 = { 0,0,0 }; int useSpecularMap = 0; XMFLOAT3 pad4 = { 0,0,0 }; int useDiffuseMap = 1; XMFLOAT3 pad5 = { 0,0,0 };
 	float outlineWidth = 0.15f; float outlinePow = 1.0f; float outlineThickness = 0.014f; float _outlinePad0 = 0.0f; XMFLOAT4 outlineColor = XMFLOAT4(0, 0, 0, 1); float outlineStrength = 1.0f; XMFLOAT3 _outlinePad2 = { 0,0,0 };
 	// Shadow params
 	XMMATRIX lightViewProj;
@@ -627,8 +627,6 @@ bool App::OnInitialize()
 	}
 
 	// ====================================== 큐브 ======================================
-	
-
 	auto co = std::make_unique<CubeObject>(
 		L"Cube" + std::to_wstring(1),
 		Transform({ 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f }, { 1.0f, 1.0f, 1.0f }),
@@ -646,21 +644,7 @@ bool App::OnInitialize()
 		Transform({ 4.5f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f }, { 2.0f, 2.0f, 2.0f }),
 		ECubeType::Basic);
 	m_->m_Objects.push_back(std::move(co2));
-	// 텍스처가 없는 기본 큐브도 보이도록 폴백 SRV를 채워준다
-	if (!m_->m_Objects.empty() && m_->m_pFallbackNormal)
-	{
-		auto* last = m_->m_Objects.back().get();
-		if (last && last->kind == ObjectKind::Cube)
-		{
-			auto* c = static_cast<CubeObject*>(last);
-			for (int f = 0; f < 6; ++f)
-			{
-				if (!c->faceSRV[f])   c->faceSRV[f]   = m_->m_pFallbackNormal; // diffuse 대체(흰색이 없으므로 normal 폴백 사용)
-				if (!c->normalSRV[f]) c->normalSRV[f] = m_->m_pFallbackNormal; // 정상 노멀 폴백
-				// spec은 글로벌 플래그가 0이면 사용 안 함. 필요 시 여기서도 폴백 설정 가능
-			}
-		}
-	}
+	
 
 	// ====================================== 카메라 ======================================
 	m_->m_camera.SetPosition(XMFLOAT3(40, 208.0f, -184.0f));
@@ -995,6 +979,8 @@ void App::OnRender()
 	m_->m_ConstantBuffer.pad3 = XMFLOAT3(0, 0, 0);
 	m_->m_ConstantBuffer.useSpecularMap = m_->m_UseSpecularMap;
 	m_->m_ConstantBuffer.pad4 = XMFLOAT3(0, 0, 0);
+	m_->m_ConstantBuffer.useDiffuseMap = 1;
+	m_->m_ConstantBuffer.pad5 = XMFLOAT3(0, 0, 0);
 	// Outline params 업데이트
 	// Rim 파라미터 업로드 제거
 	m_->m_ConstantBuffer.outlineThickness = m_->m_OutlineThickness;
@@ -1030,8 +1016,8 @@ void App::OnRender()
         m_->m_pDeviceContext->IASetInputLayout(m_->m_pInputLayout);
         m_->m_pDeviceContext->IASetIndexBuffer(m_->m_pIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
 
-    // 월드 행렬 세팅 + CB 업로드
-    ConstantBuffer cb = m_->m_ConstantBuffer;
+		// 월드 행렬 세팅 + CB 업로드
+		ConstantBuffer cb = m_->m_ConstantBuffer;
         XMMATRIX rotYaw = XMMatrixRotationY(XMConvertToRadians(mc.rotationDeg.y));
         XMMATRIX rotPitch = XMMatrixRotationX(XMConvertToRadians(mc.rotationDeg.x));
         XMMATRIX rotRoll = XMMatrixRotationZ(XMConvertToRadians(mc.rotationDeg.z));
@@ -1045,31 +1031,34 @@ void App::OnRender()
         cb.material.diffuse = cubeObj->matDiffuse;
         cb.material.specular = cubeObj->matSpecular;
         cb.material.reflect = cubeObj->matReflect;
-    cb.pad = 0.0f;
-        cb.shadingMode = (int)m_->m_ShadingMode;
-    cb.pad2 = XMFLOAT3(0, 0, 0);
-    // 큐브는 텍스처가 없어도 머티리얼 색으로 그려지도록 맵 사용 비활성화
-    cb.enableNormalMap = 0;
-    cb.useSpecularMap = 0;
+		cb.pad = 0.0f;
+		cb.shadingMode = (int)m_->m_ShadingMode;
+		cb.pad2 = XMFLOAT3(0, 0, 0);
+		// 큐브는 텍스처가 없어도 머티리얼 색으로 그려지도록 맵 사용 비활성화
+		cb.enableNormalMap = 0;
+		cb.useSpecularMap = 0;
 
-        D3D11_MAPPED_SUBRESOURCE mapped;
-        HR_T(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped));
-        memcpy_s(mapped.pData, sizeof(ConstantBuffer), &cb, sizeof(ConstantBuffer));
-        m_->m_pDeviceContext->Unmap(m_->m_pConstantBuffer, 0);
-        m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
-        m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
+		// 면별 텍스처 유무에 따라 useDiffuseMap 업데이트 후 CB 업로드 및 드로우
+		for (int face = 0; face < 6; ++face)
+		{
+			ID3D11ShaderResourceView* srvDiffuse = cubeObj->faceSRV[face] ? cubeObj->faceSRV[face] : m_->m_pFallbackWhite;
+			ID3D11ShaderResourceView* srvNormal = (m_->m_EnableNormalMap != 0) ? (cubeObj->normalSRV[face] ? cubeObj->normalSRV[face] : m_->m_pFallbackNormal) : nullptr;
+			ID3D11ShaderResourceView* srvSpec = (m_->m_UseSpecularMap != 0) ? (cubeObj->specSRV[face] ? cubeObj->specSRV[face] : m_->m_pFallbackWhite) : nullptr;
 
-        // 텍스처가 있으면 매핑, 없으면 폴백 사용
-        for (int face = 0; face < 6; ++face)
-        {
-            ID3D11ShaderResourceView* srvDiffuse = cubeObj->faceSRV[face] ? cubeObj->faceSRV[face] : m_->m_pFallbackWhite;
-            ID3D11ShaderResourceView* srvNormal = (m_->m_EnableNormalMap != 0) ? (cubeObj->normalSRV[face] ? cubeObj->normalSRV[face] : m_->m_pFallbackNormal) : nullptr;
-            ID3D11ShaderResourceView* srvSpec   = (m_->m_UseSpecularMap != 0) ? (cubeObj->specSRV[face] ? cubeObj->specSRV[face] : m_->m_pFallbackWhite) : nullptr;
-            m_->m_pDeviceContext->PSSetShaderResources(0, 1, &srvDiffuse);
-            m_->m_pDeviceContext->PSSetShaderResources(2, 1, &srvNormal);
-            m_->m_pDeviceContext->PSSetShaderResources(3, 1, &srvSpec);
-            m_->m_pDeviceContext->DrawIndexed(6, face * 6, 0);
-        }
+			cb.useDiffuseMap = (cubeObj->faceSRV[face] != nullptr) ? 1 : 0;
+
+			D3D11_MAPPED_SUBRESOURCE mapped;
+			HR_T(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped));
+			memcpy_s(mapped.pData, sizeof(ConstantBuffer), &cb, sizeof(ConstantBuffer));
+			m_->m_pDeviceContext->Unmap(m_->m_pConstantBuffer, 0);
+			m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
+			m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
+
+			m_->m_pDeviceContext->PSSetShaderResources(0, 1, &srvDiffuse);
+			m_->m_pDeviceContext->PSSetShaderResources(2, 1, &srvNormal);
+			m_->m_pDeviceContext->PSSetShaderResources(3, 1, &srvSpec);
+			m_->m_pDeviceContext->DrawIndexed(6, face * 6, 0);
+		}
     }
 
 	/// ====================================== 3D 모델 ======================================

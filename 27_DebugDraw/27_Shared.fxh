@@ -38,6 +38,8 @@ cbuffer ConstantBuffer : register(b0)
     float3 g_Pad3;
     int    g_UseSpecularMap;            // 0: off, 1: on
     float3 g_Pad4;
+    int    g_UseDiffuseMap;             // 0: off, 1: on (텍스처 미존재 시 머티리얼만 사용)
+    float3 g_Pad5;
 // 이번 프로젝트 코드
 //////////////////////////////////////////////////////////////////////////
     // Toon/Outline params

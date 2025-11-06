@@ -17,10 +17,27 @@ float4 main(VertexOut pIn) : SV_Target
 	}
 
 
-	// 알파 컷아웃 조명 모드에서만 적용
-	float4 textureColor = g_DiffuseMap.Sample(g_Sam, pIn.tex);
-    float alphaTex = textureColor.a * g_Material.diffuse.a;
-    clip(alphaTex - 0.1f);
+	// 알파 컷아웃: 텍스처 유무에 따라 분기
+	float4 textureColor;
+	if (g_UseDiffuseMap != 0)
+	{
+		textureColor = g_DiffuseMap.Sample(g_Sam, pIn.tex);
+	}
+	else
+	{
+		textureColor = float4(1,1,1,1);
+	}
+	float alphaBase;
+	if (g_UseDiffuseMap != 0)
+	{
+		alphaBase = textureColor.a;
+	}
+	else
+	{
+		alphaBase = 1.0f;
+	}
+	float alphaTex = alphaBase * g_Material.diffuse.a;
+	clip(alphaTex - 0.1f);
 
 	// 월드 노말 계산(Nw) - 노말맵 토글에 따라 분기
 	float3 N = normalize(pIn.normalW);
@@ -80,16 +97,32 @@ float4 main(VertexOut pIn) : SV_Target
         diffuseTerm = 0;
         specularTerm = 0;
 	}
-	// TextureOnly (4): 텍스처만 출력
+	// TextureOnly (4): 텍스처만 출력(없으면 머티리얼로 대체)
 	else if (g_ShadingMode == 4)
 	{
-		float4 only = textureColor * g_Material.diffuse;
+		float4 only;
+		if (g_UseDiffuseMap != 0)
+		{
+			only = textureColor * g_Material.diffuse;
+		}
+		else
+		{
+			only = g_Material.diffuse;
+		}
         only.a = alphaTex;
         return only;
 	}
 	
-	// kd = texture * material.diffuse
-    float4 kd = textureColor * g_Material.diffuse;
+	// kd = (useTex ? texture : 1) * material.diffuse
+	    float4 kd;
+		if (g_UseDiffuseMap != 0)
+		{
+			kd = textureColor * g_Material.diffuse;
+		}
+		else
+		{
+			kd = float4(1,1,1,1) * g_Material.diffuse;
+		}
     float4 litColor = kd * (ambientTerm + diffuseTerm) + specularTerm;
 
     // Shadowing (directional) with PCF
@@ -113,9 +146,16 @@ float4 main(VertexOut pIn) : SV_Target
                 [unroll]
                 for (int dx = -1; dx <= 1; ++dx)
                 {
-                    float2 uvOff = uv + float2(dx,dy) * r;
-                    float d = g_ShadowMap.Sample(g_ShadowSamp, uvOff).r;
-                    sum += (depth - g_ShadowBias <= d) ? 1.0f : 0.0f;
+					float2 uvOff = uv + float2(dx,dy) * r;
+					float d = g_ShadowMap.Sample(g_ShadowSamp, uvOff).r;
+					if (depth - g_ShadowBias <= d)
+					{
+						sum += 1.0f;
+					}
+					else
+					{
+						sum += 0.0f;
+					}
                     taps++;
                 }
             }
@@ -139,8 +179,16 @@ float4 main(VertexOut pIn) : SV_Target
     // ToonShading (5): 램프 셰이딩만 적용 (림/외곽선 제거)
     if (g_ShadingMode == 5)
     {
-        const int kSteps = 5;
-        float q = (kSteps > 1) ? floor(theta * (kSteps - 1) + 0.5f) / (kSteps - 1) : theta;
+		const int kSteps = 5;
+		float q;
+		if (kSteps > 1)
+		{
+			q = floor(theta * (kSteps - 1) + 0.5f) / (kSteps - 1);
+		}
+		else
+		{
+			q = theta;
+		}
         float4 toonDiffuse = kd * (ambientTerm + q * g_DirLight.diffuse);
         float3 H = normalize(L + V);
         float NdotH = saturate(dot(N, H));
