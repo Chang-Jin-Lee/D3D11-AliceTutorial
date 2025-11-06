@@ -52,6 +52,10 @@ cbuffer ConstantBuffer : register(b0)
     float  g_ShadowMapSize;             // 섀도우맵 한 변의 크기(px)
     float  g_ShadowPCFRadius;           // PCF 반경(텍셀 단위)
     int    g_ShadowEnabled;             // 0/1
+
+    // Debug/Lines: AABB에 루트 본(또는 지정 본) 변환을 적용할 때 사용
+    int    g_BoundsBoneIndex;           // <0: 사용 안함, >=0: g_BonePalette[idx] 적용
+    float3 g_BoundsPad;
 }
 
 // GPU 스키닝을 위한 레지스터 (b1)

@@ -20,6 +20,8 @@
 #include <cmath>
 #include <memory>
 #include <unordered_set>
+#include <cstring>
+#include <cfloat>
 #include "../Common/StaticMesh.h"
 #include "../Common/LineRenderer.h"
 #include "../Common/Skybox.h"
@@ -63,6 +65,8 @@ struct ConstantBuffer {
 	float    shadowMapSize = 2048.0f;
 	float    shadowPCFRadius = 1.0f;
 	int      shadowEnabled = 1;
+	// Debug/Lines
+	XMMATRIX boundsRoot; int boundsBoneIndex = -1; XMFLOAT3 boundsPad = {0,0,0};
 };
 enum class ShadingMode { Phong = 0, BlinnPhong = 1, Lambert = 2, Unlit = 3, TextureOnly = 4, ToonShading = 5 };
 enum class ModelSource { FBX, OBJ, PMX, Custom };
@@ -133,6 +137,14 @@ struct ModelEntry
 	bool boundsValid = false;
 	XMFLOAT3 boundsMin = { 0,0,0 };
 	XMFLOAT3 boundsMax = { 0,0,0 };
+	// 디버그 AABB에 적용할 기준 본 인덱스(-1이면 자동: 스켈레톤 있으면 0, 없으면 비활성)
+	int boundsBoneIndex = -1;
+    
+    // 애니메이션 루트 변환을 반영한 AABB 샘플들(로컬 공간). 현재 클립 기준
+    std::vector<XMFLOAT3> animAabbMinSamples;
+    std::vector<XMFLOAT3> animAabbMaxSamples;
+    float animAabbSampleDt = 0.0f;
+    int   animAabbClip = -1;
 };
 
 struct CubeData
@@ -586,6 +598,15 @@ bool App::OnInitialize()
 		auto mo = std::make_unique<ModelObject>(m_->m_Models[mi]->modelName, mi);
 		m_->m_Objects.push_back(std::move(mo));
 	}
+
+	m_->m_Models[0]->boundsBoneIndex = 5;
+	m_->m_Models[1]->boundsBoneIndex = 5;
+	m_->m_Models[2]->boundsBoneIndex = 5;
+	m_->m_Models[3]->boundsBoneIndex = 5;
+	m_->m_Models[4]->boundsBoneIndex = 5;
+	m_->m_Models[5]->boundsBoneIndex = 5;
+	m_->m_Models[6]->boundsBoneIndex = 5;
+	m_->m_Models[7]->boundsBoneIndex = 5;
 
 	// 트랜스폼 설정
 	m_->m_Models[0]->pos = XMFLOAT3(115.0f * 0, 0.0f, 0.0f);
@@ -1150,13 +1171,86 @@ void App::OnRender()
 
 			// ====================================== 디버그 박스: 각 3D 모델의 로컬 AABB를 선으로 표시 ======================================
 			{
-				// AABB 캐시 없으면 1회 계산
+				// AABB 캐시 없으면 1회 계산 (메시 로드 시점의 로컬 공간 AABB)
 				if (!mdlPtr->boundsValid && mdlPtr->shared && mdlPtr->shared->vb && mdlPtr->shared->stride > 0)
 				{
 					XMFLOAT3 mn, mx;
 					if (ComputeLocalAABB(m_->m_pDevice, m_->m_pDeviceContext, mdlPtr->shared->vb, mdlPtr->shared->stride, mn, mx))
 					{
 						mdlPtr->boundsMin = mn; mdlPtr->boundsMax = mx; mdlPtr->boundsValid = true;
+					}
+				}
+
+				// 애니메이션이 있는 FBX의 경우: 현재 클립의 루트(또는 첫 채널) 변환만 반영한 AABB를 미리 샘플링해둔다(로컬 공간)
+				if (mdlPtr->boundsValid && mdlPtr->source == ModelSource::FBX && mdlPtr->shared && mdlPtr->shared->fbx)
+				{
+					int curClip = mdlPtr->animator.GetCurrentIndex();
+					const aiScene* sc = mdlPtr->shared->fbx->GetScenePtr();
+					if (sc && curClip >= 0 && (size_t)curClip < sc->mNumAnimations)
+					{
+						if (mdlPtr->animAabbClip != curClip || mdlPtr->animAabbMinSamples.empty() || mdlPtr->animAabbMaxSamples.empty())
+						{
+							mdlPtr->animAabbClip = curClip;
+							mdlPtr->animAabbMinSamples.clear();
+							mdlPtr->animAabbMaxSamples.clear();
+							const aiAnimation* a = sc->mAnimations[(size_t)curClip];
+							double tps = (a && a->mTicksPerSecond != 0.0) ? a->mTicksPerSecond : 25.0;
+							double dur = a ? (a->mDuration / (tps != 0.0 ? tps : 25.0)) : 0.0;
+							int sps = 30; // 샘플링 주파수
+							int numSamples = (dur > 0.0) ? (int)std::ceil(dur * sps) : 1;
+							if (numSamples < 1) numSamples = 1;
+							mdlPtr->animAabbSampleDt = (float)(1.0 / (double)sps);
+							// 타겟 채널 선택: 루트 노드 이름이 있으면 우선, 없으면 첫 채널
+							const char* rootName = sc->mRootNode ? sc->mRootNode->mName.C_Str() : nullptr;
+							const aiNodeAnim* ch = nullptr;
+							if (a)
+							{
+								for (unsigned i = 0; i < a->mNumChannels; ++i)
+								{
+									if (!a->mChannels[i]) continue;
+									if (rootName && strcmp(a->mChannels[i]->mNodeName.C_Str(), rootName) == 0) { ch = a->mChannels[i]; break; }
+								}
+								if (!ch && a->mNumChannels > 0) ch = a->mChannels[0];
+							}
+							auto vInterp = [](const aiVectorKey* k, unsigned n, double t){ if (n==0) return aiVector3D(0,0,0); if (n==1) return k[0].mValue; unsigned i=0; while(i+1<n && t>=k[i+1].mTime) ++i; unsigned j=(i+1<n)?i+1:i; double dt=k[j].mTime-k[i].mTime; double a=(dt>0.0)?(t-k[i].mTime)/dt:0.0; aiVector3D v0=k[i].mValue,v1=k[j].mValue; return v0 + (float)a*(v1-v0); };
+							auto qInterp = [](const aiQuatKey* k, unsigned n, double t){ if (n==0) return aiQuaternion(); if (n==1) return k[0].mValue; unsigned i=0; while(i+1<n && t>=k[i+1].mTime) ++i; unsigned j=(i+1<n)?i+1:i; double dt=k[j].mTime-k[i].mTime; double a=(dt>0.0)?(t-k[i].mTime)/dt:0.0; aiQuaternion q; aiQuaternion::Interpolate(q,k[i].mValue,k[j].mValue,(float)a); q.Normalize(); return q; };
+							mdlPtr->animAabbMinSamples.resize((size_t)numSamples);
+							mdlPtr->animAabbMaxSamples.resize((size_t)numSamples);
+							// 8 코너 미리 구성(로컬)
+							auto mn0 = mdlPtr->boundsMin; auto mx0 = mdlPtr->boundsMax;
+							XMFLOAT3 corners[8] = {
+								{mn0.x, mn0.y, mn0.z}, {mx0.x, mn0.y, mn0.z}, {mx0.x, mn0.y, mx0.z}, {mn0.x, mn0.y, mx0.z},
+								{mn0.x, mx0.y, mn0.z}, {mx0.x, mx0.y, mn0.z}, {mx0.x, mx0.y, mx0.z}, {mn0.x, mx0.y, mx0.z}
+							};
+							for (int si = 0; si < numSamples; ++si)
+							{
+								double tSec = (double)si * (1.0 / (double)sps);
+								double tt = tSec * (tps != 0.0 ? tps : 25.0);
+								aiVector3D S = ch ? ((ch->mNumScalingKeys>0)? vInterp(ch->mScalingKeys, ch->mNumScalingKeys, tt): aiVector3D(1,1,1)) : aiVector3D(1,1,1);
+								aiVector3D T = ch ? ((ch->mNumPositionKeys>0)? vInterp(ch->mPositionKeys, ch->mNumPositionKeys, tt): aiVector3D(0,0,0)) : aiVector3D(0,0,0);
+								aiQuaternion R = ch ? ((ch->mNumRotationKeys>0)? qInterp(ch->mRotationKeys, ch->mNumRotationKeys, tt): aiQuaternion()) : aiQuaternion();
+								aiMatrix4x4 mS; mS.Scaling(S, mS); aiMatrix4x4 mR = aiMatrix4x4(R.GetMatrix()); aiMatrix4x4 mT; mT.Translation(T, mT);
+								aiMatrix4x4 mA = mT * mR * mS;
+								XMFLOAT4X4 am; am._11=(float)mA.a1; am._12=(float)mA.a2; am._13=(float)mA.a3; am._14=(float)mA.a4;
+								am._21=(float)mA.b1; am._22=(float)mA.b2; am._23=(float)mA.b3; am._24=(float)mA.b4;
+								am._31=(float)mA.c1; am._32=(float)mA.c2; am._33=(float)mA.c3; am._34=(float)mA.c4;
+								am._41=(float)mA.d1; am._42=(float)mA.d2; am._43=(float)mA.d3; am._44=(float)mA.d4;
+								XMMATRIX A = XMLoadFloat4x4(&am);
+								// 8 코너 변환 후 min/max
+								XMFLOAT3 mn{ FLT_MAX, FLT_MAX, FLT_MAX };
+								XMFLOAT3 mx{ -FLT_MAX, -FLT_MAX, -FLT_MAX };
+								for (int ci = 0; ci < 8; ++ci)
+								{
+									XMVECTOR p = XMVectorSet(corners[ci].x, corners[ci].y, corners[ci].z, 1.0f);
+									p = XMVector4Transform(p, A);
+									XMFLOAT4 pf; XMStoreFloat4(&pf, p);
+									mn.x = (std::min)(mn.x, pf.x); mn.y = (std::min)(mn.y, pf.y); mn.z = (std::min)(mn.z, pf.z);
+									mx.x = (std::max)(mx.x, pf.x); mx.y = (std::max)(mx.y, pf.y); mx.z = (std::max)(mx.z, pf.z);
+								}
+								mdlPtr->animAabbMinSamples[(size_t)si] = mn;
+								mdlPtr->animAabbMaxSamples[(size_t)si] = mx;
+							}
+						}
 					}
 				}
 
@@ -1169,6 +1263,12 @@ void App::OnRender()
 					lineCB.view = m_->m_baseProjection.view;
 					lineCB.proj = m_->m_baseProjection.proj;
 					lineCB.pad = 3.0f; // 라인 마커용
+					int useBoneIdx = -1;
+					if (cbBones != nullptr)
+					{
+						useBoneIdx = (mdlPtr->boundsBoneIndex >= 0) ? mdlPtr->boundsBoneIndex : 0;
+					}
+					lineCB.boundsBoneIndex = useBoneIdx;
 					D3D11_MAPPED_SUBRESOURCE mappedLine;
 					HR_T(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedLine));
 					memcpy_s(mappedLine.pData, sizeof(ConstantBuffer), &lineCB, sizeof(ConstantBuffer));
@@ -1176,14 +1276,24 @@ void App::OnRender()
 					m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
 					m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
 
-					// 라인 VS/IL 바인딩 저장/설정
+					// 라인 VS/IL/b1 바인딩 저장/설정
 					ID3D11VertexShader* prevVS = nullptr; m_->m_pDeviceContext->VSGetShader(&prevVS, nullptr, nullptr);
+					ID3D11Buffer* prevVSb1 = nullptr; m_->m_pDeviceContext->VSGetConstantBuffers(1, 1, &prevVSb1);
 					ID3D11InputLayout* prevIL = nullptr; m_->m_pDeviceContext->IAGetInputLayout(&prevIL);
 					m_->m_pDeviceContext->VSSetShader(m_->m_pLineVS, nullptr, 0);
 					m_->m_pDeviceContext->IASetInputLayout(m_->m_pLineInputLayout);
+					if (cbBones) m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &cbBones);
 
-					// 로컬 AABB 8 코너 계산
+					// 로컬 AABB 8 코너 계산 (애니메이션 샘플이 있으면 해당 시점 값을 사용)
 					auto mn = mdlPtr->boundsMin; auto mx = mdlPtr->boundsMax;
+					if (!mdlPtr->animAabbMinSamples.empty() && !mdlPtr->animAabbMaxSamples.empty() && mdlPtr->animAabbSampleDt > 0.0f)
+					{
+						double t = mdlPtr->animator.GetTimeSec();
+						int idx = (int)std::floor(t / (double)mdlPtr->animAabbSampleDt + 0.5);
+						if (idx < 0) idx = 0; if (idx >= (int)mdlPtr->animAabbMinSamples.size()) idx = (int)mdlPtr->animAabbMinSamples.size() - 1;
+						mn = mdlPtr->animAabbMinSamples[(size_t)idx];
+						mx = mdlPtr->animAabbMaxSamples[(size_t)idx];
+					}
 					XMFLOAT3 c[8] = {
 						{mn.x, mn.y, mn.z}, {mx.x, mn.y, mn.z}, {mx.x, mn.y, mx.z}, {mn.x, mn.y, mx.z},
 						{mn.x, mx.y, mn.z}, {mx.x, mx.y, mn.z}, {mx.x, mx.y, mx.z}, {mn.x, mx.y, mx.z}
@@ -1203,8 +1313,9 @@ void App::OnRender()
 					m_->m_LineRenderer->DrawLine(m_->m_pDeviceContext, c[2], c[6], col, m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
 					m_->m_LineRenderer->DrawLine(m_->m_pDeviceContext, c[3], c[7], col, m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
 
-					// VS/IL 복원
+					// VS/IL/b1 복원
 					if (prevVS) { m_->m_pDeviceContext->VSSetShader(prevVS, nullptr, 0); prevVS->Release(); }
+					if (prevVSb1) { m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &prevVSb1); prevVSb1->Release(); }
 					if (prevIL) { m_->m_pDeviceContext->IASetInputLayout(prevIL); prevIL->Release(); }
 				}
 			}
@@ -2405,6 +2516,11 @@ void App::RenderModelPannel()
                         ImGui::DragFloat("Shininess (alpha)##inst", &mdl.instanceMaterial.specular.w, 0.05f, 1.0f, 256.0f);
                         ImGui::ColorEdit4("Reflect (kr,a)##inst", &mdl.instanceMaterial.reflect.x);
                     }
+
+                    ImGui::Separator();
+                    // 디버그 AABB 기준 본 인덱스 설정 (-1: Auto)
+                    ImGui::TextUnformatted("Debug AABB");
+                    ImGui::DragInt("Bounds Bone Index (-1:auto)", &mdl.boundsBoneIndex, 1.0f, -1, 1023);
 
                     ImGui::Separator();
                     if (mdl.meshStatsValid)

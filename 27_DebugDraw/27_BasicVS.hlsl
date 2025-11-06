@@ -104,7 +104,13 @@ struct VertexInLine
 VertexOut VSLine(VertexInLine vIn)
 {
 	VertexOut vOut;
-	float4 posW = mul(float4(vIn.posL, 1.0f), g_World);
+    float4 p = float4(vIn.posL, 1.0f);
+    // 루트 본 인덱스가 지정되면 팔레트 행렬을 먼저 적용해 애니메이션 루트 변환을 반영
+    if (g_BoundsBoneIndex >= 0)
+    {
+        p = mul(p, g_BonePalette[g_BoundsBoneIndex]);
+    }
+    float4 posW = mul(p, g_World);
 	vOut.posH = mul(posW, g_View);
 	vOut.posH = mul(vOut.posH, g_Proj);
 	vOut.posW = posW.xyz;
