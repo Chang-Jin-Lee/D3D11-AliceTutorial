@@ -66,7 +66,7 @@ struct ConstantBuffer {
 	float    shadowPCFRadius = 1.0f;
 	int      shadowEnabled = 1;
 	// Debug/Lines
-	XMMATRIX boundsRoot; int boundsBoneIndex = -1; XMFLOAT3 boundsPad = {0,0,0};
+	int      boundsBoneIndex = -1; XMFLOAT3 boundsPad = {0,0,0};
 };
 enum class ShadingMode { Phong = 0, BlinnPhong = 1, Lambert = 2, Unlit = 3, TextureOnly = 4, ToonShading = 5 };
 enum class ModelSource { FBX, OBJ, PMX, Custom };
@@ -1282,11 +1282,13 @@ void App::OnRender()
 					ID3D11InputLayout* prevIL = nullptr; m_->m_pDeviceContext->IAGetInputLayout(&prevIL);
 					m_->m_pDeviceContext->VSSetShader(m_->m_pLineVS, nullptr, 0);
 					m_->m_pDeviceContext->IASetInputLayout(m_->m_pLineInputLayout);
-					if (cbBones) m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &cbBones);
+					// 선택 본 인덱스가 유효하면 스키닝 팔레트(b1)를 바인딩하여 본 변환을 적용
+					if (useBoneIdx >= 0 && cbBones) m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &cbBones);
 
-					// 로컬 AABB 8 코너 계산 (애니메이션 샘플이 있으면 해당 시점 값을 사용)
+					// 로컬 AABB 8 코너 계산
 					auto mn = mdlPtr->boundsMin; auto mx = mdlPtr->boundsMax;
-					if (!mdlPtr->animAabbMinSamples.empty() && !mdlPtr->animAabbMaxSamples.empty() && mdlPtr->animAabbSampleDt > 0.0f)
+					// 팔레트 기반 본 선택(-1 아님)일 때는 샘플 AABB를 사용하지 않음
+					if (useBoneIdx < 0 && !mdlPtr->animAabbMinSamples.empty() && !mdlPtr->animAabbMaxSamples.empty() && mdlPtr->animAabbSampleDt > 0.0f)
 					{
 						double t = mdlPtr->animator.GetTimeSec();
 						int idx = (int)std::floor(t / (double)mdlPtr->animAabbSampleDt + 0.5);
