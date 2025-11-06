@@ -81,6 +81,12 @@
     <ClInclude Include="Mesh/FbxGeometry.h">
       <Filter>Mesh</Filter>
     </ClInclude>
+    <ClInclude Include="Transform.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="BaseObject.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Common.cpp">
@@ -142,6 +148,9 @@
     </ClCompile>
     <ClCompile Include="Mesh/FbxGeometry.cpp">
       <Filter>Mesh</Filter>
+    </ClCompile>
+    <ClCompile Include="BaseObject.cpp">
+      <Filter>소스 파일</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

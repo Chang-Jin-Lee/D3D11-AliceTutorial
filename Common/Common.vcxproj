@@ -137,6 +137,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="BaseObject.h" />
     <ClInclude Include="Camera.h" />
     <ClInclude Include="Mesh/FbxAnimation.h" />
     <ClInclude Include="Mesh/FbxGeometry.h" />
@@ -157,9 +158,11 @@
     <ClInclude Include="StaticMesh.h" />
     <ClInclude Include="SystemInfomation.h" />
     <ClInclude Include="TimeSystem.h" />
+    <ClInclude Include="Transform.h" />
     <ClInclude Include="Vertex.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="BaseObject.cpp" />
     <ClCompile Include="Camera.cpp" />
     <ClCompile Include="Common.cpp" />
     <ClCompile Include="Mesh/FbxAnimation.cpp" />
