@@ -3,7 +3,7 @@
 #include <d3d11.h>
 #include "Vertex.h"
 #include <directxtk/SimpleMath.h>
-    #include <vector>
+#include <vector>
 
 // TBN 정점
 struct StaticMeshData
@@ -19,6 +19,13 @@ struct StaticMeshDataLightTex
 	std::vector<DWORD>          indices;  // 36
 };
 
+// 디버그 라인 렌더링용 데이터 LINELIST
+struct DebugLineMeshData
+{
+    std::vector<VertexCubePosColor> vertices;
+    std::vector<DWORD>              indices;
+};
+
 class StaticMesh
 {
 public:
@@ -31,6 +38,19 @@ public:
     static StaticMeshDataLightTex CreateBoxLightTex(const DirectX::XMFLOAT4& color, float width = 2, float height = 2, float depth = 2);
 	static void AssignMemoryLightTex(ID3D11Device*& device, ID3D11Buffer*& outVB, StaticMeshDataLightTex& meshData);
 	static void AssignIndexMemoryLightTex(ID3D11Device*& device, ID3D11Buffer*& outIB, StaticMeshDataLightTex& meshData, int& outIndexCount);
+
+    // 디버그 라인 메쉬
+    // 박스 라인 메쉬 생성 center, extents
+    static DebugLineMeshData CreateBoxLines(const DirectX::XMFLOAT3& center, const DirectX::XMFLOAT3& extents, const DirectX::XMFLOAT4& color);
+    // 링 라인 메쉬 생성 origin + major/minor axis, segs
+    static DebugLineMeshData CreateRing(const DirectX::XMFLOAT3& origin, const DirectX::XMFLOAT3& majorAxis, const DirectX::XMFLOAT3& minorAxis, const DirectX::XMFLOAT4& color, int segments = 32);
+    // 레이 라인 메쉬 생성
+    static DebugLineMeshData CreateRay(const DirectX::XMFLOAT3& origin, const DirectX::XMFLOAT3& direction, float length, const DirectX::XMFLOAT4& color, bool addArrowHead = true);
+    // 그리드 라인 메쉬 생성 x/y축 벡터와 분할 수
+    static DebugLineMeshData CreateGrid(const DirectX::XMFLOAT3& xAxis, const DirectX::XMFLOAT3& yAxis, const DirectX::XMFLOAT3& origin, int xDivs, int yDivs, const DirectX::XMFLOAT4& color);
+    // VB/IB 생성 라인용
+    static void AssignMemoryLines(ID3D11Device*& device, ID3D11Buffer*& outVB, DebugLineMeshData& meshData);
+    static void AssignIndexMemoryLines(ID3D11Device*& device, ID3D11Buffer*& outIB, DebugLineMeshData& meshData, int& outIndexCount);
 
 	// 디버그 박스
 	static StaticMeshData CreateDebugBox(const DirectX::XMFLOAT4& color, float size = 0.2f)

@@ -346,6 +346,19 @@ void FbxAnimation::UploadPalette(ID3D11DeviceContext* ctx, const std::vector<XMM
 	if (SUCCEEDED(ctx->Map(m_pBoneCB, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) { memcpy(mapped.pData, &cb, sizeof(BoneCB)); ctx->Unmap(m_pBoneCB, 0); }
 }
 
+bool FbxAnimation::GetCurrentGlobalTransforms(std::vector<XMFLOAT4X4>& out)
+{
+    if (!m_Scene) return false;
+    // 채널 맵이 필요하면 갱신
+    if (m_ChannelDirty && !m_ChannelOfNode.empty())
+    {
+        RebuildChannelMapIfNeeded(m_Scene, m_Current, m_NodeIndexOfName, m_ChannelOfNode);
+        m_ChannelDirty = false;
+    }
+    EvaluateGlobals(m_Scene, m_NodeIndexOfName, out);
+    return !out.empty();
+}
+
 void FbxAnimation::UpdateAndUpload(
 	ID3D11DeviceContext* ctx,
 	double dtSec,

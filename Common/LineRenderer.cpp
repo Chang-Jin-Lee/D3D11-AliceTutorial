@@ -50,6 +50,9 @@ void LineRenderer::DrawLine(ID3D11DeviceContext* ctx,
 
     UINT stride = sizeof(LineV);
     UINT offset = 0;
+    // 이전 토폴로지 백업 후 라인 토폴로지로 설정
+    D3D11_PRIMITIVE_TOPOLOGY prevTopo = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED;
+    ctx->IAGetPrimitiveTopology(&prevTopo);
     ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_LINELIST);
     ctx->IASetVertexBuffers(0, 1, &m_vb, &stride, &offset);
     ctx->IASetInputLayout(inputLayout);
@@ -61,6 +64,9 @@ void LineRenderer::DrawLine(ID3D11DeviceContext* ctx,
     ctx->VSSetShader(vs, nullptr, 0);
     ctx->PSSetShader(ps, nullptr, 0);
     ctx->Draw(2, 0);
+    // 이전 토폴로지 복원
+    if (prevTopo != D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED)
+        ctx->IASetPrimitiveTopology(prevTopo);
 }
 
 void LineRenderer::DrawAxes(ID3D11DeviceContext* ctx,
