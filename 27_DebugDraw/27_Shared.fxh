@@ -31,25 +31,20 @@ cbuffer ConstantBuffer : register(b0)
     Material g_Material;                // 머티리얼 구조체
     DirectionalLight g_DirLight;
     float3 g_EyePosW;
-    float  g_Pad;
     int    g_ShadingMode;               // 0:Phong,1:Blinn,2:Lambert,3:Unlit,4:TextureOnly
-    float3 g_Pad2;
-    int    g_EnableNormalMap;           // 0: off, 1: on
-    float3 g_Pad3;
-    int    g_UseSpecularMap;            // 0: off, 1: on
-    float3 g_Pad4;
-    int    g_UseDiffuseMap;             // 0: off, 1: on (텍스처 미존재 시 머티리얼만 사용)
-    float3 g_Pad5;
+    // Compact flags + pad into one 4-slot vector
+    int    g_EnableNormalMap;           // 0/1
+    int    g_UseSpecularMap;            // 0/1
+    int    g_UseDiffuseMap;             // 0/1 (텍스처 없으면 머티리얼만)
+    float  g_Pad;                       // 디버그/단축 경로용
 // 이번 프로젝트 코드
 //////////////////////////////////////////////////////////////////////////
-    // Toon/Outline params
+    // Toon/Outline params (packed tightly)
     float  g_OutlineWidth;              // 림 밴드 폭 (PS Rim 용)
     float  g_OutlinePow;                // 림 감마/파워 (PS Rim 용)
     float  g_OutlineThickness;          // 외곽선 두께 (VS 팽창 용)
-    float  g_OutlinePad0;
-    float4 g_OutlineColor;              // 아웃라인 색상 (a 안씀)
     float  g_OutlineStrength;           // 아웃라인 강도(0~4 권장)
-    float3 g_OutlinePad2;
+    float4 g_OutlineColor;              // 아웃라인 색상 (a 안씀)
 
     // Shadow params
     matrix g_LightViewProj;             // 라이트 뷰-프로젝션

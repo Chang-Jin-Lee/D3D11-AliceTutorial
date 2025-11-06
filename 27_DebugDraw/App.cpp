@@ -54,9 +54,9 @@ struct DirectionalLight { XMFLOAT4 ambient; XMFLOAT4 diffuse; XMFLOAT4 specular;
 struct Material { XMFLOAT4 ambient; XMFLOAT4 diffuse; XMFLOAT4 specular; XMFLOAT4 reflect; };
 struct ConstantBuffer {
 	XMMATRIX world; XMMATRIX view; XMMATRIX proj; XMMATRIX worldInvTranspose;
-	Material material; DirectionalLight dirLight; XMFLOAT3 eyePos; float pad;
-	int shadingMode = 0; XMFLOAT3 pad2 = { 0,0,0 }; int enableNormalMap = 1; XMFLOAT3 pad3 = { 0,0,0 }; int useSpecularMap = 0; XMFLOAT3 pad4 = { 0,0,0 }; int useDiffuseMap = 1; XMFLOAT3 pad5 = { 0,0,0 };
-	float outlineWidth = 0.15f; float outlinePow = 1.0f; float outlineThickness = 0.014f; float _outlinePad0 = 0.0f; XMFLOAT4 outlineColor = XMFLOAT4(0, 0, 0, 1); float outlineStrength = 1.0f; XMFLOAT3 _outlinePad2 = { 0,0,0 };
+	Material material; DirectionalLight dirLight; XMFLOAT3 eyePos; int shadingMode = 0;
+	int enableNormalMap = 1; int useSpecularMap = 0; int useDiffuseMap = 1; float pad = 0.0f;
+	float outlineWidth = 0.15f; float outlinePow = 1.0f; float outlineThickness = 0.014f; float outlineStrength = 1.0f; XMFLOAT4 outlineColor = XMFLOAT4(0, 0, 0, 1);
 	// Shadow params
 	XMMATRIX lightViewProj;
 	float    shadowBias = 0.0015f;
@@ -974,13 +974,9 @@ void App::OnRender()
 	m_->m_ConstantBuffer.pad = 0.0f;
 	// 셰이딩 모드 전달
 	m_->m_ConstantBuffer.shadingMode = (int)m_->m_ShadingMode;
-	m_->m_ConstantBuffer.pad2 = XMFLOAT3(0, 0, 0);
 	m_->m_ConstantBuffer.enableNormalMap = m_->m_EnableNormalMap;
-	m_->m_ConstantBuffer.pad3 = XMFLOAT3(0, 0, 0);
 	m_->m_ConstantBuffer.useSpecularMap = m_->m_UseSpecularMap;
-	m_->m_ConstantBuffer.pad4 = XMFLOAT3(0, 0, 0);
 	m_->m_ConstantBuffer.useDiffuseMap = 1;
-	m_->m_ConstantBuffer.pad5 = XMFLOAT3(0, 0, 0);
 	// Outline params 업데이트
 	// Rim 파라미터 업로드 제거
 	m_->m_ConstantBuffer.outlineThickness = m_->m_OutlineThickness;
@@ -1033,7 +1029,6 @@ void App::OnRender()
         cb.material.reflect = cubeObj->matReflect;
 		cb.pad = 0.0f;
 		cb.shadingMode = (int)m_->m_ShadingMode;
-		cb.pad2 = XMFLOAT3(0, 0, 0);
 		// 큐브는 텍스처가 없어도 머티리얼 색으로 그려지도록 맵 사용 비활성화
 		cb.enableNormalMap = 0;
 		cb.useSpecularMap = 0;
@@ -1300,7 +1295,6 @@ void App::OnRender()
 		marker.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(S * T)));
 		marker.pad = 2.0f; // PS에서 흰색 출력 토글
 		marker.shadingMode = (int)m_->m_ShadingMode;
-		marker.pad2 = XMFLOAT3(0, 0, 0);
 
 		D3D11_MAPPED_SUBRESOURCE mapped;
 		HR_T(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped));
@@ -1329,7 +1323,6 @@ void App::OnRender()
 		lineCB.worldInvTranspose = XMMatrixIdentity();
 		lineCB.pad = 3.0f;
 		lineCB.shadingMode = (int)m_->m_ShadingMode;
-		lineCB.pad2 = XMFLOAT3(0, 0, 0);
 		D3D11_MAPPED_SUBRESOURCE mappedLine;
 		HR_T(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedLine));
 		memcpy_s(mappedLine.pData, sizeof(ConstantBuffer), &lineCB, sizeof(ConstantBuffer));
@@ -1373,7 +1366,6 @@ void App::OnRender()
 		overlayCB.worldInvTranspose = XMMatrixIdentity();
 		overlayCB.pad = 3.0f;
 		overlayCB.shadingMode = (int)m_->m_ShadingMode;
-		overlayCB.pad2 = XMFLOAT3(0, 0, 0);
 		D3D11_MAPPED_SUBRESOURCE mapped;
 		HR_T(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped));
 		memcpy_s(mapped.pData, sizeof(ConstantBuffer), &overlayCB, sizeof(ConstantBuffer));
