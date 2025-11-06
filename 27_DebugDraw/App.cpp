@@ -2521,6 +2521,17 @@ void App::RenderModelPannel()
                     // 디버그 AABB 기준 본 인덱스 설정 (-1: Auto)
                     ImGui::TextUnformatted("Debug AABB");
                     ImGui::DragInt("Bounds Bone Index (-1:auto)", &mdl.boundsBoneIndex, 1.0f, -1, 1023);
+                    // 선택된 인덱스의 본 이름 표시 (FBX만)
+                    if (mdl.source == ModelSource::FBX && mdl.shared && mdl.shared->fbx)
+                    {
+                        const auto& boneNames = mdl.shared->fbx->GetBoneNames();
+                        const char* name = "<auto>";
+                        if (mdl.boundsBoneIndex >= 0 && (size_t)mdl.boundsBoneIndex < boneNames.size())
+                        {
+                            name = boneNames[(size_t)mdl.boundsBoneIndex].c_str();
+                        }
+                        ImGui::Text("Bone: %s", name);
+                    }
 
                     ImGui::Separator();
                     if (mdl.meshStatsValid)
