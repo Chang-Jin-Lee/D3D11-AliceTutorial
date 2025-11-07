@@ -382,8 +382,8 @@ struct App::Impl {
     float                         m_OutlineThickness = 0.015f;
     XMFLOAT4                      m_OutlineColor = XMFLOAT4(1.0, 0.7286, 0, 1);
     float                         m_OutlineStrength = 1.0f;
-    int                           m_EnableNormalMap = 1;
-    int                           m_UseSpecularMap = 0;
+    int                           m_EnableNormalMapForCube = 1;
+    int                           m_UseSpecularMapForCube = 0;
     int                           m_LegacyShading = 1;
     XMFLOAT4                      m_ClearColor = { 0.125f, 0.125f, 0.125f, 1.0f };
 
@@ -913,9 +913,9 @@ void App::OnRender()
 	// 셰이딩 모드 전달
 	m_->m_ConstantBuffer.shadingMode = (int)m_->m_ShadingMode;
 	m_->m_ConstantBuffer.pad2 = XMFLOAT3(0,0,0);
-	m_->m_ConstantBuffer.enableNormalMap = m_->m_EnableNormalMap;
+	m_->m_ConstantBuffer.enableNormalMap = m_->m_EnableNormalMapForCube;
 	m_->m_ConstantBuffer.pad3 = XMFLOAT3(0,0,0);
-	m_->m_ConstantBuffer.useSpecularMap = m_->m_UseSpecularMap;
+	m_->m_ConstantBuffer.useSpecularMap = m_->m_UseSpecularMapForCube;
 	m_->m_ConstantBuffer.pad4 = XMFLOAT3(0,0,0);
     // Outline params 업데이트
     // Rim 파라미터 업로드 제거
@@ -1073,8 +1073,8 @@ void App::OnRender()
 			cb.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(W)));
 			cb.material = (mdlPtr->useInstanceMaterial ? mdlPtr->instanceMaterial : m_->m_Material);
             cb.shadingMode = (int)mdlPtr->modelShading;
-			cb.enableNormalMap = m_->m_EnableNormalMap;
-			cb.useSpecularMap = m_->m_UseSpecularMap;
+			cb.enableNormalMap = m_->m_EnableNormalMapForCube;
+			cb.useSpecularMap = m_->m_UseSpecularMapForCube;
 
 			D3D11_MAPPED_SUBRESOURCE mapped;
 			HR_T(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped));
@@ -1089,8 +1089,8 @@ void App::OnRender()
 				ID3D11ShaderResourceView* srvDiffuse = nullptr;
                 if (mdlPtr->shared && sub.materialIndex < mdlPtr->shared->materialSRVs.size()) srvDiffuse = mdlPtr->shared->materialSRVs[sub.materialIndex];
 				if (!srvDiffuse) srvDiffuse = m_->m_pFallbackWhite;
-				ID3D11ShaderResourceView* srvNormal = (m_->m_EnableNormalMap != 0) ? m_->m_pFallbackNormal : nullptr;
-				ID3D11ShaderResourceView* srvSpec = (m_->m_UseSpecularMap != 0) ? m_->m_pFallbackWhite : nullptr;
+				ID3D11ShaderResourceView* srvNormal = (m_->m_EnableNormalMapForCube != 0) ? m_->m_pFallbackNormal : nullptr;
+				ID3D11ShaderResourceView* srvSpec = (m_->m_UseSpecularMapForCube != 0) ? m_->m_pFallbackWhite : nullptr;
 				m_->m_pDeviceContext->PSSetShaderResources(0, 1, &srvDiffuse);
 				m_->m_pDeviceContext->PSSetShaderResources(2, 1, &srvNormal);
 				m_->m_pDeviceContext->PSSetShaderResources(3, 1, &srvSpec);
@@ -2087,8 +2087,8 @@ void App::RenderControlPannel()
                 ImGui::ColorEdit3("Color", &m_->m_OutlineColor.x);
                 ImGui::SliderFloat("Strength", &m_->m_OutlineStrength, 0.0f, 4.0f, "%.2f");
             }
-			ImGui::Checkbox("Enable Normal Map", (bool*)&m_->m_EnableNormalMap);
-			ImGui::Checkbox("Use Specular Map", (bool*)&m_->m_UseSpecularMap);
+			ImGui::Checkbox("Enable Normal Map", (bool*)&m_->m_EnableNormalMapForCube);
+			ImGui::Checkbox("Use Specular Map", (bool*)&m_->m_UseSpecularMapForCube);
 		}
 		ImGui::Separator();
 		ImGui::Text("Light");

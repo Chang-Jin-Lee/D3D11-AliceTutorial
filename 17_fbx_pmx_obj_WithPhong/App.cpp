@@ -151,8 +151,8 @@ struct App::Impl {
 
     // 셰이딩 옵션 / 클리어 컬러
     ShadingMode                   m_ShadingMode = ShadingMode::Phong;
-    int                           m_EnableNormalMap = 1;
-    int                           m_UseSpecularMap = 0;
+    int                           m_EnableNormalMapForCube = 1;
+    int                           m_UseSpecularMapForCube = 0;
     int                           m_LegacyShading = 1;
     XMFLOAT4                      m_ClearColor = { 0.02f, 0.02f, 0.02f, 1.0f };
 
@@ -434,9 +434,9 @@ void App::OnRender()
 	// 셰이딩 모드 전달
 	m_->m_ConstantBuffer.shadingMode = (int)m_->m_ShadingMode;
 	m_->m_ConstantBuffer.pad2 = XMFLOAT3(0,0,0);
-	m_->m_ConstantBuffer.enableNormalMap = m_->m_EnableNormalMap;
+	m_->m_ConstantBuffer.enableNormalMap = m_->m_EnableNormalMapForCube;
 	m_->m_ConstantBuffer.pad3 = XMFLOAT3(0,0,0);
-	m_->m_ConstantBuffer.useSpecularMap = m_->m_UseSpecularMap;
+	m_->m_ConstantBuffer.useSpecularMap = m_->m_UseSpecularMapForCube;
 	m_->m_ConstantBuffer.pad4 = XMFLOAT3(0,0,0);
 	// 머티리얼 채우기
 	m_->m_ConstantBuffer.material = m_->m_Material;
@@ -477,8 +477,8 @@ void App::OnRender()
             ID3D11ShaderResourceView* srvDiffuse = nullptr;
             if (sub.materialIndex < m_->m_ModelMaterialSRVs.size()) srvDiffuse = m_->m_ModelMaterialSRVs[sub.materialIndex];
             if (!srvDiffuse) srvDiffuse = m_->m_pFallbackWhite;
-            ID3D11ShaderResourceView* srvNormal = (m_->m_EnableNormalMap != 0) ? m_->m_pFallbackNormal : nullptr;
-            ID3D11ShaderResourceView* srvSpec   = (m_->m_UseSpecularMap != 0) ? m_->m_pFallbackWhite : nullptr;
+            ID3D11ShaderResourceView* srvNormal = (m_->m_EnableNormalMapForCube != 0) ? m_->m_pFallbackNormal : nullptr;
+            ID3D11ShaderResourceView* srvSpec   = (m_->m_UseSpecularMapForCube != 0) ? m_->m_pFallbackWhite : nullptr;
             m_->m_pDeviceContext->PSSetShaderResources(0, 1, &srvDiffuse);
             m_->m_pDeviceContext->PSSetShaderResources(2, 1, &srvNormal);
             m_->m_pDeviceContext->PSSetShaderResources(3, 1, &srvSpec);
@@ -706,8 +706,8 @@ void App::OnRender()
             {
                 m_->m_ShadingMode = (ShadingMode)mode;
             }
-+			ImGui::Checkbox("Enable Normal Map", (bool*)&m_->m_EnableNormalMap);
-+			ImGui::Checkbox("Use Specular Map", (bool*)&m_->m_UseSpecularMap);
++			ImGui::Checkbox("Enable Normal Map", (bool*)&m_->m_EnableNormalMapForCube);
++			ImGui::Checkbox("Use Specular Map", (bool*)&m_->m_UseSpecularMapForCube);
         }
         ImGui::Separator();
         ImGui::Text("Light");

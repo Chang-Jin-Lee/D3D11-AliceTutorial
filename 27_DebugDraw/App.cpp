@@ -426,8 +426,8 @@ struct App::Impl {
 	float							m_OutlineThickness = 0.08f;
 	XMFLOAT4						m_OutlineColor = XMFLOAT4(1.0, 0.7286, 0, 1);
 	float							m_OutlineStrength = 1.0f;
-	int								m_EnableNormalMap = 1;
-	int								m_UseSpecularMap = 0;
+	int								m_EnableNormalMapForCube = 1;
+	int								m_UseSpecularMapForCube = 0;
 	int								m_LegacyShading = 1;
 	XMFLOAT4						m_ClearColor = { 0.125f, 0.125f, 0.125f, 1.0f };
 
@@ -992,10 +992,10 @@ void App::OnRender()
 
 	m_->m_ConstantBuffer.eyePos = m_->m_camera.GetPosition();
 	m_->m_ConstantBuffer.pad = 0.0f;
-	// 셰이딩 모드 전달
+	// 셰이딩 모드 전달 (맵 플래그는 오브젝트별로 설정)
 	m_->m_ConstantBuffer.shadingMode = (int)m_->m_ShadingMode;
-	m_->m_ConstantBuffer.enableNormalMap = m_->m_EnableNormalMap;
-	m_->m_ConstantBuffer.useSpecularMap = m_->m_UseSpecularMap;
+	m_->m_ConstantBuffer.enableNormalMap = 0;
+	m_->m_ConstantBuffer.useSpecularMap = 0;
 	m_->m_ConstantBuffer.useDiffuseMap = 1;
 	// Outline params 업데이트
 	// Rim 파라미터 업로드 제거
@@ -1050,17 +1050,20 @@ void App::OnRender()
 		cb.pad = 0.0f;
 		cb.shadingMode = (int)m_->m_ShadingMode;
 		// 큐브는 텍스처가 없어도 머티리얼 색으로 그려지도록 맵 사용 비활성화
-		cb.enableNormalMap = 0;
-		cb.useSpecularMap = 0;
+		cb.enableNormalMap = (cubeObj->useNormalMap != 0) ? 1 : 0;
+		cb.useSpecularMap = (cubeObj->useSpecularMap != 0) ? 1 : 0;
 
-		// 면별 텍스처 유무에 따라 useDiffuseMap 업데이트 후 CB 업로드 및 드로우
+        // 면별 텍스처 유무에 따라 useDiffuseMap 업데이트 후 CB 업로드 및 드로우
 		for (int face = 0; face < 6; ++face)
 		{
-			ID3D11ShaderResourceView* srvDiffuse = cubeObj->faceSRV[face] ? cubeObj->faceSRV[face] : m_->m_pFallbackWhite;
-			ID3D11ShaderResourceView* srvNormal = (m_->m_EnableNormalMap != 0) ? (cubeObj->normalSRV[face] ? cubeObj->normalSRV[face] : m_->m_pFallbackNormal) : nullptr;
-			ID3D11ShaderResourceView* srvSpec = (m_->m_UseSpecularMap != 0) ? (cubeObj->specSRV[face] ? cubeObj->specSRV[face] : m_->m_pFallbackWhite) : nullptr;
+            bool isTexCube = (cubeObj->cubeType == ECubeType::Texture);
+            ID3D11ShaderResourceView* srvDiffuse = cubeObj->faceSRV[face] ? cubeObj->faceSRV[face] : m_->m_pFallbackWhite;
+            ID3D11ShaderResourceView* srvNormal = (isTexCube && cubeObj->useNormalMap != 0) ? (cubeObj->normalSRV[face] ? cubeObj->normalSRV[face] : m_->m_pFallbackNormal) : nullptr;
+            ID3D11ShaderResourceView* srvSpec = (isTexCube && cubeObj->useSpecularMap != 0) ? (cubeObj->specSRV[face] ? cubeObj->specSRV[face] : m_->m_pFallbackWhite) : nullptr;
 
-			cb.useDiffuseMap = (cubeObj->faceSRV[face] != nullptr) ? 1 : 0;
+            cb.useDiffuseMap = (cubeObj->faceSRV[face] != nullptr) ? 1 : 0;
+            cb.enableNormalMap = (isTexCube && cubeObj->useNormalMap != 0) ? 1 : 0;
+            cb.useSpecularMap = (isTexCube && cubeObj->useSpecularMap != 0) ? 1 : 0;
 
 			D3D11_MAPPED_SUBRESOURCE mapped;
 			HR_T(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped));
@@ -1143,8 +1146,8 @@ void App::OnRender()
 			cb.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(W)));
 			cb.material = (mdlPtr->useInstanceMaterial ? mdlPtr->instanceMaterial : m_->m_Material);
 			cb.shadingMode = (int)mdlPtr->modelShading;
-			cb.enableNormalMap = m_->m_EnableNormalMap;
-			cb.useSpecularMap = m_->m_UseSpecularMap;
+			cb.enableNormalMap = m_->m_EnableNormalMapForCube;
+			cb.useSpecularMap = m_->m_UseSpecularMapForCube;
 
 			D3D11_MAPPED_SUBRESOURCE mapped;
 			HR_T(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped));
@@ -1153,19 +1156,92 @@ void App::OnRender()
 			m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
 			m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
 
-			// 서브셋 텍스처 및 드로우
+			// ====================================== 서브셋 텍스처 및 드로우 ======================================
 			for (const auto& sub : (mdlPtr->shared ? mdlPtr->shared->subsets : std::vector<ModelSubset>{}))
 			{
 				ID3D11ShaderResourceView* srvDiffuse = nullptr;
 				if (mdlPtr->shared && sub.materialIndex < mdlPtr->shared->materialSRVs.size()) srvDiffuse = mdlPtr->shared->materialSRVs[sub.materialIndex];
 				if (!srvDiffuse) srvDiffuse = m_->m_pFallbackWhite;
-				ID3D11ShaderResourceView* srvNormal = (m_->m_EnableNormalMap != 0) ? m_->m_pFallbackNormal : nullptr;
-				ID3D11ShaderResourceView* srvSpec = (m_->m_UseSpecularMap != 0) ? m_->m_pFallbackWhite : nullptr;
+				ID3D11ShaderResourceView* srvNormal = (m_->m_EnableNormalMapForCube != 0) ? m_->m_pFallbackNormal : nullptr;
+				ID3D11ShaderResourceView* srvSpec = (m_->m_UseSpecularMapForCube != 0) ? m_->m_pFallbackWhite : nullptr;
 				m_->m_pDeviceContext->PSSetShaderResources(0, 1, &srvDiffuse);
 				m_->m_pDeviceContext->PSSetShaderResources(2, 1, &srvNormal);
 				m_->m_pDeviceContext->PSSetShaderResources(3, 1, &srvSpec);
 
 				m_->m_pDeviceContext->DrawIndexed(sub.count, sub.start, 0);
+			}
+
+			// ====================================== Outline ======================================
+			{
+				bool isSelectedModelIdx = (m_->m_SelectedModelIdx >= 0 && m_->m_SelectedModelIdx < (int)m_->m_Models.size() && m_->m_Models[(size_t)m_->m_SelectedModelIdx].get() == mdlPtr.get());
+				bool isSelectedSceneItem = false;
+				if (m_->m_SelectedItem >= 0 && m_->m_SelectedItem < (int)m_->m_Objects.size())
+				{
+					auto* objSel = m_->m_Objects[m_->m_SelectedItem].get();
+					if (objSel && objSel->kind == ObjectKind::Model)
+					{
+						auto* moSel = static_cast<ModelObject*>(objSel);
+						if (moSel->modelIndex >= 0 && moSel->modelIndex < (int)m_->m_Models.size())
+						{
+							isSelectedSceneItem = (m_->m_Models[(size_t)moSel->modelIndex].get() == mdlPtr.get());
+						}
+					}
+				}
+				bool isSelected = isSelectedModelIdx || isSelectedSceneItem;
+				bool doOutline = isSelected || mdlPtr->outlineEnabled;
+				if (doOutline && (m_->m_OutlineThickness > 0.0f || isSelected) && m_->m_OutlineStrength > 0.0f)
+				{
+					// per-model CB 갱신 (outline params는 프레임 CB에서 이미 설정)
+					ConstantBuffer cbOL = m_->m_ConstantBuffer;
+					cbOL.world = XMMatrixTranspose(W);
+					cbOL.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(W)));
+					// 선택 상태면 다른색 + 두꺼운 굵기
+					if (isSelected)
+					{
+						cbOL.outlineColor = XMFLOAT4(1.0f, 0.6431f, 0.0f, 1.0f);
+						cbOL.outlineThickness = 0.7f;
+					}
+					D3D11_MAPPED_SUBRESOURCE mappedOL;
+					HR_T(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedOL));
+					memcpy_s(mappedOL.pData, sizeof(ConstantBuffer), &cbOL, sizeof(ConstantBuffer));
+					m_->m_pDeviceContext->Unmap(m_->m_pConstantBuffer, 0);
+					m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
+					m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
+
+					// 깊이 읽기 전용, 백페이스 렌더
+					if (m_->m_pDepthStencilStateReadOnly)
+						m_->m_pDeviceContext->OMSetDepthStencilState(m_->m_pDepthStencilStateReadOnly, 0);
+					m_->m_pDeviceContext->RSSetState(m_->RSCullClockWise);
+
+					// Outline VS/IL 선택
+					if (hasSkeleton && m_->m_pVertexShaderSkinnedOutline)
+					{
+						m_->m_pDeviceContext->IASetInputLayout(m_->m_pInputLayoutSkinned);
+						m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShaderSkinnedOutline, nullptr, 0);
+						if (cbBones) m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &cbBones);
+					}
+					else
+					{
+						m_->m_pDeviceContext->IASetInputLayout(m_->m_pOutlineInputLayout ? m_->m_pOutlineInputLayout : m_->m_pInputLayout);
+						m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShaderOutline, nullptr, 0);
+						ID3D11Buffer* nullCB = nullptr; m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &nullCB);
+					}
+					if (m_->m_pPixelShaderOutline)
+						m_->m_pDeviceContext->PSSetShader(m_->m_pPixelShaderOutline, nullptr, 0);
+
+					for (const auto& sub : (mdlPtr->shared ? mdlPtr->shared->subsets : std::vector<ModelSubset>{}))
+					{
+						m_->m_pDeviceContext->DrawIndexed(sub.count, sub.start, 0);
+					}
+
+					// 상태 복원
+					m_->m_pDeviceContext->RSSetState(nullptr);
+					if (m_->m_pDepthStencilState)
+						m_->m_pDeviceContext->OMSetDepthStencilState(m_->m_pDepthStencilState, 0);
+					m_->m_pDeviceContext->PSSetShader(m_->m_pPixelShader, nullptr, 0);
+					m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShader, nullptr, 0);
+					ID3D11Buffer* nullCB = nullptr; m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &nullCB);
+				}
 			}
 
 			// ====================================== 디버그 박스: 각 3D 모델의 로컬 AABB를 선으로 표시 ======================================
@@ -1320,80 +1396,6 @@ void App::OnRender()
 					if (prevIL) { m_->m_pDeviceContext->IASetInputLayout(prevIL); prevIL->Release(); }
 				}
 			}
-			// 2) 아웃라인 패스: 본 패스 이후에 백페이스 확장 렌더 (깊이 읽기 전용)
-			{
-				bool isSelected = (m_->m_SelectedModelIdx >= 0 && m_->m_SelectedModelIdx < (int)m_->m_Models.size() && mdlPtr.get() == m_->m_Models[m_->m_SelectedModelIdx].get());
-				bool doOutline = (mdlPtr->outlineEnabled || isSelected) && m_->m_OutlineStrength > 0.0f;
-				if (doOutline)
-				{
-					// 월드행렬 재계산
-					XMMATRIX rotYaw = XMMatrixRotationY(XMConvertToRadians(mdlPtr->rotDeg.y));
-					XMMATRIX rotPitch = XMMatrixRotationX(XMConvertToRadians(mdlPtr->rotDeg.x));
-					XMMATRIX rotRoll = XMMatrixRotationZ(XMConvertToRadians(mdlPtr->rotDeg.z));
-					XMMATRIX S = XMMatrixScaling(mdlPtr->scale.x, mdlPtr->scale.y, mdlPtr->scale.z);
-					XMMATRIX T = XMMatrixTranslation(mdlPtr->pos.x, mdlPtr->pos.y, mdlPtr->pos.z);
-					XMMATRIX W = S * rotPitch * rotYaw * rotRoll * T;
-
-					ConstantBuffer cbOutline = m_->m_ConstantBuffer;
-					cbOutline.world = XMMatrixTranspose(W);
-					cbOutline.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(W)));
-					cbOutline.material = m_->m_Material;
-					cbOutline.shadingMode = (int)mdlPtr->modelShading;
-					cbOutline.enableNormalMap = 0;
-					cbOutline.useSpecularMap = 0;
-					cbOutline.pad = 6.0f; // PSOutline 단색 출력
-					float thickness = m_->m_OutlineThickness;
-					if (isSelected) thickness = (std::max)(thickness, 2.0f);
-					cbOutline.outlineThickness = thickness;
-					cbOutline.outlineColor = isSelected ? XMFLOAT4(1.0f, 0.9f, 0.2f, 1.0f) : m_->m_OutlineColor; // 선택 하이라이트: 노란색
-					cbOutline.outlineStrength = m_->m_OutlineStrength;
-					D3D11_MAPPED_SUBRESOURCE mappedOL;
-					HR_T(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedOL));
-					memcpy_s(mappedOL.pData, sizeof(ConstantBuffer), &cbOutline, sizeof(ConstantBuffer));
-					m_->m_pDeviceContext->Unmap(m_->m_pConstantBuffer, 0);
-					m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
-					m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
-
-					// 깊이: 읽기 전용, LESS_EQUAL
-					if (m_->m_pDepthStencilStateReadOnly)
-						m_->m_pDeviceContext->OMSetDepthStencilState(m_->m_pDepthStencilStateReadOnly, 0);
-
-					// 프런트 컬링으로 백페이스 렌더
-					m_->m_pDeviceContext->RSSetState(m_->RSCullClockWise);
-
-					// 입력/셰이더
-					if (useSkinned)
-					{
-						m_->m_pDeviceContext->IASetInputLayout(m_->m_pInputLayoutSkinned);
-						m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShaderSkinnedOutline, nullptr, 0);
-						if (cbBones) m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &cbBones);
-					}
-					else
-					{
-						m_->m_pDeviceContext->IASetInputLayout(m_->m_pOutlineInputLayout ? m_->m_pOutlineInputLayout : m_->m_pInputLayout);
-						m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShaderOutline, nullptr, 0);
-						ID3D11Buffer* nullCB = nullptr; m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &nullCB);
-					}
-					if (m_->m_pPixelShaderOutline)
-						m_->m_pDeviceContext->PSSetShader(m_->m_pPixelShaderOutline, nullptr, 0);
-
-					for (const auto& sub : (mdlPtr->shared ? mdlPtr->shared->subsets : std::vector<ModelSubset>{}))
-					{
-						m_->m_pDeviceContext->DrawIndexed(sub.count, sub.start, 0);
-					}
-
-					// 상태 복원
-					m_->m_pDeviceContext->RSSetState(nullptr);
-					if (m_->m_pDepthStencilState)
-						m_->m_pDeviceContext->OMSetDepthStencilState(m_->m_pDepthStencilState, 0);
-					m_->m_ConstantBuffer.pad = 0.0f;
-					// PS/VS 본 패스에서 사용하던 기본 셰이더로 바꿔야함
-					m_->m_pDeviceContext->PSSetShader(m_->m_pPixelShader, nullptr, 0);
-					m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShader, nullptr, 0);
-					ID3D11Buffer* nullCB = nullptr; m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &nullCB);
-				}
-			}
-			// 모델별 루프 끝에서 VS/IL 복원은 다음 모델에서 다시 설정되므로 별도 복원 불필요
 		}
 	}
 
@@ -1652,6 +1654,13 @@ bool App::InitD3D()
 
 void App::UninitD3D()
 {
+	// 파이프라인 바인딩 참조 제거(잔존 참조로 인한 라이브 오브젝트 감소)
+	if (m_->m_pDeviceContext)
+	{
+		m_->m_pDeviceContext->ClearState();
+		m_->m_pDeviceContext->Flush();
+	}
+
 	SAFE_RELEASE(m_->m_pDepthStencilState);
 	SAFE_RELEASE(m_->m_pDepthStencilStateReadOnly);
 	SAFE_RELEASE(m_->m_pDepthStencilView);
@@ -1796,6 +1805,8 @@ void App::UninitScene()
 	SAFE_RELEASE(m_->m_pVertexBuffer);
 	SAFE_RELEASE(m_->m_pIndexBuffer);
 	SAFE_RELEASE(m_->m_pInputLayout);
+	SAFE_RELEASE(m_->m_pInputLayoutNoTBN);
+	SAFE_RELEASE(m_->m_pInputLayoutSkinned);
 	SAFE_RELEASE(m_->m_pVertexShader);
 	SAFE_RELEASE(m_->m_pVertexShaderNoTBN);
 	SAFE_RELEASE(m_->m_pVertexShaderSkinned);
@@ -1803,6 +1814,9 @@ void App::UninitScene()
 	SAFE_RELEASE(m_->m_pVertexShaderSkinnedOutline);
 	SAFE_RELEASE(m_->m_pPixelShaderOutline);
 	SAFE_RELEASE(m_->m_pOutlineInputLayout);
+	SAFE_RELEASE(m_->m_pLineVS);
+	SAFE_RELEASE(m_->m_pLineInputLayout);
+	SAFE_RELEASE(m_->m_pPixelShaderSolid);
 	SAFE_RELEASE(m_->m_pPixelShader);
 	SAFE_RELEASE(m_->m_pConstantBuffer);
 	SAFE_RELEASE(m_->m_pSamplerState);
@@ -2032,7 +2046,6 @@ bool App::InitBasicEffect()
 	SAFE_RELEASE(vsLine);
 
 	// 이번 프로젝트 코드
-//////////////////////////////////////////////////////////////////////////
 	// Outline VS
 	{
 		ID3D10Blob* vsOutline = nullptr;
@@ -2108,18 +2121,21 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
 {
 	// 새 모델델 추가
 
-	// 폴백 텍스처 생성(최초 1회)
-	UINT fallBackColor = 0x000000FF;
-	if (!m_->m_pFallbackWhite) fallBackColor = 0xFFFFFFFF;
-	if (!m_->m_pFallbackBlack) fallBackColor = 0x000000FF; // a=1
-	if (!m_->m_pFallbackNormal) fallBackColor = 0x8080FFFF; // (0.5,0.5,1,1) in RGBA8
-
-	D3D11_TEXTURE2D_DESC td{}; td.Width = 1; td.Height = 1; td.MipLevels = 1; td.ArraySize = 1;
-	td.Format = DXGI_FORMAT_R8G8B8A8_UNORM; td.SampleDesc.Count = 1; td.Usage = D3D11_USAGE_IMMUTABLE; td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-	D3D11_SUBRESOURCE_DATA sd{}; sd.pSysMem = &fallBackColor; sd.SysMemPitch = sizeof(UINT);
-	Microsoft::WRL::ComPtr<ID3D11Texture2D> tex; HR_T(m_->m_pDevice->CreateTexture2D(&td, &sd, tex.GetAddressOf()));
-	D3D11_SHADER_RESOURCE_VIEW_DESC srvd{}; srvd.Format = td.Format; srvd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D; srvd.Texture2D.MipLevels = 1; srvd.Texture2D.MostDetailedMip = 0;
-	HR_T(m_->m_pDevice->CreateShaderResourceView(tex.Get(), &srvd, &m_->m_pFallbackNormal));
+	// 폴백 텍스처(화이트/블랙/노멀) 생성: 각각 최초 1회만 생성
+	auto createFallbackIfNull = [&](ID3D11ShaderResourceView** targetSRV, UINT rgba)
+	{
+		if (*targetSRV) return;
+		D3D11_TEXTURE2D_DESC td{}; td.Width = 1; td.Height = 1; td.MipLevels = 1; td.ArraySize = 1;
+		td.Format = DXGI_FORMAT_R8G8B8A8_UNORM; td.SampleDesc.Count = 1; td.Usage = D3D11_USAGE_IMMUTABLE; td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+		D3D11_SUBRESOURCE_DATA sd{}; sd.pSysMem = &rgba; sd.SysMemPitch = sizeof(UINT);
+		Microsoft::WRL::ComPtr<ID3D11Texture2D> tex;
+		HR_T(m_->m_pDevice->CreateTexture2D(&td, &sd, tex.GetAddressOf()));
+		D3D11_SHADER_RESOURCE_VIEW_DESC srvd{}; srvd.Format = td.Format; srvd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D; srvd.Texture2D.MipLevels = 1; srvd.Texture2D.MostDetailedMip = 0;
+		HR_T(m_->m_pDevice->CreateShaderResourceView(tex.Get(), &srvd, targetSRV));
+	};
+	createFallbackIfNull(&m_->m_pFallbackWhite,  0xFFFFFFFF);
+	createFallbackIfNull(&m_->m_pFallbackBlack,  0x000000FF); // a=1
+	createFallbackIfNull(&m_->m_pFallbackNormal, 0x8080FFFF); // (0.5,0.5,1,1) in RGBA8
 
 	// 받은 경로에서 이름, 확장자 추출
 	std::wstring ext{ L"" }, fileName{ L"" };
@@ -2337,8 +2353,6 @@ void App::RenderControlPannel()
 				ImGui::ColorEdit3("Color", &m_->m_OutlineColor.x);
 				ImGui::SliderFloat("Strength", &m_->m_OutlineStrength, 0.0f, 4.0f, "%.2f");
 			}
-			ImGui::Checkbox("Enable Normal Map", (bool*)&m_->m_EnableNormalMap);
-			ImGui::Checkbox("Use Specular Map", (bool*)&m_->m_UseSpecularMap);
 		}
 		ImGui::Separator();
 		ImGui::Text("Light");
@@ -2361,7 +2375,6 @@ void App::RenderControlPannel()
 		{
 			m_->m_Material = { XMFLOAT4(1,1,1,1), XMFLOAT4(1,1,1,1), XMFLOAT4(1,1,1,32), XMFLOAT4(0,0,0,0) };
 		}
-
 		ImGui::Separator();
 	}
 	ImGui::End();
@@ -2402,9 +2415,23 @@ void App::RenderModelPannel()
             if (obj->kind == ObjectKind::Cube)
             {
                 auto* co = static_cast<CubeObject*>(obj);
-                ImGui::Text("Cube : %s", Utf8FromWString(co->name).c_str());
+        ImGui::Text("Cube : %s", Utf8FromWString(co->name).c_str());
                 ImGui::Separator();
                 auto& t = co->cubeTransform;
+        // Maps (per cube, Texture type only)
+        if (co->cubeType == ECubeType::Texture)
+        {
+            bool nm = (co->useNormalMap != 0);
+            if (ImGui::Checkbox("Enable Normal Map", &nm))
+            {
+                co->useNormalMap = nm ? 1 : 0;
+            }
+            bool sm = (co->useSpecularMap != 0);
+            if (ImGui::Checkbox("Use Specular Map", &sm))
+            {
+                co->useSpecularMap = sm ? 1 : 0;
+            }
+        }
                 ImGui::DragFloat3("Position", &t.position.x, 0.1f);
                 ImGui::DragFloat3("Rotation (deg)", &t.rotationDeg.x, 1.0f, -360.0f, 360.0f, "%.1f");
                 ImGui::DragFloat3("Scale", &t.scale.x, 0.01f, 0.001f, 100.0f, "%.3f");
