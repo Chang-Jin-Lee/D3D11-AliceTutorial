@@ -574,19 +574,6 @@ bool App::OnInitialize()
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 34
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 35
 
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 36
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 37
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 38
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 39
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 40
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 41
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 42
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 43
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 44
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 45
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 46
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 47
-
 	m_->m_camera.SetPosition(XMFLOAT3(0.0f, 1.0f, -1.0f));
 	m_->m_camera.SetSpeed(4);
 
@@ -632,19 +619,6 @@ bool App::OnInitialize()
 	m_->m_Models[33]->pos = XMFLOAT3(1.5f * 9, -4.0f, 0.0f);
 	m_->m_Models[34]->pos = XMFLOAT3(1.5f * 10, -4.0f, 0.0f);
 	m_->m_Models[35]->pos = XMFLOAT3(1.5f * 11, -4.0f, 0.0f);
-	// 4줄 (36..47, y=-180)
-	m_->m_Models[36]->pos = XMFLOAT3(1.5f * 0, -6.0f, 0.0f);
-	m_->m_Models[37]->pos = XMFLOAT3(1.5f * 1, -6.0f, 0.0f);
-	m_->m_Models[38]->pos = XMFLOAT3(1.5f * 2, -6.0f, 0.0f);
-	m_->m_Models[39]->pos = XMFLOAT3(1.5f * 3, -6.0f, 0.0f);
-	m_->m_Models[40]->pos = XMFLOAT3(1.5f * 4, -6.0f, 0.0f);
-	m_->m_Models[41]->pos = XMFLOAT3(1.5f * 5, -6.0f, 0.0f);
-	m_->m_Models[42]->pos = XMFLOAT3(1.5f * 6, -6.0f, 0.0f);
-	m_->m_Models[43]->pos = XMFLOAT3(1.5f * 7, -6.0f, 0.0f);
-	m_->m_Models[44]->pos = XMFLOAT3(1.5f * 8, -6.0f, 0.0f);
-	m_->m_Models[45]->pos = XMFLOAT3(1.5f * 9, -6.0f, 0.0f);
-	m_->m_Models[46]->pos = XMFLOAT3(1.5f * 10, -6.0f, 0.0f);
-	m_->m_Models[47]->pos = XMFLOAT3(1.5f * 11, -6.0f, 0.0f);
 
 	// --------------------------------------------------------------------------------
 	// 셰이딩 모드 및 Outline 설정 (각 줄 12개: 6개 셰이더 × Off/On)
@@ -689,19 +663,6 @@ bool App::OnInitialize()
 	m_->m_Models[33]->modelShading = ShadingMode::TextureOnly;  m_->m_Models[33]->outlineEnabled = true;
 	m_->m_Models[34]->modelShading = ShadingMode::ToonShading;  m_->m_Models[34]->outlineEnabled = true;
 	m_->m_Models[35]->modelShading = ShadingMode::Unlit;        m_->m_Models[35]->outlineEnabled = true;
-	// 4줄 (36..47)
-	m_->m_Models[36]->modelShading = ShadingMode::Lambert;      m_->m_Models[36]->outlineEnabled = false;
-	m_->m_Models[37]->modelShading = ShadingMode::BlinnPhong;   m_->m_Models[37]->outlineEnabled = false;
-	m_->m_Models[38]->modelShading = ShadingMode::Phong;        m_->m_Models[38]->outlineEnabled = false;
-	m_->m_Models[39]->modelShading = ShadingMode::TextureOnly;  m_->m_Models[39]->outlineEnabled = false;
-	m_->m_Models[40]->modelShading = ShadingMode::ToonShading;  m_->m_Models[40]->outlineEnabled = false;
-	m_->m_Models[41]->modelShading = ShadingMode::Unlit;        m_->m_Models[41]->outlineEnabled = false;
-	m_->m_Models[42]->modelShading = ShadingMode::Lambert;      m_->m_Models[42]->outlineEnabled = true;
-	m_->m_Models[43]->modelShading = ShadingMode::BlinnPhong;   m_->m_Models[43]->outlineEnabled = true;
-	m_->m_Models[44]->modelShading = ShadingMode::Phong;        m_->m_Models[44]->outlineEnabled = true;
-	m_->m_Models[45]->modelShading = ShadingMode::TextureOnly;  m_->m_Models[45]->outlineEnabled = true;
-	m_->m_Models[46]->modelShading = ShadingMode::ToonShading;  m_->m_Models[46]->outlineEnabled = true;
-	m_->m_Models[47]->modelShading = ShadingMode::Unlit;        m_->m_Models[47]->outlineEnabled = true;
 
 	// --------------------------------------------------------------------------------
 	// 애니메이션 실행 설정
@@ -749,40 +710,6 @@ bool App::OnInitialize()
 	m_->m_Models[34]->animator.SetCurrentIndex(1);  m_->m_Models[34]->uiAnimPlaying = true;
 	m_->m_Models[35]->animator.SetCurrentIndex(1);  m_->m_Models[35]->uiAnimPlaying = true;
 
-	// 4줄 (24..35)
-	m_->m_Models[36]->animator.SetCurrentIndex(0);  m_->m_Models[36]->uiAnimPlaying = true;
-	m_->m_Models[37]->animator.SetCurrentIndex(0);  m_->m_Models[37]->uiAnimPlaying = true;
-	m_->m_Models[38]->animator.SetCurrentIndex(0);  m_->m_Models[38]->uiAnimPlaying = true;
-	m_->m_Models[39]->animator.SetCurrentIndex(0);  m_->m_Models[39]->uiAnimPlaying = true;
-	m_->m_Models[40]->animator.SetCurrentIndex(0);  m_->m_Models[40]->uiAnimPlaying = true;
-	m_->m_Models[41]->animator.SetCurrentIndex(0);  m_->m_Models[41]->uiAnimPlaying = true;
-	m_->m_Models[42]->animator.SetCurrentIndex(0);  m_->m_Models[42]->uiAnimPlaying = true;
-	m_->m_Models[43]->animator.SetCurrentIndex(0);  m_->m_Models[43]->uiAnimPlaying = true;
-	m_->m_Models[44]->animator.SetCurrentIndex(0);  m_->m_Models[44]->uiAnimPlaying = true;
-	m_->m_Models[45]->animator.SetCurrentIndex(0);  m_->m_Models[45]->uiAnimPlaying = true;
-	m_->m_Models[46]->animator.SetCurrentIndex(0);  m_->m_Models[46]->uiAnimPlaying = true;
-	m_->m_Models[47]->animator.SetCurrentIndex(0);  m_->m_Models[47]->uiAnimPlaying = true;
-
-	// --------------------------------------------------------------------------------
-	// 4줄(36..47) 머티리얼 랜덤 설정 (ambient/diffuse/specular)
-	// --------------------------------------------------------------------------------
-	{
-		std::random_device rd; std::mt19937 gen(rd());
-		std::uniform_real_distribution<float> d01(0.0f, 1.0f);
-		auto rc = [&](float a) { return XMFLOAT4(d01(gen), d01(gen), d01(gen), a); };
-		m_->m_Models[36]->useInstanceMaterial = true; m_->m_Models[36]->instanceMaterial.ambient = rc(1); m_->m_Models[36]->instanceMaterial.diffuse = rc(1); m_->m_Models[36]->instanceMaterial.specular = rc(16.0f);
-		m_->m_Models[37]->useInstanceMaterial = true; m_->m_Models[37]->instanceMaterial.ambient = rc(1); m_->m_Models[37]->instanceMaterial.diffuse = rc(1); m_->m_Models[37]->instanceMaterial.specular = rc(16.0f);
-		m_->m_Models[38]->useInstanceMaterial = true; m_->m_Models[38]->instanceMaterial.ambient = rc(1); m_->m_Models[38]->instanceMaterial.diffuse = rc(1); m_->m_Models[38]->instanceMaterial.specular = rc(16.0f);
-		m_->m_Models[39]->useInstanceMaterial = true; m_->m_Models[39]->instanceMaterial.ambient = rc(1); m_->m_Models[39]->instanceMaterial.diffuse = rc(1); m_->m_Models[39]->instanceMaterial.specular = rc(16.0f);
-		m_->m_Models[40]->useInstanceMaterial = true; m_->m_Models[40]->instanceMaterial.ambient = rc(1); m_->m_Models[40]->instanceMaterial.diffuse = rc(1); m_->m_Models[40]->instanceMaterial.specular = rc(16.0f);
-		m_->m_Models[41]->useInstanceMaterial = true; m_->m_Models[41]->instanceMaterial.ambient = rc(1); m_->m_Models[41]->instanceMaterial.diffuse = rc(1); m_->m_Models[41]->instanceMaterial.specular = rc(16.0f);
-		m_->m_Models[42]->useInstanceMaterial = true; m_->m_Models[42]->instanceMaterial.ambient = rc(1); m_->m_Models[42]->instanceMaterial.diffuse = rc(1); m_->m_Models[42]->instanceMaterial.specular = rc(16.0f);
-		m_->m_Models[43]->useInstanceMaterial = true; m_->m_Models[43]->instanceMaterial.ambient = rc(1); m_->m_Models[43]->instanceMaterial.diffuse = rc(1); m_->m_Models[43]->instanceMaterial.specular = rc(16.0f);
-		m_->m_Models[44]->useInstanceMaterial = true; m_->m_Models[44]->instanceMaterial.ambient = rc(1); m_->m_Models[44]->instanceMaterial.diffuse = rc(1); m_->m_Models[44]->instanceMaterial.specular = rc(16.0f);
-		m_->m_Models[45]->useInstanceMaterial = true; m_->m_Models[45]->instanceMaterial.ambient = rc(1); m_->m_Models[45]->instanceMaterial.diffuse = rc(1); m_->m_Models[45]->instanceMaterial.specular = rc(16.0f);
-		m_->m_Models[46]->useInstanceMaterial = true; m_->m_Models[46]->instanceMaterial.ambient = rc(1); m_->m_Models[46]->instanceMaterial.diffuse = rc(1); m_->m_Models[46]->instanceMaterial.specular = rc(16.0f);
-		m_->m_Models[47]->useInstanceMaterial = true; m_->m_Models[47]->instanceMaterial.ambient = rc(1); m_->m_Models[47]->instanceMaterial.diffuse = rc(1); m_->m_Models[47]->instanceMaterial.specular = rc(16.0f);
-	}
 
 	// --------------------------------------------------------------------------------
 	// 공통 아웃라인 파라미터/색상 기본값
@@ -1722,13 +1649,10 @@ bool App::InitImGui()
 		ImFontConfig cfg{}; cfg.MergeMode = true; cfg.PixelSnapH = true; cfg.OversampleH = 2; cfg.OversampleV = 2;
 		// 한글: 맑은 고딕
 		const ImWchar* rangeKR = io.Fonts->GetGlyphRangesKorean();
-		io.Fonts->AddFontFromFileTTF("C:/Windows/Fonts/malgun.ttf", 17.0f, &cfg, rangeKR);
-		// 일본어: Meiryo(일반적으로 존재) → 없으면 Yu Gothic 시도
+		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\NotoSansKR-Regular.ttf", 17.0f, &cfg, rangeKR);
+		// 일본어: Meiryo
 		const ImWchar* rangeJP = io.Fonts->GetGlyphRangesJapanese();
-		if (!io.Fonts->AddFontFromFileTTF("C:/Windows/Fonts/meiryo.ttc", 17.0f, &cfg, rangeJP))
-		{
-			io.Fonts->AddFontFromFileTTF("C:/Windows/Fonts/YuGothM.ttc", 17.0f, &cfg, rangeJP);
-		}
+		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\meiryo.ttc", 17.0f, &cfg, rangeJP);
 	}
 
 	ImGui_ImplWin32_Init(m_hWnd);
