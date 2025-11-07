@@ -42,7 +42,7 @@ Tutorial for D3D AliceEngine
 
 | 26. ShadowMap PCF  | 27. debug draw box  |
 |---|---|
-| <div align="center">[<img src="https://github.com/user-attachments/assets/c0d19bec-bd8c-4f36-bc7f-7a85b063034d" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/26_ShadowMap_PCF)<br/> ShadowMap PCF demo</div> | <div align="center">[<img src="https://github.com/user-attachments/assets/a200d679-ccd0-48c5-aba2-3cd265e027a2" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/26_ShadowMap_PCF)<br/> debug draw box demo</div> |
+| <div align="center">[<img src="https://github.com/user-attachments/assets/c0d19bec-bd8c-4f36-bc7f-7a85b063034d" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/26_ShadowMap_PCF)<br/> ShadowMap PCF demo</div> | <div align="center">[<img src="https://github.com/user-attachments/assets/a200d679-ccd0-48c5-aba2-3cd265e027a2" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/27_DebugDraw)<br/> debug draw box demo</div> |
 
 
 ---
