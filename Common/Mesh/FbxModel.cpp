@@ -50,6 +50,9 @@ bool FbxModel::Load(ID3D11Device* device, const std::wstring& pathW)
 {
 	Release();
 	m_->importer = std::make_unique<Assimp::Importer>();
+    // FBX 피벗/프리/포스트 회전 보존을 끄면 Assimp가 생성하는 _$AssimpFbx$* 헬퍼 노드가 제거되어
+    // 본/노드 수가 DCC(Blender)와 더 일치하게 됩니다.
+    m_->importer->SetPropertyBool(AI_CONFIG_IMPORT_FBX_PRESERVE_PIVOTS, false);
 	m_->importer->SetPropertyInteger(AI_CONFIG_PP_LBW_MAX_WEIGHTS, 4);
 	std::string pathA = Utf8FromWString(pathW);
 	m_->scene = m_->importer->ReadFile(pathA,
