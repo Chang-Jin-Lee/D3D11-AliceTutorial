@@ -1,23 +1,18 @@
-## 26. ShadowMap PCF (26_ShadowMap_PCF)
+## 27. debug draw box (27_DebugDraw)
 
-- 내용 : ShadowMap을 보여주는 예제 입니다.
+- 내용 : AABB Bounding Box를 그린 예제입니다
 - 주요 구현
-  - 깊이 텍스쳐 (DSV, SRV 겸용임)를 생성합니다
-  - Output Merger에 DSV만 바인딩 합니다. RTV는 none으로 둡니다
-  - vertex shader에서 월드 -> 라이팅의 뷰 - 프로젝션 변환을 하고 깊이를 기록합니다
-  - 메인 패스(제 프로젝트에서는 쉐이더 코드들이 모아져 있는 부분)에서 t4에 Shadow 맵 SRV와 s1와 샘플러를 바인딩합니다.
-  - pixel shader에서 라이트를 공간 좌표로 Shadow map을 샘플링하고 상수버퍼를 통해 값들은 전달합니다
+  - 3D 메시를 처음 로드할때 AABB의 Min Vector, Max Vector를 저장해둡니다
+  - 각 메시 오브젝트에 저장된 AABB Bound box를 렌더합니다
+  - 렌더할때 어떤 본을 기준으로 렌더할지 선택할 수 있게 합니다
+  - 선을 그리는 거는 기존에 만들어둔 LineRenderer를 사용합니다
+  - LineRenderer용 Vertex Shader에서 본 팔레트만 적용하여 디버그 박스를 그릴 수 있게 합니다. 이렇게 해야 선택된 본의 애니메이션을 라인 박스가 즉시 따라갑니다. GPU에게 본 계산을 시키자는 이야기 입니다
   
-- 주의할 점
-  - 기준 점을 잘 찾아야 합니다. 모델의 원점에서 보통 하게 되는데, 이때 uv 좌표를 잘못 설정하면 빛 방향으로 그림자가 나오게 됩니다. 그림자가 반대로 생긴다는 이야기입니다
-
-| 그림자가 반대로 생긴 사진 |
+- 변경 내용
+  - 기존 렌더 모드로 나누던 것에서 큐브, 3D mesh 모두 패널에서 조작 가능하게 리팩토링 했습니다
+  - 렌더 파이프라인을 전체적으로 리팩토링 했습니다. 이제 그리려는 오브젝트만 그립니다 
+  
+| 디버그 박스 |
 |---|
-| <div align="center"><img src="https://github.com/user-attachments/assets/629d1a4d-f10b-453d-8a81-d64b43b87085" width="600"/></div> |
+| <div align="center"><img src="https://github.com/user-attachments/assets/45944195-2e6a-4057-bd88-4df1812bf882" width="600"/></div> |
 
-
-</br>
-
-| 그림자가 제대로 그려진 사진 | 그림자가 제대로 그려진 사진2 | 
-|---|---|
-| <div align="center"><img src="https://github.com/user-attachments/assets/4bde0d75-f15a-4c94-81f2-23c14c405384" width="600"/></div> | <div align="center"><img src="https://github.com/user-attachments/assets/c0d19bec-bd8c-4f36-bc7f-7a85b063034d" width="600"/></div> | 
