@@ -1729,13 +1729,10 @@ bool App::InitImGui()
 		ImFontConfig cfg{}; cfg.MergeMode = true; cfg.PixelSnapH = true; cfg.OversampleH = 2; cfg.OversampleV = 2;
 		// 한글: 맑은 고딕
 		const ImWchar* rangeKR = io.Fonts->GetGlyphRangesKorean();
-		io.Fonts->AddFontFromFileTTF("C:/Windows/Fonts/malgun.ttf", 17.0f, &cfg, rangeKR);
-		// 일본어: Meiryo(일반적으로 존재) → 없으면 Yu Gothic 시도
+		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\NotoSansKR-Regular.ttf", 17.0f, &cfg, rangeKR);
+		// 일본어: Meiryo
 		const ImWchar* rangeJP = io.Fonts->GetGlyphRangesJapanese();
-		if (!io.Fonts->AddFontFromFileTTF("C:/Windows/Fonts/meiryo.ttc", 17.0f, &cfg, rangeJP))
-		{
-			io.Fonts->AddFontFromFileTTF("C:/Windows/Fonts/YuGothM.ttc", 17.0f, &cfg, rangeJP);
-		}
+		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\meiryo.ttc", 17.0f, &cfg, rangeJP);
 	}
 
 	ImGui_ImplWin32_Init(m_hWnd);
