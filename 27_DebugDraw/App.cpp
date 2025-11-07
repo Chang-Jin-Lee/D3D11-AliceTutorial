@@ -1173,17 +1173,34 @@ void App::OnRender()
 
 			// ====================================== Outline ======================================
 			{
-				bool isSelected = (m_->m_SelectedModelIdx >= 0 && m_->m_SelectedModelIdx < (int)m_->m_Models.size() && m_->m_Models[(size_t)m_->m_SelectedModelIdx].get() == mdlPtr.get());
+				bool isSelectedModelIdx = (m_->m_SelectedModelIdx >= 0 && m_->m_SelectedModelIdx < (int)m_->m_Models.size() && m_->m_Models[(size_t)m_->m_SelectedModelIdx].get() == mdlPtr.get());
+				bool isSelectedSceneItem = false;
+				if (m_->m_SelectedItem >= 0 && m_->m_SelectedItem < (int)m_->m_Objects.size())
+				{
+					auto* objSel = m_->m_Objects[m_->m_SelectedItem].get();
+					if (objSel && objSel->kind == ObjectKind::Model)
+					{
+						auto* moSel = static_cast<ModelObject*>(objSel);
+						if (moSel->modelIndex >= 0 && moSel->modelIndex < (int)m_->m_Models.size())
+						{
+							isSelectedSceneItem = (m_->m_Models[(size_t)moSel->modelIndex].get() == mdlPtr.get());
+						}
+					}
+				}
+				bool isSelected = isSelectedModelIdx || isSelectedSceneItem;
 				bool doOutline = isSelected || mdlPtr->outlineEnabled;
-				if (doOutline && m_->m_OutlineThickness > 0.0f && m_->m_OutlineStrength > 0.0f)
+				if (doOutline && (m_->m_OutlineThickness > 0.0f || isSelected) && m_->m_OutlineStrength > 0.0f)
 				{
 					// per-model CB 갱신 (outline params는 프레임 CB에서 이미 설정)
 					ConstantBuffer cbOL = m_->m_ConstantBuffer;
 					cbOL.world = XMMatrixTranspose(W);
 					cbOL.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(W)));
-					// 선택 상태면 임시로 노란색 적용
+					// 선택 상태면 다른색 + 두꺼운 굵기
 					if (isSelected)
-						cbOL.outlineColor = XMFLOAT4(1.0f, 1.0f, 0.0f, 1.0f);
+					{
+						cbOL.outlineColor = XMFLOAT4(1.0f, 0.6431f, 0.0f, 1.0f);
+						cbOL.outlineThickness = 0.7f;
+					}
 					D3D11_MAPPED_SUBRESOURCE mappedOL;
 					HR_T(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedOL));
 					memcpy_s(mappedOL.pData, sizeof(ConstantBuffer), &cbOL, sizeof(ConstantBuffer));
