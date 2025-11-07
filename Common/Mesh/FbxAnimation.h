@@ -64,11 +64,11 @@ public:
 		const std::vector<std::string>& boneNames,
 		const DirectX::XMFLOAT4X4& globalInverse);
 
-private:
-	void UploadPalette(ID3D11DeviceContext* ctx, const std::vector<DirectX::XMMATRIX>& pal);
 	void EvaluateGlobals(const aiScene* scene,
 		const std::unordered_map<std::string,int>& nodeIndexOfName,
 		std::vector<DirectX::XMFLOAT4X4>& outGlobal) const;
+private:
+	void UploadPalette(ID3D11DeviceContext* ctx, const std::vector<DirectX::XMMATRIX>& pal);
 
 	// Precompute all clips at load-time to avoid per-frame evaluation
 	void PrecomputeAll(

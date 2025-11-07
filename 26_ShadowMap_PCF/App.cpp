@@ -606,7 +606,7 @@ bool App::OnInitialize()
 		m_->m_Models[0]->instanceMaterial.specular = XMFLOAT4(0.90f, 0.90f, 0.90f, 64.0f);
 	}
 
-	m_->m_OutlineThickness = 0.08f;
+	m_->m_OutlineThickness = 0.3f;
 	m_->m_OutlineColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 1);
 
 	return true;
