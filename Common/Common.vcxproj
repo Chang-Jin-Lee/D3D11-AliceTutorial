@@ -154,6 +154,7 @@
     <ClInclude Include="ObjManager.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="PmxManager.h" />
+    <ClInclude Include="Scene.h" />
     <ClInclude Include="Skybox.h" />
     <ClInclude Include="StaticMesh.h" />
     <ClInclude Include="SystemInfomation.h" />
