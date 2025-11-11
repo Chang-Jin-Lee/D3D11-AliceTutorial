@@ -12,6 +12,8 @@
 #include <imgui_impl_dx11.h>
 #include <Psapi.h>
 #include <string>
+#include <memory>
+#include "../Common/Scene.h"
 
 using namespace DirectX::SimpleMath;
 
@@ -46,6 +48,8 @@ public:
 	// @brief : 시스템 메모리(바이트)
 	ULONGLONG m_RamTotal = 0;
 	ULONGLONG m_RamAvail = 0;
+	ULONGLONG m_PageTotal = 0;   // 총 페이지 파일(커밋 한도)
+	ULONGLONG m_PageAvail = 0;   // 사용 가능한 페이지 파일
 
 	/*
 	* @brief : UI 조작 파라미터(루트/카메라)
@@ -109,5 +113,13 @@ public:
 private:
 	// @brief : 셰이더/이펙트 초기화(예제 단순화)
 	bool InitEffect();
+
+	// @brief : 장면 전환 및 관리
+	std::unique_ptr<Scene> m_CurrentScene;
+	int m_SceneIndex = 0; // 0: A, 1: B
+	void ChangeScene(std::unique_ptr<Scene> next);
+
+	// @brief : VRAM/자원 Trim 호출
+	void TrimVideoMemory();
 };
 

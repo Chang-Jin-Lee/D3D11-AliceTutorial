@@ -31,6 +31,10 @@ public:
     DirectX::XMFLOAT4 matSpecular{1,1,1,32}; // w = shininess
     DirectX::XMFLOAT4 matReflect {0,0,0,0};
 
+    // 맵 사용 토글(큐브 단위)
+    int useNormalMap{ 1 };
+    int useSpecularMap{ 1 };
+
     // 텍스처 경로/리소스(있을 때만 사용)
     const wchar_t* facePaths[6]    = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
     const wchar_t* normalPaths[6]  = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };

@@ -28,6 +28,9 @@
 #include <filesystem>
 #include <commdlg.h>
 
+#include "SceneA.h"
+#include "SceneB.h"
+
 #pragma comment (lib, "d3d11.lib")
 #pragma comment(lib,"d3dcompiler.lib")
 
@@ -157,11 +160,18 @@ bool App::OnInitialize()
 		}
 	}
 
+	// 기본 씬 생성 및 진입
+	m_CurrentScene = std::make_unique<SceneA>();
+	if (m_CurrentScene) m_CurrentScene->OnEnter();
+
 	return true;
 }
 
 void App::OnUninitialize()
 {
+	// 씬 종료
+	if (m_CurrentScene) { m_CurrentScene->OnExit(); m_CurrentScene.reset(); }
+
 	// ImGui 종료
 	ImGui_ImplDX11_Shutdown();
 	ImGui_ImplWin32_Shutdown();
@@ -276,6 +286,33 @@ void App::OnUpdate(const float& dt)
 			// 사용량은 memInfo.CurrentUsage를 직접 사용, 표시 시 변환
 		}
 	}
+
+	// Trim 핫키(F10)
+	if (ImGui::IsKeyPressed(ImGuiKey_F10, false))
+	{
+		TrimVideoMemory();
+		m_NoticeText = "IDXGIDevice3::Trim() 호출됨";
+		m_NoticeTimeLeft = 2.0f;
+	}
+
+	// 씬 전환(F6)
+	if (ImGui::IsKeyPressed(ImGuiKey_F6, true))
+	{
+		TrimVideoMemory(); // 전환 직전 Trim
+		if (m_SceneIndex == 0)
+		{
+			ChangeScene(std::make_unique<SceneB>());
+			m_SceneIndex = 1;
+		}
+		else
+		{
+			ChangeScene(std::make_unique<SceneA>());
+			m_SceneIndex = 0;
+		}
+	}
+
+	// 씬 업데이트
+	if (m_CurrentScene) m_CurrentScene->Update(dt);
 }
 
 // Render() 함수에 중요한 부분이 다 들어있습니다. 여기를 보면 됩니다
@@ -587,6 +624,9 @@ void App::OnRender()
 		ImGui::End();
 	}
 
+	// 씬 UI 렌더
+	if (m_CurrentScene) m_CurrentScene->RenderUI();
+
 	ImGui::Render();
 	ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 
@@ -680,6 +720,14 @@ void App::UninitScene()
 bool App::InitEffect()
 {
 	return true;
+}
+
+void App::ChangeScene(std::unique_ptr<Scene> next)
+{
+	if (!next) return;
+	if (m_CurrentScene) m_CurrentScene->OnExit();
+	m_CurrentScene = std::move(next);
+	m_CurrentScene->OnEnter();
 }
 
 void App::TrimVideoMemory()
