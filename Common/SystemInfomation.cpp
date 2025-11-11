@@ -14,6 +14,8 @@ void SystemInfomation::Tick(const float& deltaTime)
 		{
 			m_RamTotal = ms.ullTotalPhys;
 			m_RamAvail = ms.ullAvailPhys;
+			m_PageTotal = ms.ullTotalPageFile;
+			m_PageAvail = ms.ullAvailPageFile;
 		}
 	}
 
@@ -88,6 +90,8 @@ bool SystemInfomation::InitSysInfomation(ID3D11Device*& m_pDevice)
 		{
 			m_RamTotal = ms.ullTotalPhys;
 			m_RamAvail = ms.ullAvailPhys;
+			m_PageTotal = ms.ullTotalPageFile;
+			m_PageAvail = ms.ullAvailPageFile;
 		}
 	}
 	return true;
@@ -114,6 +118,13 @@ void SystemInfomation::RenderUI()
 			double ramTotalGB = (double)m_RamTotal / (1024.0 * 1024.0 * 1024.0);
 			double ramUsedGB = (double)(m_RamTotal - m_RamAvail) / (1024.0 * 1024.0 * 1024.0);
 			ImGui::Text("RAM : %.2f GB / %.2f GB", ramUsedGB, ramTotalGB);
+			// PageFile (Commit Charge)
+			if (m_PageTotal > 0)
+			{
+				double pageTotalGB = (double)m_PageTotal / (1024.0 * 1024.0 * 1024.0);
+				double pageUsedGB = (double)(m_PageTotal - m_PageAvail) / (1024.0 * 1024.0 * 1024.0);
+				ImGui::Text("PageFile : %.2f GB / %.2f GB", pageUsedGB, pageTotalGB);
+			}
 			// VRAM (Budget/Usage가 제공되는 경우)
 			if (m_Adapter3)
 			{

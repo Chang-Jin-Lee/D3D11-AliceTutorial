@@ -11,8 +11,13 @@ public:
 	std::wstring m_GPUName;										// GPU 이름
 	std::wstring m_CPUName;										// CPU 이름
 	UINT m_CPUCores = 0; 										// CPU 코어 개수
+
+
 	ULONGLONG m_RamTotal = 0; 									// 총 RAM 바이트
 	ULONGLONG m_RamAvail = 0; 									// 사용 가능한 RAM 바이트
+	ULONGLONG m_PageTotal = 0;									// 총 페이지 파일(커밋 한도) 바이트
+	ULONGLONG m_PageAvail = 0;									// 사용 가능한 페이지 파일 바이트
+
 	SIZE_T m_VideoMemoryTotal = 0;								// 총 VRAM 바이트
 
 	// FPS 출력 캐시

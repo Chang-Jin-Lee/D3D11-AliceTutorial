@@ -152,6 +152,8 @@ bool App::OnInitialize()
 		{
 			m_RamTotal = ms.ullTotalPhys;
 			m_RamAvail = ms.ullAvailPhys;
+			m_PageTotal = ms.ullTotalPageFile;
+			m_PageAvail = ms.ullAvailPageFile;
 		}
 	}
 
@@ -258,6 +260,8 @@ void App::OnUpdate(const float& dt)
 		{
 			m_RamTotal = ms.ullTotalPhys;
 			m_RamAvail = ms.ullAvailPhys;
+			m_PageTotal = ms.ullTotalPageFile;
+			m_PageAvail = ms.ullAvailPageFile;
 		}
 	}
 
@@ -364,6 +368,13 @@ void App::OnRender()
 			double ramTotalGB = (double)m_RamTotal / (1024.0 * 1024.0 * 1024.0);
 			double ramUsedGB = (double)(m_RamTotal - m_RamAvail) / (1024.0 * 1024.0 * 1024.0);
 			ImGui::Text("RAM : %.2f GB / %.2f GB", ramUsedGB, ramTotalGB);
+			// PageFile (Commit Charge)
+			if (m_PageTotal > 0)
+			{
+				double pageTotalGB = (double)m_PageTotal / (1024.0 * 1024.0 * 1024.0);
+				double pageUsedGB = (double)(m_PageTotal - m_PageAvail) / (1024.0 * 1024.0 * 1024.0);
+				ImGui::Text("PageFile : %.2f GB / %.2f GB", pageUsedGB, pageTotalGB);
+			}
 			// VRAM
 			if (m_Adapter3)
 			{
@@ -669,4 +680,17 @@ void App::UninitScene()
 bool App::InitEffect()
 {
 	return true;
+}
+
+void App::TrimVideoMemory()
+{
+	Microsoft::WRL::ComPtr<IDXGIDevice> dxgiDevice;
+	if (m_pDevice && SUCCEEDED(m_pDevice->QueryInterface(IID_PPV_ARGS(dxgiDevice.GetAddressOf()))))
+	{
+		Microsoft::WRL::ComPtr<IDXGIDevice3> dxgiDevice3;
+		if (SUCCEEDED(dxgiDevice.As(&dxgiDevice3)) && dxgiDevice3)
+		{
+			dxgiDevice3->Trim();
+		}
+	}
 }
