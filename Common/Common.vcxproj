@@ -137,6 +137,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="AssetManager.h" />
     <ClInclude Include="BaseObject.h" />
     <ClInclude Include="Camera.h" />
     <ClInclude Include="Mesh/FbxAnimation.h" />
@@ -155,6 +156,7 @@
     <ClInclude Include="pch.h" />
     <ClInclude Include="PmxManager.h" />
     <ClInclude Include="Scene.h" />
+    <ClInclude Include="Singleton.h" />
     <ClInclude Include="Skybox.h" />
     <ClInclude Include="StaticMesh.h" />
     <ClInclude Include="SystemInfomation.h" />
@@ -163,6 +165,7 @@
     <ClInclude Include="Vertex.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="AssetManager.cpp" />
     <ClCompile Include="BaseObject.cpp" />
     <ClCompile Include="Camera.cpp" />
     <ClCompile Include="Common.cpp" />
@@ -184,6 +187,7 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="PmxManager.cpp" />
+    <ClCompile Include="Singleton.cpp" />
     <ClCompile Include="Skybox.cpp" />
     <ClCompile Include="StaticMesh.cpp" />
     <ClCompile Include="SystemInfomation.cpp" />
