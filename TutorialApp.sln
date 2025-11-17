@@ -58,6 +58,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "26_ShadowMap_PCF", "26_Shad
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "27_DebugDraw", "27_DebugDraw\27_DebugDraw.vcxproj", "{7229C48C-C11B-468F-82D3-879DEB5B8BA6}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "28_Scene_Shared3DModel_Animation", "28_Scene_Shared3DModel_Animation\28_Scene_Shared3DModel_Animation.vcxproj", "{10F9C3FA-66A5-464B-B9E9-52B2BAE78F7A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -290,6 +292,14 @@ Global
 		{7229C48C-C11B-468F-82D3-879DEB5B8BA6}.Release|x64.Build.0 = Release|x64
 		{7229C48C-C11B-468F-82D3-879DEB5B8BA6}.Release|x86.ActiveCfg = Release|Win32
 		{7229C48C-C11B-468F-82D3-879DEB5B8BA6}.Release|x86.Build.0 = Release|Win32
+		{10F9C3FA-66A5-464B-B9E9-52B2BAE78F7A}.Debug|x64.ActiveCfg = Debug|x64
+		{10F9C3FA-66A5-464B-B9E9-52B2BAE78F7A}.Debug|x64.Build.0 = Debug|x64
+		{10F9C3FA-66A5-464B-B9E9-52B2BAE78F7A}.Debug|x86.ActiveCfg = Debug|Win32
+		{10F9C3FA-66A5-464B-B9E9-52B2BAE78F7A}.Debug|x86.Build.0 = Debug|Win32
+		{10F9C3FA-66A5-464B-B9E9-52B2BAE78F7A}.Release|x64.ActiveCfg = Release|x64
+		{10F9C3FA-66A5-464B-B9E9-52B2BAE78F7A}.Release|x64.Build.0 = Release|x64
+		{10F9C3FA-66A5-464B-B9E9-52B2BAE78F7A}.Release|x86.ActiveCfg = Release|Win32
+		{10F9C3FA-66A5-464B-B9E9-52B2BAE78F7A}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
