@@ -35,6 +35,7 @@ public:
 	void RenderSceneCollection();
 	void RenderConsolPannel();
 	void RenderWidgetUI();
+	void RenderSceneImageWindow();
 
 	// 로더 API
 	bool LoadModelFromFile(const std::wstring& pathW);
@@ -58,5 +59,8 @@ private:
 
 	// @brief : VRAM/자원 Trim 호출
 	void TrimVideoMemory();
+
+	// @brief : 씬 이미지 로드
+	void LoadSceneImage(const std::wstring& path);
 };
 

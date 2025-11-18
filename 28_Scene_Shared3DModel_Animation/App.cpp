@@ -476,6 +476,17 @@ struct App::Impl {
 
 	// 스폰 운터
 	int                          m_SpawnTotal = 0;
+
+	// 씬 이미지 창 관련
+	std::wstring                 m_CurrentSceneImagePath = L"..\\Resource\\Image\\SceneA.png";
+	ID3D11ShaderResourceView*    m_pSceneImageSRV = nullptr;
+	ImVec2                       m_SceneImageSize = ImVec2(0, 0);
+	bool                         m_ShowSceneImageWindow = true;
+	
+	// 씬 변경 팝업 관련
+	bool                         m_ShowScenePopup = false;
+	float                        m_ScenePopupTimer = 0.0f;
+	std::string                  m_ScenePopupMessage;
 };
 
 App::App() : m_(new Impl) {}
@@ -588,6 +599,9 @@ bool App::OnInitialize()
 
 	AssetManager::Create();
 
+	// ====================================== 씬 이미지 초기 로드 ======================================
+	LoadSceneImage(m_->m_CurrentSceneImagePath);
+
 	// ====================================== 3D 모델 ======================================
 	LoadModelFromFile(L"..\\Resource\\fbx\\SkinningTest.fbx"); // 0
 	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping_idle_walk_run.fbx"); // 0
@@ -641,6 +655,9 @@ bool App::OnInitialize()
 
 void App::OnUninitialize()
 {
+	// 씬 이미지 리소스 정리
+	SAFE_RELEASE(m_->m_pSceneImageSRV);
+
 	// ImGui 종료
 	ImGui_ImplDX11_Shutdown();
 	ImGui_ImplWin32_Shutdown();
@@ -779,6 +796,16 @@ void App::OnUpdate(const float& dt)
 
 	m_->m_SystemInfo.Tick(dt);
 
+	// 씬 변경 팝업 타이머 업데이트
+	if (m_->m_ShowScenePopup)
+	{
+		m_->m_ScenePopupTimer -= dt;
+		if (m_->m_ScenePopupTimer <= 0.0f)
+		{
+			m_->m_ShowScenePopup = false;
+			m_->m_ScenePopupTimer = 0.0f;
+		}
+	}
 
 	if (ImGui::IsKeyPressed(ImGuiKey_F6, true))
 	{
@@ -786,12 +813,60 @@ void App::OnUpdate(const float& dt)
 		if (m_SceneIndex == 0)
 		{
 			ChangeScene(std::make_unique<SceneB>());
+			// 모델 목록 비우기
+			UnloadModel();
+			// Scene Collection에서 모델 항목 제거 (큐브는 유지)
+			m_->m_Objects.erase(
+				std::remove_if(m_->m_Objects.begin(), m_->m_Objects.end(),
+					[](const std::unique_ptr<BaseObject>& o) { return o && o->kind == ObjectKind::Model; }),
+				m_->m_Objects.end());
+			m_->m_SelectedItem = -1;
+			// 만료된 공유 캐시 정리
+			for (auto it = m_->m_ModelCache.begin(); it != m_->m_ModelCache.end(); )
+			{
+				if (it->second.expired()) it = m_->m_ModelCache.erase(it);
+				else ++it;
+			}
+			m_->m_SpawnTotal = 0;
+			m_->PushLog("[OK] Cleared all model instances");
+			m_->PushLog("[Scene Change] Change Scane to <SceneB>");
 			m_SceneIndex = 1;
+			// 씬 이미지 경로 변경
+			m_->m_CurrentSceneImagePath = L"..\\Resource\\Image\\SceneB.png";
+			LoadSceneImage(m_->m_CurrentSceneImagePath);
+			// 팝업 표시
+			m_->m_ShowScenePopup = true;
+			m_->m_ScenePopupTimer = 2.0f;
+			m_->m_ScenePopupMessage = Utf8FromWString(L"씬 B에요 토끼씨!");
 		}
 		else
 		{
 			ChangeScene(std::make_unique<SceneA>());
+			// 모델 목록 비우기
+			UnloadModel();
+			// Scene Collection에서 모델 항목 제거 (큐브는 유지)
+			m_->m_Objects.erase(
+				std::remove_if(m_->m_Objects.begin(), m_->m_Objects.end(),
+					[](const std::unique_ptr<BaseObject>& o) { return o && o->kind == ObjectKind::Model; }),
+				m_->m_Objects.end());
+			m_->m_SelectedItem = -1;
+			// 만료된 공유 캐시 정리
+			for (auto it = m_->m_ModelCache.begin(); it != m_->m_ModelCache.end(); )
+			{
+				if (it->second.expired()) it = m_->m_ModelCache.erase(it);
+				else ++it;
+			}
+			m_->m_SpawnTotal = 0;
+			m_->PushLog("[OK] Cleared all model instances");
+			m_->PushLog("[Scene Change] Change Scane to <SceneA>");
 			m_SceneIndex = 0;
+			// 씬 이미지 경로 변경
+			m_->m_CurrentSceneImagePath = L"..\\Resource\\Image\\SceneA.png";
+			LoadSceneImage(m_->m_CurrentSceneImagePath);
+			// 팝업 표시
+			m_->m_ShowScenePopup = true;
+			m_->m_ScenePopupTimer = 2.0f;
+			m_->m_ScenePopupMessage = Utf8FromWString(L"씬 A에요 토끼씨!");
 		}
 	}
 
@@ -1549,6 +1624,7 @@ void App::OnRender()
 	RenderModelPannel();
 	RenderConsolPannel();
 	m_->m_SystemInfo.RenderUI();
+	RenderSceneImageWindow();
 	//RenderWidgetUI();
 
 	ImGui::Render();
@@ -2793,6 +2869,93 @@ void App::RenderConsolPannel()
 	}
 }
 
+void App::RenderSceneImageWindow()
+{
+	if (!m_->m_ShowSceneImageWindow) return;
+
+	// 씬 이미지 창 위치/크기 설정 (08_ImguiSystemInfo 참고)
+	ImGuiIO& io = ImGui::GetIO();
+	ImVec2 size(640.0f, 480.0f);
+	ImVec2 pos(io.DisplaySize.x - size.x - 10.0f, io.DisplaySize.y - size.y - 10.0f);
+	ImGui::SetNextWindowPos(pos, ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(size, ImGuiCond_FirstUseEver);
+	
+	if (ImGui::Begin("Scene Image", &m_->m_ShowSceneImageWindow))
+	{
+		// 현재 씬 정보 표시
+		const char* sceneName = (m_SceneIndex == 0) ? "SceneA" : "SceneB";
+		ImGui::Text("Current Scene: %s", sceneName);
+		ImGui::Separator();
+		
+		// 이미지 표시
+		if (m_->m_pSceneImageSRV)
+		{
+			ImVec2 avail = ImGui::GetContentRegionAvail();
+			float aspect = (m_->m_SceneImageSize.y > 0) ? (m_->m_SceneImageSize.x / m_->m_SceneImageSize.y) : 1.0f;
+			float displayWidth = avail.x;
+			float displayHeight = displayWidth / aspect;
+			if (displayHeight > avail.y)
+			{
+				displayHeight = avail.y;
+				displayWidth = displayHeight * aspect;
+			}
+			
+			// 이미지 위치 계산
+			ImVec2 imagePos = ImGui::GetCursorScreenPos();
+			ImVec2 imageSize(displayWidth, displayHeight);
+			ImGui::Image((ImTextureID)m_->m_pSceneImageSRV, imageSize);
+			
+			// 팝업 표시 (이미지 위에 오버레이)
+			if (m_->m_ShowScenePopup)
+			{
+				ImDrawList* drawList = ImGui::GetWindowDrawList();
+				
+				// 팝업 배경 (반투명)
+				ImVec2 popupSize(300.0f, 80.0f);
+				ImVec2 popupPos(
+					imagePos.x + (imageSize.x - popupSize.x) * 0.5f,
+					imagePos.y + (imageSize.y - popupSize.y) * 0.5f
+				);
+				ImVec2 popupEnd = ImVec2(popupPos.x + popupSize.x, popupPos.y + popupSize.y);
+				
+				// 배경 그리기
+				drawList->AddRectFilled(popupPos, popupEnd, IM_COL32(0, 0, 0, 200), 10.0f);
+				drawList->AddRect(popupPos, popupEnd, IM_COL32(255, 255, 255, 255), 10.0f, 0, 2.0f);
+				
+				// 텍스트 그리기 (중앙 정렬)
+				ImVec2 textSize = ImGui::CalcTextSize(m_->m_ScenePopupMessage.c_str());
+				ImVec2 textPos(
+					popupPos.x + (popupSize.x - textSize.x) * 0.5f,
+					popupPos.y + (popupSize.y - textSize.y) * 0.5f
+				);
+				drawList->AddText(textPos, IM_COL32(255, 255, 255, 255), m_->m_ScenePopupMessage.c_str());
+			}
+		}
+		else
+		{
+			ImGui::TextColored(ImVec4(1, 1, 0, 1), "Image not loaded");
+		}
+	}
+	ImGui::End();
+}
+
+void App::LoadSceneImage(const std::wstring& path)
+{
+	// 기존 이미지 해제
+	SAFE_RELEASE(m_->m_pSceneImageSRV);
+	m_->m_SceneImageSize = ImVec2(0, 0);
+
+	// 새 이미지 로드
+	if (LoadTextureSRVAndSize(m_->m_pDevice, path, &m_->m_pSceneImageSRV, &m_->m_SceneImageSize))
+	{
+		m_->PushLog("[OK] Scene image loaded: " + Utf8FromWString(path));
+	}
+	else
+	{
+		m_->PushLog("[ERR] Failed to load scene image: " + Utf8FromWString(path));
+	}
+}
+
 void App::ChangeScene(std::unique_ptr<Scene> next)
 {
 	if (!next) return;
@@ -2813,3 +2976,4 @@ void App::TrimVideoMemory()
 		}
 	}
 }
+

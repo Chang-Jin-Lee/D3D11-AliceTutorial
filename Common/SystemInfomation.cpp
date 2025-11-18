@@ -114,16 +114,26 @@ void SystemInfomation::RenderUI()
 			ImGui::Text("GPU : %ls", m_GPUName.c_str());
 			ImGui::Text("CPU : %ls (%u cores)", m_CPUName.c_str(), m_CPUCores);
 			ImGui::Separator();
+
+			// ========================================================================
+			// 일단 제대로 바뀌는지 보기 위해서 MB 단위로 표시했습니다.
+			// 원래는 GB로 하는게 좋긴하니까 이후에 주석된 코드를 쓰세요
 			// RAM
-			double ramTotalGB = (double)m_RamTotal / (1024.0 * 1024.0 * 1024.0);
-			double ramUsedGB = (double)(m_RamTotal - m_RamAvail) / (1024.0 * 1024.0 * 1024.0);
-			ImGui::Text("RAM : %.2f GB / %.2f GB", ramUsedGB, ramTotalGB);
+			//double ramTotalGB = (double)m_RamTotal / (1024.0 * 1024.0 * 1024.0);
+			//double ramUsedGB = (double)(m_RamTotal - m_RamAvail) / (1024.0 * 1024.0 * 1024.0);
+			//ImGui::Text("RAM : %.2f GB / %.2f GB", ramUsedGB, ramTotalGB);
+			double ramTotalMB = (double)m_RamTotal / (1024.0 * 1024.0 );
+			double ramUsedMB = (double)(m_RamTotal - m_RamAvail) / (1024.0 * 1024.0 );
+			ImGui::Text("RAM : %.2f MB / %.2f MB", ramUsedMB, ramTotalMB);
 			// PageFile (Commit Charge)
 			if (m_PageTotal > 0)
 			{
-				double pageTotalGB = (double)m_PageTotal / (1024.0 * 1024.0 * 1024.0);
-				double pageUsedGB = (double)(m_PageTotal - m_PageAvail) / (1024.0 * 1024.0 * 1024.0);
-				ImGui::Text("PageFile : %.2f GB / %.2f GB", pageUsedGB, pageTotalGB);
+				//double pageTotalGB = (double)m_PageTotal / (1024.0 * 1024.0 * 1024.0);
+				//double pageUsedGB = (double)(m_PageTotal - m_PageAvail) / (1024.0 * 1024.0 * 1024.0);
+				//ImGui::Text("PageFile : %.2f GB / %.2f GB", pageUsedGB, pageTotalGB);
+				double pageTotalMB = (double)m_PageTotal / (1024.0 * 1024.0 );
+				double pageUsedMB = (double)(m_PageTotal - m_PageAvail) / (1024.0 * 1024.0 );
+				ImGui::Text("PageFile : %.2f MB / %.2f MB", pageUsedMB, pageTotalMB);
 			}
 			// VRAM (Budget/Usage가 제공되는 경우)
 			if (m_Adapter3)
@@ -131,9 +141,12 @@ void SystemInfomation::RenderUI()
 				DXGI_QUERY_VIDEO_MEMORY_INFO memInfo{};
 				if (SUCCEEDED(m_Adapter3->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &memInfo)))
 				{
-					double vramBudgetGB = (double)memInfo.Budget / (1024.0 * 1024.0 * 1024.0);
+					/*double vramBudgetGB = (double)memInfo.Budget / (1024.0 * 1024.0 * 1024.0);
 					double vramUsageGB = (double)memInfo.CurrentUsage / (1024.0 * 1024.0 * 1024.0);
-					ImGui::Text("VRAM : %.2f GB / %.2f GB", vramUsageGB, vramBudgetGB);
+					ImGui::Text("VRAM : %.2f GB / %.2f GB", vramUsageGB, vramBudgetGB);*/
+					double vramBudgetMB = (double)memInfo.Budget / (1024.0 * 1024.0);
+					double vramUsageMB = (double)memInfo.CurrentUsage / (1024.0 * 1024.0);
+					ImGui::Text("VRAM : %.2f MB / %.2f MB", vramUsageMB, vramBudgetMB);
 				}
 			}
 		}
