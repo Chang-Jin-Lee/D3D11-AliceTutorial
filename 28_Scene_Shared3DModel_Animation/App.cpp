@@ -875,7 +875,6 @@ void App::OnUpdate(const float& dt)
 	// F7: 키가 눌려있는 동안에만 일정 간격으로 스폰
 	if (InputSystem::Instance && InputSystem::Instance->m_KeyboardStateTracker.IsKeyPressed(DirectX::Keyboard::Keys::F7))
 	{
-		const std::wstring spawnPath = L"..\\Resource\\fbx\\Study\\alice_normal_mapping_idle_walk_run.fbx";
 		if (LoadModelFromFile(L"..\\Resource\\fbx\\SkinningTest.fbx"))
 		//if (LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping_idle_walk_run.fbx"))
 		{
