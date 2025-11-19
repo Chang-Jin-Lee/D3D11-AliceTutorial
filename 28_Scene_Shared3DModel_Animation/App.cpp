@@ -2359,8 +2359,9 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
 		entry->source = shared->source;
 		// 본 캐시/출력텍스트 일괄 구축
 		BuildBoneCacheStructure(*entry, nullptr);
-		// 통계 사전 계산(IB/VB 공유)
-		entry->meshStatsValid = ComputeMeshStats(m_->m_pDevice, m_->m_pDeviceContext, shared->vb, shared->stride, shared->ib, shared->indexCount, entry->meshStats);
+		// 메시 통계는 UI에서 필요할 때 계산
+		entry->meshStatsValid = false;
+		entry->meshStats = MeshStats{};
 		// 모델별 셰이딩 초기값 = 현재 글로벌 셰이딩, 아웃라인 기본은 Toon일 때만 ON
 		entry->modelShading = m_->m_ShadingMode;
 		entry->outlineEnabled = (entry->modelShading == ShadingMode::ToonShading);
@@ -2683,6 +2684,18 @@ void App::RenderModelPannel()
                     }
 
                     ImGui::Separator();
+                    // 메시 통계는 최초에 한 번만 계산
+                    if (!mdl.meshStatsValid && mdl.shared && mdl.shared->vb && mdl.shared->ib && mdl.shared->indexCount > 0)
+                    {
+                        mdl.meshStatsValid = ComputeMeshStats(
+                            m_->m_pDevice,
+                            m_->m_pDeviceContext,
+                            mdl.shared->vb,
+                            mdl.shared->stride,
+                            mdl.shared->ib,
+                            mdl.shared->indexCount,
+                            mdl.meshStats);
+                    }
                     if (mdl.meshStatsValid)
                     {
                         ImGui::Text("Vertex: %u   Edge: %u   Face: %u   Tri: %u", mdl.meshStats.vertices, mdl.meshStats.edges, mdl.meshStats.faces, mdl.meshStats.triangles);
