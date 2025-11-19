@@ -118,6 +118,8 @@ struct ModelEntry
 	// 인스턴스 전용 애니메이터/머티리얼
 	FbxAnimation animator; // FBX 전용: per-instance bone palette
 	bool animatorInited = false;
+	// 애니메이션 업데이트 LOD를 위한 누적 시간 (입력/ImGui 프리즈 방지용)
+	float animUpdateAccum = 0.0f;
 	Material instanceMaterial{ {1,1,1,1}, {1,1,1,1}, {1,1,1,32}, {0,0,0,0} };
 	bool useInstanceMaterial = false;
 
@@ -721,8 +723,19 @@ void App::OnUpdate(const float& dt)
 
 
 	// 3D 모델 애니메이션 업데이트 (공유 데이터는 중복 업데이트 안함)
+	// 동시에 섀도우용 포커스 위치를 누적해서 한 번만 섀도우 행렬 계산
 	{
 		std::unordered_set<SharedModelData*> updated;
+		const int totalModels = (int)m_->m_Models.size();
+		// 애니메이션 업데이트 간격. 모델이 많을수록 업데이트 주기를 늘려 CPU 부하를 제한.
+		float animStep = 1.0f / 120.0f;
+		if (totalModels > 60)  animStep = 1.0f / 60.0f;
+		if (totalModels > 120) animStep = 1.0f / 30.0f;
+
+		// 섀도우용 씬 중심 누적
+		XMFLOAT3 sceneCenter = { 0.0f, 0.0f, 0.0f };
+		int      sceneModelCount = 0;
+
 		for (auto& mdlPtr : m_->m_Models)
 		{
 			auto& mdl = *mdlPtr;
@@ -733,6 +746,13 @@ void App::OnUpdate(const float& dt)
 			}
 			if (!mdl.shared) continue;
 			if (updated.find(mdl.shared.get()) != updated.end()) continue;
+
+			// 섀도우용 씬 중심 누적
+			sceneCenter.x += mdl.pos.x;
+			sceneCenter.y += mdl.pos.y;
+			sceneCenter.z += mdl.pos.z;
+			sceneModelCount++;
+
 			if (mdl.source == ModelSource::FBX && mdl.shared->fbx)
 			{
 				// 인스턴스별 애니메이션 업데이트 (공유 지오메트리/스켈레톤 사용)
@@ -749,24 +769,56 @@ void App::OnUpdate(const float& dt)
 					mdl.animator.SetType(t == FbxModel::AnimationType::Rigid ? FbxAnimation::AnimType::Rigid : (t == FbxModel::AnimationType::Skinned ? FbxAnimation::AnimType::Skinned : FbxAnimation::AnimType::None));
 					mdl.animatorInited = true;
 				}
-				mdl.animator.SetPlaying(mdl.uiAnimPlaying);
-				mdl.animator.EnsureBoneCB(m_->m_pDevice, 1023);
-				mdl.animator.UpdateAndUpload(
-					m_->m_pDeviceContext,
-					dt,
-					mdl.shared->fbx->GetScenePtr(),
-					mdl.shared->fbx->GetNodeIndexOfName(),
-					mdl.shared->fbx->GetBoneNames(),
-					mdl.shared->fbx->GetBoneOffsets(),
-					mdl.shared->fbx->GetGlobalInverse());
+				// 애니메이션 LOD: 누적 시간 기반으로 일정 주기마다만 팔레트 평가/업로드
+				mdl.animUpdateAccum += dt;
+				if (mdl.animUpdateAccum >= animStep)
+				{
+					const double dtAnim = (double)mdl.animUpdateAccum;
+					mdl.animUpdateAccum = 0.0f;
+
+					mdl.animator.SetPlaying(mdl.uiAnimPlaying);
+					mdl.animator.EnsureBoneCB(m_->m_pDevice, 1023);
+					mdl.animator.UpdateAndUpload(
+						m_->m_pDeviceContext,
+						dtAnim,
+						mdl.shared->fbx->GetScenePtr(),
+						mdl.shared->fbx->GetNodeIndexOfName(),
+						mdl.shared->fbx->GetBoneNames(),
+						mdl.shared->fbx->GetBoneOffsets(),
+						mdl.shared->fbx->GetGlobalInverse());
+				}
 			}
 			else if (mdl.source == ModelSource::PMX && mdl.shared->pmx)
 			{
-				mdl.shared->pmx->UpdateAnimation(m_->m_pDeviceContext, dt);
-				updated.insert(mdl.shared.get());
+				// PMX도 적용 팔레트이므로 1회만 업데이트
+				auto it = updated.find(mdl.shared.get());
+				if (it == updated.end())
+				{
+					mdl.animUpdateAccum += dt;
+					if (mdl.animUpdateAccum >= animStep)
+					{
+						const double dtAnim = (double)mdl.animUpdateAccum;
+						mdl.animUpdateAccum = 0.0f;
+						mdl.shared->pmx->UpdateAnimation(m_->m_pDeviceContext, dtAnim);
+						updated.insert(mdl.shared.get());
+					}
+				}
 			}
+		}
 
-			UpdateShadow(mdl.pos);
+		// 섀도우 행렬은 씬 전체에 대해 한 번만 계산 (성능 최적화)
+		if (sceneModelCount > 0)
+		{
+			sceneCenter.x /= (float)sceneModelCount;
+			sceneCenter.y /= (float)sceneModelCount;
+			sceneCenter.z /= (float)sceneModelCount;
+			UpdateShadow(sceneCenter);
+		}
+		else
+		{
+			// 모델이 없을 경우 기본 위치 사용
+			XMFLOAT3 defaultPos = { 0.0f, 0.0f, 0.0f };
+			UpdateShadow(defaultPos);
 		}
 	}
 
@@ -2359,8 +2411,9 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
 		entry->source = shared->source;
 		// 본 캐시/출력텍스트 일괄 구축
 		BuildBoneCacheStructure(*entry, nullptr);
-		// 통계 사전 계산(IB/VB 공유)
-		entry->meshStatsValid = ComputeMeshStats(m_->m_pDevice, m_->m_pDeviceContext, shared->vb, shared->stride, shared->ib, shared->indexCount, entry->meshStats);
+		// 메시 통계는 UI에서 필요할 때 계산
+		entry->meshStatsValid = false;
+		entry->meshStats = MeshStats{};
 		// 모델별 셰이딩 초기값 = 현재 글로벌 셰이딩, 아웃라인 기본은 Toon일 때만 ON
 		entry->modelShading = m_->m_ShadingMode;
 		entry->outlineEnabled = (entry->modelShading == ShadingMode::ToonShading);
@@ -2683,6 +2736,18 @@ void App::RenderModelPannel()
                     }
 
                     ImGui::Separator();
+                    // 메시 통계는 최초에 한 번만 계산
+                    if (!mdl.meshStatsValid && mdl.shared && mdl.shared->vb && mdl.shared->ib && mdl.shared->indexCount > 0)
+                    {
+                        mdl.meshStatsValid = ComputeMeshStats(
+                            m_->m_pDevice,
+                            m_->m_pDeviceContext,
+                            mdl.shared->vb,
+                            mdl.shared->stride,
+                            mdl.shared->ib,
+                            mdl.shared->indexCount,
+                            mdl.meshStats);
+                    }
                     if (mdl.meshStatsValid)
                     {
                         ImGui::Text("Vertex: %u   Edge: %u   Face: %u   Tri: %u", mdl.meshStats.vertices, mdl.meshStats.edges, mdl.meshStats.faces, mdl.meshStats.triangles);

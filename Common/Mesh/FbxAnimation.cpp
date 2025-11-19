@@ -7,6 +7,12 @@
 
 using namespace DirectX;
 
+// 안전한 행렬 보간 헬퍼 (XMMatrixLerp가 없는 환경을 위해 직접 구현)
+static XMMATRIX LerpMatrix(const XMMATRIX& A, const XMMATRIX& B, float t)
+{
+	return A + (B - A) * t;
+}
+
 FbxAnimation::FbxAnimation() {}
 FbxAnimation::~FbxAnimation() { Clear(); }
 
@@ -362,24 +368,63 @@ void FbxAnimation::UpdateAndUpload(
 	const auto* offsets = m_BoneOffsets ? m_BoneOffsets : &boneOffsets;
 	const XMFLOAT4X4* giPtr = m_GlobalInverse ? m_GlobalInverse : &globalInverse;
 
-	// Fast path: if precomputed exists for current clip, just upload
+	// Fast path: if precomputed exists for current clip, just upload (with time interpolation for smooth motion)
 	if (m_Current >= 0 && (size_t)m_Current < m_Precomputed.size())
 	{
 		const auto& pc = m_Precomputed[(size_t)m_Current];
 		if (pc.valid && !pc.times.empty())
 		{
 			double dur = pc.durationSec;
-			double t = m_TimeSec; if (dur > 0.0) { while (t < 0.0) t += dur; while (t >= dur) t -= dur; }
-			int idx = 0;
-			if (pc.sampleDt > 0.0)
+			double t = m_TimeSec;
+			if (dur > 0.0)
+			{
+				while (t < 0.0) t += dur;
+				while (t >= dur) t -= dur;
+			}
+
+			// 샘플 간 선형 보간으로 매끄러운 애니메이션 구현
+			if (pc.sampleDt > 0.0 && pc.palettes.size() >= 2)
 			{
 				double f = t / pc.sampleDt;
-				idx = (int)(f + 0.5);
-				if (idx >= (int)pc.palettes.size()) idx = (int)pc.palettes.size() - 1;
-				if (idx < 0) idx = 0;
+				double fFloor = std::floor(f);
+				int idx0 = (int)fFloor;
+				int idx1 = idx0 + 1;
+				if (idx0 < 0) idx0 = 0;
+				if (idx1 >= (int)pc.palettes.size()) idx1 = (int)pc.palettes.size() - 1;
+
+				float a = (float)(f - fFloor);
+				if (idx0 == idx1 || a <= 0.0f)
+				{
+					UploadPalette(ctx, pc.palettes[(size_t)idx0]);
+				}
+				else
+				{
+					const auto& pal0 = pc.palettes[(size_t)idx0];
+					const auto& pal1 = pc.palettes[(size_t)idx1];
+					size_t nb = pal0.size();
+					if (pal1.size() < nb) nb = pal1.size();
+					m_PaletteScratch.resize(nb, XMMatrixIdentity());
+					for (size_t i = 0; i < nb; ++i)
+					{
+						m_PaletteScratch[i] = LerpMatrix(pal0[i], pal1[i], a);
+					}
+					UploadPalette(ctx, m_PaletteScratch);
+				}
+				return;
 			}
-			UploadPalette(ctx, pc.palettes[(size_t)idx]);
-			return;
+			else
+			{
+				// 샘플 간격 정보가 없으면 가장 가까운 팔레트만 사용
+				int idx = 0;
+				if (!pc.palettes.empty())
+				{
+					idx = (int)(pc.palettes.size() * (dur > 0.0 ? (t / dur) : 0.0));
+					if (idx >= (int)pc.palettes.size()) idx = (int)pc.palettes.size() - 1;
+					if (idx < 0) idx = 0;
+				}
+				UploadPalette(ctx, pc.palettes[(size_t)idx]);
+				return;
+			}
 		}
 	}
 
