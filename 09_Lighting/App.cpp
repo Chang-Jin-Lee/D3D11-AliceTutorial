@@ -212,16 +212,11 @@ void App::OnUpdate(const float& dt)
 	m_baseProjection.view = view;
 	m_baseProjection.proj = proj;
 
+	// 역전치
 	m_baseProjection.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(world0)));
-	{
-		XMFLOAT3 dir = m_LightDirection;
-		XMVECTOR v = XMVector3Normalize(XMLoadFloat3(&dir));
-		XMStoreFloat3(&dir, v);
-		m_baseProjection.dirLight = DirectionalLight(
-			DirectX::XMFLOAT4(m_LightColorRGB.x, m_LightColorRGB.y, m_LightColorRGB.z, 1.0f),
-			dir
-		);
-	}
+	XMStoreFloat3(&m_LightDirection, XMVector3Normalize(XMLoadFloat3(&m_LightDirection)));
+
+	m_baseProjection.dirLight = DirectionalLight(m_LightColorRGB, m_LightDirection);
 	m_baseProjection.eyePos = m_cameraPos;
 	m_baseProjection.pad = 0.0f;
 
@@ -301,15 +296,8 @@ void App::OnRender()
 		m_ConstantBuffer.worldInvTranspose = XMMatrixTranspose(invWorldActual);
 	}
 	// 간단 기본 광원/카메라 (UI 반영)
-	{
-		XMFLOAT3 dir = m_LightDirection;
-		XMVECTOR v = XMVector3Normalize(XMLoadFloat3(&dir));
-		XMStoreFloat3(&dir, v);
-		m_ConstantBuffer.dirLight = DirectionalLight(
-			DirectX::XMFLOAT4(m_LightColorRGB.x, m_LightColorRGB.y, m_LightColorRGB.z, 1.0f),
-			dir
-		);
-	}
+	XMStoreFloat3(&m_LightDirection, XMVector3Normalize(XMLoadFloat3(&m_LightDirection)));
+	m_ConstantBuffer.dirLight = DirectionalLight(m_LightColorRGB, m_LightDirection);
 	m_ConstantBuffer.eyePos = m_cameraPos;
 	m_ConstantBuffer.pad = 0.0f;
 
@@ -324,11 +312,9 @@ void App::OnRender()
 	// 7. 그리기
 	m_pDeviceContext->DrawIndexed(m_nIndices, 0, 0);
 
-	// 라이트 위치 마커 큐브 그리기 (작은 스케일, 흰색)
+	// =================================================== 라이트 위치 마커 큐브 그리기 (작은 스케일, 흰색) ===================================================
 	{
 		ConstantBuffer marker = m_ConstantBuffer;
-		XMFLOAT3 dir = m_LightDirection;
-		XMVECTOR v = XMVector3Normalize(XMLoadFloat3(&dir));
 		XMMATRIX S = XMMatrixScaling(0.2f, 0.2f, 0.2f);
 		XMMATRIX T = XMMatrixTranslation(m_LightPosition.x, m_LightPosition.y, m_LightPosition.z);
 		marker.world = XMMatrixTranspose(S * T);
@@ -347,12 +333,11 @@ void App::OnRender()
 		m_pDeviceContext->DrawIndexed(m_nIndices, 0, 0);
 	}
 
-	// 라이트 방향 표시 라인 그리기(빨간색)
+	// =================================================== 라이트 방향 표시 라인 그리기(빨간색) ===================================================
 	{
 		struct LineV { XMFLOAT3 pos; XMFLOAT3 normal; XMFLOAT4 color; };
 		LineV line[2] = {};
-		XMFLOAT3 dir = m_LightDirection;
-		XMVECTOR vdir = XMVector3Normalize(XMLoadFloat3(&dir));
+		XMVECTOR vdir = XMVector3Normalize(XMLoadFloat3(&m_LightDirection));
 		XMVECTOR p0 = XMLoadFloat3(&m_LightPosition);
 		XMVECTOR p1 = XMVectorAdd(p0, XMVectorScale(vdir, 2.0f));
 		XMStoreFloat3(&line[0].pos, p0);
