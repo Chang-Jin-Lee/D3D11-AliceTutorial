@@ -114,17 +114,10 @@ void App::PrepareSkyFaceSRVs()
 
 bool App::OnInitialize()
 {
-	if(!InitD3D()) 
-		return false;
-
-	if (!InitBasicEffect()) 
-		return false;
-
-	if (!InitSkyBoxEffect()) 
-		return false;
-
-	if(!InitScene()) 
-		return false;
+	if(!InitD3D()) return false;
+	if (!InitBasicEffect()) return false;
+	if (!InitSkyBoxEffect()) return false;
+	if(!InitScene()) return false;
 
 	// ImGui 초기화
 	IMGUI_CHECKVERSION();
@@ -250,26 +243,19 @@ void App::OnUpdate(const float& dt)
 	XMStoreFloat3(&camForward3, forward);
 	m_CameraForward = camForward3;
 
-	// View/Proj도 UI값 반영 (매 프레임)
-	XMMATRIX view = XMMatrixTranspose(XMMatrixLookAtLH(
+	// View/Proj도 UI값 반영
+	float fovRad = XMConvertToRadians(m_CameraFovDeg);
+	m_baseProjection.view = XMMatrixTranspose(XMMatrixLookAtLH(
 		XMVectorSet(m_cameraPos.x, m_cameraPos.y, m_cameraPos.z, 0.0f),
 		XMVectorAdd(XMVectorSet(m_cameraPos.x, m_cameraPos.y, m_cameraPos.z, 0.0f), XMVector3Normalize(XMVectorSet(camForward3.x, camForward3.y, camForward3.z, 0.0f))),
-		XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f)));
-	float fovRad = XMConvertToRadians(m_CameraFovDeg);
-	XMMATRIX proj = XMMatrixTranspose(XMMatrixPerspectiveFovLH(fovRad, AspectRatio(), m_CameraNear, m_CameraFar));
-	m_baseProjection.world = XMMatrixTranspose(world0);
-	m_baseProjection.view = view;
-	m_baseProjection.proj = proj;
+		XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f)));;
+	m_baseProjection.proj = XMMatrixTranspose(XMMatrixPerspectiveFovLH(fovRad, AspectRatio(), m_CameraNear, m_CameraFar));
+	m_baseProjection.world = XMMatrixTranspose(world0);;
 
 	m_baseProjection.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(world0)));
 	{
-		XMFLOAT3 dir = m_LightDirection;
-		XMVECTOR v = XMVector3Normalize(XMLoadFloat3(&dir));
-		XMStoreFloat3(&dir, v);
-		m_baseProjection.dirLight = DirectionalLight(
-			DirectX::XMFLOAT4(m_LightColorRGB.x, m_LightColorRGB.y, m_LightColorRGB.z, 1.0f),
-			dir
-		);
+		XMStoreFloat3(&m_LightDirection, XMVector3Normalize(XMLoadFloat3(&m_LightDirection)));
+		m_baseProjection.dirLight = DirectionalLight(m_LightColorRGB, m_LightDirection);
 	}
 	m_baseProjection.eyePos = m_cameraPos;
 	m_baseProjection.pad = 0.0f;
@@ -352,13 +338,8 @@ void App::OnRender()
 	}
 	// 간단 기본 광원/카메라 (UI 반영)
 	{
-		XMFLOAT3 dir = m_LightDirection;
-		XMVECTOR v = XMVector3Normalize(XMLoadFloat3(&dir));
-		XMStoreFloat3(&dir, v);
-		m_ConstantBuffer.dirLight = DirectionalLight(
-			DirectX::XMFLOAT4(m_LightColorRGB.x, m_LightColorRGB.y, m_LightColorRGB.z, 1.0f),
-			dir
-		);
+		XMStoreFloat3(&m_LightDirection, XMVector3Normalize(XMLoadFloat3(&m_LightDirection)));
+		m_ConstantBuffer.dirLight = DirectionalLight(m_LightColorRGB, m_LightDirection);
 	}
 	m_ConstantBuffer.eyePos = m_cameraPos;
 	m_ConstantBuffer.pad = 0.0f;
@@ -377,8 +358,6 @@ void App::OnRender()
 	// 라이트 위치 마커 큐브 그리기 (작은 스케일, 흰색)
 	{
 		ConstantBuffer marker = m_ConstantBuffer;
-		XMFLOAT3 dir = m_LightDirection;
-		XMVECTOR v = XMVector3Normalize(XMLoadFloat3(&dir));
 		XMMATRIX S = XMMatrixScaling(0.2f, 0.2f, 0.2f);
 		XMMATRIX T = XMMatrixTranslation(m_LightPosition.x, m_LightPosition.y, m_LightPosition.z);
 		marker.world = XMMatrixTranspose(S * T);
@@ -401,8 +380,7 @@ void App::OnRender()
 	{
 		struct LineV { XMFLOAT3 pos; XMFLOAT3 normal; XMFLOAT4 color; };
 		LineV line[2] = {};
-		XMFLOAT3 dir = m_LightDirection;
-		XMVECTOR vdir = XMVector3Normalize(XMLoadFloat3(&dir));
+		XMVECTOR vdir = XMVector3Normalize(XMLoadFloat3(&m_LightDirection));
 		XMVECTOR p0 = XMLoadFloat3(&m_LightPosition);
 		XMVECTOR p1 = XMVectorAdd(p0, XMVectorScale(vdir, 2.0f));
 		XMStoreFloat3(&line[0].pos, p0);

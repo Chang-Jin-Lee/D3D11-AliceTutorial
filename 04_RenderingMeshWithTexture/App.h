@@ -74,7 +74,10 @@ public:
 	float m_CameraNear = 1.0f;
 	float m_CameraFar = 1000.0f;
 
+	float t0 = 0.0f;
+
 	bool OnInitialize() override;
+	void ImGuiInitialize();
 	void OnUninitialize() override;
 	void OnUpdate(const float& dt) override;
 	void OnRender() override;
