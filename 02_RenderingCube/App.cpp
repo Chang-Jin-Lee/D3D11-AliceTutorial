@@ -45,11 +45,8 @@
 bool App::OnInitialize()
 {
 	if(!InitD3D()) return false;
-
 	if(!InitEffect()) return false;
-
 	if(!InitScene()) return false;
-
 	return true;
 }
 
@@ -62,8 +59,7 @@ void App::OnUpdate(const float& dt)
 {
 	static float phi = 0.0f, theta = 0.0f;
 	phi += 0.3f * dt, theta += 0.37f * dt;
-	//m_CBuffer.world = XMMatrixTranspose(XMMatrixRotationX(phi) * XMMatrixRotationY(theta));
-	m_CBuffer.world = XMMatrixTranspose(XMMatrixRotationY(theta));
+	m_CBuffer.world = XMMatrixTranspose(XMMatrixRotationX(phi) * XMMatrixRotationY(theta));
 	// 상수 버퍼를 업데이트하여 큐브를 돌립니다
 
 	D3D11_MAPPED_SUBRESOURCE mappedData;
@@ -80,8 +76,6 @@ void App::OnRender()
 	UINT offset = 0;
 
 	m_pDeviceContext->ClearRenderTargetView(m_pRenderTargetView, color);
-	//m_pDeviceContext->ClearDepthStencilView(m_pDepthStencilView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
-
 	// 1 ~ 3 . IA 단계 설정
 	// 정점을 어떻게 이어서 그릴 것인지를 선택하는 부분
 	m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
