@@ -81,9 +81,7 @@
 bool App::OnInitialize()
 {
 	if(!InitD3D()) return false;
-
 	if (!InitEffect()) return false;
-
 	if(!InitScene()) return false;
 
 	// ImGui 초기화
@@ -166,25 +164,18 @@ void App::OnUninitialize()
 */
 void App::OnUpdate(const float& dt)
 {
-	static float t0 = 0.0f, t1 = 0.0f, t2 = 0.0f;
-	t0 += 0.6f * dt;   // 부모(루트) Yaw 속도
-	t1 += 1.0f * dt;   // 두번째 메쉬(자식1) Yaw 속도 (루트와 다르게)
-	t2 += 1.2f * dt;   // 세번째 메쉬(자식2) 공전 속도
-
+	t0 += dt;
 	// 단일 모델 월드 변환
 	XMMATRIX world0 = XMMatrixRotationY(t0) * XMMatrixTranslation(m_RootPos.x, m_RootPos.y, m_RootPos.z);
 
 	// View/Proj도 UI값 반영 (매 프레임)
-	XMMATRIX view = XMMatrixTranspose(XMMatrixLookAtLH(
+	m_CBuffer.world = XMMatrixTranspose(world0);
+	m_CBuffer.view = XMMatrixTranspose(XMMatrixLookAtLH(
 		XMVectorSet(m_CameraPos.x, m_CameraPos.y, m_CameraPos.z, 0.0f),
 		XMVectorSet(m_CameraPos.x + 0.0f, m_CameraPos.y + 0.0f, m_CameraPos.z + 1.0f, 0.0f),
-		XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f)));
+		XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f)));;
 	float fovRad = XMConvertToRadians(m_CameraFovDeg);
-	XMMATRIX proj = XMMatrixTranspose(XMMatrixPerspectiveFovLH(fovRad, AspectRatio(), m_CameraNear, m_CameraFar));
-
-	m_CBuffer.world = XMMatrixTranspose(world0);
-	m_CBuffer.view = view;
-	m_CBuffer.proj = proj;
+	m_CBuffer.proj = XMMatrixTranspose(XMMatrixPerspectiveFovLH(fovRad, AspectRatio(), m_CameraNear, m_CameraFar));;
 
 	// FPS 1초 업데이트
 	m_FpsTimer += dt;
@@ -628,7 +619,7 @@ bool App::InitScene()
 	// 카메라 자동 셋업
 	m_RootPos = XMFLOAT3(0,0,0);
 	m_CameraNear = 0.1f;
-	m_CameraFar = max(1000.0f, targetRadius * 20.0f);
+	m_CameraFar = (std::max)(1000.0f, targetRadius * 20.0f);
 	m_CameraPos = XMFLOAT3(0.0f, targetRadius * 0.5f, -targetRadius * 2.0f);
 
 	D3D11_BUFFER_DESC vbDesc = {};

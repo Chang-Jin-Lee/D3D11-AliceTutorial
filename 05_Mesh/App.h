@@ -110,6 +110,8 @@ public:
 	std::vector<Subset> m_Subsets;                       // 머티리얼별 드로우 서브셋
 	std::vector<ID3D11ShaderResourceView*> m_MaterialSRVs; // 머티리얼별 텍스처 SRV(주로 DIFFUSE)
 	ID3D11ShaderResourceView* m_pWhiteSRV = nullptr;        // 기본 흰색 텍스처 SRV
+
+	float t0{ 0.0f }; // 시간
  
 	bool OnInitialize() override;
 	void OnUninitialize() override;
