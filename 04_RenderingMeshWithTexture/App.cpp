@@ -47,12 +47,16 @@
 bool App::OnInitialize()
 {
 	if(!InitD3D()) return false;
-
 	if (!InitEffect()) return false;
-
 	if(!InitScene()) return false;
+	ImGuiInitialize();
 
-	// ImGui 초기화
+	return true;
+}
+
+// =================================================== ImGui 초기화 ===================================================
+void App::ImGuiInitialize()
+{
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 	ImGui::StyleColorsDark();
@@ -109,8 +113,6 @@ bool App::OnInitialize()
 			m_RamAvail = ms.ullAvailPhys;
 		}
 	}
-
-	return true;
 }
 
 void App::OnUninitialize()
@@ -125,10 +127,9 @@ void App::OnUninitialize()
 
 void App::OnUpdate(const float& dt)
 {
-	static float t0 = 0.0f, t1 = 0.0f, t2 = 0.0f;
 	t0 += 0.6f * dt;   // 부모(루트) Yaw 속도
-	t1 += 1.0f * dt;   // 두번째 메쉬(자식1) Yaw 속도 (루트와 다르게)
-	t2 += 1.2f * dt;   // 세번째 메쉬(자식2) 공전 속도
+	float t1 = 1.5f * t0;   // 두번째 메쉬(자식1) Yaw 속도 (루트와 다르게)
+	float t2 = 2.2f * t0;   // 세번째 메쉬(자식2) 공전 속도
 
 	// 로컬 변환 정의 (간단 Scene Graph)
 	XMMATRIX local0 = XMMatrixRotationY(t0) * XMMatrixTranslation(m_RootPos.x, m_RootPos.y, m_RootPos.z); // 루트
@@ -192,6 +193,7 @@ void App::OnUpdate(const float& dt)
 // Render() 함수에 중요한 부분이 다 들어있습니다. 여기를 보면 됩니다
 void App::OnRender()
 {
+	// =================================================== 큐브 회전 렌더 ===================================================
 	float color[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
 	UINT stride = sizeof(VertexCubePosTex);	// 바이트 수
 	UINT offset = 0;
@@ -234,7 +236,7 @@ void App::OnRender()
 		}
 	}
 
-	// ImGui 프레임 및 UI 렌더링
+	// =================================================== ImGui 프레임 및 UI 렌더링 ===================================================
 	ImGui_ImplDX11_NewFrame();
 	ImGui_ImplWin32_NewFrame();
 	ImGui::NewFrame();
@@ -570,7 +572,6 @@ bool App::InitScene()
 
 	// 텍스처 6장 로드 (png/jpg 허용)
 	const wchar_t* facePaths[6] = {
-		//L"front.png", L"left.png", L"top.png", L"back.png", L"right.png", L"bottom.png"
 		L"../Resource/Image/Yuuka.png", L"../Resource/Image/Hanako.png", L"../Resource/Image/Hanako.png", L"../Resource/Image/Hanako.png", L"../Resource/Image/Hanako.png", L"../Resource/Image/Hanako.png"
 	};
 	for (int i = 0; i < 6; ++i)
