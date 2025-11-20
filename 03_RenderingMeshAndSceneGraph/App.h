@@ -48,6 +48,8 @@ public:
 	ID3D11DepthStencilView* m_pDepthStencilView;    // 깊이 템플릿
 	ID3D11DepthStencilState* m_pDepthStencilState = nullptr;	// 깊이 스텐실 상태
 
+	float t0{ 0.0f };		// 회전에 대한 시간 상수
+
 	// ImGui 컨트롤 상태 변수
 	DirectX::XMFLOAT3 m_RootPos = { -1.5f, 0.0f, 0.0f };
 	DirectX::XMFLOAT3 m_Child1Offset = { 8.0f, 0.0f, 0.0f };
