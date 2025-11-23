@@ -102,6 +102,9 @@
     <ClInclude Include="Singleton.h">
       <Filter>Core</Filter>
     </ClInclude>
+    <ClInclude Include="Ray.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Common.cpp">
@@ -172,6 +175,9 @@
     </ClCompile>
     <ClCompile Include="Singleton.cpp">
       <Filter>Core</Filter>
+    </ClCompile>
+    <ClCompile Include="Ray.cpp">
+      <Filter>소스 파일</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>
