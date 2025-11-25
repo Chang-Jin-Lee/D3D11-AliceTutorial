@@ -37,6 +37,7 @@
 #include "../Common/AssetManager.h"
 #include "../Common/Transform.h"
 #include "../Common/BaseObject.h"
+#include "../Common/Ray.h"
 #include "SceneA.h"
 #include "SceneB.h"
 #include <directxtk/GamePad.h>
@@ -609,6 +610,7 @@ bool App::OnInitialize()
 		m_->m_Objects.push_back(std::move(mo));
 	}
 	m_->m_Models[1]->scale = XMFLOAT3(2.0f, 1.0f, 8.0f);
+	m_->m_Models[1]->pos = XMFLOAT3(0.0f, -1.0f, 0.0f);
 
 	{
 		m_->m_Models[0]->useInstanceMaterial = true;
@@ -818,11 +820,9 @@ void App::OnUpdate(const float& dt)
 
 	// Camera의 View/Proj 
 	XMMATRIX model = XMMatrixIdentity();
-	XMMATRIX view = XMMatrixTranspose(m_Camera.GetViewMatrixXM());
-	XMMATRIX proj = XMMatrixTranspose(m_Camera.GetProjMatrixXM());
 	m_->m_baseProjection.world = XMMatrixTranspose(model);
-	m_->m_baseProjection.view = view;
-	m_->m_baseProjection.proj = proj;
+	m_->m_baseProjection.view = XMMatrixTranspose(m_Camera.GetViewMatrixXM());
+	m_->m_baseProjection.proj = XMMatrixTranspose(m_Camera.GetProjMatrixXM());
 	m_->m_baseProjection.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(model)));
 
 	XMFLOAT3 lightDir = m_->m_DirLight.direction;
@@ -833,7 +833,6 @@ void App::OnUpdate(const float& dt)
 	m_->m_baseProjection.dirLight = m_->m_DirLight;
 	m_->m_baseProjection.dirLight.direction = lightDir;
 	m_->m_baseProjection.dirLight.pad = 0.0f;
-
 	m_->m_baseProjection.eyePos = m_Camera.GetPosition();
 	m_->m_baseProjection.pad = 0.0f;
 
@@ -913,6 +912,67 @@ void App::OnUpdate(const float& dt)
 			m_->m_ShowScenePopup = true;
 			m_->m_ScenePopupTimer = 2.0f;
 			m_->m_ScenePopupMessage = Utf8FromWString(L"씬 A에요 토끼씨!");
+		}
+	}
+
+	// ====================================== 간단 마우스 피킹 (FBX/모델 위주) ======================================
+	auto& input = *InputSystem::Instance;
+	if (InputSystem::Instance && !ImGui::GetIO().WantCaptureMouse &&
+		input.m_MouseStateTracker.leftButton == Mouse::ButtonStateTracker::PRESSED)
+	{
+		PickingRay ray = PickingRay::ScreenPointToRay(
+			m_Camera,
+			(float)input.m_MouseState.x,
+			(float)input.m_MouseState.y,
+			(float)m_ClientWidth,
+			(float)m_ClientHeight);
+
+		int   pickedModel = -1;
+		float bestT       = FLT_MAX;
+
+		for (auto it = m_->m_Models.begin(); it != m_->m_Models.end(); ++it)
+		{
+			auto& mdl = **it;
+
+			XMFLOAT3 mn = mdl.boundsMin, mx = mdl.boundsMax;
+			XMFLOAT3 bmin{}, bmax{};
+
+			// 로컬 AABB(min,max)에 스케일과 위치를 그대로 적용해서 월드 AABB를 만든다 (회전은 무시)
+			float x0 = mn.x * mdl.scale.x + mdl.pos.x;
+			float x1 = mx.x * mdl.scale.x + mdl.pos.x;
+			bmin.x = std::min(x0, x1);
+			bmax.x = (std::max)(x0, x1);
+
+			float y0 = mn.y * mdl.scale.y + mdl.pos.y;
+			float y1 = mx.y * mdl.scale.y + mdl.pos.y;
+			bmin.y = std::min(y0, y1);
+			bmax.y = (std::max)(y0, y1);
+
+			float z0 = mn.z * mdl.scale.z + mdl.pos.z;
+			float z1 = mx.z * mdl.scale.z + mdl.pos.z;
+			bmin.z = std::min(z0, z1);
+			bmax.z = (std::max)(z0, z1);
+
+			float t;
+			if (ray.HitAABB(bmin, bmax, t) && t < bestT)
+			{
+				bestT      = t;
+				pickedModel = it - m_->m_Models.begin();
+			}
+		}
+
+		if (pickedModel >= 0)
+		{
+			m_->m_SelectedModelIdx = pickedModel;
+			auto itObj = std::find_if(
+				m_->m_Objects.begin(), m_->m_Objects.end(),
+				[pickedModel](const std::unique_ptr<BaseObject>& up)
+				{
+					if (!up || up->kind != ObjectKind::Model) return false;
+					return static_cast<ModelObject*>(up.get())->modelIndex == pickedModel;
+				});
+			if (itObj != m_->m_Objects.end()) m_->m_SelectedItem = std::distance(m_->m_Objects.begin(), itObj);
+			else m_->m_SelectedItem = -1;
 		}
 	}
 
