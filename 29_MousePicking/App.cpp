@@ -1114,9 +1114,7 @@ void App::OnRender()
 			memcpy(mapped.pData, &cb, sizeof(ConstantBuffer));
 			m_->m_pDeviceContext->Unmap(m_->m_pConstantBuffer, 0);
 			m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
-
-			for (const auto& sub : mdlPtr->shared->subsets)
-				m_->m_pDeviceContext->DrawIndexed(sub.count, sub.start, 0);
+			for (const auto& sub : mdlPtr->shared->subsets) m_->m_pDeviceContext->DrawIndexed(sub.count, sub.start, 0);
 		}
 
 		// Restore
@@ -1137,23 +1135,18 @@ void App::OnRender()
 	m_->m_ConstantBuffer.shadowMapSize = (float)m_->m_ShadowSize;
 	m_->m_ConstantBuffer.shadowPCFRadius = m_->m_ShadowPCFRadius;
 	m_->m_ConstantBuffer.shadowEnabled = m_->m_ShadowEnabled;
-	{
-		// 비균등 스케일을 해결한 코드. 역전치 곱하기
-		auto invWorlNormal = XMMatrixInverse(nullptr, m_->m_baseProjection.world);
-		m_->m_ConstantBuffer.worldInvTranspose = XMMatrixTranspose(invWorlNormal);
-	}
+	// 비균등 스케일을 해결한 코드. 역전치 곱하기
+	auto invWorlNormal = XMMatrixInverse(nullptr, m_->m_baseProjection.world);
+	m_->m_ConstantBuffer.worldInvTranspose = XMMatrixTranspose(invWorlNormal);
 
 	// 기본 광원/카메라 UI 반영
-	{
-		XMFLOAT3 lightDir = m_->m_DirLight.direction;
-		XMVECTOR v = XMVector3Normalize(XMLoadFloat3(&lightDir));
-		XMStoreFloat3(&lightDir, v);
-		// DirectionalLight 필드 대입 정규화된 방향
-		m_->m_ConstantBuffer.dirLight = m_->m_DirLight;
-		m_->m_ConstantBuffer.dirLight.direction = lightDir;
-		m_->m_ConstantBuffer.dirLight.pad = 0.0f;
-	}
-
+	XMFLOAT3 lightDir = m_->m_DirLight.direction;
+	XMVECTOR v = XMVector3Normalize(XMLoadFloat3(&lightDir));
+	XMStoreFloat3(&lightDir, v);
+	// DirectionalLight 필드 대입 정규화된 방향
+	m_->m_ConstantBuffer.dirLight = m_->m_DirLight;
+	m_->m_ConstantBuffer.dirLight.direction = lightDir;
+	m_->m_ConstantBuffer.dirLight.pad = 0.0f;
 	m_->m_ConstantBuffer.eyePos = m_Camera.GetPosition();
 	m_->m_ConstantBuffer.pad = 0.0f;
 	// 셰이딩 모드 전달 (맵 플래그는 오브젝트별로 설정)
@@ -1162,7 +1155,6 @@ void App::OnRender()
 	m_->m_ConstantBuffer.useSpecularMap = 0;
 	m_->m_ConstantBuffer.useDiffuseMap = 1;
 	// Outline params 업데이트
-	// Rim 파라미터 업로드 제거
 	m_->m_ConstantBuffer.outlineThickness = m_->m_OutlineThickness;
 	m_->m_ConstantBuffer.outlineColor = m_->m_OutlineColor;
 	m_->m_ConstantBuffer.outlineStrength = m_->m_OutlineStrength;
@@ -1173,7 +1165,6 @@ void App::OnRender()
 	HR_T(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedData));
 	memcpy_s(mappedData.pData, sizeof(ConstantBuffer), &m_->m_ConstantBuffer, sizeof(ConstantBuffer));
 	m_->m_pDeviceContext->Unmap(m_->m_pConstantBuffer, 0);
-
 	m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
 	m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
 	m_->m_pDeviceContext->PSSetSamplers(0, 1, &m_->m_pSamplerState);
@@ -1197,12 +1188,14 @@ void App::OnRender()
 
 		// 월드 행렬 세팅 + CB 업로드
 		ConstantBuffer cb = m_->m_ConstantBuffer;
-        XMMATRIX rotYaw = XMMatrixRotationY(XMConvertToRadians(mc.rotationDeg.y));
-        XMMATRIX rotPitch = XMMatrixRotationX(XMConvertToRadians(mc.rotationDeg.x));
-        XMMATRIX rotRoll = XMMatrixRotationZ(XMConvertToRadians(mc.rotationDeg.z));
         XMMATRIX Sm = XMMatrixScaling(mc.scale.x, mc.scale.y, mc.scale.z);
+		XMMATRIX Rm = XMMatrixRotationQuaternion(XMQuaternionRotationRollPitchYaw(
+			XMConvertToRadians(mc.rotationDeg.x),
+			XMConvertToRadians(mc.rotationDeg.y),
+			XMConvertToRadians(mc.rotationDeg.z)
+		));
         XMMATRIX Tm = XMMatrixTranslation(mc.position.x, mc.position.y, mc.position.z);
-        XMMATRIX W = Sm * rotPitch * rotYaw * rotRoll * Tm;
+        XMMATRIX W = Sm * Rm * Tm;
         cb.world = XMMatrixTranspose(W);
         cb.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(W)));
         // 큐브 개별 머티리얼 적용
@@ -1234,7 +1227,6 @@ void App::OnRender()
 			m_->m_pDeviceContext->Unmap(m_->m_pConstantBuffer, 0);
 			m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
 			m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
-
 			m_->m_pDeviceContext->PSSetShaderResources(0, 1, &srvDiffuse);
 			m_->m_pDeviceContext->PSSetShaderResources(2, 1, &srvNormal);
 			m_->m_pDeviceContext->PSSetShaderResources(3, 1, &srvSpec);
@@ -1293,16 +1285,17 @@ void App::OnRender()
 				// 스키닝 미사용 시 VS b1 해제(안전)
 				ID3D11Buffer* nullCB = nullptr; m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &nullCB);
 			}
-			if (mdlPtr->shared)
-				m_->m_pDeviceContext->IASetIndexBuffer(mdlPtr->shared->ib, DXGI_FORMAT_R32_UINT, 0);
+			if (mdlPtr->shared) m_->m_pDeviceContext->IASetIndexBuffer(mdlPtr->shared->ib, DXGI_FORMAT_R32_UINT, 0);
 
 			// 월드 행렬 per-model
-			XMMATRIX rotYaw = XMMatrixRotationY(XMConvertToRadians(mdlPtr->rotDeg.y));
-			XMMATRIX rotPitch = XMMatrixRotationX(XMConvertToRadians(mdlPtr->rotDeg.x));
-			XMMATRIX rotRoll = XMMatrixRotationZ(XMConvertToRadians(mdlPtr->rotDeg.z));
 			XMMATRIX S = XMMatrixScaling(mdlPtr->scale.x, mdlPtr->scale.y, mdlPtr->scale.z);
+			XMMATRIX R = XMMatrixRotationQuaternion(XMQuaternionRotationRollPitchYaw(
+				XMConvertToRadians(mdlPtr->rotDeg.x),
+				XMConvertToRadians(mdlPtr->rotDeg.y),
+				XMConvertToRadians(mdlPtr->rotDeg.z)
+			));
 			XMMATRIX T = XMMatrixTranslation(mdlPtr->pos.x, mdlPtr->pos.y, mdlPtr->pos.z);
-			XMMATRIX W = S * rotPitch * rotYaw * rotRoll * T;
+			XMMATRIX W = S * R * T;
 
 			ConstantBuffer cb = m_->m_ConstantBuffer;
 			cb.world = XMMatrixTranspose(W);
@@ -1330,7 +1323,6 @@ void App::OnRender()
 				m_->m_pDeviceContext->PSSetShaderResources(0, 1, &srvDiffuse);
 				m_->m_pDeviceContext->PSSetShaderResources(2, 1, &srvNormal);
 				m_->m_pDeviceContext->PSSetShaderResources(3, 1, &srvSpec);
-
 				m_->m_pDeviceContext->DrawIndexed(sub.count, sub.start, 0);
 			}
 
@@ -1540,18 +1532,15 @@ void App::OnRender()
 					};
 					XMFLOAT4 col = XMFLOAT4(1, 1, 0, 1); // 노란색
 					// 12 엣지 드로우
-					m_->m_LineRenderer->DrawLine(m_->m_pDeviceContext, c[0], c[1], col, m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
-					m_->m_LineRenderer->DrawLine(m_->m_pDeviceContext, c[1], c[2], col, m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
-					m_->m_LineRenderer->DrawLine(m_->m_pDeviceContext, c[2], c[3], col, m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
-					m_->m_LineRenderer->DrawLine(m_->m_pDeviceContext, c[3], c[0], col, m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
-					m_->m_LineRenderer->DrawLine(m_->m_pDeviceContext, c[4], c[5], col, m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
-					m_->m_LineRenderer->DrawLine(m_->m_pDeviceContext, c[5], c[6], col, m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
-					m_->m_LineRenderer->DrawLine(m_->m_pDeviceContext, c[6], c[7], col, m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
-					m_->m_LineRenderer->DrawLine(m_->m_pDeviceContext, c[7], c[4], col, m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
-					m_->m_LineRenderer->DrawLine(m_->m_pDeviceContext, c[0], c[4], col, m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
-					m_->m_LineRenderer->DrawLine(m_->m_pDeviceContext, c[1], c[5], col, m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
-					m_->m_LineRenderer->DrawLine(m_->m_pDeviceContext, c[2], c[6], col, m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
-					m_->m_LineRenderer->DrawLine(m_->m_pDeviceContext, c[3], c[7], col, m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
+					auto Draw = [&](const int& i, const int& j) {
+						m_->m_LineRenderer->DrawLine(m_->m_pDeviceContext, c[i], c[j], col, m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
+					};
+					// 박스 면 4개 선 그리기 (밑면)
+					Draw(0, 1); Draw(1, 2); Draw(2, 3); Draw(3, 0);
+					// 박스 면 4개 선 그리기 (윗면)
+					Draw(4, 5); Draw(5, 6); Draw(6, 7); Draw(7, 4);
+					// 박스 세로 4개 선 그리기 (밑면과 윗면 연결)
+					Draw(0, 4); Draw(1, 5); Draw(2, 6); Draw(3, 7);
 
 					// VS/IL/b1 복원
 					if (prevVS) { m_->m_pDeviceContext->VSSetShader(prevVS, nullptr, 0); prevVS->Release(); }
