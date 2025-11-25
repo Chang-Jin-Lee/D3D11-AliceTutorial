@@ -410,7 +410,7 @@ struct App::Impl {
 	bool							m_RotateModel = false;
 
 	// 조명/재질
-	DirectionalLight				m_DirLight = { {0,0,0,1}, {1,1,1,1}, {0.7,0.7,0.7,1}, {0,-1.1,1}, 0.0f };
+	DirectionalLight				m_DirLight = { {0,0,0,1}, {1,1,1,1}, {0.7f,0.7f,0.7f,1}, {0,-1.1f,1}, 0.0f };
 	Material						m_Material = { {1,1,1,1}, {1,1,1,1}, {1,1,1,32}, {0,0,0,0} };
 	Material						m_mirrorCubeMaterial = { {0,0,0,1}, {0,0,0,1}, {0,0,0,32}, {1,1,1,0.02f} };
 
@@ -423,7 +423,7 @@ struct App::Impl {
 	// Outline params ImGui에서 제어하는 용도도
 	// Rim 파라미터 제거. 멀티패스 지오메트리 아웃라인만 사용
 	float							m_OutlineThickness = 0.08f;
-	XMFLOAT4						m_OutlineColor = XMFLOAT4(1.0, 0.7286, 0, 1);
+	XMFLOAT4						m_OutlineColor = XMFLOAT4(1.0, 0.7286f, 0, 1);
 	float							m_OutlineStrength = 1.0f;
 	int								m_EnableNormalMapForCube = 1;
 	int								m_UseSpecularMapForCube = 0;
@@ -916,8 +916,6 @@ void App::OnUpdate(const float& dt)
 		}
 	}
 
-
-
 	// F7: 키가 눌려있는 동안에만 일정 간격으로 스폰
 	if (InputSystem::Instance && InputSystem::Instance->m_KeyboardStateTracker.IsKeyPressed(DirectX::Keyboard::Keys::F7))
 	{
@@ -1092,13 +1090,15 @@ void App::OnRender()
 				ID3D11Buffer* nullCB = nullptr; m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &nullCB);
 			}
 
-			// Per-model world
-			XMMATRIX rotYaw = XMMatrixRotationY(XMConvertToRadians(mdlPtr->rotDeg.y));
-			XMMATRIX rotPitch = XMMatrixRotationX(XMConvertToRadians(mdlPtr->rotDeg.x));
-			XMMATRIX rotRoll = XMMatrixRotationZ(XMConvertToRadians(mdlPtr->rotDeg.z));
+			// 회전 행렬 생성
 			XMMATRIX S = XMMatrixScaling(mdlPtr->scale.x, mdlPtr->scale.y, mdlPtr->scale.z);
+			XMMATRIX R = XMMatrixRotationQuaternion(XMQuaternionRotationRollPitchYaw(
+				XMConvertToRadians(mdlPtr->rotDeg.x),
+				XMConvertToRadians(mdlPtr->rotDeg.y),
+				XMConvertToRadians(mdlPtr->rotDeg.z)
+			));
 			XMMATRIX T = XMMatrixTranslation(mdlPtr->pos.x, mdlPtr->pos.y, mdlPtr->pos.z);
-			XMMATRIX W = S * rotPitch * rotYaw * rotRoll * T;
+			XMMATRIX W = S * R * T;
 
 			// Fill CB
 			ConstantBuffer cb = m_->m_ConstantBuffer;
@@ -1182,7 +1182,6 @@ void App::OnRender()
 	if (m_->m_pShadowSRV)     m_->m_pDeviceContext->PSSetShaderResources(4, 1, &m_->m_pShadowSRV);
     // 큐브맵을 t1 슬롯에 바인딩 (픽셀 셰이더에서 g_TexCube : t1)
     m_->m_pDeviceContext->PSSetShaderResources(1, 1, &m_->m_pTextureSRV);
-
 
     /// ====================================== 큐브 ======================================
     for (auto& objPtr : m_->m_Objects)
@@ -2111,7 +2110,7 @@ void App::RenderWidgetUI()
 			std::string modeLine = std::string("Shader Mode: ") + shaderModeToString(mdl.modelShading);
 			std::string outline = std::string("Outline: ") + (mdl.outlineEnabled ? "On" : "Off");
 			ImVec2 sp;
-			if (WorldToScreen(mdl.pos + XMFLOAT3(0,1.6,0), view, proj, io.DisplaySize.x, io.DisplaySize.y, sp))
+			if (WorldToScreen(mdl.pos + XMFLOAT3(0,1.6f,0), view, proj, io.DisplaySize.x, io.DisplaySize.y, sp))
 			{
 				ImVec2 szLabel = ImGui::CalcTextSize(label.c_str());
 				ImVec2 szMode = ImGui::CalcTextSize(modeLine.c_str());
@@ -2534,7 +2533,7 @@ void App::RenderControlPannel()
 		ImGui::ColorEdit4("Specular", &m_->m_DirLight.specular.x);
 		if (ImGui::Button("Reset Light"))
 		{
-			m_->m_DirLight = { XMFLOAT4(0,0,0,1), XMFLOAT4(1,1,1,1), XMFLOAT4(0.7,0.7,0.7,1), XMFLOAT3(0,0,1), 0.0f };
+			m_->m_DirLight = { XMFLOAT4(0,0,0,1), XMFLOAT4(1,1,1,1), XMFLOAT4(0.7f,0.7f,0.7f,1), XMFLOAT3(0,0,1), 0.0f };
 		}
 		ImGui::Separator();
 		ImGui::Text("Material");
