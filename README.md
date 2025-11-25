@@ -4,9 +4,9 @@ Tutorial for D3D AliceEngine
 이 저장소는 [DirectX SDK Samples - Direct3D11 Tutorials](https://github.com/walbourn/directx-sdk-samples/tree/main/Direct3D11Tutorials) 을 기반으로  
 학습하면서 이해하기 쉽도록 정리한 튜토리얼 프로젝트입니다.
 
-- 환경: Windows 10 SDK, Visual Studio 2022  
-- 플랫폼: Win32 Desktop (Direct3D 11.0)  
-- 목적: DirectX 11 그래픽스 파이프라인의 기초 학습
+- 환경: Windows 10 SDK, Visual Studio 2022
+- 플랫폼: Win32 Desktop (Direct3D 11.0)
+- 목적: DirectX 11 그래픽스 파이프라인의 기초 학습 및 3D 기능 탐구
 
 | [Youtube](https://www.youtube.com/playlist?list=PLbPdrhrt0AJgCSKYyzjAjHwpQ_Yt4uBMx) | [Velog](https://velog.io/@whoamicj/series/DirectX11) |
 |---|---|
@@ -40,18 +40,17 @@ Tutorial for D3D AliceEngine
 |---|---|---|---|
 | <div align="center">[<img src="https://github.com/user-attachments/assets/33dc6967-19f2-40e0-a54a-27645860018d" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/21_MultiModels_With_Animations)<br/> MultiModels With Animations demo</div> | <div align="center">[<img src="https://github.com/user-attachments/assets/ceae8311-2d3e-4689-86ac-12815cddeb91" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/23_Rigid_Animation)<br/> MultiModels With Animations demo</div> | <div align="center">[<img src="https://github.com/user-attachments/assets/c65b9a1b-4ede-419c-a8d8-260c393d2e27" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/24_Skinned_With_Bone_Structure)<br/> MultiModels With Animations demo</div> | <div align="center">[<img src="https://github.com/user-attachments/assets/78c3c9d0-25e5-40f2-8e32-ceddd3b10eb8" width="250"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/25_ToonShading_Outline)<br/> ToonShading Outline demo</div> |
 
-| 26. ShadowMap PCF  | 27. debug draw box  | 28. Scene Shared3DModel Animation  |
-|---|---|---|
-| <div align="center">[<img src="https://github.com/user-attachments/assets/c0d19bec-bd8c-4f36-bc7f-7a85b063034d" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/26_ShadowMap_PCF)<br/> ShadowMap PCF demo</div> | <div align="center">[<img src="https://github.com/user-attachments/assets/a200d679-ccd0-48c5-aba2-3cd265e027a2" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/27_DebugDraw)<br/> debug draw box demo</div> | <div align="center">[<img src="https://github.com/user-attachments/assets/4d6d3ca4-8ff0-4692-8b29-b83331893bb4" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/28_Scene_Shared3DModel_Animation)<br/> Resource Manager demo</div> |
+| 26. ShadowMap PCF  | 27. debug draw box  | 28. Scene Shared3DModel Animation  | 29. Mouse Picking |
+|---|---|---|---|
+| <div align="center">[<img src="https://github.com/user-attachments/assets/c0d19bec-bd8c-4f36-bc7f-7a85b063034d" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/26_ShadowMap_PCF)<br/> ShadowMap PCF demo</div> | <div align="center">[<img src="https://github.com/user-attachments/assets/a200d679-ccd0-48c5-aba2-3cd265e027a2" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/27_DebugDraw)<br/> debug draw box demo</div> | <div align="center">[<img src="https://github.com/user-attachments/assets/4d6d3ca4-8ff0-4692-8b29-b83331893bb4" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/28_Scene_Shared3DModel_Animation)<br/> Resource Manager demo</div> | <div align="center">[<img src="https://github.com/user-attachments/assets/d98018a9-b1a2-4dc6-bf2a-ff098796aedd" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/29_MousePicking)<br/> Mouse Picking demo</div> |
 
 ---
 
 ## 주의사항
-- 기존 레거시인 DirectX SDK 종속성을 제거함 → Windows 10 SDK 만으로 동작  
 - 수학 라이브러리인 DirectXMath 사용
 - 셰이더 컴파일을 위해 D3DCompileFromFile 사용 (실험/학습 편의 목적)
 - 텍스처 로딩을 위해 DDSTextureLoader 사용 (DirectXTK / DirectXTex 기반)
-- Cubism SDK 사용 중
+- Live2D ㅍ로젝트에서 Cubism SDK 사용
 
 ---
 
