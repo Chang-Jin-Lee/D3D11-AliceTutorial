@@ -23,8 +23,7 @@ using namespace DirectX::SimpleMath;
 *   - GameApp을 상속해 수명주기(OnInitialize/OnRender/OnUpdate/OnUninitialize)를 구현
 *   - D3D11 핵심 리소스(디바이스/컨텍스트/스왑체인/RTV)와 ImGui, 텍스처 뷰 상태를 보관
 */
-class App :
-	public GameApp
+class App : public GameApp
 {
 public:
 	// @brief : D3D11 핵심 리소스
@@ -42,7 +41,6 @@ public:
 	std::wstring m_CPUName;
 	UINT m_CPUCores = 0;
 	float m_LastFps = 0.0f;
-	float m_FpsAccum = 0.0f;
 	float m_FpsTimer = 0.0f;
 
 	// @brief : 시스템 메모리(바이트)

@@ -1,8 +1,9 @@
 ﻿/*
-* @brief : fbx, pmx, obj 3D 모델을 연속으로 여러 개를 그리는 예제입니다.
-* @details :
-*		- 노말맵이 적용되어 있는 경우 노말맵을 반영해서 그립니다
-*		- 없는 경우는 반영하지 않습니다
+* @brief  : PCF 방식의 섀도우 맵을 적용해 여러 FBX/PMX/OBJ 모델을 그리는 예제입니다.
+* @details:
+*   - 방향성 광원 기준 섀도우 맵을 생성하고, 본 패스에서 깊이 비교 + PCF 필터링을 사용합니다.
+*   - 하나의 씬에 여러 애니메이션 모델과 바닥(그라운드)을 배치하고, 섀도우 품질/바이어스/반경을 실시간으로 조정해 볼 수 있습니다.
+*   - 기본 라이팅(Phong/Blinn 등)과 Toon/Outline 셰이딩을 함께 테스트할 수 있습니다.
 */
 
 #include "App.h"
@@ -325,7 +326,6 @@ struct App::Impl {
 
 	// 공용 상수 버퍼 (b0)
 	ID3D11Buffer* m_pConstantBuffer = nullptr;
-	std::vector<ConstantBuffer>   m_CBuffers;                        // 필요 시 확장용
 	ConstantBuffer                m_ConstantBuffer{};                // CPU 캐시
 
 	// 유틸 렌더러/디버그 박스
@@ -371,9 +371,8 @@ struct App::Impl {
 	ID3D11ShaderResourceView* m_pNormalSRVs[6] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
 	ID3D11ShaderResourceView* m_pSpecularSRVs[6] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
 
-	// 시스템/카메라
+	// 시스템 정보
 	SystemInfomation              m_SystemInfo;
-	Camera                        m_camera;
 
 	// 큐브 트랜스폼
 	XMFLOAT3                      m_cubePos = { 0.0f, 0.0f, 0.0f };
@@ -563,9 +562,10 @@ bool App::OnInitialize()
 
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Ground.fbx"); // 0
 
-	m_->m_camera.SetPosition(XMFLOAT3(40, 208.0f, -184.0f));
-	m_->m_camera.SetSpeed(200.5);
-	m_->m_camera.SetRotation(XMFLOAT3(49.0f, -6.0f, 0.0f));
+	// 초기 카메라 위치/속도/회전 설정
+	m_Camera.SetPosition(XMFLOAT3(40, 208.0f, -184.0f));
+	m_Camera.SetSpeed(200.5f);
+	m_Camera.SetRotation(XMFLOAT3(49.0f, -6.0f, 0.0f));
 
 	// 트랜스폼 설정
 	m_->m_Models[0]->pos = XMFLOAT3(115.0f * 0, 0.0f, 0.0f);
@@ -725,26 +725,15 @@ void App::OnUpdate(const float& dt)
 		}
 	}
 	// 기본 카메라용 world0 (원점 단위행렬)
-	// 카메라 업데이트
-	ImGuiIO& io = ImGui::GetIO();
-	bool rmbDown = ImGui::IsMouseDown(ImGuiMouseButton_Right) && !io.WantCaptureMouse;
-	bool keyW = ImGui::IsKeyDown(ImGuiKey_W);
-	bool keyS = ImGui::IsKeyDown(ImGuiKey_S);
-	bool keyA = ImGui::IsKeyDown(ImGuiKey_A);
-	bool keyD = ImGui::IsKeyDown(ImGuiKey_D);
-	bool keyE = ImGui::IsKeyDown(ImGuiKey_E);
-	bool keyQ = ImGui::IsKeyDown(ImGuiKey_Q);
-	m_->m_camera.UpdateFromUI(rmbDown && !io.WantCaptureKeyboard, io.MouseDelta.x, io.MouseDelta.y, keyW, keyS, keyA, keyD, keyE, keyQ, dt);
-
-	// Camera의 View/Proj 
 	XMMATRIX model = XMMatrixIdentity();
-	XMMATRIX view = XMMatrixTranspose(m_->m_camera.GetViewMatrixXM());
-	XMMATRIX proj = XMMatrixTranspose(m_->m_camera.GetProjMatrixXM());
-	m_->m_baseProjection.world = XMMatrixTranspose(model);
-	m_->m_baseProjection.view = view;
-	m_->m_baseProjection.proj = proj;
 
-	m_->m_baseProjection.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(model)));
+	// 카메라 행렬
+	m_->m_baseProjection.world = XMMatrixTranspose(model);
+	m_->m_baseProjection.view  = XMMatrixTranspose(m_Camera.GetViewMatrixXM());
+	m_->m_baseProjection.proj  = XMMatrixTranspose(m_Camera.GetProjMatrixXM());
+
+	m_->m_baseProjection.worldInvTranspose = XMMatrixTranspose(
+		XMMatrixInverse(nullptr, XMMatrixTranspose(model)));
 
 	XMFLOAT3 lightDir = m_->m_DirLight.direction;
 	XMVECTOR v = XMVector3Normalize(XMLoadFloat3(&lightDir));
@@ -755,7 +744,7 @@ void App::OnUpdate(const float& dt)
 	m_->m_baseProjection.dirLight.direction = lightDir;
 	m_->m_baseProjection.dirLight.pad = 0.0f;
 
-	m_->m_baseProjection.eyePos = m_->m_camera.GetPosition();
+	m_->m_baseProjection.eyePos = m_Camera.GetPosition();
 	m_->m_baseProjection.pad = 0.0f;
 
 	// 머티리얼을 기본 캐시에 반영해 둔다
@@ -799,6 +788,7 @@ static bool WorldToScreen(const DirectX::XMFLOAT3& world,
 // Render() 함수에 중요한 부분이 다 들어있습니다. 여기를 보면 됩니다
 void App::OnRender()
 {
+	// ============================== D3D11 백버퍼/깊이 버퍼 클리어 ==============================
 	float color[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
 	UINT stride = m_->m_VertextBufferStride;	// 바이트 수
 	UINT offset = m_->m_VertextBufferOffset;
@@ -806,6 +796,7 @@ void App::OnRender()
 	m_->m_pDeviceContext->ClearRenderTargetView(m_->m_pRenderTargetView, color);
 	m_->m_pDeviceContext->ClearDepthStencilView(m_->m_pDepthStencilView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
 
+	// ============================== 기본 큐브/모델 렌더 상태 설정(IA/파이프라인) ==============================
 	// 1 ~ 3 . IA 단계 설정
 	// 정점을 어떻게 이어서 그릴 것인지를 선택하는 부분
 	// 1. 버퍼를 잡아주기
@@ -939,7 +930,7 @@ void App::OnRender()
 		m_->m_ConstantBuffer.dirLight.pad = 0.0f;
 	}
 
-	m_->m_ConstantBuffer.eyePos = m_->m_camera.GetPosition();
+	m_->m_ConstantBuffer.eyePos = m_Camera.GetPosition();
 	m_->m_ConstantBuffer.pad = 0.0f;
 	// 셰이딩 모드 전달
 	m_->m_ConstantBuffer.shadingMode = (int)m_->m_ShadingMode;
@@ -1620,9 +1611,9 @@ bool App::InitScene()
 	// 카메라(View/Proj)로 상수 버퍼를 준비합니다
 	m_->m_baseProjection.world = XMMatrixIdentity();
 	// 카메라 초기 프러스텀 값들 설정
-	m_->m_camera.SetFrustum(XMConvertToRadians(90.0f), AspectRatio(), 1.0f, 1000.0f);
-	m_->m_baseProjection.view = XMMatrixTranspose(m_->m_camera.GetViewMatrixXM());
-	m_->m_baseProjection.proj = XMMatrixTranspose(m_->m_camera.GetProjMatrixXM());
+	m_Camera.SetFrustum(XMConvertToRadians(90.0f), AspectRatio(), 1.0f, 1000.0f);
+	m_->m_baseProjection.view = XMMatrixTranspose(m_Camera.GetViewMatrixXM());
+	m_->m_baseProjection.proj = XMMatrixTranspose(m_Camera.GetProjMatrixXM());
 	m_->m_baseProjection.worldInvTranspose = XMMatrixInverse(nullptr, XMMatrixTranspose(m_->m_baseProjection.world));
 	// DirectionalLight 초기값 필드 대입
 	m_->m_baseProjection.dirLight.ambient = DirectX::XMFLOAT4(0, 0, 0, 1);
@@ -1630,7 +1621,7 @@ bool App::InitScene()
 	m_->m_baseProjection.dirLight.specular = DirectX::XMFLOAT4(1, 1, 1, 1);
 	m_->m_baseProjection.dirLight.direction = DirectX::XMFLOAT3(0, -1, 1);
 	m_->m_baseProjection.dirLight.pad = 0.0f;
-	m_->m_baseProjection.eyePos = m_->m_camera.GetPosition();
+	m_->m_baseProjection.eyePos = m_Camera.GetPosition();
 	m_->m_baseProjection.pad = 0.0f;
 
 	// ***********************************************************************************************
@@ -1746,8 +1737,8 @@ void App::RenderWidgetUI()
 	if (m_->m_RenderMode == RenderMode::Model && !m_->m_Models.empty())
 	{
 		ImGuiIO& io = ImGui::GetIO();
-		auto view = m_->m_camera.GetViewMatrixXM();
-		auto proj = m_->m_camera.GetProjMatrixXM();
+		auto view = m_Camera.GetViewMatrixXM();
+		auto proj = m_Camera.GetProjMatrixXM();
 		ImDrawList* dl = ImGui::GetForegroundDrawList();
 		int idx{ 0 };
 		for (const auto& mdlPtr : m_->m_Models)
@@ -2094,9 +2085,18 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
 
 void App::UnloadModel()
 {
+	if (m_->m_Models.empty())
+	{
+		m_->m_RenderMode = RenderMode::None;
+		m_->m_SelectedModelIdx = -1;
+		m_->m_SelectedBoneIdx = -1;
+		return;
+	}
+
 	m_->m_Models.clear();
 	m_->m_SelectedModelIdx = -1;
 	m_->m_SelectedBoneIdx = -1;
+	m_->m_RenderMode = RenderMode::None;
 }
 
 void App::RenderControlPannel()
@@ -2137,31 +2137,31 @@ void App::RenderControlPannel()
 		{
 			if (ImGui::Button("Reset"))
 			{
-				m_->m_camera.Reset();
+				m_Camera.Reset();
 			}
-			ImGui::SliderFloat("Camera Speed", &m_->m_camera.m_MoveSpeed, 1.0f, 500.0f, "%.1f");
-			DirectX::XMFLOAT3 pos = m_->m_camera.GetPosition();
+			ImGui::SliderFloat("Camera Speed", &m_Camera.m_MoveSpeed, 1.0f, 500.0f, "%.1f");
+			DirectX::XMFLOAT3 pos = m_Camera.GetPosition();
 			if (ImGui::DragFloat3("Camera Pos (x,y,z)", &pos.x, 0.1f))
 			{
-				m_->m_camera.SetPosition(pos);
+				m_Camera.SetPosition(pos);
 			}
-			float fovDeg = XMConvertToDegrees(m_->m_camera.GetFovYRad());
+			float fovDeg = XMConvertToDegrees(m_Camera.GetFovYRad());
 			if (ImGui::SliderFloat("Camera FOV (deg)", &fovDeg, 30.0f, 120.0f))
 			{
-				m_->m_camera.SetFrustum(XMConvertToRadians(fovDeg), AspectRatio(), m_->m_camera.GetNearZ(), m_->m_camera.GetFarZ());
+				m_Camera.SetFrustum(XMConvertToRadians(fovDeg), AspectRatio(), m_Camera.GetNearZ(), m_Camera.GetFarZ());
 			}
-			float nearZ = m_->m_camera.GetNearZ();
-			float farZ = m_->m_camera.GetFarZ();
+			float nearZ = m_Camera.GetNearZ();
+			float farZ = m_Camera.GetFarZ();
 			if (ImGui::DragFloatRange2("Near/Far", &nearZ, &farZ, 0.1f, 0.01f, 5000.0f, "Near: %.2f", "Far: %.2f"))
 			{
-				m_->m_camera.SetFrustum(m_->m_camera.GetFovYRad(), AspectRatio(), nearZ, farZ);
+				m_Camera.SetFrustum(m_Camera.GetFovYRad(), AspectRatio(), nearZ, farZ);
 			}
-			// 카메라 회전(도) 표시 및 편집: pitch, yaw, roll (API로 일원화)
+			// 카메라 회전(도) 표시 및 편집: pitch, yaw, roll
 			{
-				XMFLOAT3 rotDeg = m_->m_camera.GetRotation();
+				XMFLOAT3 rotDeg = m_Camera.GetRotation();
 				if (ImGui::DragFloat3("Camera Rot (deg)", &rotDeg.x, 1.0f, -180.0f, 180.0f, "%.1f"))
 				{
-					m_->m_camera.SetRotation(rotDeg);
+					m_Camera.SetRotation(rotDeg);
 				}
 			}
 		}
@@ -2475,7 +2475,7 @@ void App::RenderConsolPannel()
 	{
 		int face = 0;
 		using namespace DirectX;
-		XMFLOAT3 fwd = m_->m_camera.GetForward();
+		XMFLOAT3 fwd = m_Camera.GetForward();
 		XMVECTOR f = XMLoadFloat3(&fwd);
 		XMVECTOR fn = XMVector3Normalize(f);
 		XMFLOAT3 v; XMStoreFloat3(&v, fn);

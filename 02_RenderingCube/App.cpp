@@ -103,8 +103,6 @@ void App::OnRender()
 
 bool App::InitD3D()
 {
-	//HRESULT hr = 0;
-
 	// 스왑체인의 값들을 설정할 구조체를 만듭니다
 	DXGI_SWAP_CHAIN_DESC swapDesc = {};
 	swapDesc.BufferCount = 1;
@@ -204,8 +202,6 @@ void App::UninitD3D()
  */
 bool App::InitScene()
 {
-	//HRESULT hr = 0;
-
 	/*
 	* @brief  정점(Vertex) 배열을 GPU 버퍼로 생성
 	* @details
@@ -315,6 +311,7 @@ void App::UninitScene()
 	SAFE_RELEASE(m_pInputLayout);
 	SAFE_RELEASE(m_pVertexShader);
 	SAFE_RELEASE(m_pPixelShader);
+	SAFE_RELEASE(m_pConstantBuffer);
 }
 
 bool App::InitEffect()

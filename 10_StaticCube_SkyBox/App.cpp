@@ -38,6 +38,7 @@
 
 #include "App.h"
 #include "../Common/Helper.h"
+#include "../Common/InputSystem.h"
 #include <d3dcompiler.h>
 #include <directxtk/WICTextureLoader.h>
 #include <directxtk/DDSTextureLoader.h>
@@ -123,6 +124,20 @@ bool App::OnInitialize()
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 	ImGui::StyleColorsDark();
+	// 한글/일본어 표시를 위한 폰트 설정
+	{
+		ImGuiIO& io = ImGui::GetIO();
+		io.Fonts->AddFontDefault();
+		ImFontConfig cfg{};
+		cfg.MergeMode = true;
+		cfg.PixelSnapH = true;
+		cfg.OversampleH = 2;
+		cfg.OversampleV = 2;
+		const ImWchar* rangeKR = io.Fonts->GetGlyphRangesKorean();
+		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\NotoSansKR-Regular.ttf", 17.0f, &cfg, rangeKR);
+		const ImWchar* rangeJP = io.Fonts->GetGlyphRangesJapanese();
+		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\meiryo.ttc", 17.0f, &cfg, rangeJP);
+	}
 	ImGui_ImplWin32_Init(m_hWnd);
 	ImGui_ImplDX11_Init(m_pDevice, m_pDeviceContext);
 
@@ -196,70 +211,34 @@ void App::OnUninitialize()
 
 void App::OnUpdate(const float& dt)
 {
-	// 로컬 변환 정의 (간단 Scene Graph)
-	if(g_RotateCube)
-		m_YawDeg += 45.0f * dt; // Yaw 회전 (UI로 조절 가능)
-	m_YawDeg = std::fmod(m_YawDeg + 180.0f, 360.0f) - 180.0f;
+	// ============================== 큐브 회전 업데이트 ==============================
+	if (g_RotateCube)
+	{
+		m_YawDeg += 45.0f * dt; // Yaw 회전
+		m_YawDeg = std::fmod(m_YawDeg + 180.0f, 360.0f) - 180.0f;
+	}
 	XMMATRIX rotYaw   = XMMatrixRotationY(XMConvertToRadians(m_YawDeg));
 	XMMATRIX rotPitch = XMMatrixRotationX(XMConvertToRadians(m_PitchDeg));
-		XMMATRIX local0 = rotPitch * rotYaw * XMMatrixTranslation(m_cubePos.x, m_cubePos.y, m_cubePos.z); // 루트
-	XMMATRIX world0 = local0; // 루트
+	XMMATRIX world0 = rotPitch * rotYaw * XMMatrixTranslation(m_cubePos.x, m_cubePos.y, m_cubePos.z);
+	// ============================== 카메라 행렬 업데이트 ==============================
+	m_baseProjection.world = XMMatrixTranspose(world0);
+	m_baseProjection.view  = XMMatrixTranspose(m_Camera.GetViewMatrixXM());
+	m_baseProjection.proj  = XMMatrixTranspose(m_Camera.GetProjMatrixXM());
+	m_baseProjection.worldInvTranspose = XMMatrixTranspose(
+		XMMatrixInverse(nullptr, XMMatrixTranspose(world0)));
 
-	XMFLOAT3 camForward3 = m_CameraForward;
-	static float sYaw = 0.0f, sPitch = 0.0f;
-	ImGuiIO& io = ImGui::GetIO();
-	bool rmbDown = ImGui::IsMouseDown(ImGuiMouseButton_Right) && !io.WantCaptureMouse;
-	float d1 = 0.0f, d2 = 0.0f, d3 = 0.0f;
-	if (rmbDown && !io.WantCaptureKeyboard)
-	{
-		if (ImGui::IsKeyDown(ImGuiKey_W)) d1 += dt;
-		if (ImGui::IsKeyDown(ImGuiKey_S)) d1 -= dt;
-		if (ImGui::IsKeyDown(ImGuiKey_A)) d2 -= dt;
-		if (ImGui::IsKeyDown(ImGuiKey_D)) d2 += dt;
-		if (ImGui::IsKeyDown(ImGuiKey_E)) d3 += dt;
-		if (ImGui::IsKeyDown(ImGuiKey_Q)) d3 -= dt;
-	}
-
-	if (rmbDown)
-	{
-		float rotSpeed = 0.005f;
-		sYaw   += io.MouseDelta.x * rotSpeed;
-		sPitch += -io.MouseDelta.y * rotSpeed;
-		float limit = XMConvertToRadians(89.0f);
-		sPitch = min(max(sPitch, -limit), limit);
-	}
-	XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
-	XMVECTOR forward = XMVector3Normalize(XMVectorSet(cosf(sPitch) * sinf(sYaw), sinf(sPitch), cosf(sPitch) * cosf(sYaw), 0.0f));
-	XMVECTOR right = XMVector3Normalize(XMVector3Cross(up, forward));
-	XMVECTOR posV = XMVectorSet(m_cameraPos.x, m_cameraPos.y, m_cameraPos.z, 0.0f);
-	float moveSpeed = 5.0f;
-	if (rmbDown)
-	{
-		posV = XMVectorAdd(posV, XMVectorScale(forward, d1 * moveSpeed));
-		posV = XMVectorAdd(posV, XMVectorScale(right,   d2 * moveSpeed));
-		posV = XMVectorAdd(posV, XMVectorScale(up,      d3 * moveSpeed));
-	}
-	XMStoreFloat3(&m_cameraPos, posV);
-	XMStoreFloat3(&camForward3, forward);
-	m_CameraForward = camForward3;
-
-	// View/Proj도 UI값 반영
-	float fovRad = XMConvertToRadians(m_CameraFovDeg);
-	m_baseProjection.view = XMMatrixTranspose(XMMatrixLookAtLH(
-		XMVectorSet(m_cameraPos.x, m_cameraPos.y, m_cameraPos.z, 0.0f),
-		XMVectorAdd(XMVectorSet(m_cameraPos.x, m_cameraPos.y, m_cameraPos.z, 0.0f), XMVector3Normalize(XMVectorSet(camForward3.x, camForward3.y, camForward3.z, 0.0f))),
-		XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f)));;
-	m_baseProjection.proj = XMMatrixTranspose(XMMatrixPerspectiveFovLH(fovRad, AspectRatio(), m_CameraNear, m_CameraFar));
-	m_baseProjection.world = XMMatrixTranspose(world0);;
-
-	m_baseProjection.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(world0)));
-	{
-		XMStoreFloat3(&m_LightDirection, XMVector3Normalize(XMLoadFloat3(&m_LightDirection)));
-		m_baseProjection.dirLight = DirectionalLight(m_LightColorRGB, m_LightDirection);
-	}
-	m_baseProjection.eyePos = m_cameraPos;
+	// ============================== 라이팅 업데이트 ==============================
+	XMStoreFloat3(&m_LightDirection, XMVector3Normalize(XMLoadFloat3(&m_LightDirection)));
+	m_baseProjection.dirLight = DirectionalLight(m_LightColorRGB, m_LightDirection);
+	m_baseProjection.eyePos = m_Camera.GetPosition();
 	m_baseProjection.pad = 0.0f;
 
+	// ============================== 시스템 정보 업데이트 ==============================
+	UpdateSystemInfo(dt);
+}
+
+void App::UpdateSystemInfo(const float& dt)
+{
 	// FPS 1초 업데이트
 	m_FpsTimer += dt;
 	if (m_FpsTimer >= 1.0f)
@@ -269,13 +248,11 @@ void App::OnUpdate(const float& dt)
 	}
 
 	// 시스템 메모리 가용량 갱신
+	MEMORYSTATUSEX ms{ sizeof(MEMORYSTATUSEX) };
+	if (GlobalMemoryStatusEx(&ms))
 	{
-		MEMORYSTATUSEX ms{ sizeof(MEMORYSTATUSEX) };
-		if (GlobalMemoryStatusEx(&ms))
-		{
-			m_RamTotal = ms.ullTotalPhys;
-			m_RamAvail = ms.ullAvailPhys;
-		}
+		m_RamTotal = ms.ullTotalPhys;
+		m_RamAvail = ms.ullAvailPhys;
 	}
 
 	// VRAM 사용량 갱신 (가능한 경우)
@@ -303,6 +280,7 @@ inline ImVec2 operator-(const ImVec2& lhs, const ImVec2& rhs)
 // Render() 함수에 중요한 부분이 다 들어있습니다. 여기를 보면 됩니다
 void App::OnRender()
 {
+	// ============================== D3D11 백버퍼/깊이 버퍼 클리어 ==============================
 	float color[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
 	UINT stride = m_VertextBufferStride;	// 바이트 수
 	UINT offset = m_VertextBufferOffset;
@@ -310,11 +288,7 @@ void App::OnRender()
 	m_pDeviceContext->ClearRenderTargetView(m_pRenderTargetView, color);
 	m_pDeviceContext->ClearDepthStencilView(m_pDepthStencilView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
 
-	// 1 ~ 3 . IA 단계 설정
-	// 정점을 어떻게 이어서 그릴 것인지를 선택하는 부분
-	// 1. 버퍼를 잡아주기
-	// 2. 입력 레이아웃을 잡아주기
-	// 3. 인덱스 버퍼를 잡아주기
+	// ============================== 기본 큐브 렌더 설정(IA/VS/PS) ==============================
 	m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	m_pDeviceContext->IASetVertexBuffers(0, 1, &m_pVertexBuffer, &stride, &offset);
 	m_pDeviceContext->IASetInputLayout(m_pInputLayout);
@@ -325,22 +299,19 @@ void App::OnRender()
 	// 5. Pixel Shader 설정
 	m_pDeviceContext->PSSetShader(m_pPixelShader, nullptr, 0);
 
-	// 6. Constant Buffer 설정 (단일 GlobalCB, b0)
+	// ============================== 상수 버퍼 업데이트(b0) ==============================
 	// 프레임별 상수값 준비
 	m_ConstantBuffer.world = m_baseProjection.world;
 	m_ConstantBuffer.view  = m_baseProjection.view;
 	m_ConstantBuffer.proj  = m_baseProjection.proj;
-	{
-		// worldInvTranspose 계산 (CPU에서는 실제 world로 역/전치 후, HLSL 프리트랜스포즈 규약에 맞게 저장)
-		// 비균등 스케일을 해결한 코드
-		auto invWorlNormal = XMMatrixInverse(nullptr, m_baseProjection.world);
-		m_ConstantBuffer.worldInvTranspose = XMMatrixTranspose(invWorlNormal);
-	}
+	// worldInvTranspose 계산 (비균등 스케일 대응)
+	XMMATRIX invWorldNormal = XMMatrixInverse(nullptr, m_baseProjection.world);
+	m_ConstantBuffer.worldInvTranspose = XMMatrixTranspose(invWorldNormal);
+
 	// 간단 기본 광원/카메라 (UI 반영)
-	{
-		XMStoreFloat3(&m_LightDirection, XMVector3Normalize(XMLoadFloat3(&m_LightDirection)));
-		m_ConstantBuffer.dirLight = DirectionalLight(m_LightColorRGB, m_LightDirection);
-	}
+	XMVECTOR lightDirV = XMVector3Normalize(XMLoadFloat3(&m_LightDirection));
+	XMStoreFloat3(&m_LightDirection, lightDirV);
+	m_ConstantBuffer.dirLight = DirectionalLight(m_LightColorRGB, m_LightDirection);
 	m_ConstantBuffer.eyePos = m_cameraPos;
 	m_ConstantBuffer.pad = 0.0f;
 
@@ -352,10 +323,10 @@ void App::OnRender()
 	m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_pConstantBuffer);
 	m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_pConstantBuffer);
 
-	// 7. 그리기
+	// 큐브 드로우
 	m_pDeviceContext->DrawIndexed(m_nIndices, 0, 0);
 
-	// 라이트 위치 마커 큐브 그리기 (작은 스케일, 흰색)
+	// ============================== 라이트 위치 마커 큐브(작은 흰색) ==============================
 	{
 		ConstantBuffer marker = m_ConstantBuffer;
 		XMMATRIX S = XMMatrixScaling(0.2f, 0.2f, 0.2f);
@@ -376,7 +347,7 @@ void App::OnRender()
 		m_pDeviceContext->DrawIndexed(m_nIndices, 0, 0);
 	}
 
-	// 라이트 방향 표시 라인 그리기(빨간색)
+	// ============================== 라이트 방향 표시 라인(빨간색) ==============================
 	{
 		struct LineV { XMFLOAT3 pos; XMFLOAT3 normal; XMFLOAT4 color; };
 		LineV line[2] = {};
@@ -428,7 +399,7 @@ void App::OnRender()
 	}
 
 
-	// SkyBox 렌더링 (상태 보존/복구)
+	// ============================== 스카이박스 렌더링 (상태 보존/복구) ==============================
 	{
 		ID3D11RasterizerState* prevRS = nullptr;
 		ID3D11DepthStencilState* prevDS = nullptr; UINT prevRef = 0;
@@ -464,8 +435,7 @@ void App::OnRender()
 		XMMATRIX view  = XMMatrixTranspose(viewT);
 		view.r[3] = XMVectorSet(0.0f, 0.0f, 0.0f, XMVectorGetW(view.r[3]));
 		XMMATRIX viewNoTransT = XMMatrixTranspose(view);
-		XMMATRIX projT = m_baseProjection.proj;
-		XMMATRIX wvpT = XMMatrixMultiply(projT, viewNoTransT);
+		XMMATRIX wvpT = XMMatrixMultiply(m_baseProjection.proj, viewNoTransT);
 		// 단일 CB(b0) 사용: SkyBox VS가 사용하는 g_WorldViewProj 위치(선두 64바이트)에만 wvpT를 써준다
 		{
 			D3D11_MAPPED_SUBRESOURCE mapped{};
@@ -501,7 +471,7 @@ void App::OnRender()
 		SAFE_RELEASE(prevRS);
 	}
 
-	// ImGui 프레임 및 UI 렌더링
+	// ============================== ImGui 컨트롤 & Skybox Face 미리보기 ==============================
 	ImGui_ImplDX11_NewFrame();
 	ImGui_ImplWin32_NewFrame();
 	ImGui::NewFrame();
@@ -510,12 +480,22 @@ void App::OnRender()
 	{
 		// SkyBox 선택
 		{
-			int cur = (m_SkyBoxChoice == SkyBoxChoice::Hanako) ? 0 : 1;
+			int cur = 0;
+			if (m_SkyBoxChoice == SkyBoxChoice::CubeMap) cur = 1;
+
 			const char* items[] = { "Hanako.dds", "cubemap.dds" };
 			if (ImGui::Combo("SkyBox Choice", &cur, items, IM_ARRAYSIZE(items)))
 			{
-				m_SkyBoxChoice = (cur == 0) ? SkyBoxChoice::Hanako : SkyBoxChoice::CubeMap;
-				m_pTextureSRV = (m_SkyBoxChoice == SkyBoxChoice::Hanako) ? m_pSkyHanakoSRV : m_pSkyCubeMapSRV;
+				if (cur == 0)
+				{
+					m_SkyBoxChoice = SkyBoxChoice::Hanako;
+					m_pTextureSRV = m_pSkyHanakoSRV;
+				}
+				else
+				{
+					m_SkyBoxChoice = SkyBoxChoice::CubeMap;
+					m_pTextureSRV = m_pSkyCubeMapSRV;
+				}
 				PrepareSkyFaceSRVs();
 			}
 		}
@@ -543,13 +523,31 @@ void App::OnRender()
 		using namespace DirectX;
     	XMVECTOR f = XMLoadFloat3(&m_CameraForward);
     	XMVECTOR fn = XMVector3Normalize(f);
-    	XMFLOAT3 v; XMStoreFloat3(&v, fn);
-    	float ax = fabsf(v.x), ay = fabsf(v.y), az = fabsf(v.z);
-    	if (ax >= ay && ax >= az) face = (v.x >= 0.0f) ? 0 : 1; // +X / -X
-    	else if (ay >= ax && ay >= az) face = (v.y >= 0.0f) ? 2 : 3; // +Y / -Y
-    	else face =  (v.z >= 0.0f) ? 4 : 5;     // +Z / -Z
+    	XMFLOAT3 v;
+		XMStoreFloat3(&v, fn);
 
-		ID3D11ShaderResourceView* faceSRV = (face >= 0 && face < 6) ? m_pSkyFaceSRV[face] : nullptr;
+    	float ax = fabsf(v.x);
+		float ay = fabsf(v.y);
+		float az = fabsf(v.z);
+
+    	if (ax >= ay && ax >= az)
+		{
+			if (v.x >= 0.0f) face = 0; else face = 1; // +X / -X
+		}
+    	else if (ay >= ax && ay >= az)
+		{
+			if (v.y >= 0.0f) face = 2; else face = 3; // +Y / -Y
+		}
+    	else
+		{
+			if (v.z >= 0.0f) face = 4; else face = 5;     // +Z / -Z
+		}
+
+		ID3D11ShaderResourceView* faceSRV = nullptr;
+		if (face >= 0 && face < 6)
+		{
+			faceSRV = m_pSkyFaceSRV[face];
+		}
 		if (faceSRV)
 		{
 			ImGui::SetNextWindowPos(ImVec2(810, 210), ImGuiCond_Once);
@@ -557,11 +555,15 @@ void App::OnRender()
 			if (ImGui::Begin("Skybox Face"))
 			{
 				ImGui::BeginChild("SkyFaceView", ImVec2(0, 0), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-				const ImVec2 tex = (m_HanakoDrawSize.x > 0 && m_HanakoDrawSize.y > 0) ? m_HanakoDrawSize : m_SkyFaceSize;
+				ImVec2 tex = m_SkyFaceSize;
+				if (m_HanakoDrawSize.x > 0 && m_HanakoDrawSize.y > 0) tex = m_HanakoDrawSize;
 				ImVec2 avail = ImGui::GetContentRegionAvail();
-				float sx = (tex.x > 0.f) ? (avail.x / tex.x) : 1.f;
-				float sy = (tex.y > 0.f) ? (avail.y / tex.y) : 1.f;
-				float scale = (sx > 0.f && sy > 0.f) ? min(sx, sy) : 1.f;
+				float sx = 1.0f;
+				float sy = 1.0f;
+				float scale = 1.0f;
+				if (tex.x > 0.0f) sx = avail.x / tex.x;
+				if (tex.y > 0.0f) sy = avail.y / tex.y;
+				if (sx > 0.0f && sy > 0.0f) scale = (sx < sy) ? sx : sy;
 				ImVec2 draw = ImVec2(tex.x * scale, tex.y * scale);
 				ImVec2 start = ImGui::GetCursorPos();
 				ImVec2 offset = ImVec2((avail.x - draw.x) * 0.5f, (avail.y - draw.y) * 0.5f);
@@ -745,6 +747,9 @@ bool App::InitD3D()
 
 void App::UninitD3D()
 {
+	SAFE_RELEASE(RSNoCull);
+	SAFE_RELEASE(RSCullClockWise);
+
 	SAFE_RELEASE(m_pDepthStencilState);
 	SAFE_RELEASE(m_pDepthStencilView);
 	SAFE_RELEASE(m_pRenderTargetView);
@@ -836,6 +841,8 @@ void App::UninitScene()
 	SAFE_RELEASE(m_pPixelShader);
 	SAFE_RELEASE(m_pConstantBuffer);
 
+	SAFE_RELEASE(m_pLineVertexBuffer);
+
 	SAFE_RELEASE(m_pSkyBoxInputLayout);
 	SAFE_RELEASE(m_pSkyBoxVertexShader);
 	SAFE_RELEASE(m_pSkyBoxPixelShader);
@@ -844,6 +851,7 @@ void App::UninitScene()
 	SAFE_RELEASE(m_pSkyCubeMapSRV);
 
     for (int i = 0; i < 6; ++i) SAFE_RELEASE(m_pSkyFaceSRV[i]);
+	SAFE_RELEASE(m_pSamplerState);
 }
 
 bool App::InitBasicEffect()

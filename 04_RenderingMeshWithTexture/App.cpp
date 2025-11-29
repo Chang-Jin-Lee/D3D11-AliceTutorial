@@ -60,6 +60,20 @@ void App::ImGuiInitialize()
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 	ImGui::StyleColorsDark();
+	// 한글/일본어 표시를 위한 폰트 설정
+	{
+		ImGuiIO& io = ImGui::GetIO();
+		io.Fonts->AddFontDefault();
+		ImFontConfig cfg{};
+		cfg.MergeMode = true;
+		cfg.PixelSnapH = true;
+		cfg.OversampleH = 2;
+		cfg.OversampleV = 2;
+		const ImWchar* rangeKR = io.Fonts->GetGlyphRangesKorean();
+		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\NotoSansKR-Regular.ttf", 17.0f, &cfg, rangeKR);
+		const ImWchar* rangeJP = io.Fonts->GetGlyphRangesJapanese();
+		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\meiryo.ttc", 17.0f, &cfg, rangeJP);
+	}
 	ImGui_ImplWin32_Init(m_hWnd);
 	ImGui_ImplDX11_Init(m_pDevice, m_pDeviceContext);
 
@@ -216,14 +230,13 @@ void App::OnRender()
 	// 5. Pixel Shader 설정
 	m_pDeviceContext->PSSetShader(m_pPixelShader, nullptr, 0);
 
-	// 6. Constant Buffer 설정
-	// 7. 그리기
-	for (auto m_CBuffer : m_CBuffers)
+	// 6. Constant Buffer 설정 & 그리기
+	for (const auto& cb : m_CBuffers)
 	{
 		D3D11_MAPPED_SUBRESOURCE mapped{};
 		HR_T(m_pDeviceContext->Map(m_pConstantBuffer, 0,
 			D3D11_MAP_WRITE_DISCARD, 0, &mapped));
-		memcpy(mapped.pData, &m_CBuffer, sizeof(m_CBuffer));
+		memcpy(mapped.pData, &cb, sizeof(ConstantBuffer));
 		m_pDeviceContext->Unmap(m_pConstantBuffer, 0);
 
 		m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_pConstantBuffer);
@@ -601,6 +614,7 @@ void App::UninitScene()
 	SAFE_RELEASE(m_pPixelShader);
 	for (int i = 0; i < 6; ++i) SAFE_RELEASE(m_pTextureSRVs[i]);
 	SAFE_RELEASE(m_pSamplerState);
+	SAFE_RELEASE(m_pConstantBuffer);
 }
 
 bool App::InitEffect()

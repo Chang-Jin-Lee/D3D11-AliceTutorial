@@ -121,7 +121,7 @@ XMMATRIX Camera::GetViewMatrixXM() const
 	return XMMatrixLookAtLH(eye, target, up);
 }
 
-void Camera::UpdateFromUI(bool rightMouseDown,
+void Camera::UpdateInput(bool rightMouseDown,
     float mouseDeltaX,
     float mouseDeltaY,
     bool keyW,

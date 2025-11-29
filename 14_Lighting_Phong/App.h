@@ -74,7 +74,6 @@ public:
 	// 파이프라인 리소스
 	ID3D11VertexShader* m_pVertexShader = nullptr; 				// 정점 셰이더
 	ID3D11PixelShader* m_pPixelShader = nullptr; 				// 픽셀 셰이더(조명)	
-	ID3D11PixelShader* m_pPixelShaderSolid = nullptr; 			// 픽셀 셰이더(마커용 흰색)
 
 	ID3D11SamplerState* m_pSamplerState = nullptr;
 	ID3D11BlendState* m_pAlphaBlendState = nullptr; 					// 알파 블렌딩 상태
@@ -97,9 +96,7 @@ public:
 	int m_nIndices = 0; 										// 인덱스 개수
 
 	ID3D11Buffer* m_pConstantBuffer = nullptr; 					// 상수 버퍼 (단일)
-	std::vector<ConstantBuffer> m_CBuffers;						// 텍스쳐들 그리기 위한 상수 버퍼 캐시
 	ConstantBuffer m_ConstantBuffer; 							// CPU-side 상수 버퍼 데이터
-	ID3D11Buffer* m_pLineVertexBuffer = nullptr; 				// 라이트 방향 표시용 라인 VB
 
     // 분리된 유틸들
     class LineRenderer* m_LineRenderer = nullptr;           // 선/좌표축 렌더러
@@ -109,11 +106,11 @@ public:
     ID3D11Buffer* m_pDebugBoxIB = nullptr;
     int m_DebugBoxIndexCount = 0;
 
-	ID3D11DepthStencilView* m_pDepthStencilView; 				// 깊이 스텐실 뷰
+	ID3D11DepthStencilView* m_pDepthStencilView = nullptr; 		// 깊이 스텐실 뷰
 	ID3D11DepthStencilState* m_pDepthStencilState = nullptr;  	// 깊이 스텐실 상태
 
-	ID3D11RasterizerState*  RSNoCull;							// 레스터 라이저 상태 : 백 클리핑 모드 없음
-	ID3D11RasterizerState* RSCullClockWise;						// 레스터 라이저 상태 : 시계 방향 자르기 모드
+	ID3D11RasterizerState*  RSNoCull = nullptr;					// 레스터 라이저 상태 : 백 클리핑 모드 없음
+	ID3D11RasterizerState* RSCullClockWise = nullptr;			// 레스터 라이저 상태 : 시계 방향 자르기 모드
 
 	// 이미지 디버그/데모용 텍스처 (Hanako)
 	ID3D11ShaderResourceView* m_TexHanakoSRV = nullptr;
@@ -134,7 +131,6 @@ public:
 
 	// ImGui 컨트롤 상태 변수
 	SystemInfomation m_SystemInfo;
-	Camera m_camera;								// 카메라
 	DirectX::XMFLOAT3 m_cubePos = { 0.0f, 0.0f, 0.0f };			// 큐브 루트 위치
 	DirectX::XMFLOAT3 m_cubeRotation = { 0.0f, 0.0f, 0.0f };	// 큐브 회전(Yaw/Pitch/Roll, deg)
 	bool m_RotateCube = false;								// ImGui 토글: 큐브 자동 회전 on/off

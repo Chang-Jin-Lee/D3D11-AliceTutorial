@@ -1,8 +1,9 @@
 ﻿/*
-* @brief : fbx, pmx, obj 3D 모델을 연속으로 여러 개를 그리는 예제입니다.
-* @details :
-*		- 노말맵이 적용되어 있는 경우 노말맵을 반영해서 그립니다
-*		- 없는 경우는 반영하지 않습니다
+* @brief  : 하나의 씬에서 여러 FBX/PMX/OBJ 모델을 공유해서 사용하고, 씬 A/B를 전환하며 애니메이션/섀도우/디버그 드로우를 테스트하는 예제입니다.
+* @details:
+*   - AssetManager/SharedModelData를 통해 여러 씬이 같은 3D 모델 리소스를 공유하고, 씬 전환 시에도 로딩 비용을 최소화합니다.
+*   - 방향성 광원 섀도우 맵(PCF)과 다양한 셰이딩(Phong/Blinn/Lambert/Toon)을 적용한 상태에서 애니메이션, 본, AABB, 라인 등 디버그 정보를 그립니다.
+*   - SceneA/SceneB를 오가며 같은 모델 데이터를 서로 다른 배치/연출로 재사용하는 구조를 보여줍니다.
 */
 
 #include "App.h"
@@ -365,7 +366,6 @@ struct App::Impl {
 
 	// 공용 상수 버퍼 (b0)
 	ID3D11Buffer* m_pConstantBuffer = nullptr;
-	std::vector<ConstantBuffer>   m_CBuffers;                        // 필요 시 확장용
 	ConstantBuffer                m_ConstantBuffer{};                // CPU 캐시
 
 	// 유틸 렌더러/디버그 박스
@@ -411,9 +411,8 @@ struct App::Impl {
 	ID3D11ShaderResourceView*		m_pNormalSRVs[6] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
 	ID3D11ShaderResourceView*		m_pSpecularSRVs[6] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
 
-	// 시스템/카메라
+	// 시스템 정보
 	SystemInfomation				m_SystemInfo;
-	Camera							m_camera;
 	bool							m_RotateModel = false;
 
 	// 조명/재질
@@ -722,7 +721,7 @@ void App::OnUpdate(const float& dt)
 		};
 
 
-	// 3D 모델 애니메이션 업데이트 (공유 데이터는 중복 업데이트 안함)
+	// 3D 모델 애니메이션 업데이트 (공유 데이터는 중복 업데이트 안 함)
 	// 동시에 섀도우용 포커스 위치를 누적해서 한 번만 섀도우 행렬 계산
 	{
 		std::unordered_set<SharedModelData*> updated;
@@ -1028,6 +1027,7 @@ static bool WorldToScreen(const DirectX::XMFLOAT3& world,
 // Render() 함수에 중요한 부분이 다 들어있습니다. 여기를 보면 됩니다
 void App::OnRender()
 {
+	// ============================== D3D11 백버퍼/깊이 버퍼 클리어 ==============================
 	float color[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
 	UINT stride = m_->m_VertextBufferStride;	// 바이트 수
 	UINT offset = m_->m_VertextBufferOffset;
@@ -2441,6 +2441,13 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
 
 void App::UnloadModel()
 {
+	if (m_->m_Models.empty())
+	{
+		m_->m_SelectedModelIdx = -1;
+		m_->m_SelectedBoneIdx = -1;
+		return;
+	}
+
 	m_->m_Models.clear();
 	m_->m_SelectedModelIdx = -1;
 	m_->m_SelectedBoneIdx = -1;

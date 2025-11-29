@@ -100,6 +100,20 @@ bool App::OnInitialize()
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 	ImGui::StyleColorsDark();
+	// 한글/일본어 표시를 위한 폰트 설정
+	{
+		ImGuiIO& io = ImGui::GetIO();
+		io.Fonts->AddFontDefault();
+		ImFontConfig cfg{};
+		cfg.MergeMode = true;
+		cfg.PixelSnapH = true;
+		cfg.OversampleH = 2;
+		cfg.OversampleV = 2;
+		const ImWchar* rangeKR = io.Fonts->GetGlyphRangesKorean();
+		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\NotoSansKR-Regular.ttf", 17.0f, &cfg, rangeKR);
+		const ImWchar* rangeJP = io.Fonts->GetGlyphRangesJapanese();
+		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\meiryo.ttc", 17.0f, &cfg, rangeJP);
+	}
 	ImGui_ImplWin32_Init(m_hWnd);
 	ImGui_ImplDX11_Init(m_pDevice, m_pDeviceContext);
 
@@ -326,6 +340,7 @@ void App::OnUpdate(const float& dt)
 */
 void App::OnRender()
 {
+	// ============================== D3D11 백버퍼 클리어 ==============================
 	// 렌더 타겟 바인딩 및 클리어, 뷰포트 갱신
 	if (m_pDeviceContext && m_pRenderTargetView)
 	{
@@ -342,11 +357,12 @@ void App::OnRender()
 		m_pDeviceContext->ClearRenderTargetView(m_pRenderTargetView, clearColor);
 	}
 
-	// ImGui 프레임 및 UI 렌더링
+	// ============================== ImGui 프레임 시작 ==============================
 	ImGui_ImplDX11_NewFrame();
 	ImGui_ImplWin32_NewFrame();
 	ImGui::NewFrame();
 
+	// ============================== Controls 패널 ==============================
 	if (ImGui::Begin("Controls"))
 	{
 		// Images controls
@@ -386,7 +402,7 @@ void App::OnRender()
 	}
 	ImGui::End();
 
-	// 우상단: 시스템 정보(FPS/GPU/CPU)
+	// ============================== System Info 패널(FPS / GPU / 메모리) ==============================
 	{
 		ImGuiIO& io = ImGui::GetIO();
 		ImVec2 size(420.0f, 180.0f);
@@ -427,7 +443,7 @@ void App::OnRender()
 		ImGui::End();
 	}
 
-	// 단순 이미지 뷰어 창: 버튼 없이 즉시 표시
+	// ============================== 기본 이미지 뷰어(Hanako / Yuuka) ==============================
 	if (m_TexHanakoSRV || m_TexYuukaSRV)
 	{
 		ImGui::SetNextWindowPos(ImVec2(510, 210), ImGuiCond_Once);
@@ -458,7 +474,7 @@ void App::OnRender()
 		ImGui::End();
 	}
 
-	// 별도 로드 이미지 뷰어 (Hanako/Yuuka와 독립)
+	// ============================== 외부 로드 이미지 뷰어 ==============================
 	if (m_ShowLoaded && m_LoadedSRV)
 	{
 		ImGui::SetNextWindowSize(ImVec2(560, 580), ImGuiCond_Once);
@@ -497,7 +513,7 @@ void App::OnRender()
 		ImGui::End();
 	}
 
-	// 이미지 창: Hanako
+	// ============================== Hanako 이미지 창(개별 설정) ==============================
 	if (m_ShowHanako && m_TexHanakoSRV)
 	{
 		ImGui::SetNextWindowSize(ImVec2(540, 560), ImGuiCond_Once);
@@ -561,7 +577,7 @@ void App::OnRender()
 		}
 		ImGui::End();
 	}
-	// 이미지 창: Yuuka
+	// ============================== Yuuka 이미지 창(개별 설정) ==============================
 	if (m_ShowYuuka && m_TexYuukaSRV)
 	{
 		ImGui::SetNextWindowSize(ImVec2(540, 560), ImGuiCond_Once);
@@ -624,7 +640,7 @@ void App::OnRender()
 		ImGui::End();
 	}
 
-	// 씬 UI 렌더
+	// ============================== 씬 UI(RenderUI) & ImGui 렌더 ==============================
 	if (m_CurrentScene) m_CurrentScene->RenderUI();
 
 	ImGui::Render();

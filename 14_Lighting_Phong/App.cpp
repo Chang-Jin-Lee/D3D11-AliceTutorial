@@ -1,8 +1,9 @@
 /*
-* @brief : 
-* @details :Blinn-Phong 모델을 사용한 조명 계산 예제입니다.
-*	 - Material을 추가했습니다.
-* 	 - 조명 계산을 위한 상수 버퍼를 확장했습니다.
+* @brief  Phong/Blinn-Phong 조명 + 스카이박스 + 라인 렌더러로 기본 조명과 반사를 눈으로 확인하는 예제입니다.
+* @details
+*   - 방향성 라이트와 머티리얼(ambient/diffuse/specular/reflect)을 ImGui로 조절하면서 Phong 계열 조명 결과를 관찰합니다.
+*   - Skybox(큐브맵)를 배경으로 사용하고, 현재 카메라 방향에 해당하는 큐브맵 면을 별도 ImGui 창에 띄워 확인합니다.
+*   - `LineRenderer`와 `Skybox` 유틸 클래스를 이용해 라이트 방향/좌표축/화면 오버레이 축을 선형으로 그려줍니다.
 */
 
 #include "App.h"
@@ -124,7 +125,7 @@ void App::OnUninitialize()
 
 void App::OnUpdate(const float& dt)
 {
-	// 로컬 변환 정의 (간단 Scene Graph)
+	// ============================== 큐브 회전/월드 행렬 업데이트 ==============================
 	if(m_RotateCube)
 	{
 		// 큐브 Yaw(도)를 초당 45도 회전
@@ -137,28 +138,12 @@ void App::OnUpdate(const float& dt)
 	XMMATRIX rotPitch = XMMatrixRotationX(XMConvertToRadians(m_cubeRotation.x));
 	XMMATRIX rotRoll  = XMMatrixRotationZ(XMConvertToRadians(m_cubeRotation.z));
 	XMMATRIX S = XMMatrixScaling(m_CubeScale, m_CubeScale, m_CubeScale);
-	XMMATRIX local0 = S * rotPitch * rotYaw * rotRoll * XMMatrixTranslation(m_cubePos.x, m_cubePos.y, m_cubePos.z); // 루트
-	XMMATRIX world0 = local0; // 루트
+	XMMATRIX world0 = S * rotPitch * rotYaw * rotRoll * XMMatrixTranslation(m_cubePos.x, m_cubePos.y, m_cubePos.z);
 
-	// Camera update via Camera class (RMB look + WASD/E/Q movement)
-	ImGuiIO& io = ImGui::GetIO();
-	bool rmbDown = ImGui::IsMouseDown(ImGuiMouseButton_Right) && !io.WantCaptureMouse;
-	bool keyW = ImGui::IsKeyDown(ImGuiKey_W);
-	bool keyS = ImGui::IsKeyDown(ImGuiKey_S);
-	bool keyA = ImGui::IsKeyDown(ImGuiKey_A);
-	bool keyD = ImGui::IsKeyDown(ImGuiKey_D);
-	bool keyE = ImGui::IsKeyDown(ImGuiKey_E);
-	bool keyQ = ImGui::IsKeyDown(ImGuiKey_Q);
-	m_camera.UpdateFromUI(rmbDown && !io.WantCaptureKeyboard, io.MouseDelta.x, io.MouseDelta.y, keyW, keyS, keyA, keyD, keyE, keyQ, dt);
-
-	XMFLOAT3 camForward3 = m_camera.GetForward();
-
-	// View/Proj from Camera
-	XMMATRIX view = XMMatrixTranspose(m_camera.GetViewMatrixXM());
-	XMMATRIX proj = XMMatrixTranspose(m_camera.GetProjMatrixXM());
+	// ============================== 카메라 행렬 업데이트 ==============================
 	m_baseProjection.world = XMMatrixTranspose(world0);
-	m_baseProjection.view = view;
-	m_baseProjection.proj = proj;
+	m_baseProjection.view  = XMMatrixTranspose(m_Camera.GetViewMatrixXM());
+	m_baseProjection.proj  = XMMatrixTranspose(m_Camera.GetProjMatrixXM());
 
 	m_baseProjection.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(world0)));
 	{
@@ -170,7 +155,7 @@ void App::OnUpdate(const float& dt)
 		m_baseProjection.dirLight.direction = dir;
 		m_baseProjection.dirLight.pad = 0.0f;
 	}
-	m_baseProjection.eyePos = m_camera.GetPosition();
+	m_baseProjection.eyePos = m_Camera.GetPosition();
 	m_baseProjection.pad = 0.0f;
 
 	// 머티리얼을 기본 캐시에 반영해 둔다
@@ -191,6 +176,7 @@ inline ImVec2 operator-(const ImVec2& lhs, const ImVec2& rhs)
 // Render() 함수에 중요한 부분이 다 들어있습니다. 여기를 보면 됩니다
 void App::OnRender()
 {
+	// ============================== D3D11 백버퍼/깊이 버퍼 클리어 ==============================
 	float color[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
 	UINT stride = m_VertextBufferStride;	// 바이트 수
 	UINT offset = m_VertextBufferOffset;
@@ -198,11 +184,7 @@ void App::OnRender()
 	m_pDeviceContext->ClearRenderTargetView(m_pRenderTargetView, color);
 	m_pDeviceContext->ClearDepthStencilView(m_pDepthStencilView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
 
-	// 1 ~ 3 . IA 단계 설정
-	// 정점을 어떻게 이어서 그릴 것인지를 선택하는 부분
-	// 1. 버퍼를 잡아주기
-	// 2. 입력 레이아웃을 잡아주기
-	// 3. 인덱스 버퍼를 잡아주기
+	// ============================== 메인 큐브(Phong/Blinn-Phong 조명) 렌더 ==============================
 	m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	m_pDeviceContext->IASetVertexBuffers(0, 1, &m_pVertexBuffer, &stride, &offset);
 	m_pDeviceContext->IASetInputLayout(m_pInputLayout);
@@ -230,7 +212,7 @@ void App::OnRender()
 		m_ConstantBuffer.dirLight.direction = dir;
 		m_ConstantBuffer.dirLight.pad = 0.0f;
 	}
-	m_ConstantBuffer.eyePos = m_camera.GetPosition();
+	m_ConstantBuffer.eyePos = m_Camera.GetPosition();
 	m_ConstantBuffer.pad = 0.0f;
 	// 머티리얼 채우기
 	m_ConstantBuffer.material = m_Material;
@@ -263,7 +245,7 @@ void App::OnRender()
 	// 필요 시: 블렌딩 OFF로 복구
 	m_pDeviceContext->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
 
-	// Mirror Cube: x + 8 위치에 메탈릭 거울처럼 반사만 보이는 큐브 렌더
+	// ============================== 거울 큐브(반사 전용) 렌더 ==============================
 	{
 		ConstantBuffer mirrorCB = m_ConstantBuffer;
 		// 월드: 헤더 공개된 mirrorCube 트랜스폼 사용(스케일*회전*이동)
@@ -304,7 +286,7 @@ void App::OnRender()
 		m_ConstantBuffer.pad = 0.0f;
 	}
 
-	// 라이트 위치 마커 큐브 그리기 (작은 스케일, 흰색)
+	// ============================== 라이트 위치 마커 큐브 렌더 ==============================
 	{
 		ConstantBuffer marker = m_ConstantBuffer;
 		XMMATRIX S = XMMatrixScaling(1.0f, 1.0f, 1.0f);
@@ -329,7 +311,7 @@ void App::OnRender()
 		m_pDeviceContext->DrawIndexed(m_DebugBoxIndexCount, 0, 0);
 	}
 
-	// 라이트 방향 표시 라인 그리기(빨간색)
+	// ============================== 라이트 방향/월드 좌표축 라인 렌더 ==============================
 	{
 		// pad=3.0은 라인 디버그에 이용.
 		ConstantBuffer lineCB = m_ConstantBuffer;
@@ -350,14 +332,15 @@ void App::OnRender()
 	}
 
 
-    // SkyBox 렌더링 (상태 보존/복구)
+    // ============================== 스카이박스 렌더 ==============================
+	if (m_Skybox)
 	{
 		UINT stride = m_VertextBufferStride;
 		UINT offset = m_VertextBufferOffset;
 		m_Skybox->Render(m_pDeviceContext, m_pVertexBuffer, m_pIndexBuffer, m_nIndices, stride, offset, m_baseProjection.view, m_baseProjection.proj);
 	}
 
-	// 화면 오버레이 축(NDC)에 작게 표시
+	// ============================== 화면 오버레이 축 렌더 ==============================
 	{
 		// pad=3 설정 정점색으로 출력되도록
 		ConstantBuffer overlayCB = m_ConstantBuffer;
@@ -377,7 +360,7 @@ void App::OnRender()
 		m_LineRenderer->DrawAxesOverlay(m_pDeviceContext, XMMatrixTranspose(m_baseProjection.view), DirectX::XMFLOAT2(-0.9f, 0.85f), 0.08f, m_pInputLayout, m_pVertexShader, m_pPixelShader, m_pConstantBuffer);
 	}
 
-	// ImGui 프레임 및 UI 렌더링
+	// ============================== ImGui ==============================
 	ImGui_ImplDX11_NewFrame();
 	ImGui_ImplWin32_NewFrame();
 	ImGui::NewFrame();
@@ -386,12 +369,16 @@ void App::OnRender()
 	{
 		// SkyBox 선택
 		{
-			int cur = (m_SkyBoxChoice == SkyBoxChoice::Hanako) ? 0 : 1;
+			int cur = 0;
+			if (m_SkyBoxChoice == SkyBoxChoice::CubeMap) cur = 1;
 			const char* items[] = { "Hanako.dds", "cubemap.dds" };
 			if (ImGui::Combo("SkyBox Choice", &cur, items, IM_ARRAYSIZE(items)))
 			{
-				m_SkyBoxChoice = (cur == 0) ? SkyBoxChoice::Hanako : SkyBoxChoice::CubeMap;
-				const wchar_t* path = (m_SkyBoxChoice == SkyBoxChoice::Hanako) ? L"..\\Resource\\Skybox\\Hanako.dds" : L"..\\Resource\\Skybox\\cubemap.dds";
+				if (cur == 0) m_SkyBoxChoice = SkyBoxChoice::Hanako;
+				else m_SkyBoxChoice = SkyBoxChoice::CubeMap;
+
+				const wchar_t* path = L"..\\Resource\\Skybox\\Hanako.dds";
+				if (m_SkyBoxChoice == SkyBoxChoice::CubeMap) path = L"..\\Resource\\Skybox\\cubemap.dds";
 				ChangeSkyboxDDS(path);
 			}
 		}
@@ -406,23 +393,23 @@ void App::OnRender()
 		{
 			if (ImGui::Button("Reset"))
 			{
-				m_camera.Reset();
+				m_Camera.Reset();
 			}
-			DirectX::XMFLOAT3 pos = m_camera.GetPosition();
+			DirectX::XMFLOAT3 pos = m_Camera.GetPosition();
 			if (ImGui::DragFloat3("Camera Pos (x,y,z)", &pos.x, 0.1f))
 			{
-				m_camera.SetPosition(pos);
+				m_Camera.SetPosition(pos);
 			}
-			float fovDeg = XMConvertToDegrees(m_camera.GetFovYRad());
+			float fovDeg = XMConvertToDegrees(m_Camera.GetFovYRad());
 			if (ImGui::SliderFloat("Camera FOV (deg)", &fovDeg, 30.0f, 120.0f))
 			{
-				m_camera.SetFrustum(XMConvertToRadians(fovDeg), AspectRatio(), m_camera.GetNearZ(), m_camera.GetFarZ());
+				m_Camera.SetFrustum(XMConvertToRadians(fovDeg), AspectRatio(), m_Camera.GetNearZ(), m_Camera.GetFarZ());
 			}
-			float nearZ = m_camera.GetNearZ();
-			float farZ  = m_camera.GetFarZ();
+			float nearZ = m_Camera.GetNearZ();
+			float farZ  = m_Camera.GetFarZ();
 			if (ImGui::DragFloatRange2("Near/Far", &nearZ, &farZ, 0.1f, 0.01f, 5000.0f, "Near: %.2f", "Far: %.2f"))
 			{
-				m_camera.SetFrustum(m_camera.GetFovYRad(), AspectRatio(), nearZ, farZ);
+				m_Camera.SetFrustum(m_Camera.GetFovYRad(), AspectRatio(), nearZ, farZ);
 			}
 		}
 		ImGui::Separator();
@@ -441,11 +428,12 @@ void App::OnRender()
 	}
 	ImGui::End();
 
+	// ============================== 스카이박스 면 미리보기 창 ==============================
 	// 현재 카메라 포워드 기준 스카이박스 면 이미지를 표시
 	{
 		int face = 0;
 		using namespace DirectX;
-		XMFLOAT3 fwd = m_camera.GetForward();
+		XMFLOAT3 fwd = m_Camera.GetForward();
     	XMVECTOR f = XMLoadFloat3(&fwd);
     	XMVECTOR fn = XMVector3Normalize(f);
     	XMFLOAT3 v; XMStoreFloat3(&v, fn);
@@ -462,11 +450,15 @@ void App::OnRender()
 			if (ImGui::Begin("Skybox Face"))
 			{
 				ImGui::BeginChild("SkyFaceView", ImVec2(0, 0), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-				const ImVec2 tex = (m_HanakoDrawSize.x > 0 && m_HanakoDrawSize.y > 0) ? m_HanakoDrawSize : m_SkyFaceSize;
+				ImVec2 tex = m_SkyFaceSize;
+				if (m_HanakoDrawSize.x > 0 && m_HanakoDrawSize.y > 0) tex = m_HanakoDrawSize;
 				ImVec2 avail = ImGui::GetContentRegionAvail();
-				float sx = (tex.x > 0.f) ? (avail.x / tex.x) : 1.f;
-				float sy = (tex.y > 0.f) ? (avail.y / tex.y) : 1.f;
-				float scale = (sx > 0.f && sy > 0.f) ? min(sx, sy) : 1.f;
+				float sx = 1.0f;
+				float sy = 1.0f;
+				if (tex.x > 0.0f) sx = avail.x / tex.x;
+				if (tex.y > 0.0f) sy = avail.y / tex.y;
+				float scale = 1.0f;
+				if (sx > 0.0f && sy > 0.0f) scale = (sx < sy) ? sx : sy;
 				ImVec2 draw = ImVec2(tex.x * scale, tex.y * scale);
 				ImVec2 start = ImGui::GetCursorPos();
 				ImVec2 offset = ImVec2((avail.x - draw.x) * 0.5f, (avail.y - draw.y) * 0.5f);
@@ -624,6 +616,8 @@ void App::UninitD3D()
 	SAFE_RELEASE(m_pDepthStencilView);
 	SAFE_RELEASE(m_pRenderTargetView);
 	SAFE_RELEASE(m_pAlphaBlendState);
+	SAFE_RELEASE(RSNoCull);
+	SAFE_RELEASE(RSCullClockWise);
 	SAFE_RELEASE(m_pDeviceContext);
 	SAFE_RELEASE(m_pSwapChain);
 	SAFE_RELEASE(m_pDevice);
@@ -687,9 +681,9 @@ bool App::InitScene()
 	// 공통 카메라(View/Proj)로 3개의 상수 버퍼 엔트리를 준비합니다
 	m_baseProjection.world = XMMatrixIdentity();
 	// Set camera initial frustum using window aspect
-	m_camera.SetFrustum(XMConvertToRadians(90.0f), AspectRatio(), 1.0f, 1000.0f);
-	m_baseProjection.view = XMMatrixTranspose(m_camera.GetViewMatrixXM());
-	m_baseProjection.proj = XMMatrixTranspose(m_camera.GetProjMatrixXM());
+	m_Camera.SetFrustum(XMConvertToRadians(90.0f), AspectRatio(), 1.0f, 1000.0f);
+	m_baseProjection.view = XMMatrixTranspose(m_Camera.GetViewMatrixXM());
+	m_baseProjection.proj = XMMatrixTranspose(m_Camera.GetProjMatrixXM());
 	m_baseProjection.worldInvTranspose = XMMatrixInverse(nullptr, XMMatrixTranspose(m_baseProjection.world));
 	// DirectionalLight 초기값 필드 대입
 	m_baseProjection.dirLight.ambient = DirectX::XMFLOAT4(0,0,0,1);
@@ -697,7 +691,7 @@ bool App::InitScene()
 	m_baseProjection.dirLight.specular = DirectX::XMFLOAT4(1,1,1,1);
 	m_baseProjection.dirLight.direction = DirectX::XMFLOAT3(0,-1,1);
 	m_baseProjection.dirLight.pad = 0.0f;
-	m_baseProjection.eyePos = m_camera.GetPosition();
+	m_baseProjection.eyePos = m_Camera.GetPosition();
 	m_baseProjection.pad = 0.0f;
 
 	// ***********************************************************************************************
@@ -764,6 +758,20 @@ bool App::InitImGui()
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 	ImGui::StyleColorsDark();
+	// 한글/일본어 표시를 위한 폰트 설정
+	{
+		ImGuiIO& io = ImGui::GetIO();
+		io.Fonts->AddFontDefault();
+		ImFontConfig cfg{};
+		cfg.MergeMode = true;
+		cfg.PixelSnapH = true;
+		cfg.OversampleH = 2;
+		cfg.OversampleV = 2;
+		const ImWchar* rangeKR = io.Fonts->GetGlyphRangesKorean();
+		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\NotoSansKR-Regular.ttf", 17.0f, &cfg, rangeKR);
+		const ImWchar* rangeJP = io.Fonts->GetGlyphRangesJapanese();
+		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\meiryo.ttc", 17.0f, &cfg, rangeJP);
+	}
 	ImGui_ImplWin32_Init(m_hWnd);
 	ImGui_ImplDX11_Init(m_pDevice, m_pDeviceContext);
 	return true;
