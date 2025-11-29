@@ -153,18 +153,16 @@ void App::OnUninitialize()
 
 void App::OnUpdate(const float& dt)
 {
-	static float t0 = 0.0f;
-	if (g_RotateCube) t0 += 0.6f * dt;   // 부모(루트) Yaw 속도 (토글)
-
 	// 로컬 변환 정의 (간단 Scene Graph)
-	m_YawDeg += 45.0f * dt; // Yaw 회전 (UI로 조절 가능)
-	m_YawDeg = std::fmod(m_YawDeg + 180.0f, 360.0f) - 180.0f;
+	if (g_RotateCube)
+	{
+		m_YawDeg += 45.0f * dt; // Yaw 회전 (UI로 조절 가능)
+		m_YawDeg = std::fmod(m_YawDeg + 180.0f, 360.0f) - 180.0f;
+	}
 	XMMATRIX rotYaw   = XMMatrixRotationY(XMConvertToRadians(m_YawDeg));
 	XMMATRIX rotPitch = XMMatrixRotationX(XMConvertToRadians(m_PitchDeg));
-		XMMATRIX local0 = rotPitch * rotYaw * XMMatrixTranslation(m_cubePos.x, m_cubePos.y, m_cubePos.z); // 루트
-	XMMATRIX world0 = local0; // 루트
+	XMMATRIX world0 = rotPitch * rotYaw * XMMatrixTranslation(m_cubePos.x, m_cubePos.y, m_cubePos.z); // 루트
 
-	XMFLOAT3 camForward3 = { 0.0f, 0.0f, 1.0f };
 	static float sYaw = 0.0f, sPitch = 0.0f;
 	ImGuiIO& io = ImGui::GetIO();
 	bool rmbDown = ImGui::IsMouseDown(ImGuiMouseButton_Right) && !io.WantCaptureMouse;
@@ -199,13 +197,12 @@ void App::OnUpdate(const float& dt)
 		posV = XMVectorAdd(posV, XMVectorScale(up,      d3 * moveSpeed));
 	}
 	XMStoreFloat3(&m_cameraPos, posV);
-	XMStoreFloat3(&camForward3, forward);
 
 	// View/Proj도 UI값 반영 (매 프레임)
 	XMMATRIX view = XMMatrixTranspose(XMMatrixLookAtLH(
-		XMVectorSet(m_cameraPos.x, m_cameraPos.y, m_cameraPos.z, 0.0f),
-		XMVectorAdd(XMVectorSet(m_cameraPos.x, m_cameraPos.y, m_cameraPos.z, 0.0f), XMVector3Normalize(XMVectorSet(camForward3.x, camForward3.y, camForward3.z, 0.0f))),
-		XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f)));
+		posV,
+		XMVectorAdd(posV, forward),
+		up));
 	float fovRad = XMConvertToRadians(m_CameraFovDeg);
 	XMMATRIX proj = XMMatrixTranspose(XMMatrixPerspectiveFovLH(fovRad, AspectRatio(), m_CameraNear, m_CameraFar));
 	m_baseProjection.world = XMMatrixTranspose(world0);
@@ -263,6 +260,7 @@ inline ImVec2 operator-(const ImVec2& lhs, const ImVec2& rhs)
 // Render() 함수에 중요한 부분이 다 들어있습니다. 여기를 보면 됩니다
 void App::OnRender()
 {
+	// ============================== D3D11 백버퍼/깊이 버퍼 클리어 ==============================
 	float color[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
 	UINT stride = m_VertextBufferStride;	// 바이트 수
 	UINT offset = m_VertextBufferOffset;
@@ -270,33 +268,30 @@ void App::OnRender()
 	m_pDeviceContext->ClearRenderTargetView(m_pRenderTargetView, color);
 	m_pDeviceContext->ClearDepthStencilView(m_pDepthStencilView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
 
-	// 1 ~ 3 . IA 단계 설정
-	// 정점을 어떻게 이어서 그릴 것인지를 선택하는 부분
-	// 1. 버퍼를 잡아주기
-	// 2. 입력 레이아웃을 잡아주기
-	// 3. 인덱스 버퍼를 잡아주기
+	// ============================== 기본 큐브 렌더 설정 ==============================
+	// IA 단계: 정점/인덱스 버퍼, 입력 레이아웃, 토폴로지
 	m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	m_pDeviceContext->IASetVertexBuffers(0, 1, &m_pVertexBuffer, &stride, &offset);
 	m_pDeviceContext->IASetInputLayout(m_pInputLayout);
 	m_pDeviceContext->IASetIndexBuffer(m_pIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
 
-	// 4. Vertex Shader 설정
+	// VS/PS 셰이더 바인딩
 	m_pDeviceContext->VSSetShader(m_pVertexShader, nullptr, 0);
-	// 5. Pixel Shader 설정
 	m_pDeviceContext->PSSetShader(m_pPixelShader, nullptr, 0);
 
-	// 6. Constant Buffer 설정 (단일 GlobalCB, b0)
+	// ============================== 상수 버퍼 업데이트(b0) ==============================
 	// 프레임별 상수값 준비
 	m_ConstantBuffer.world = m_baseProjection.world;
 	m_ConstantBuffer.view  = m_baseProjection.view;
 	m_ConstantBuffer.proj  = m_baseProjection.proj;
-	{
-		// worldInvTranspose 계산 (CPU에서는 실제 world로 역/전치 후, HLSL 프리트랜스포즈 규약에 맞게 저장)
-		auto invWorldActual = XMMatrixInverse(nullptr, m_baseProjection.world);
-		m_ConstantBuffer.worldInvTranspose = XMMatrixTranspose(invWorldActual);
-	}
-	// 간단 기본 광원/카메라 (UI 반영)
-	XMStoreFloat3(&m_LightDirection, XMVector3Normalize(XMLoadFloat3(&m_LightDirection)));
+
+	// worldInvTranspose 계산 (CPU에서 실제 world의 역/전치 후 저장)
+	XMMATRIX invWorldActual = XMMatrixInverse(nullptr, m_baseProjection.world);
+	m_ConstantBuffer.worldInvTranspose = XMMatrixTranspose(invWorldActual);
+
+	// 기본 광원/카메라 (UI 반영)
+	XMVECTOR lightDirV = XMVector3Normalize(XMLoadFloat3(&m_LightDirection));
+	XMStoreFloat3(&m_LightDirection, lightDirV);
 	m_ConstantBuffer.dirLight = DirectionalLight(m_LightColorRGB, m_LightDirection);
 	m_ConstantBuffer.eyePos = m_cameraPos;
 	m_ConstantBuffer.pad = 0.0f;
@@ -309,10 +304,10 @@ void App::OnRender()
 	m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_pConstantBuffer);
 	m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_pConstantBuffer);
 
-	// 7. 그리기
+	// 큐브 드로우
 	m_pDeviceContext->DrawIndexed(m_nIndices, 0, 0);
 
-	// =================================================== 라이트 위치 마커 큐브 그리기 (작은 스케일, 흰색) ===================================================
+	// ============================== 라이트 위치 마커 큐브(작은 흰색) ==============================
 	{
 		ConstantBuffer marker = m_ConstantBuffer;
 		XMMATRIX S = XMMatrixScaling(0.2f, 0.2f, 0.2f);
@@ -333,7 +328,7 @@ void App::OnRender()
 		m_pDeviceContext->DrawIndexed(m_nIndices, 0, 0);
 	}
 
-	// =================================================== 라이트 방향 표시 라인 그리기(빨간색) ===================================================
+	// ============================== 라이트 방향 표시 라인(빨간색) ==============================
 	{
 		struct LineV { XMFLOAT3 pos; XMFLOAT3 normal; XMFLOAT4 color; };
 		LineV line[2] = {};
@@ -384,7 +379,7 @@ void App::OnRender()
 		m_pDeviceContext->Draw(2, 0);
 	}
 
-	// ImGui 프레임 및 UI 렌더링
+	// ============================== ImGui 컨트롤 패널 ==============================
 	ImGui_ImplDX11_NewFrame();
 	ImGui_ImplWin32_NewFrame();
 	ImGui::NewFrame();
@@ -419,13 +414,15 @@ void App::OnRender()
 			// 스크롤 없이, 내부 가용 공간에 '맞춰서' 표시
 			ImGui::BeginChild("HanakoView", ImVec2(0, 0), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 
-			const ImVec2 tex = (m_HanakoDrawSize.x > 0 && m_HanakoDrawSize.y > 0) ? m_HanakoDrawSize : m_TexHanakoSize;
+			ImVec2 tex = m_TexHanakoSize;
+			if (m_HanakoDrawSize.x > 0 && m_HanakoDrawSize.y > 0) tex = m_HanakoDrawSize;
 			ImVec2 avail = ImGui::GetContentRegionAvail();
 
 			// 가로/세로 비율 유지하며 최대 크기 산출
-			float sx = (tex.x > 0.f) ? (avail.x / tex.x) : 1.f;
-			float sy = (tex.y > 0.f) ? (avail.y / tex.y) : 1.f;
-			float scale = (sx > 0.f && sy > 0.f) ? min(sx, sy) : 1.f;
+			float sx = 1.0f; float sy = 1.0f; float scale = 1.0f;
+			if (tex.x > 0.0f) sx = avail.x / tex.x;
+			if (tex.y > 0.0f) sy = avail.y / tex.y;
+			if (sx > 0.0f && sy > 0.0f) scale = (sx < sy) ? sx : sy;
 
 			ImVec2 draw = ImVec2(tex.x * scale, tex.y * scale);
 
@@ -448,7 +445,7 @@ void App::OnRender()
 	}
 
 
-	// 우상단: 시스템 정보(FPS/GPU/CPU)
+	// ============================== 시스템 정보 패널(FPS / GPU / 메모리) ==============================
 	{
 		ImGuiIO& io = ImGui::GetIO();
 		ImVec2 size(420.0f, 180.0f);
