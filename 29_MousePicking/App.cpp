@@ -1,4 +1,12 @@
-﻿#include "App.h"
+﻿/*
+* @brief  : 마우스 픽킹으로 3D 씬 안의 FBX/PMX/OBJ 모델과 큐브를 선택/조작하는 예제입니다.
+* @details:
+*   - AssetManager/SharedModelData를 사용해 여러 씬이 같은 3D 모델 리소스를 공유하며, 씬 전환 시에도 재사용합니다.
+*   - 카메라에서 발사한 레이를 이용해 모델과 큐브를 픽킹하고, 선택된 객체의 정보/트랜스폼/본/애니메이션 상태를 ImGui로 디버깅합니다.
+*   - 앞선 예제들의 섀도우 맵(PCF)·토ーン 셰이딩·디버그 드로우까지 함께 결합하여, 실제 게임 수준의 씬 편집/디버그 워크플로우를 연습할 수 있습니다.
+*/
+
+#include "App.h"
 #include "../Common/Helper.h"
 #include <windows.h>
 #include <random>
@@ -359,7 +367,6 @@ struct App::Impl {
 
 	// 공용 상수 버퍼 (b0)
 	ID3D11Buffer* m_pConstantBuffer = nullptr;
-	std::vector<ConstantBuffer>   m_CBuffers;                        // 필요 시 확장용
 	ConstantBuffer                m_ConstantBuffer{};                // CPU 캐시
 
 	// 유틸 렌더러/디버그 박스
@@ -405,9 +412,8 @@ struct App::Impl {
 	ID3D11ShaderResourceView*		m_pNormalSRVs[6] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
 	ID3D11ShaderResourceView*		m_pSpecularSRVs[6] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
 
-	// 시스템/카메라
+	// 시스템 정보
 	SystemInfomation				m_SystemInfo;
-	Camera							m_camera;
 	bool							m_RotateModel = false;
 
 	// 조명/재질
