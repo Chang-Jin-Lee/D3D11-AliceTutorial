@@ -125,9 +125,7 @@ struct App::Impl
 	int m_nIndices = 0;
 
 	ID3D11Buffer* m_pConstantBuffer = nullptr;
-	std::vector<ConstantBuffer> m_CBuffers;
 	ConstantBuffer m_ConstantBuffer{};
-	ID3D11Buffer* m_pLineVertexBuffer = nullptr;
 
 	// 유틸
 	class LineRenderer* m_LineRenderer = nullptr;
@@ -162,7 +160,6 @@ struct App::Impl
 
 	// ImGui 컨트롤 상태 변수
 	SystemInfomation m_SystemInfo;
-	Camera m_camera;
 	XMFLOAT3 m_modelPos = { 0.0f, 0.0f, 0.0f };
 	XMFLOAT3 m_modelScale = { 1.0f, 1.0f, 1.0f };
 	XMFLOAT3 m_modelRotation = { 0.0f, 0.0f, 0.0f };
@@ -349,8 +346,8 @@ void App::OnUninitialize()
 
 void App::OnUpdate(const float& dt)
 {
-	// 로컬 변환
-    if(m_->m_RotateModel)
+	// ============================== 모델 루트 회전/월드 행렬 업데이트 ==============================
+    if (m_->m_RotateModel)
 	{
         // 모델 Yaw(도)를 초당 45도 회전
         m_->m_modelRotation.y += 45.0f * dt;
@@ -362,26 +359,12 @@ void App::OnUpdate(const float& dt)
     XMMATRIX rotPitch = XMMatrixRotationX(XMConvertToRadians(m_->m_modelRotation.x));
     XMMATRIX rotRoll  = XMMatrixRotationZ(XMConvertToRadians(m_->m_modelRotation.z));
     XMMATRIX S = XMMatrixScaling(m_->m_modelScale.x, m_->m_modelScale.y, m_->m_modelScale.z);
-    XMMATRIX local0 = S * rotPitch * rotYaw * rotRoll * XMMatrixTranslation(m_->m_modelPos.x, m_->m_modelPos.y, m_->m_modelPos.z); // 루트
-	XMMATRIX world0 = local0; // 루트
+    XMMATRIX world0 = S * rotPitch * rotYaw * rotRoll * XMMatrixTranslation(m_->m_modelPos.x, m_->m_modelPos.y, m_->m_modelPos.z); // 루트
 
-	// 카메라 업데이트
-	ImGuiIO& io = ImGui::GetIO();
-	bool rmbDown = ImGui::IsMouseDown(ImGuiMouseButton_Right) && !io.WantCaptureMouse;
-	bool keyW = ImGui::IsKeyDown(ImGuiKey_W);
-	bool keyS = ImGui::IsKeyDown(ImGuiKey_S);
-	bool keyA = ImGui::IsKeyDown(ImGuiKey_A);
-	bool keyD = ImGui::IsKeyDown(ImGuiKey_D);
-	bool keyE = ImGui::IsKeyDown(ImGuiKey_E);
-	bool keyQ = ImGui::IsKeyDown(ImGuiKey_Q);
-    m_->m_camera.UpdateFromUI(rmbDown && !io.WantCaptureKeyboard, io.MouseDelta.x, io.MouseDelta.y, keyW, keyS, keyA, keyD, keyE, keyQ, dt);
-
-	// Camera의 View/Proj 
-    XMMATRIX view = XMMatrixTranspose(m_->m_camera.GetViewMatrixXM());
-    XMMATRIX proj = XMMatrixTranspose(m_->m_camera.GetProjMatrixXM());
+	// ============================== 카메라 행렬 업데이트 ==============================
     m_->m_baseProjection.world = XMMatrixTranspose(world0);
-    m_->m_baseProjection.view = view;
-    m_->m_baseProjection.proj = proj;
+    m_->m_baseProjection.view  = XMMatrixTranspose(m_Camera.GetViewMatrixXM());
+    m_->m_baseProjection.proj  = XMMatrixTranspose(m_Camera.GetProjMatrixXM());
 
     m_->m_baseProjection.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(world0)));
 	{
@@ -393,7 +376,7 @@ void App::OnUpdate(const float& dt)
 		m_->m_baseProjection.dirLight.direction = dir;
 		m_->m_baseProjection.dirLight.pad = 0.0f;
 	}
-	m_->m_baseProjection.eyePos = m_->m_camera.GetPosition();
+	m_->m_baseProjection.eyePos = m_Camera.GetPosition();
 	m_->m_baseProjection.pad = 0.0f;
 
 	// 머티리얼을 기본 캐시에 반영해 둔다
@@ -401,8 +384,8 @@ void App::OnUpdate(const float& dt)
 
 	m_->m_SystemInfo.Tick(dt);
 
-    // FBX 애니메이션 업데이트 (모델 모드+FBX일 때)
-    // 애니메이션 업데이트: 본 팔레트만 갱신(기본 렌더 경로 유지)
+	// FBX 애니메이션 업데이트 (모델 모드+FBX일 때)
+	// 애니메이션 업데이트: 본 팔레트만 갱신(기본 렌더 경로 유지)
     if (m_->m_RenderMode == RenderMode::Model && m_->m_ModelSource == ModelSource::FBX)
         m_->m_FbxManager.UpdateAnimation(m_->m_pDeviceContext, dt);
 }
@@ -419,6 +402,7 @@ inline ImVec2 operator-(const ImVec2& lhs, const ImVec2& rhs)
 // Render() 함수에 중요한 부분이 다 들어있습니다. 여기를 보면 됩니다
 void App::OnRender()
 {
+	// ============================== D3D11 백버퍼/깊이 버퍼 클리어 ==============================
 	float color[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
     UINT stride = m_->m_VertextBufferStride;	// 바이트 수
     UINT offset = m_->m_VertextBufferOffset;
@@ -426,11 +410,7 @@ void App::OnRender()
     m_->m_pDeviceContext->ClearRenderTargetView(m_->m_pRenderTargetView, color);
     m_->m_pDeviceContext->ClearDepthStencilView(m_->m_pDepthStencilView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
 
-	// 1 ~ 3 . IA 단계 설정
-	// 정점을 어떻게 이어서 그릴 것인지를 선택하는 부분
-	// 1. 버퍼를 잡아주기
-	// 2. 입력 레이아웃을 잡아주기
-	// 3. 인덱스 버퍼를 잡아주기
+	// ============================== 기본 큐브/모델 렌더 상태 설정(IA/셰이더) ==============================
     m_->m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     // 렌더 모드에 따라 VB/IB 바인딩 결정
     if (m_->m_RenderMode == RenderMode::Model && m_->m_pModelVB && m_->m_pModelIB)
@@ -498,7 +478,7 @@ void App::OnRender()
         m_->m_ConstantBuffer.dirLight.direction = dir;
         m_->m_ConstantBuffer.dirLight.pad = 0.0f;
 	}
-    m_->m_ConstantBuffer.eyePos = m_->m_camera.GetPosition();
+	m_->m_ConstantBuffer.eyePos = m_Camera.GetPosition();
     m_->m_ConstantBuffer.pad = 0.0f;
 	// 셰이딩 모드 전달
     m_->m_ConstantBuffer.shadingMode = (int)m_->m_ShadingMode;
@@ -746,24 +726,24 @@ void App::OnRender()
 		{
 			if (ImGui::Button("Reset"))
 			{
-				m_->m_camera.Reset();
+				m_Camera.Reset();
 			}
-			ImGui::SliderFloat("Camera Speed", &m_->m_camera.m_MoveSpeed, 10.0f, 500.0f, "%.1f");
-			DirectX::XMFLOAT3 pos = m_->m_camera.GetPosition();
+			ImGui::SliderFloat("Camera Speed", &m_Camera.m_MoveSpeed, 10.0f, 500.0f, "%.1f");
+			DirectX::XMFLOAT3 pos = m_Camera.GetPosition();
 			if (ImGui::DragFloat3("Camera Pos (x,y,z)", &pos.x, 0.1f))
 			{
-				m_->m_camera.SetPosition(pos);
+				m_Camera.SetPosition(pos);
 			}
-			float fovDeg = XMConvertToDegrees(m_->m_camera.GetFovYRad());
+			float fovDeg = XMConvertToDegrees(m_Camera.GetFovYRad());
 			if (ImGui::SliderFloat("Camera FOV (deg)", &fovDeg, 30.0f, 120.0f))
 			{
-				m_->m_camera.SetFrustum(XMConvertToRadians(fovDeg), AspectRatio(), m_->m_camera.GetNearZ(), m_->m_camera.GetFarZ());
+				m_Camera.SetFrustum(XMConvertToRadians(fovDeg), AspectRatio(), m_Camera.GetNearZ(), m_Camera.GetFarZ());
 			}
-			float nearZ = m_->m_camera.GetNearZ();
-			float farZ  = m_->m_camera.GetFarZ();
+			float nearZ = m_Camera.GetNearZ();
+			float farZ  = m_Camera.GetFarZ();
 			if (ImGui::DragFloatRange2("Near/Far", &nearZ, &farZ, 0.1f, 0.01f, 5000.0f, "Near: %.2f", "Far: %.2f"))
 			{
-				m_->m_camera.SetFrustum(m_->m_camera.GetFovYRad(), AspectRatio(), nearZ, farZ);
+				m_Camera.SetFrustum(m_Camera.GetFovYRad(), AspectRatio(), nearZ, farZ);
 			}
 		}
         ImGui::Separator();
@@ -900,7 +880,7 @@ void App::OnRender()
 	{
 		int face = 0;
 		using namespace DirectX;
-		XMFLOAT3 fwd = m_->m_camera.GetForward();
+		XMFLOAT3 fwd = m_Camera.GetForward();
 		XMVECTOR f = XMLoadFloat3(&fwd);
 		XMVECTOR fn = XMVector3Normalize(f);
 		XMFLOAT3 v; XMStoreFloat3(&v, fn);
@@ -1142,9 +1122,9 @@ bool App::InitScene()
 	// 공통 카메라(View/Proj)로 3개의 상수 버퍼 엔트리를 준비합니다
 	m_->m_baseProjection.world = XMMatrixIdentity();
 	// Set camera initial frustum using window aspect
-	m_->m_camera.SetFrustum(XMConvertToRadians(90.0f), AspectRatio(), 1.0f, 1000.0f);
-	m_->m_baseProjection.view = XMMatrixTranspose(m_->m_camera.GetViewMatrixXM());
-	m_->m_baseProjection.proj = XMMatrixTranspose(m_->m_camera.GetProjMatrixXM());
+	m_Camera.SetFrustum(XMConvertToRadians(90.0f), AspectRatio(), 1.0f, 1000.0f);
+	m_->m_baseProjection.view = XMMatrixTranspose(m_Camera.GetViewMatrixXM());
+	m_->m_baseProjection.proj = XMMatrixTranspose(m_Camera.GetProjMatrixXM());
 	m_->m_baseProjection.worldInvTranspose = XMMatrixInverse(nullptr, XMMatrixTranspose(m_->m_baseProjection.world));
 	// DirectionalLight 초기값 필드 대입
 	m_->m_baseProjection.dirLight.ambient = DirectX::XMFLOAT4(0,0,0,1);
@@ -1152,7 +1132,7 @@ bool App::InitScene()
 	m_->m_baseProjection.dirLight.specular = DirectX::XMFLOAT4(1,1,1,1);
 	m_->m_baseProjection.dirLight.direction = DirectX::XMFLOAT3(0,-1,1);
 	m_->m_baseProjection.dirLight.pad = 0.0f;
-	m_->m_baseProjection.eyePos = m_->m_camera.GetPosition();
+	m_->m_baseProjection.eyePos = m_Camera.GetPosition();
 	m_->m_baseProjection.pad = 0.0f;
 
 	// ***********************************************************************************************
@@ -1461,8 +1441,9 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
         {
             m_->m_ModelSource = ModelSource::FBX;
             m_->m_ModelStride = m_->m_FbxManager.GetVertexStride();
-            m_->m_pModelVB = m_->m_FbxManager.GetVertexBuffer(); if (m_->m_pModelVB) m_->m_pModelVB->AddRef();
-            m_->m_pModelIB = m_->m_FbxManager.GetIndexBuffer();  if (m_->m_pModelIB) m_->m_pModelIB->AddRef();
+            // VB/IB 수명은 FbxManager가 소유하므로, 여기서는 포인터만 보관한다.
+            m_->m_pModelVB = m_->m_FbxManager.GetVertexBuffer();
+            m_->m_pModelIB = m_->m_FbxManager.GetIndexBuffer();
             m_->m_ModelIndexCount = m_->m_FbxManager.GetIndexCount();
             m_->m_ModelSubsets.clear();
             for (auto& s : m_->m_FbxManager.GetSubsets()) m_->m_ModelSubsets.push_back({ s.startIndex, s.indexCount, s.materialIndex });
@@ -1476,8 +1457,8 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
         {
             m_->m_ModelSource = ModelSource::OBJ;
             m_->m_ModelStride = m_->m_ObjManager.GetVertexStride();
-            m_->m_pModelVB = m_->m_ObjManager.GetVertexBuffer(); if (m_->m_pModelVB) m_->m_pModelVB->AddRef();
-            m_->m_pModelIB = m_->m_ObjManager.GetIndexBuffer();  if (m_->m_pModelIB) m_->m_pModelIB->AddRef();
+            m_->m_pModelVB = m_->m_ObjManager.GetVertexBuffer();
+            m_->m_pModelIB = m_->m_ObjManager.GetIndexBuffer();
             m_->m_ModelIndexCount = m_->m_ObjManager.GetIndexCount();
             m_->m_ModelSubsets.clear();
             for (auto& s : m_->m_ObjManager.GetSubsets()) m_->m_ModelSubsets.push_back({ s.startIndex, s.indexCount, s.materialIndex });
@@ -1491,8 +1472,8 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
         {
             m_->m_ModelSource = ModelSource::PMX;
             m_->m_ModelStride = m_->m_PmxManager.GetVertexStride();
-            m_->m_pModelVB = m_->m_PmxManager.GetVertexBuffer(); if (m_->m_pModelVB) m_->m_pModelVB->AddRef();
-            m_->m_pModelIB = m_->m_PmxManager.GetIndexBuffer();  if (m_->m_pModelIB) m_->m_pModelIB->AddRef();
+            m_->m_pModelVB = m_->m_PmxManager.GetVertexBuffer();
+            m_->m_pModelIB = m_->m_PmxManager.GetIndexBuffer();
             m_->m_ModelIndexCount = m_->m_PmxManager.GetIndexCount();
             m_->m_ModelSubsets.clear();
             for (auto& s : m_->m_PmxManager.GetSubsets()) m_->m_ModelSubsets.push_back({ s.startIndex, s.indexCount, s.materialIndex });
@@ -1513,7 +1494,19 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
 
 void App::UnloadModel()
 {
+    // 로드된 모델이 없으면 아무 것도 하지 않는다
+    if (!m_->m_pModelVB && !m_->m_pModelIB && m_->m_ModelIndexCount == 0 && m_->m_ModelSubsets.empty())
+    {
+        m_->m_RenderMode = RenderMode::None;
+        return;
+    }
+
+    // VB/IB의 실제 해제는 Fbx/Obj/Pmx Manager 쪽 Release()에서 처리한다.
+    // 여기서는 단순히 포인터/메타데이터만 비운다.
+    m_->m_pModelVB = nullptr;
+    m_->m_pModelIB = nullptr;
     m_->m_ModelMaterialSRVs.clear();
     m_->m_ModelSubsets.clear();
     m_->m_ModelIndexCount = 0;
+    m_->m_RenderMode = RenderMode::None;
 }
