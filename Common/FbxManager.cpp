@@ -60,7 +60,9 @@ struct FbxManager::Impl
 };
 
 FbxManager::FbxManager() : m_(std::make_unique<Impl>()) {}
-FbxManager::~FbxManager() { Release(); }
+// 실제 리소스 정리는 각 프로젝트(App)에서 명시적으로 Release()를 호출해 수행합니다.
+// 소멸자에서는 중복 Release를 피하기 위해 아무 것도 하지 않습니다.
+FbxManager::~FbxManager() = default;
 
 // --- Helpers implementation (declared in header) ---
 void FbxManager::BuildSkeletonAndNodeIndex(const aiScene* scene)
