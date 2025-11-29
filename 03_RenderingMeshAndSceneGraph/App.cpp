@@ -131,14 +131,13 @@ void App::OnRender()
 	// 5. Pixel Shader 설정
 	m_pDeviceContext->PSSetShader(m_pPixelShader, nullptr, 0);
 
-	// 6. Constant Buffer 설정
-	// 7. 그리기
-	for (auto m_CBuffer : m_CBuffers)
+	// 6. Constant Buffer 설정 & 그리기
+	for (const auto& cb : m_CBuffers)
 	{
 		D3D11_MAPPED_SUBRESOURCE mapped{};
 		HR_T(m_pDeviceContext->Map(m_pConstantBuffer, 0,
 			D3D11_MAP_WRITE_DISCARD, 0, &mapped));
-		memcpy(mapped.pData, &m_CBuffer, sizeof(m_CBuffer));
+		memcpy(mapped.pData, &cb, sizeof(ConstantBuffer));
 		m_pDeviceContext->Unmap(m_pConstantBuffer, 0);
 
 		m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_pConstantBuffer);
@@ -422,6 +421,7 @@ void App::UninitScene()
 	SAFE_RELEASE(m_pInputLayout);
 	SAFE_RELEASE(m_pVertexShader);
 	SAFE_RELEASE(m_pPixelShader);
+	SAFE_RELEASE(m_pConstantBuffer);
 }
 
 bool App::InitEffect()
