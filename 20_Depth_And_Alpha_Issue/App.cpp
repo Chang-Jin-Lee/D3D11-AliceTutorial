@@ -1186,19 +1186,6 @@ bool App::InitTexture()
 {
 	PrepareSkyFaceSRVs();
 
-	/*const wchar_t* facePaths[6] = {
-		L"..\\Resource\\Image\\Hanako.png", L"..\\Resource\\Image\\Hanako.png", L"..\\Resource\\Image\\Hanako.png",
-		L"..\\Resource\\Image\\Hanako.png", L"..\\Resource\\Image\\Hanako.png", L"..\\Resource\\Image\\Hanako.png"
-	};
-	const wchar_t* normalPaths[6] = {
-		L"..\\Resource\\Image\\Hanako_Normal.png", L"..\\Resource\\Image\\Hanako_Normal.png", L"..\\Resource\\Image\\Hanako_Normal.png",
-		L"..\\Resource\\Image\\Hanako_Normal.png", L"..\\Resource\\Image\\Hanako_Normal.png", L"..\\Resource\\Image\\Hanako_Normal.png"
-	};
-	const wchar_t* specularPaths[6] = {
-		L"..\\Resource\\Image\\Hanako_Specular.png", L"..\\Resource\\Image\\Hanako_Specular.png", L"..\\Resource\\Image\\Hanako_Specular.png",
-		L"..\\Resource\\Image\\Hanako_Specular.png", L"..\\Resource\\Image\\Hanako_Specular.png", L"..\\Resource\\Image\\Hanako_Specular.png"
-	};*/
-
 	const wchar_t* facePaths[6] = {
 	L"..\\Resource\\Image\\Bricks059_1K-JPG_Color.jpg",
 	L"..\\Resource\\Image\\Bricks059_1K-JPG_Color.jpg",
