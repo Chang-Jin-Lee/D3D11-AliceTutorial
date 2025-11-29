@@ -78,7 +78,7 @@ public:
 	ConstantBuffer m_ConstantBuffer; 						// CPU-side 상수 버퍼 데이터
 	ID3D11Buffer* m_pLineVertexBuffer = nullptr; 			// 라이트 방향 표시용 라인 VB
 
-	ID3D11DepthStencilView* m_pDepthStencilView; 	// 깊이 스텐실 뷰
+	ID3D11DepthStencilView* m_pDepthStencilView = nullptr; 	// 깊이 스텐실 뷰
 	ID3D11DepthStencilState* m_pDepthStencilState = nullptr;  	// 깊이 스텐실 상태
 	Microsoft::WRL::ComPtr<IDXGIAdapter3> m_Adapter3; // VRAM 조회용
 	SIZE_T m_VideoMemoryTotal = 0; // 총 VRAM 바이트
@@ -95,7 +95,6 @@ public:
 	UINT m_CPUCores = 0;
 	// FPS 출력 캐시
 	float m_LastFps = 0.0f;
-	float m_FpsAccum = 0.0f;
 	float m_FpsTimer = 0.0f;
 
 	// 시스템 메모리(바이트)
