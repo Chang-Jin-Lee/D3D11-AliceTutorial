@@ -157,7 +157,7 @@ struct App::Impl {
 	ID3D11ShaderResourceView* m_pNormalSRVs[6] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
 	ID3D11ShaderResourceView* m_pSpecularSRVs[6] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
 
-	// 시스템 정보 (카메라는 GameApp::m_Camera 사용)
+	// 시스템 정보
 	SystemInfomation              m_SystemInfo;
 
 	// 큐브 트랜스폼
@@ -197,8 +197,6 @@ struct App::Impl {
 	ID3D11ShaderResourceView* m_pFallbackBlack = nullptr;
 	std::string                   m_ModelPathInputUTF8;
 };
-
-// 멤버 매핑 매크로 제거됨: 직접 m_-> 멤버 접근을 사용합니다.
 
 // ctor/dtor
 App::App() : m_(new Impl) {}
