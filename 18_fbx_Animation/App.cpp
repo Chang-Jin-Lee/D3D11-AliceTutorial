@@ -1252,31 +1252,20 @@ bool App::InitImGui()
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 	ImGui::StyleColorsDark();
-
-	// 일본어 글꼴 로딩 (Meiryo / Yu Gothic 우선, 실패 시 기본 폰트)
+	// 한글/일본어 표시를 위한 폰트 설정
 	{
 		ImGuiIO& io = ImGui::GetIO();
-		const char* fontCandidates[] = {
-			"C:/Windows/Fonts/meiryo.ttc",
-			"C:/Windows/Fonts/YuGothM.ttc",
-			"C:/Windows/Fonts/msgothic.ttc"
-		};
-		bool loaded = false;
-		for (const char* path : fontCandidates)
-		{
-			if (std::filesystem::exists(path))
-			{
-				io.Fonts->AddFontFromFileTTF(path, 18.0f, nullptr, io.Fonts->GetGlyphRangesJapanese());
-				loaded = true;
-				break;
-			}
-		}
-		if (!loaded)
-		{
-			io.Fonts->AddFontDefault();
-		}
+		io.Fonts->AddFontDefault();
+		ImFontConfig cfg{};
+		cfg.MergeMode = true;
+		cfg.PixelSnapH = true;
+		cfg.OversampleH = 2;
+		cfg.OversampleV = 2;
+		const ImWchar* rangeKR = io.Fonts->GetGlyphRangesKorean();
+		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\NotoSansKR-Regular.ttf", 17.0f, &cfg, rangeKR);
+		const ImWchar* rangeJP = io.Fonts->GetGlyphRangesJapanese();
+		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\meiryo.ttc", 17.0f, &cfg, rangeJP);
 	}
-
 	ImGui_ImplWin32_Init(m_hWnd);
 	ImGui_ImplDX11_Init(m_->m_pDevice, m_->m_pDeviceContext);
 	return true;
