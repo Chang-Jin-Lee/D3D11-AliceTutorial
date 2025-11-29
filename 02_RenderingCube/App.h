@@ -8,8 +8,7 @@
 #include <directxtk/SimpleMath.h>
 using namespace DirectX::SimpleMath;
 
-class App :
-	public GameApp
+class App : public GameApp
 {
 public:
 	struct ConstantBuffer

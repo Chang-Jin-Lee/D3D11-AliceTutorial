@@ -6,8 +6,7 @@
 using namespace DirectX::SimpleMath;
 
 
-class App :
-	public GameApp
+class App : public GameApp
 {
 public:
 	// 렌더링 파이프라인을 구성하는 필수 객체의 인터페이스 (  뎊스 스텐실 뷰도 있지만 아직 사용하지 않는다.)

@@ -38,8 +38,7 @@ struct DirectionalLight
 
 };
 
-class App :
-	public GameApp
+class App : public GameApp
 {
 public:
 
