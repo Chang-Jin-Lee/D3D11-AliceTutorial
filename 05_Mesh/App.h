@@ -53,17 +53,14 @@ public:
 	ID3D11PixelShader* m_pPixelShader = nullptr;	// 픽셀 셰이더.	
 	ID3D11InputLayout* m_pInputLayout = nullptr;	// 입력 레이아웃.
 	ID3D11Buffer* m_pVertexBuffer = nullptr;		// 버텍스 버퍼.
-	UINT m_VertextBufferStride = 0;					// 버텍스 하나의 크기.
-	UINT m_VertextBufferOffset = 0;					// 버텍스 버퍼의 오프셋.
 	ID3D11Buffer* m_pIndexBuffer = nullptr;			// 인덱스 버퍼.
 	int m_nIndices = 0;								// 인덱스 개수.
 
-	ID3D11Buffer* m_pConstantBuffer;				// 상수 버퍼
+	ID3D11Buffer* m_pConstantBuffer = nullptr;		// 상수 버퍼
 	ConstantBuffer m_CBuffer;						// 단일 모델용 상수 버퍼
-	ID3D11DepthStencilView* m_pDepthStencilView;	// 깊이 스텐실 뷰
+	ID3D11DepthStencilView* m_pDepthStencilView = nullptr;	// 깊이 스텐실 뷰
 	ID3D11DepthStencilState* m_pDepthStencilState = nullptr;	// 깊이 스텐실 상태
 	ID3D11SamplerState* m_pSamplerState = nullptr;
-	ID3D11ShaderResourceView* m_pTextureSRVs[6] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
 	Microsoft::WRL::ComPtr<IDXGIAdapter3> m_Adapter3; // VRAM 조회용
 	SIZE_T m_VideoMemoryTotal = 0; // 총 VRAM 바이트
 	ID3D11RasterizerState* m_pRasterState = nullptr; // 래스터라이저 상태 (Cull None)
@@ -74,7 +71,6 @@ public:
 	UINT m_CPUCores = 0;
 	// FPS 출력 캐시 (1초 주기 표시)
 	float m_LastFps = 0.0f;
-	float m_FpsAccum = 0.0f;
 	float m_FpsTimer = 0.0f;
 
 	// 시스템 메모리(바이트)
