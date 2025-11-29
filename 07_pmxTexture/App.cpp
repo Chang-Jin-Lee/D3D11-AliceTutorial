@@ -230,6 +230,7 @@ void App::OnUpdate(const float& dt)
 */
 void App::OnRender()
 {
+	// ============================== 기본 PMX 렌더 패스 ==============================
 	float color[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
 	UINT stride = sizeof(VertexCubePosTex);	// 바이트 수
 	UINT offset = 0;
@@ -237,11 +238,6 @@ void App::OnRender()
 	m_pDeviceContext->ClearRenderTargetView(m_pRenderTargetView, color);
 	m_pDeviceContext->ClearDepthStencilView(m_pDepthStencilView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
 
-	// 1 ~ 3 . IA 단계 설정
-	// 정점을 어떻게 이어서 그릴 것인지를 선택하는 부분
-	// 1. 버퍼를 잡아주기
-	// 2. 입력 레이아웃을 잡아주기
-	// 3. 인덱스 버퍼를 잡아주기
 	m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	m_pDeviceContext->IASetVertexBuffers(0, 1, &m_pVertexBuffer, &stride, &offset);
 	m_pDeviceContext->IASetInputLayout(m_pInputLayout);
@@ -252,8 +248,7 @@ void App::OnRender()
 	// 5. Pixel Shader 설정
 	m_pDeviceContext->PSSetShader(m_pPixelShader, nullptr, 0);
 
-	// 6. Constant Buffer 설정
-	// 7. 그리기
+	// 상수 버퍼 업데이트 및 드로우
 	{
 		D3D11_MAPPED_SUBRESOURCE mapped{};
 		HR_T(m_pDeviceContext->Map(m_pConstantBuffer, 0,
@@ -265,14 +260,7 @@ void App::OnRender()
 		m_pDeviceContext->PSSetSamplers(0, 1, &m_pSamplerState);
 		if (!m_Subsets.empty())
 		{
-			/*
-			* @brief : 렌더 서브셋 드로우
-			* @details :
-			*   - 입력: m_Subsets(인덱스 범위/머티리얼 인덱스), m_MaterialSRVs
-			*   - 출력: 없음(그리기 호출)
-			*   - 알고리즘: 서브셋 순회 → PS SRV 바인딩 → 해당 인덱스 범위 DrawIndexed
-			*/
-			// 서브셋별로 해당 머티리얼의 SRV를 바꿔 끼우고, 그 인덱스 범위만 그리기
+			// 서브셋별로 해당 머티리얼의 SRV를 바인딩하고, 그 인덱스 범위만 그리기
 			for (const auto& s : m_Subsets)
 			{
 				ID3D11ShaderResourceView* srv = nullptr;
@@ -283,12 +271,12 @@ void App::OnRender()
 		}
 		else
 		{
-			// 서브셋 정보가 없으면 전체 인덱스 범위를 한 번에 그린다
+			// 서브셋 정보가 없으면 전체 인덱스 범위를 한 번에 그리기
 			m_pDeviceContext->DrawIndexed(m_nIndices, 0, 0);
 		}
 	}
 
-	// ImGui 프레임 및 UI 렌더링
+	// ============================== ImGui 컨트롤 패널 ==============================
 	ImGui_ImplDX11_NewFrame();
 	ImGui_ImplWin32_NewFrame();
 	ImGui::NewFrame();
@@ -305,7 +293,7 @@ void App::OnRender()
 	}
 	ImGui::End();
 
-	// 우상단: 시스템 정보(FPS/GPU/CPU)
+	// ============================== 시스템 정보(FPS/GPU/CPU) ==============================
 	{
 		ImGuiIO& io = ImGui::GetIO();
 		ImVec2 size(420.0f, 180.0f);
@@ -339,7 +327,7 @@ void App::OnRender()
 		ImGui::End();
 	}
 
-	// 우하단: 모델 정보
+	// ============================== 모델 정보 창 ==============================
 	{
 		ImGuiIO& io = ImGui::GetIO();
 		ImVec2 size(460.0f, 220.0f);
@@ -862,10 +850,10 @@ void App::UninitScene()
 	SAFE_RELEASE(m_pInputLayout);
 	SAFE_RELEASE(m_pVertexShader);
 	SAFE_RELEASE(m_pPixelShader);
-	for (int i = 0; i < 6; ++i) SAFE_RELEASE(m_pTextureSRVs[i]);
 	for (auto& srv : m_MaterialSRVs) SAFE_RELEASE(srv);
 	SAFE_RELEASE(m_pWhiteSRV);
 	SAFE_RELEASE(m_pSamplerState);
+	SAFE_RELEASE(m_pConstantBuffer);
 }
 
 /*
