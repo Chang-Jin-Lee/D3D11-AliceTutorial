@@ -522,7 +522,7 @@ void App::OnUpdate(const float& dt)
 	t2 += 1.2f * dt;   // 세번째 메쉬(자식2) 공전 속도
 
 
-	// View/Proj도 UI값 반영 (매 프레임)
+	// ============================== 카메라 행렬 업데이트 ==============================
 	XMMATRIX view = XMMatrixTranspose(XMMatrixLookAtLH(
 		XMVectorSet(m_CameraPos.x, m_CameraPos.y, m_CameraPos.z, 0.0f),
 		XMVectorSet(m_CameraPos.x + 0.0f, m_CameraPos.y + 0.0f, m_CameraPos.z + 1.0f, 0.0f),
@@ -530,6 +530,12 @@ void App::OnUpdate(const float& dt)
 	float fovRad = XMConvertToRadians(m_CameraFovDeg);
 	XMMATRIX proj = XMMatrixTranspose(XMMatrixPerspectiveFovLH(fovRad, AspectRatio(), m_CameraNear, m_CameraFar));
 
+	// ============================== 시스템 정보(FPS/RAM/VRAM) 업데이트 ==============================
+	UpdateSystemInfo(dt);
+}
+
+void App::UpdateSystemInfo(const float& dt)
+{
 	// FPS 1초 업데이트
 	m_FpsTimer += dt;
 	if (m_FpsTimer >= 1.0f)
@@ -539,13 +545,11 @@ void App::OnUpdate(const float& dt)
 	}
 
 	// 시스템 메모리 가용량 갱신
+	MEMORYSTATUSEX ms{ sizeof(MEMORYSTATUSEX) };
+	if (GlobalMemoryStatusEx(&ms))
 	{
-		MEMORYSTATUSEX ms{ sizeof(MEMORYSTATUSEX) };
-		if (GlobalMemoryStatusEx(&ms))
-		{
-			m_RamTotal = ms.ullTotalPhys;
-			m_RamAvail = ms.ullAvailPhys;
-		}
+		m_RamTotal = ms.ullTotalPhys;
+		m_RamAvail = ms.ullAvailPhys;
 	}
 
 	// VRAM 사용량 갱신 (가능한 경우)
@@ -568,6 +572,7 @@ void App::OnUpdate(const float& dt)
 */
 void App::OnRender()
 {
+	// ============================== D3D11 백버퍼/깊이 버퍼 클리어 ==============================
 	float color[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
 	UINT stride = sizeof(VertexCubePosTex);	// 바이트 수
 	UINT offset = 0;
@@ -575,11 +580,7 @@ void App::OnRender()
 	m_pDeviceContext->ClearRenderTargetView(m_pRenderTargetView, color);
 	m_pDeviceContext->ClearDepthStencilView(m_pDepthStencilView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
 
-	// 1 ~ 3 . IA 단계 설정
-	// 정점을 어떻게 이어서 그릴 것인지를 선택하는 부분
-	// 1. 버퍼를 잡아주기
-	// 2. 입력 레이아웃을 잡아주기
-	// 3. 인덱스 버퍼를 잡아주기
+	// ============================== 배경 큐브(또는 간단 지오메트리) 렌더 ==============================
 	m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	m_pDeviceContext->IASetVertexBuffers(0, 1, &m_pVertexBuffer, &stride, &offset);
 	m_pDeviceContext->IASetInputLayout(m_pInputLayout);
@@ -590,12 +591,11 @@ void App::OnRender()
 	// 5. Pixel Shader 설정
 	m_pDeviceContext->PSSetShader(m_pPixelShader, nullptr, 0);
 
-	// 6. Constant Buffer 설정
-	// 7. 그리기
+	// 상수 버퍼/샘플러 설정 후 큐브 드로우
 	m_pDeviceContext->PSSetSamplers(0, 1, &m_pSamplerState);
 	m_pDeviceContext->DrawIndexed(m_nIndices, 0, 0);
 
-	// ImGui 프레임 및 UI 렌더링
+	// ============================== ImGui ==============================
 	ImGui_ImplDX11_NewFrame();
 	ImGui_ImplWin32_NewFrame();
 	ImGui::NewFrame();
@@ -604,6 +604,7 @@ void App::OnRender()
 	* @brief : Live2D 로더/상태 UI
 	* @details : model3.json 파일 선택 → 모델/텍스처 로드 및 마스크 버퍼 준비
 	*/
+// ============================== Live2D 로더/상태 UI ==============================
 	ImGui::SetNextWindowSize(ImVec2(250,280), ImGuiCond_Once);
 	if (ImGui::Begin("Live2D"))
 	{
@@ -679,6 +680,7 @@ void App::OnRender()
 	* @brief : Live2D 모델 정보/조작 UI
 	* @details : 모션 그룹/모션 인덱스 선택 후 재생, 파라미터/파트 조정 UI 제공
 	*/
+// ============================== Live2D 모델 정보/모션/파라미터 UI ==============================
 	if (m_L2DLoaded && m_L2D && m_ShowL2DInfo)
 	{
 		ImGuiIO& io = ImGui::GetIO();
@@ -838,13 +840,14 @@ void App::OnRender()
 	}
 
 	// 기존 이미지/시스템 창 렌더 이후, Live2D 모델 그리기
+	// ============================== Live2D 모델 드로우 ==============================
 	if (m_L2DLoaded && m_L2D)
 	{
 		m_L2D->ModelParamUpdate(); // 모션/블링크/물리 등 업데이트 포함
 		m_L2D->DrawModelD3D11(m_pDevice, m_pDeviceContext, m_ClientWidth, m_ClientHeight);
 	}
 
-	// Live2D 텍스처 미리보기 창
+	// ============================== Live2D 텍스처 미리보기 창 ==============================
 	if (m_ShowL2DWindow && !m_L2DTexSRVs.empty())
 	{
 		ImGui::SetNextWindowSize(ImVec2(520, 560), ImGuiCond_Once);
@@ -864,6 +867,7 @@ void App::OnRender()
 	}
 
 	// 우상단: 시스템 정보(FPS/GPU/CPU)
+	// ============================== 시스템 정보 패널(FPS/GPU/CPU/RAM/VRAM) ==============================
 	{
 		ImGuiIO& io = ImGui::GetIO();
 		ImVec2 size(420.0f, 180.0f);
@@ -896,6 +900,7 @@ void App::OnRender()
 		ImGui::End();
 	}
 
+	// ============================== ImGui 렌더 & Present ==============================
 	ImGui::Render();
 	ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 
@@ -1149,6 +1154,7 @@ void App::UninitScene()
 	SAFE_RELEASE(m_pVertexShader);
 	SAFE_RELEASE(m_pPixelShader);
 	SAFE_RELEASE(m_pSamplerState);
+	SAFE_RELEASE(m_pConstantBuffer);
 }
 
 bool App::InitEffect()
