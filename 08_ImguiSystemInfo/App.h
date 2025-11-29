@@ -42,7 +42,6 @@ public:
 	std::wstring m_CPUName;
 	UINT m_CPUCores = 0;
 	float m_LastFps = 0.0f;
-	float m_FpsAccum = 0.0f;
 	float m_FpsTimer = 0.0f;
 
 	// @brief : 시스템 메모리(바이트)
