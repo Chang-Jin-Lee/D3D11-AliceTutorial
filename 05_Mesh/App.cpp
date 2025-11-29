@@ -240,8 +240,7 @@ void App::OnRender()
 	// 5. Pixel Shader 설정
 	m_pDeviceContext->PSSetShader(m_pPixelShader, nullptr, 0);
 
-	// 6. Constant Buffer 설정
-	// 7. 그리기
+	// 6. Constant Buffer 설정 & 그리기
 	{
 		D3D11_MAPPED_SUBRESOURCE mapped{};
 		HR_T(m_pDeviceContext->Map(m_pConstantBuffer, 0,
@@ -256,6 +255,7 @@ void App::OnRender()
 		{
 			ID3D11ShaderResourceView* srv = nullptr;
 			if (s.materialIndex < m_MaterialSRVs.size()) srv = m_MaterialSRVs[s.materialIndex];
+			if (!srv) srv = m_pWhiteSRV;
 			m_pDeviceContext->PSSetShaderResources(0, 1, &srv);
 			m_pDeviceContext->DrawIndexed(s.indexCount, s.startIndex, 0);
 			drawn += s.indexCount;
@@ -282,22 +282,6 @@ void App::OnRender()
 		ImGui::DragFloatRange2("Near/Far", &m_CameraNear, &m_CameraFar, 0.1f, 0.01f, 5000.0f, "Near: %.2f", "Far: %.2f");
 	}
 	ImGui::End();
-
-	// 좌하단: Cube Description
-	{
-		ImGuiIO& io = ImGui::GetIO();
-		ImVec2 size(260.0f, 80.0f);
-		ImVec2 pos(10.0f, io.DisplaySize.y - size.y - 10.0f);
-		ImGui::SetNextWindowPos(pos, ImGuiCond_Always);
-		ImGui::SetNextWindowSize(size, ImGuiCond_Always);
-		ImGuiWindowFlags flags = ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse;
-		if (ImGui::Begin("Cube Description", nullptr, flags))
-		{
-			ImGui::Text("front : Yuuka");
-			ImGui::Text("etc   : Hanako");
-		}
-		ImGui::End();
-	}
 
 	// 우상단: 시스템 정보(FPS/GPU/CPU)
 	{
@@ -678,8 +662,6 @@ bool App::InitScene()
 	float fovRad = XMConvertToRadians(m_CameraFovDeg);
 	m_CBuffer.proj = XMMatrixTranspose(XMMatrixPerspectiveFovLH(fovRad, AspectRatio(), m_CameraNear, m_CameraFar));
 
-	// 샘플러/텍스처는 사용하지 않음 (흰색 픽셀 셰이더)
- 
 	// 샘플러 생성
 	D3D11_SAMPLER_DESC sampDesc = {};
 	sampDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
@@ -706,9 +688,7 @@ bool App::InitScene()
 		srvd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
 		srvd.Texture2D.MostDetailedMip = 0;
 		srvd.Texture2D.MipLevels = 1;
-		ID3D11ShaderResourceView* whiteSRV = nullptr;
-		HR_T(m_pDevice->CreateShaderResourceView(tex.Get(), &srvd, &whiteSRV));
-		for (auto& p : m_MaterialSRVs) if (p == nullptr) p = whiteSRV;
+		HR_T(m_pDevice->CreateShaderResourceView(tex.Get(), &srvd, &m_pWhiteSRV));
 	}
 
 	return true;
@@ -721,9 +701,10 @@ void App::UninitScene()
 	SAFE_RELEASE(m_pInputLayout);
 	SAFE_RELEASE(m_pVertexShader);
 	SAFE_RELEASE(m_pPixelShader);
-	for (int i = 0; i < 6; ++i) SAFE_RELEASE(m_pTextureSRVs[i]);
 	for (auto& srv : m_MaterialSRVs) SAFE_RELEASE(srv);
+	SAFE_RELEASE(m_pWhiteSRV);
 	SAFE_RELEASE(m_pSamplerState);
+	SAFE_RELEASE(m_pConstantBuffer);
 }
 
 /*
