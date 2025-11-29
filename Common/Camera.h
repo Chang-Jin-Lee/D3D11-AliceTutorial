@@ -36,7 +36,7 @@ public:
 	XMFLOAT3 GetUp() const;
 
 	// Update camera using simple UI-style inputs (e.g., ImGui booleans and mouse deltas)
-	void UpdateFromUI(bool rightMouseDown,
+	void UpdateInput(bool rightMouseDown,
 		float mouseDeltaX,
 		float mouseDeltaY,
 		bool keyW,
