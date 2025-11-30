@@ -11,19 +11,19 @@
 
 namespace vmd
 {
-	/// ?깭?꺖?꺍?깢?꺃?꺖?깲
+	/// 본(뼈) 키프레임
 	class VmdBoneFrame
 	{
 	public:
-		/// ?깭?꺖?꺍?릫
+		/// 본 이름 (Shift-JIS, 15바이트, 널 종료)
 		std::string name;
-		/// ?깢?꺃?꺖?깲?빁?뤇
+		/// 프레임 번호
 		int frame;
-		/// 鵝띸쉰
+		/// 위치 (x, y, z)
 		float position[3];
-		/// ?썮邕?
+		/// 회전 (쿼터니언 x, y, z, w)
 		float orientation[4];
-		/// 獒쒒뼋?쎊渶?
+		/// 보간 커브 데이터 [4][4][4]
 		char interpolation[4][4][4];
 
 		void Read(std::istream* stream)
@@ -47,15 +47,15 @@ namespace vmd
 		}
 	};
 
-	/// 烏ⓩ깄?깢?꺃?꺖?깲
+	/// 표정(모프) 키프레임
 	class VmdFaceFrame
 	{
 	public:
-		/// 烏ⓩ깄?릫
+		/// 표정 이름 (Shift-JIS, 15바이트)
 		std::string face_name;
-		/// 烏ⓩ깄?겗?뇥?겳
+		/// 가중치(0.0 ~ 1.0)
 		float weight;
-		/// ?깢?꺃?꺖?깲?빁?뤇
+		/// 프레임 번호
 		uint32_t frame;
 
 		void Read(std::istream* stream)
@@ -75,24 +75,24 @@ namespace vmd
 		}
 	};
 
-	/// ?궖?깳?꺀?깢?꺃?꺖?깲
+	/// 카메라 키프레임
 	class VmdCameraFrame
 	{
 	public:
-		/// ?깢?꺃?꺖?깲?빁?뤇
-		int frame;				// 4 byte
-		/// 瓮앶썴
-		float distance;			// 4 byte
-		/// 鵝띸쉰
-		float position[3];		// 12 byte
-		/// ?썮邕?
-		float orientation[3];	// 12 byte
-		/// 獒쒒뼋?쎊渶?
-		char interpolation[6][4];	// 24 byte
-		/// 誤뽭뇦鰲?
-		float angle;			// 4 byte (FOV)
-		/// 誤≪뮆?덂?뇦 (0: 원근 사용, 1: 원근 끔) - VMD 스펙상 1바이트
-		std::uint8_t perspective;	// 1 byte
+		/// 프레임 번호 (0부터 시작)
+		int frame;                       // 4 byte
+		/// 카메라와 타깃(관심점) 사이 거리
+		float distance;                  // 4 byte
+		/// 타깃(관심점) 위치 (x, y, z)
+		float position[3];               // 12 byte
+		/// 카메라 회전 (오일러, 라디안: pitch(x), yaw(y), roll(z))
+		float orientation[3];            // 12 byte
+		/// 보간 커브 데이터 (6채널 * 4바이트)
+		char interpolation[6][4];        // 24 byte
+		/// 시야각(FOV, 도 단위)
+		float angle;                     // 4 byte
+		/// 원근 사용 여부 (0: 원근 사용, 1: 원근 끔) - VMD 스펙상 1바이트
+		std::uint8_t perspective;        // 1 byte
 
 		void Read(std::istream *stream)
 		{
@@ -120,15 +120,15 @@ namespace vmd
 		}
 	};
 
-	/// ?꺀?궎?깉?깢?꺃?꺖?깲
+	/// 조명(라이트) 키프레임
 	class VmdLightFrame
 	{
 	public:
-		/// ?깢?꺃?꺖?깲?빁?뤇
+		/// 프레임 번호
 		int frame;
-		/// ?돯
+		/// 색상(RGB)
 		float color[3];
-		/// 鵝띸쉰
+		/// 위치 또는 방향 (MMD에서는 방향 벡터로 사용)
 		float position[3];
 
 		void Read(std::istream* stream)
@@ -146,20 +146,25 @@ namespace vmd
 		}
 	};
 
-	/// IK?겗?쐣?듅?꽒?듅
+	/// IK 온/오프 정보
 	class VmdIkEnable
 	{
 	public:
+		/// IK 이름 (Shift-JIS, 20바이트)
 		std::string ik_name;
+		/// 활성 여부
 		bool enable;
 	};
 
-	/// IK?깢?꺃?꺖?깲
+	/// IK 키프레임
 	class VmdIkFrame
 	{
 	public:
+		/// 프레임 번호
 		int frame;
+		/// IK 표시 여부
 		bool display;
+		/// 각 IK의 온/오프 목록
 		std::vector<VmdIkEnable> ik_enable;
 
 		void Read(std::istream *stream)
@@ -193,23 +198,23 @@ namespace vmd
 		}
 	};
 
-	/// VMD?깴?꺖?궥?깾?꺍
+	/// VMD 모션 전체 데이터
 	class VmdMotion
 	{
 	public:
-		/// ?깴?깈?꺂?릫
+		/// 모델 이름
 		std::string model_name;
-		/// ?깘?꺖?궦?깾?꺍
+		/// VMD 버전
 		int version;
-		/// ?깭?꺖?꺍?깢?꺃?꺖?깲
+		/// 본(뼈) 키프레임 목록
 		std::vector<VmdBoneFrame> bone_frames;
-		/// 烏ⓩ깄?깢?꺃?꺖?깲
+		/// 표정(모프) 키프레임 목록
 		std::vector<VmdFaceFrame> face_frames;
-		/// ?궖?깳?꺀?깢?꺃?꺖?깲
+		/// 카메라 키프레임 목록
 		std::vector<VmdCameraFrame> camera_frames;
-		/// ?꺀?궎?깉?깢?꺃?꺖?깲
+		/// 조명(라이트) 키프레임 목록
 		std::vector<VmdLightFrame> light_frames;
-		/// IK?깢?꺃?꺖?깲
+		/// IK 키프레임 목록
 		std::vector<VmdIkFrame> ik_frames;
 
 		static std::unique_ptr<VmdMotion> LoadFromFile(char const *filename)
