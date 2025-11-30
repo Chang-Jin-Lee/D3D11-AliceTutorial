@@ -7,6 +7,7 @@
 #include <fstream>
 #include <filesystem>
 #include <ostream>
+#include <cstdint>
 
 namespace vmd
 {
@@ -79,19 +80,19 @@ namespace vmd
 	{
 	public:
 		/// ?깢?꺃?꺖?깲?빁?뤇
-		int frame;
+		int frame;				// 4 byte
 		/// 瓮앶썴
-		float distance;
+		float distance;			// 4 byte
 		/// 鵝띸쉰
-		float position[3];
+		float position[3];		// 12 byte
 		/// ?썮邕?
-		float orientation[3];
+		float orientation[3];	// 12 byte
 		/// 獒쒒뼋?쎊渶?
-		char interpolation[6][4];
+		char interpolation[6][4];	// 24 byte
 		/// 誤뽭뇦鰲?
-		float angle;
-		/// 訝띷삇?깈?꺖?궭
-		char unknown[3];
+		float angle;			// 4 byte (FOV)
+		/// 誤≪뮆?덂?뇦 (0: 원근 사용, 1: 원근 끔) - VMD 스펙상 1바이트
+		std::uint8_t perspective;	// 1 byte
 
 		void Read(std::istream *stream)
 		{
@@ -101,7 +102,9 @@ namespace vmd
 			stream->read((char*) orientation, sizeof(float) * 3);
 			stream->read((char*) interpolation, sizeof(char) * 24);
 			stream->read((char*) &angle, sizeof(float));
-			stream->read((char*) unknown, sizeof(char) * 3);
+			// VMD 카메라 프레임 스펙은 여기서 1바이트만 갖습니다.
+			// 과거 코드에서는 3바이트를 읽어 1프레임당 2바이트씩 오프셋이 밀리는 문제가 있었음.
+			stream->read((char*) &perspective, sizeof(std::uint8_t));
 		}
 
 		void Write(std::ostream *stream)
@@ -112,7 +115,8 @@ namespace vmd
 			stream->write((char*)orientation, sizeof(float) * 3);
 			stream->write((char*)interpolation, sizeof(char) * 24);
 			stream->write((char*)&angle, sizeof(float));
-			stream->write((char*)unknown, sizeof(char) * 3);
+			// 스펙에 맞게 1바이트만 기록
+			stream->write((char*)&perspective, sizeof(std::uint8_t));
 		}
 	};
 
