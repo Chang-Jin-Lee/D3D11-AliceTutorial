@@ -60,10 +60,24 @@ using namespace DirectX::SimpleMath;
 // 내부 전용 타입들
 struct DirectionalLight { XMFLOAT4 ambient; XMFLOAT4 diffuse; XMFLOAT4 specular; XMFLOAT3 direction; float pad; };
 struct Material { XMFLOAT4 ambient; XMFLOAT4 diffuse; XMFLOAT4 specular; XMFLOAT4 reflect; };
+struct PBRMaterialCPU
+{
+	XMFLOAT4 baseColor = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+	float metalness = 0.0f;
+	float roughness = 0.5f;
+	float ambientOcclusion = 1.0f;
+	float pad = 0.0f;
+};
 struct ConstantBuffer {
 	XMMATRIX world; XMMATRIX view; XMMATRIX proj; XMMATRIX worldInvTranspose;
 	Material material; DirectionalLight dirLight; XMFLOAT3 eyePos; int shadingMode = 0;
 	int enableNormalMap = 1; int useSpecularMap = 0; int useDiffuseMap = 1; float pad = 0.0f;
+	float gamma = 2.2f; XMFLOAT3 pbrPad = { 0,0,0 };
+	XMFLOAT4 pbrBaseColor = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+	float pbrMetalness = 0.0f;
+	float pbrRoughness = 0.5f;
+	float pbrAO = 1.0f;
+	float pbrPad2 = 0.0f;
 	float outlineWidth = 0.15f; float outlinePow = 1.0f; float outlineThickness = 0.014f; float outlineStrength = 1.0f; XMFLOAT4 outlineColor = XMFLOAT4(0, 0, 0, 1);
 	// Shadow params
 	XMMATRIX lightViewProj;
@@ -124,6 +138,8 @@ struct ModelEntry
 	float animUpdateAccum = 0.0f;
 	Material instanceMaterial{ {1,1,1,1}, {1,1,1,1}, {1,1,1,32}, {0,0,0,0} };
 	bool useInstanceMaterial = false;
+	PBRMaterialCPU instancePbrMaterial{};
+	bool useInstancePbrMaterial = false;
 
 	// 사전 계산된 메시 통계
 	MeshStats meshStats{};
@@ -418,10 +434,10 @@ struct App::Impl {
 
 	// 조명/재질
 	DirectionalLight				m_DirLight = { {0,0,0,1}, {1,1,1,1}, {0.7f,0.7f,0.7f,1}, {0,-1.1f,1}, 0.0f };
-	// Reflect: x=metalness, y=gamma, z=사용안함, w=roughness (PBR용)
-	Material						m_Material = { {1,1,1,1}, {1,1,1,1}, {1,1,1,32}, {0.0f, 2.2f, 0.0f, 0.5f} };
+	Material						m_Material = { {1,1,1,1}, {1,1,1,1}, {1,1,1,32}, {0,0,0,0} };
 	Material						m_mirrorCubeMaterial = { {0,0,0,1}, {0,0,0,1}, {0,0,0,32}, {1,1,1,0.02f} };
-	float							m_LightIntensity = 1.0f;
+	float							m_Gamma = 2.2f;			// 화면 감마 값 (ImGui에서 조절)
+	PBRMaterialCPU					m_DefaultPbrMaterial{};
 
 	// 라이트 마커 위치 / 카메라 기반 기본 행렬
 	XMFLOAT3						m_LightPosition = { 4.0f, 4.0f, 0.0f };
@@ -607,8 +623,9 @@ bool App::OnInitialize()
 	LoadSceneImage(m_->m_CurrentSceneImagePath);
 
 	// ====================================== 3D 모델 ======================================
-	//LoadModelFromFile(L"..\\Resource\\fbx\\SkinningTest.fbx"); // 0
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping_idle_walk_run.fbx"); // 0
+	LoadModelFromFile(L"..\\Resource\\fbx\\SkinningTest.fbx"); // 0
+	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping_idle_walk_run.fbx"); // 0
+	//LoadModelFromFile(L"..\\Resource\\fbx\\alice_normal_apply.fbx"); // 0
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Ground.fbx"); // 0
 
 	m_->m_Objects.clear();
@@ -621,12 +638,11 @@ bool App::OnInitialize()
 	m_->m_Models[1]->pos = XMFLOAT3(0.0f, -1.0f, 0.0f);
 
 	{
-		// 전역 머티리얼을 PBR 테스트용 기본 값으로 설정
-		m_->m_Material.ambient  = XMFLOAT4(0.02f, 0.05f, 0.06f, 1.0f);
-		m_->m_Material.diffuse  = XMFLOAT4(0.15f, 0.70f, 0.85f, 1.0f);
-		m_->m_Material.specular = XMFLOAT4(0.90f, 0.90f, 0.90f, 64.0f);
-		// metalness, gamma, roughness 기본값
-		m_->m_Material.reflect  = XMFLOAT4(0.0f, 2.2f, 0.0f, 0.5f);
+		m_->m_Models[0]->useInstanceMaterial = true;
+		m_->m_Models[0]->instanceMaterial.ambient = XMFLOAT4(0.02f, 0.05f, 0.06f, 1.0f);
+		m_->m_Models[0]->instanceMaterial.diffuse = XMFLOAT4(0.15f, 0.70f, 0.85f, 1.0f);
+		m_->m_Models[0]->instanceMaterial.specular = XMFLOAT4(0.90f, 0.90f, 0.90f, 64.0f);
+		m_->m_Models[0]->modelShading = ShadingMode::TextureOnly;
 	}
 
 	// ====================================== 큐브 ======================================
@@ -1212,19 +1228,19 @@ void App::OnRender()
 	XMFLOAT3 lightDir = m_->m_DirLight.direction;
 	XMVECTOR v = XMVector3Normalize(XMLoadFloat3(&lightDir));
 	XMStoreFloat3(&lightDir, v);
-	// DirectionalLight 필드 대입 (방향 정규화 + 강도 스케일)
+	// DirectionalLight 필드 대입 정규화된 방향
 	m_->m_ConstantBuffer.dirLight = m_->m_DirLight;
 	m_->m_ConstantBuffer.dirLight.direction = lightDir;
 	m_->m_ConstantBuffer.dirLight.pad = 0.0f;
-	// 단일 스칼라 강도로 diffuse/specular를 같이 조절
-	m_->m_ConstantBuffer.dirLight.diffuse.x *= m_->m_LightIntensity;
-	m_->m_ConstantBuffer.dirLight.diffuse.y *= m_->m_LightIntensity;
-	m_->m_ConstantBuffer.dirLight.diffuse.z *= m_->m_LightIntensity;
-	m_->m_ConstantBuffer.dirLight.specular.x *= m_->m_LightIntensity;
-	m_->m_ConstantBuffer.dirLight.specular.y *= m_->m_LightIntensity;
-	m_->m_ConstantBuffer.dirLight.specular.z *= m_->m_LightIntensity;
 	m_->m_ConstantBuffer.eyePos = m_Camera.GetPosition();
 	m_->m_ConstantBuffer.pad = 0.0f;
+	// 감마 값 반영 (PBR 포함 전체 셰이더 공용)
+	m_->m_ConstantBuffer.gamma = m_->m_Gamma;
+	const PBRMaterialCPU& defPbr = m_->m_DefaultPbrMaterial;
+	m_->m_ConstantBuffer.pbrBaseColor = defPbr.baseColor;
+	m_->m_ConstantBuffer.pbrMetalness = defPbr.metalness;
+	m_->m_ConstantBuffer.pbrRoughness = defPbr.roughness;
+	m_->m_ConstantBuffer.pbrAO = defPbr.ambientOcclusion;
 	// 셰이딩 모드 전달 (맵 플래그는 오브젝트별로 설정)
 	m_->m_ConstantBuffer.shadingMode = (int)m_->m_ShadingMode;
 	m_->m_ConstantBuffer.enableNormalMap = 0;
@@ -1284,6 +1300,11 @@ void App::OnRender()
 		// 큐브는 텍스처가 없어도 머티리얼 색으로 그려지도록 맵 사용 비활성화
 		cb.enableNormalMap = (cubeObj->useNormalMap != 0) ? 1 : 0;
 		cb.useSpecularMap = (cubeObj->useSpecularMap != 0) ? 1 : 0;
+		const PBRMaterialCPU& cubePbr = m_->m_DefaultPbrMaterial;
+		cb.pbrBaseColor = cubePbr.baseColor;
+		cb.pbrMetalness = cubePbr.metalness;
+		cb.pbrRoughness = cubePbr.roughness;
+		cb.pbrAO = cubePbr.ambientOcclusion;
 
         // 면별 텍스처 유무에 따라 useDiffuseMap 업데이트 후 CB 업로드 및 드로우
 		for (int face = 0; face < 6; ++face)
@@ -1380,6 +1401,14 @@ void App::OnRender()
 			cb.shadingMode = (int)mdlPtr->modelShading;
 			cb.enableNormalMap = m_->m_EnableNormalMapForCube;
 			cb.useSpecularMap = m_->m_UseSpecularMapForCube;
+			const PBRMaterialCPU* activePbrPtr = nullptr;
+			if (mdlPtr->useInstancePbrMaterial) activePbrPtr = &mdlPtr->instancePbrMaterial;
+			else activePbrPtr = &m_->m_DefaultPbrMaterial;
+			const PBRMaterialCPU& activePbr = *activePbrPtr;
+			cb.pbrBaseColor = activePbr.baseColor;
+			cb.pbrMetalness = activePbr.metalness;
+			cb.pbrRoughness = activePbr.roughness;
+			cb.pbrAO = activePbr.ambientOcclusion;
 
 			D3D11_MAPPED_SUBRESOURCE mapped;
 			HR_T(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped));
@@ -2476,6 +2505,7 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
 		// 모델별 셰이딩 초기값 = 현재 글로벌 셰이딩, 아웃라인 기본은 Toon일 때만 ON
 		entry->modelShading = m_->m_ShadingMode;
 		entry->outlineEnabled = (entry->modelShading == ShadingMode::ToonShading);
+		entry->instancePbrMaterial = m_->m_DefaultPbrMaterial;
 
 		// FBX 인스턴스 애니메이터를 로드 시점에 1회 초기화
 		if (entry->source == ModelSource::FBX && entry->shared && entry->shared->fbx)
@@ -2593,10 +2623,9 @@ void App::RenderControlPannel()
 		ImGui::Separator();
 		ImGui::Text("Light");
 		ImGui::DragFloat3("Light Direction", &m_->m_DirLight.direction.x, 0.05f);
-		ImGui::SliderFloat("Light Intensity", &m_->m_LightIntensity, 0.0f, 5.0f, "%.2f");
 		ImGui::ColorEdit4("Ambient", &m_->m_DirLight.ambient.x);
-		ImGui::ColorEdit4("Diffuse Color", &m_->m_DirLight.diffuse.x);
-		ImGui::ColorEdit4("Specular Color", &m_->m_DirLight.specular.x);
+		ImGui::ColorEdit4("Diffuse", &m_->m_DirLight.diffuse.x);
+		ImGui::ColorEdit4("Specular", &m_->m_DirLight.specular.x);
 		if (ImGui::Button("Reset Light"))
 		{
 			m_->m_DirLight = { XMFLOAT4(0,0,0,1), XMFLOAT4(1,1,1,1), XMFLOAT4(0.7f,0.7f,0.7f,1), XMFLOAT3(0,0,1), 0.0f };
@@ -2607,16 +2636,24 @@ void App::RenderControlPannel()
 		ImGui::ColorEdit4("Diffuse (kd)", &m_->m_Material.diffuse.x);
 		ImGui::ColorEdit4("Specular (ks)", &m_->m_Material.specular.x);
 		ImGui::DragFloat("Shininess (alpha)", &m_->m_Material.specular.w, 0.05f, 1.0f, 256.0f);
-		ImGui::ColorEdit4("Reflect Raw (xyzw)", &m_->m_Material.reflect.x);
-		ImGui::Separator();
-		ImGui::Text("PBR Params (Global)");
-		ImGui::SliderFloat("Metalness", &m_->m_Material.reflect.x, 0.0f, 1.0f, "%.2f");
-		ImGui::SliderFloat("Roughness", &m_->m_Material.reflect.w, 0.04f, 1.0f, "%.2f");
-		ImGui::SliderFloat("Gamma", &m_->m_Material.reflect.y, 1.0f, 2.6f, "%.2f");
+		ImGui::ColorEdit4("Reflect (R=metal, A=roughness)", &m_->m_Material.reflect.x);
 		if (ImGui::Button("Reset Material"))
 		{
-			m_->m_Material = { XMFLOAT4(1,1,1,1), XMFLOAT4(1,1,1,1), XMFLOAT4(1,1,1,32), XMFLOAT4(0.0f, 2.2f, 0.0f, 0.5f) };
+			m_->m_Material = { XMFLOAT4(1,1,1,1), XMFLOAT4(1,1,1,1), XMFLOAT4(1,1,1,32), XMFLOAT4(0,0,0,0) };
 		}
+		// PBR / 전체 화면 감마 값 (1.4~10.0 범위에서 조절, 눈의 오차를 감안해 여유 범위 확보)
+		ImGui::SliderFloat("Gamma", &m_->m_Gamma, 1.4f, 10.0f, "%.2f");
+
+		ImGui::SeparatorText("PBR Material");
+		ImGui::ColorEdit3("Base Color##PBR", &m_->m_DefaultPbrMaterial.baseColor.x);
+		ImGui::SliderFloat("Metalness##PBR", &m_->m_DefaultPbrMaterial.metalness, 0.0f, 1.0f, "%.2f");
+		ImGui::SliderFloat("Roughness##PBR", &m_->m_DefaultPbrMaterial.roughness, 0.04f, 1.0f, "%.2f");
+		ImGui::SliderFloat("Ambient Occlusion##PBR", &m_->m_DefaultPbrMaterial.ambientOcclusion, 0.0f, 1.0f, "%.2f");
+		if (ImGui::Button("Reset PBR Material"))
+		{
+			m_->m_DefaultPbrMaterial = PBRMaterialCPU{};
+		}
+
 		ImGui::Separator();
 	}
 	ImGui::End();
@@ -2783,6 +2820,24 @@ void App::RenderModelPannel()
                         ImGui::DragFloat("Shininess (alpha)##inst", &mdl.instanceMaterial.specular.w, 0.05f, 1.0f, 256.0f);
                         ImGui::ColorEdit4("Reflect (kr,a)##inst", &mdl.instanceMaterial.reflect.x);
                     }
+
+					ImGui::SeparatorText("PBR Material");
+					ImGui::Checkbox("Use Instance PBR Material", &mdl.useInstancePbrMaterial);
+					if (mdl.useInstancePbrMaterial)
+					{
+						ImGui::ColorEdit3("Base Color##instPBR", &mdl.instancePbrMaterial.baseColor.x);
+						ImGui::SliderFloat("Metalness##instPBR", &mdl.instancePbrMaterial.metalness, 0.0f, 1.0f, "%.2f");
+						ImGui::SliderFloat("Roughness##instPBR", &mdl.instancePbrMaterial.roughness, 0.04f, 1.0f, "%.2f");
+						ImGui::SliderFloat("Ambient Occlusion##instPBR", &mdl.instancePbrMaterial.ambientOcclusion, 0.0f, 1.0f, "%.2f");
+					}
+					else
+					{
+						const auto& defPbr = m_->m_DefaultPbrMaterial;
+						ImGui::Text("Base Color: (%.2f, %.2f, %.2f)", defPbr.baseColor.x, defPbr.baseColor.y, defPbr.baseColor.z);
+						ImGui::Text("Metalness: %.2f", defPbr.metalness);
+						ImGui::Text("Roughness: %.2f", defPbr.roughness);
+						ImGui::Text("AO: %.2f", defPbr.ambientOcclusion);
+					}
 
                     ImGui::Separator();
                     // 디버그 AABB 기준 본 인덱스 설정 (-1: Auto)

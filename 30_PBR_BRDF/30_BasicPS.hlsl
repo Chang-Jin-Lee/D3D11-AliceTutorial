@@ -123,20 +123,17 @@ float4 main(VertexOut pIn) : SV_Target
 		float NdotH = saturate(dot(N, H));
 		float VdotH = saturate(dot(V, H));
 
-		// metalness / roughness 상수 + 텍스처 기반 제어
-		// - 기본값 : 머티리얼 reflect (r=metalness, a=roughness)
-		// - 텍스처가 있으면 : G=roughness, B=metalness 언리얼 BRDF 방법을 흉내내봤음
-		float metalness = saturate(g_Material.reflect.r);
-		float roughness = saturate(g_Material.reflect.a);
-		if (g_UseDiffuseMap != 0)
-		{
-			roughness = saturate(textureColor.g);
-			metalness = saturate(textureColor.b);
-		}
+		// PBR 머티리얼: 기본 색상(baseColor)과 metal/rough/AO 값을 사용하고,
+		// 텍스처가 있다면 해당 채널(G=roughness, B=metalness)로 보간합니다.
+		float useTex = (g_UseDiffuseMap != 0) ? 1.0f : 0.0f;
+		float3 albedoPBR = kd.rgb * g_PBRBaseColor.rgb;
+		float metalness = saturate(lerp(g_PBRMetalness, textureColor.b, useTex));
+		float roughness = saturate(lerp(g_PBRRoughness, textureColor.g, useTex));
 		roughness = max(roughness, 0.04f); // 완전 0은 되지 않도록 하자
+		float ao = saturate(g_PBRAmbientOcclusion);
 
 		// F0 : 금속은 알베도, 비도체는 0.04 근처
-		float3 F0 = lerp(float3(0.04f, 0.04f, 0.04f), albedo, metalness);
+		float3 F0 = lerp(float3(0.04f, 0.04f, 0.04f), albedoPBR, metalness);
 
 		// Cook-Torrance GGX (헬퍼 함수 사용: D, G, F)
 		float D   = DistributionGGX(NdotH, roughness);
@@ -151,17 +148,17 @@ float4 main(VertexOut pIn) : SV_Target
 		// 에너지 보존: 금속일수록 디퓨즈 감소
 		float3 kS = F;
 		float3 kD = (1.0f - kS) * (1.0f - metalness);
-		float3 diffuse = kD * albedo * (1.0f / PI);
+		float3 diffuse = kD * albedoPBR * (1.0f / PI);
 
 		// 단일 디렉션 라이트 강도
 		float3 radiance = g_DirLight.diffuse.rgb;
-		float3 color = (diffuse + specular) * radiance * theta;
+		float3 color = (diffuse + specular) * radiance * theta * ao;
 
 		// 아주 단순한 환경광 : 디렉션 라이트 ambient 사용
-		color += albedo * g_DirLight.ambient.rgb;
+		color += albedoPBR * g_DirLight.ambient.rgb * ao;
 
-		// 감마 보정 (sRGB, g_Material.reflect.g를 감마 값으로 사용)
-		float gamma = max(g_Material.reflect.g, 0.1f);
+		// 감마 보정 (sRGB, g_Gamma를 ImGui에서 조절)
+		float gamma = max(g_Gamma, 0.1f);
 		color = pow(saturate(color), 1.0f / gamma);
 
 		return float4(color, alphaTex);

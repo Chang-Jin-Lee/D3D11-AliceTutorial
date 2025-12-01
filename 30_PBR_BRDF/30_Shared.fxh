@@ -37,6 +37,16 @@ cbuffer ConstantBuffer : register(b0)
     int    g_UseSpecularMap;            // 0/1
     int    g_UseDiffuseMap;             // 0/1 (텍스처 없으면 머티리얼만)
     float  g_Pad;                       // 디버그/단축 경로용
+    // PBR / 화면 감마 보정 값 (기본 2.2)
+    float  g_Gamma;                     // 감마 값
+    float3 g_PBRPad;
+
+    // PBR 전용 머티리얼 (baseColor, metalness, roughness, AO)
+    float4 g_PBRBaseColor;
+    float  g_PBRMetalness;
+    float  g_PBRRoughness;
+    float  g_PBRAmbientOcclusion;
+    float  g_PBRPad2;
 // 이번 프로젝트 코드
 //////////////////////////////////////////////////////////////////////////
     // Toon/Outline params (packed tightly)
