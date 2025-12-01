@@ -1,8 +1,9 @@
 /*
-* @brief : fbx, pmx, obj 3D 모델을 연속으로 여러 개를 그리는 예제입니다.
+* @brief : FBX / OBJ / PMX 모델과 VMD 애니메이션을 로딩해 실시간으로 렌더링하는 데모입니다.
 * @details :
-*		- 노말맵이 적용되어 있는 경우 노말맵을 반영해서 그립니다
-*		- 없는 경우는 반영하지 않습니다 
+*		- 여러 개의 3D 모델을 동시에 불러와 위치/회전/스케일을 개별 조정할 수 있습니다
+*		- FBX/PMX 스켈레톤을 GPU 스키닝으로 재생하며, PMX에는 VMD 모션 파일을 적용할 수 있습니다
+*		- 큐브(노말/스페큘러 맵), 스카이박스, 조명·머티리얼, 카메라를 ImGui UI로 실시간 조작할 수 있습니다
 */
 
 #include "App.h"
@@ -17,6 +18,7 @@
 #include <filesystem>
 #include <algorithm>
 #include <memory>
+#include <fstream>
 #include "../Common/StaticMesh.h"
 #include "../Common/LineRenderer.h"
 #include "../Common/Skybox.h"
@@ -34,6 +36,7 @@
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
+#include "../22_VMD/Vmd.h"
 
 #pragma comment (lib, "d3d11.lib")
 #pragma comment(lib,"d3dcompiler.lib")
@@ -197,6 +200,14 @@ struct App::Impl {
     ID3D11ShaderResourceView*     m_pFallbackNormal = nullptr;
     ID3D11ShaderResourceView*     m_pFallbackBlack = nullptr;
     std::string                   m_ModelPathInputUTF8;
+
+    // VMD 카메라 애니메이션 (간단한 재생용 상태)
+    std::vector<vmd::VmdCameraFrame> m_VmdCameraFrames;
+    bool                           m_VmdCameraUse = false;      // VMD 카메라 사용 여부
+    bool                           m_VmdCameraPlaying = false;  // 재생 중 여부
+    float                          m_VmdCameraCurrentFrame = 0.0f; // 현재 VMD 프레임(부동소수)
+    float                          m_VmdCameraFrameRate = 30.0f;   // 초당 30프레임 기준
+    float                          m_VmdCameraScale = 1.0f;       // MMD->엔진 스케일
 };
 
 // 멤버 매핑 매크로 제거됨: 직접 m_-> 멤버 접근을 사용합니다.
@@ -238,6 +249,470 @@ static bool OpenFileDialogModel(std::wstring& outPath)
     ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
     if (GetOpenFileNameW(&ofn)) { outPath = file; return true; }
     return false;
+}
+
+// VMD 파일 선택 대화상자
+static bool OpenFileDialogVMD(std::wstring& outPath)
+{
+    wchar_t file[MAX_PATH] = {0};
+    OPENFILENAMEW ofn{};
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = GameApp::m_hWnd;
+    ofn.lpstrFilter = L"VMD Files (*.vmd)\0*.vmd\0All Files\0*.*\0\0";
+    ofn.lpstrFile = file;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
+    if (GetOpenFileNameW(&ofn)) { outPath = file; return true; }
+    return false;
+}
+
+// VMD 카메라 프레임을 DirectX 카메라(Eye/Center/Up)로 변환하는 간단한 헬퍼
+// - scale: MMD 좌표를 엔진 좌표로 맞추기 위한 스케일 (1.0이면 그대로)
+// - MMD: Y-up, Z-forward(오른손)
+// - DirectX: Y-up, Z-forward(왼손)
+static void VmdCameraToEyeCenterUp(const vmd::VmdCameraFrame& cam, float scale, XMFLOAT3& outEye, XMFLOAT3& outCenter, XMFLOAT3& outUp)
+{
+    // 1. 관심점(interest) Z축 반전
+    XMFLOAT3 interestDX(cam.position[0] * scale, cam.position[1] * scale, -cam.position[2] * scale);
+
+    // 2. 회전 행렬 (Y -> Z(반전) -> X), cam.orientation는 라디안
+    //    - MMD(OpenGL, 오른손)과 DirectX(왼손) yaw 방향이 반대라서 Y 회전은 부호를 반대로 적용
+    XMMATRIX rotY = XMMatrixRotationY(-cam.orientation[1]);
+    XMMATRIX rotZ = XMMatrixRotationZ(-cam.orientation[2]);
+    XMMATRIX rotX = XMMatrixRotationX(cam.orientation[0]);
+    XMMATRIX rot  = rotY * rotZ * rotX;
+
+    // 3. 카메라 위치: 타깃에서 distance만큼 뒤로 이동
+    //    - VMD에서는 distance가 보통 음수로 들어오므로, -distance * scale을 사용
+    float dist = -cam.distance * scale;
+    XMMATRIX viewOffset = XMMatrixTranslation(0, 0, dist);
+    viewOffset = rot * viewOffset;
+
+    XMFLOAT3 eyeDX;
+    XMStoreFloat3(&eyeDX, viewOffset.r[3] + XMLoadFloat3(&interestDX));
+
+    // 4. Forward / Up 벡터 계산
+    XMVECTOR forward = XMVector3TransformNormal(XMVectorSet(0, 0, -1, 0), rot);
+    XMVECTOR up      = XMVector3TransformNormal(XMVectorSet(0, 1, 0, 0),  rot);
+    XMVECTOR eyeVec  = XMLoadFloat3(&eyeDX);
+    XMVECTOR centerVec = eyeVec + forward;
+
+    XMFLOAT3 centerDX, upDX;
+    XMStoreFloat3(&centerDX, centerVec);
+    XMStoreFloat3(&upDX, up);
+
+    outEye    = eyeDX;
+    outCenter = centerDX;
+    outUp     = upDX;
+}
+
+// VMD 파일에서 카메라 프레임만 안전하게 읽는 함수
+// 직접 바이너리 파싱으로 구현 (VmdMotion::LoadFromStream의 "vector too long" 오류 방지)
+static bool ReadVMDCameraFramesOnly(const std::wstring& vmdPath, std::vector<vmd::VmdCameraFrame>& outFrames)
+{
+    outFrames.clear();
+    
+    try
+    {
+        // std::filesystem::path를 사용하여 유니코드 경로 처리
+        std::filesystem::path path(vmdPath);
+        
+        // 파일 스트림 열기
+        std::ifstream stream(path, std::ios::binary);
+        if (!stream || !stream.good())
+        {
+            char buf[512];
+            sprintf_s(buf, "VMD 파일을 열 수 없습니다: %ls\n", vmdPath.c_str());
+            OutputDebugStringA(buf);
+            return false;
+        }
+
+        // 헤더 읽기 (30바이트: "Vocaloid Motion Data" + 버전)
+        char buffer[30];
+        stream.read(buffer, 30);
+        if (stream.gcount() != 30 || strncmp(buffer, "Vocaloid Motion Data", 20) != 0)
+        {
+            OutputDebugStringA("VMD 파일 헤더가 올바르지 않습니다.\n");
+            return false;
+        }
+
+        // 모델 이름 건너뛰기 (20바이트)
+        stream.read(buffer, 20);
+        if (stream.gcount() != 20)
+        {
+            OutputDebugStringA("VMD 파일 읽기 오류: 모델 이름\n");
+            return false;
+        }
+
+        // 본 프레임 개수 읽기
+        int32_t bone_frame_num = 0;
+        stream.read((char*)&bone_frame_num, sizeof(int32_t));
+        if (!stream.good())
+        {
+            OutputDebugStringA("VMD 파일 읽기 오류: 본 프레임 개수\n");
+            return false;
+        }
+
+        // 디버그: 본 프레임 개수와 현재 위치 출력
+        {
+            char buf[256];
+            std::streampos pos = stream.tellg();
+            sprintf_s(buf, "디버그: 본 프레임 개수 = %d, 현재 파일 위치 = %lld\n", bone_frame_num, (long long)pos);
+            OutputDebugStringA(buf);
+        }
+
+        // 본 프레임을 실제로 읽어서 정확한 오프셋 보장 (Read 메서드 사용)
+        if (bone_frame_num < 0 || bone_frame_num > 1000000)
+        {
+            char buf[256];
+            sprintf_s(buf, "경고: 본 프레임 개수가 비정상적입니다 (%d). 파일이 손상되었을 수 있습니다.\n", bone_frame_num);
+            OutputDebugStringA(buf);
+            return false;
+        }
+
+        for (int32_t i = 0; i < bone_frame_num; ++i)
+        {
+            vmd::VmdBoneFrame boneFrame;
+            boneFrame.Read(&stream);
+            if (!stream.good())
+            {
+                char buf[256];
+                sprintf_s(buf, "경고: 본 프레임 %d/%d 읽기 실패\n", i + 1, bone_frame_num);
+                OutputDebugStringA(buf);
+                return false;
+            }
+        }
+
+        // 표정 프레임 개수 읽기
+        int32_t face_frame_num = 0;
+        stream.read((char*)&face_frame_num, sizeof(int32_t));
+        if (!stream.good())
+        {
+            OutputDebugStringA("VMD 파일 읽기 오류: 표정 프레임 개수\n");
+            return false;
+        }
+
+        // 디버그: 표정 프레임 개수와 현재 위치 출력
+        {
+            char buf[256];
+            std::streampos pos = stream.tellg();
+            sprintf_s(buf, "디버그: 표정 프레임 개수 = %d, 현재 파일 위치 = %lld\n", face_frame_num, (long long)pos);
+            OutputDebugStringA(buf);
+        }
+
+        // 표정 프레임을 실제로 읽어서 정확한 오프셋 보장 (Read 메서드 사용)
+        if (face_frame_num < 0 || face_frame_num > 1000000)
+        {
+            char buf[256];
+            sprintf_s(buf, "경고: 표정 프레임 개수가 비정상적입니다 (%d). 파일이 손상되었을 수 있습니다.\n", face_frame_num);
+            OutputDebugStringA(buf);
+            return false;
+        }
+
+        for (int32_t i = 0; i < face_frame_num; ++i)
+        {
+            vmd::VmdFaceFrame faceFrame;
+            faceFrame.Read(&stream);
+            if (!stream.good())
+            {
+                char buf[256];
+                sprintf_s(buf, "경고: 표정 프레임 %d/%d 읽기 실패\n", i + 1, face_frame_num);
+                OutputDebugStringA(buf);
+                return false;
+            }
+        }
+
+        // 카메라 프레임 개수 읽기
+        int32_t camera_frame_num = 0;
+        stream.read((char*)&camera_frame_num, sizeof(int32_t));
+        if (!stream.good())
+        {
+            OutputDebugStringA("VMD 파일 읽기 오류: 카메라 프레임 개수\n");
+            return false;
+        }
+
+        // 디버그: 카메라 프레임 개수와 현재 위치 출력
+        {
+            char buf[256];
+            std::streampos pos = stream.tellg();
+            sprintf_s(buf, "디버그: 카메라 프레임 개수 = %d, 현재 파일 위치 = %lld\n", camera_frame_num, (long long)pos);
+            OutputDebugStringA(buf);
+        }
+
+        // 합리적인 범위 검증
+        if (camera_frame_num < 0 || camera_frame_num > 100000)
+        {
+            char buf[256];
+            sprintf_s(buf, "경고: 카메라 프레임 개수가 비정상적입니다 (%d). 파일이 손상되었을 수 있습니다.\n", camera_frame_num);
+            OutputDebugStringA(buf);
+            if (camera_frame_num < 0) return false;
+            if (camera_frame_num > 100000) camera_frame_num = 100000;
+        }
+
+        if (camera_frame_num == 0)
+        {
+            OutputDebugStringA("VMD 파일에 카메라 프레임이 없습니다.\n");
+            return true; // 카메라 프레임이 없는 것은 오류가 아님
+        }
+
+        // 카메라 프레임 읽기 (각 63바이트: 4(frame) + 4(distance) + 12(position) + 12(orientation) + 24(interpolation) + 4(angle) + 3(unknown))
+        outFrames.reserve(camera_frame_num);
+        for (int32_t i = 0; i < camera_frame_num; ++i)
+        {
+            vmd::VmdCameraFrame frame;
+            frame.Read(&stream);
+            
+            if (!stream.good())
+            {
+                char buf[256];
+                sprintf_s(buf, "경고: 카메라 프레임 %d/%d 읽기 실패. 파일이 손상되었을 수 있습니다.\n", i + 1, camera_frame_num);
+                OutputDebugStringA(buf);
+                break; // 읽기 실패 시 중단
+            }
+            
+            outFrames.push_back(frame);
+        }
+
+        stream.close();
+
+        // 디버그: 처음 몇 개 프레임의 원시 데이터 출력
+        if (!outFrames.empty())
+        {
+            char buf[512];
+            sprintf_s(buf, "디버그: 첫 번째 카메라 프레임 원시 데이터 - Frame: %d, Distance: %.6f, Position: (%.6f, %.6f, %.6f), Rotation: (%.6f, %.6f, %.6f), Angle: %.6f\n",
+                outFrames[0].frame, outFrames[0].distance,
+                outFrames[0].position[0], outFrames[0].position[1], outFrames[0].position[2],
+                outFrames[0].orientation[0], outFrames[0].orientation[1], outFrames[0].orientation[2],
+                outFrames[0].angle);
+            OutputDebugStringA(buf);
+        }
+
+        char buf[256];
+        sprintf_s(buf, "성공: %zu개의 카메라 프레임을 읽었습니다.\n", outFrames.size());
+        OutputDebugStringA(buf);
+
+        return true;
+    }
+    catch (const std::bad_alloc&)
+    {
+        OutputDebugStringA("메모리 할당 실패: VMD 파일이 너무 큽니다.\n");
+        return false;
+    }
+    catch (const std::exception& e)
+    {
+        char buf[512];
+        sprintf_s(buf, "VMD 파일 읽기 오류: %s\n", e.what());
+        OutputDebugStringA(buf);
+        return false;
+    }
+    catch (...)
+    {
+        OutputDebugStringA("알 수 없는 오류가 발생했습니다.\n");
+        return false;
+    }
+}
+
+// VMD 파일에서 카메라 프레임들을 읽어서 콘솔에 출력하는 함수
+static void PrintVMDCameraFrames(const std::wstring& vmdPath)
+{
+    try
+    {
+        // 카메라 프레임만 안전하게 읽기
+        std::vector<vmd::VmdCameraFrame> cameraFrames;
+        if (!ReadVMDCameraFramesOnly(vmdPath, cameraFrames))
+        {
+            OutputDebugStringA("VMD 파일을 읽을 수 없거나 카메라 데이터가 없습니다.\n");
+            return;
+        }
+
+        if (cameraFrames.empty())
+        {
+            OutputDebugStringA("VMD 파일에 카메라 프레임이 없습니다.\n");
+            return;
+        }
+
+        // 카메라 프레임들을 프레임 번호 순으로 정렬
+        std::sort(cameraFrames.begin(), cameraFrames.end(), 
+            [](const vmd::VmdCameraFrame& a, const vmd::VmdCameraFrame& b) {
+                return a.frame < b.frame;
+            });
+
+        // 각 카메라 프레임 정보 출력
+        char buffer[1024];
+        sprintf_s(buffer, "=== VMD 카메라 프레임 정보 (총 %zu개) ===\n", cameraFrames.size());
+        OutputDebugStringA(buffer);
+
+        // 출력 개수 제한 (너무 많으면 처음 1000개만 출력)
+        const size_t MAX_PRINT_COUNT = 1000;
+        size_t printCount = (cameraFrames.size() > MAX_PRINT_COUNT) ? MAX_PRINT_COUNT : cameraFrames.size();
+        
+        if (cameraFrames.size() > MAX_PRINT_COUNT)
+        {
+            sprintf_s(buffer, "참고: 프레임이 많아 처음 %zu개만 출력합니다.\n", MAX_PRINT_COUNT);
+            OutputDebugStringA(buffer);
+        }
+
+        // MMD 좌표계 정보 및 변환 공식 출력
+        OutputDebugStringA("=== MMD 좌표계 정보 및 DirectX 변환 공식 ===\n");
+        OutputDebugStringA("MMD 좌표계: Y-up, Z-forward (오른손 좌표계)\n");
+        OutputDebugStringA("DirectX 좌표계: Y-up, Z-forward (왼손 좌표계)\n\n");
+        OutputDebugStringA("VMD 카메라 데이터:\n");
+        OutputDebugStringA("  - position: interest(관심점, look-at 위치) - 미터 단위\n");
+        OutputDebugStringA("  - distance: 카메라와 관심점 사이의 거리 - 미터 단위 (음수 가능)\n");
+        OutputDebugStringA("  - orientation: 오일러 각도 (라디안, X=pitch, Y=yaw, Z=roll)\n");
+        OutputDebugStringA("  - angle: 시야각 (도 단위, 0~180)\n\n");
+        OutputDebugStringA("MMD -> DirectX 변환 공식 (saba 라이브러리 기준):\n");
+        OutputDebugStringA("  1. interest = position * (1, 1, -1)  // Z축 반전\n");
+        OutputDebugStringA("  2. 회전 순서: Y축 회전 -> Z축 회전(반전) -> X축 회전\n");
+        OutputDebugStringA("  3. 카메라 위치 계산:\n");
+        OutputDebugStringA("     - view = translate(0, 0, abs(distance))\n");
+        OutputDebugStringA("     - rot = rotateY(yaw) * rotateZ(-roll) * rotateX(pitch)\n");
+        OutputDebugStringA("     - view = rot * view\n");
+        OutputDebugStringA("     - eye = view[3] + interest\n");
+        OutputDebugStringA("     - center = rot * (0, 0, -1) + eye\n");
+        OutputDebugStringA("     - up = rot * (0, 1, 0)\n\n");
+
+        // 정상적인 프레임만 필터링
+        std::vector<size_t> validFrameIndices;
+        for (size_t i = 0; i < cameraFrames.size(); ++i)
+        {
+            const auto& cam = cameraFrames[i];
+            
+            // 정상적인 프레임인지 체크
+            bool isValid = true;
+            
+            // 프레임 번호: 0 이상, 합리적인 범위
+            if (!std::isfinite((float)cam.frame) || cam.frame < 0 || cam.frame > 1000000)
+            {
+                isValid = false;
+            }
+            
+            // 거리: 합리적인 범위 (-1000 ~ 1000 미터)
+            if (!std::isfinite(cam.distance) || cam.distance < -1000.0f || cam.distance > 1000.0f)
+            {
+                isValid = false;
+            }
+            
+            // FOV: 0 ~ 180 도
+            if (!std::isfinite(cam.angle) || cam.angle < 0.0f || cam.angle > 180.0f)
+            {
+                isValid = false;
+            }
+            
+            // 위치: 합리적인 범위 (-1000 ~ 1000 미터)
+            for (int j = 0; j < 3; ++j)
+            {
+                if (!std::isfinite(cam.position[j]) || 
+                    cam.position[j] < -1000.0f || cam.position[j] > 1000.0f)
+                {
+                    isValid = false;
+                    break;
+                }
+            }
+            
+            // 회전: 합리적인 범위 (-10 ~ 10 라디안, 약 -573도 ~ 573도)
+            for (int j = 0; j < 3; ++j)
+            {
+                if (!std::isfinite(cam.orientation[j]) ||
+                    cam.orientation[j] < -10.0f || cam.orientation[j] > 10.0f)
+                {
+                    isValid = false;
+                    break;
+                }
+            }
+            
+            if (isValid)
+            {
+                validFrameIndices.push_back(i);
+            }
+        }
+        
+        // 정상적인 프레임만 출력
+        sprintf_s(buffer, "정상적인 프레임: %zu개 (전체: %zu개)\n\n", validFrameIndices.size(), cameraFrames.size());
+        OutputDebugStringA(buffer);
+        
+        if (validFrameIndices.empty())
+        {
+            OutputDebugStringA("정상적인 카메라 프레임이 없습니다. VMD 파일이 손상되었을 수 있습니다.\n");
+            OutputDebugStringA("=== 출력 완료 ===\n");
+            return;
+        }
+        
+        // 출력 개수 제한
+        size_t validPrintCount = (validFrameIndices.size() > MAX_PRINT_COUNT) ? MAX_PRINT_COUNT : validFrameIndices.size();
+        
+        for (size_t idx = 0; idx < validPrintCount; ++idx)
+        {
+            size_t i = validFrameIndices[idx];
+            const auto& cam = cameraFrames[i];
+            
+            // 회전은 오일러 각도(라디안), FOV는 도 단위
+            float rotX_deg = XMConvertToDegrees(cam.orientation[0]);
+            float rotY_deg = XMConvertToDegrees(cam.orientation[1]);
+            float rotZ_deg = XMConvertToDegrees(cam.orientation[2]);
+            
+            // MMD -> DirectX 변환 (saba 라이브러리 기준)
+            // 1. interest Z축 반전
+            XMFLOAT3 interestDX(cam.position[0], cam.position[1], -cam.position[2]);
+            
+            // 2. 회전 순서: Y -> Z(반전) -> X
+            XMMATRIX rotY = XMMatrixRotationY(cam.orientation[1]);
+            XMMATRIX rotZ = XMMatrixRotationZ(-cam.orientation[2]);  // Z축 반전
+            XMMATRIX rotX = XMMatrixRotationX(cam.orientation[0]);
+            XMMATRIX rot = rotY * rotZ * rotX;
+            
+            // 3. 카메라 위치 계산
+            XMMATRIX view = XMMatrixTranslation(0, 0, std::abs(cam.distance));
+            view = rot * view;
+            XMFLOAT3 eyeDX;
+            XMStoreFloat3(&eyeDX, view.r[3] + XMLoadFloat3(&interestDX));
+            
+            // 4. Look-at 방향 계산
+            XMVECTOR forward = XMVector3TransformNormal(XMVectorSet(0, 0, -1, 0), rot);
+            XMVECTOR up = XMVector3TransformNormal(XMVectorSet(0, 1, 0, 0), rot);
+            XMVECTOR eyeVec = XMLoadFloat3(&eyeDX);
+            XMVECTOR centerVec = eyeVec + forward;
+            XMFLOAT3 centerDX, upDX;
+            XMStoreFloat3(&centerDX, centerVec);
+            XMStoreFloat3(&upDX, up);
+            
+            // FOV 변환 (도 -> 라디안)
+            float fovRad = XMConvertToRadians(cam.angle);
+            
+            // 프레임 번호, 원본 데이터, DirectX 변환된 값 출력
+            sprintf_s(buffer, 
+                "[%zu] Frame: %d\n"
+                "  원본: Interest(%.3f, %.3f, %.3f) | Rot(%.3f, %.3f, %.3f deg) | Dist: %.3f | FOV: %.3f deg\n"
+                "  DirectX: Eye(%.3f, %.3f, %.3f) | Center(%.3f, %.3f, %.3f) | Up(%.3f, %.3f, %.3f) | FOV: %.3f deg\n",
+                idx, cam.frame,
+                cam.position[0], cam.position[1], cam.position[2],
+                rotX_deg, rotY_deg, rotZ_deg,
+                cam.distance, cam.angle,
+                eyeDX.x, eyeDX.y, eyeDX.z,
+                centerDX.x, centerDX.y, centerDX.z,
+                upDX.x, upDX.y, upDX.z,
+                cam.angle);
+            OutputDebugStringA(buffer);
+        }
+
+        if (validFrameIndices.size() > validPrintCount)
+        {
+            sprintf_s(buffer, "... (정상 프레임 %zu개 중 %zu개 출력됨)\n", validFrameIndices.size(), validPrintCount);
+            OutputDebugStringA(buffer);
+        }
+
+        OutputDebugStringA("=== 출력 완료 ===\n");
+    }
+    catch (const std::exception& e)
+    {
+        char buffer[512];
+        sprintf_s(buffer, "오류 발생: %s\n", e.what());
+        OutputDebugStringA(buffer);
+    }
+    catch (...)
+    {
+        OutputDebugStringA("알 수 없는 오류가 발생했습니다.\n");
+    }
 }
 
 void App::PrepareSkyFaceSRVs()
@@ -352,8 +827,92 @@ void App::OnUpdate(const float& dt)
 
 	// ============================== 카메라 행렬 업데이트 ==============================
 	m_->m_baseProjection.world = XMMatrixTranspose(model);
-	m_->m_baseProjection.view  = XMMatrixTranspose(m_Camera.GetViewMatrixXM());
-	m_->m_baseProjection.proj  = XMMatrixTranspose(m_Camera.GetProjMatrixXM());
+
+	// 1) VMD 카메라 애니메이션이 켜져 있으면, 그 값을 사용
+	if (m_->m_VmdCameraUse && !m_->m_VmdCameraFrames.empty())
+	{
+		// 재생 중이면 프레임 증가 (초당 m_VmdCameraFrameRate 프레임)
+		if (m_->m_VmdCameraPlaying)
+		{
+			m_->m_VmdCameraCurrentFrame += dt * m_->m_VmdCameraFrameRate;
+
+			const int firstFrame = m_->m_VmdCameraFrames.front().frame;
+			const int lastFrame  = m_->m_VmdCameraFrames.back().frame;
+
+			// 루프 재생 (마지막 프레임을 넘으면 다시 처음으로)
+			if (m_->m_VmdCameraCurrentFrame > (float)lastFrame)
+			{
+				m_->m_VmdCameraCurrentFrame = (float)firstFrame;
+			}
+		}
+
+		// 현재 프레임에 해당하는 두 키를 찾아서 선형 보간
+		const auto& frames = m_->m_VmdCameraFrames;
+		float curF = m_->m_VmdCameraCurrentFrame;
+
+		// curF보다 바로 앞/뒤에 있는 키프레임을 찾는다.
+		const vmd::VmdCameraFrame* a = &frames.front();
+		const vmd::VmdCameraFrame* b = &frames.back();
+
+		for (size_t i = 0; i + 1 < frames.size(); ++i)
+		{
+			if (curF >= (float)frames[i].frame && curF <= (float)frames[i + 1].frame)
+			{
+				a = &frames[i];
+				b = &frames[i + 1];
+				break;
+			}
+		}
+
+		float t = 0.0f;
+		if (b->frame != a->frame)
+		{
+			t = (curF - (float)a->frame) / (float)(b->frame - a->frame);
+		}
+
+		// 간단한 선형 보간 (위치/각도/거리/FOV 모두 직선 보간)
+		vmd::VmdCameraFrame cur = *a;
+		for (int i = 0; i < 3; ++i)
+		{
+			cur.position[i]    = a->position[i]    + (b->position[i]    - a->position[i])    * t;
+			cur.orientation[i] = a->orientation[i] + (b->orientation[i] - a->orientation[i]) * t;
+		}
+		cur.distance = a->distance + (b->distance - a->distance) * t;
+		cur.angle    = a->angle    + (b->angle    - a->angle)    * t;
+
+		// VMD 카메라 → DirectX 카메라(Eye/Center/Up)
+		XMFLOAT3 eyeDX{}, centerDX{}, upDX{};
+		VmdCameraToEyeCenterUp(cur, m_->m_VmdCameraScale, eyeDX, centerDX, upDX);
+
+		XMMATRIX view = XMMatrixLookAtLH(XMLoadFloat3(&eyeDX), XMLoadFloat3(&centerDX), XMLoadFloat3(&upDX));
+
+        // FOV: VMD에서 0이면 기존 카메라 FOV를 사용, 0 또는 비정상 값이면 안전한 기본값으로 대체
+        float fovRad = (cur.angle > 0.0f)
+            ? XMConvertToRadians(cur.angle)
+            : m_Camera.GetFovYRad();
+        if (!std::isfinite(fovRad) || std::fabs(fovRad) < 0.0001f)
+        {
+            // DirectX의 XMMatrixPerspectiveFovLH는 0 또는 너무 작은 FOV를 허용하지 않으므로
+            // 안전한 기본값(45도)을 사용한다.
+            fovRad = XMConvertToRadians(45.0f);
+        }
+
+		float aspect = AspectRatio();
+		float nearZ  = m_Camera.GetNearZ();
+		float farZ   = m_Camera.GetFarZ();
+		XMMATRIX proj = XMMatrixPerspectiveFovLH(fovRad, aspect, nearZ, farZ);
+
+		m_->m_baseProjection.view = XMMatrixTranspose(view);
+		m_->m_baseProjection.proj = XMMatrixTranspose(proj);
+		m_->m_baseProjection.eyePos = eyeDX;
+	}
+	else
+	{
+		// 2) 평소에는 마우스로 조작하는 기본 카메라 사용
+		m_->m_baseProjection.view  = XMMatrixTranspose(m_Camera.GetViewMatrixXM());
+		m_->m_baseProjection.proj  = XMMatrixTranspose(m_Camera.GetProjMatrixXM());
+		m_->m_baseProjection.eyePos = m_Camera.GetPosition();
+	}
 
 	m_->m_baseProjection.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(model)));
 
@@ -366,7 +925,6 @@ void App::OnUpdate(const float& dt)
 	m_->m_baseProjection.dirLight.direction = lightDir;
 	m_->m_baseProjection.dirLight.pad = 0.0f;
 
-	m_->m_baseProjection.eyePos = m_Camera.GetPosition();
 	m_->m_baseProjection.pad = 0.0f;
 
 	// 머티리얼을 기본 캐시에 반영해 둔다
@@ -826,6 +1384,56 @@ void App::OnRender()
 		{
 			UnloadModel();
 			m_->m_RenderMode = RenderMode::None; // 요구사항: 시작/언로드시 아무것도 렌더 X
+		}
+
+		// VMD 카메라 로드/재생
+		ImGui::Separator();
+		ImGui::Text("VMD Camera");
+		if (ImGui::Button("Load VMD Camera and Play"))
+		{
+			std::wstring vmdPath;
+			if (OpenFileDialogVMD(vmdPath))
+			{
+				std::vector<vmd::VmdCameraFrame> frames;
+				if (ReadVMDCameraFramesOnly(vmdPath, frames) && !frames.empty())
+				{
+					// 프레임 번호 기준으로 정렬
+					std::sort(frames.begin(), frames.end(),
+						[](const vmd::VmdCameraFrame& a, const vmd::VmdCameraFrame& b) { return a.frame < b.frame; });
+
+					m_->m_VmdCameraFrames = std::move(frames);
+					m_->m_VmdCameraUse = true;
+					m_->m_VmdCameraPlaying = true;
+					m_->m_VmdCameraCurrentFrame = (float)m_->m_VmdCameraFrames.front().frame;
+				}
+				else
+				{
+					OutputDebugStringA("VMD 카메라 데이터를 읽지 못했습니다.\n");
+				}
+			}
+		}
+		if (!m_->m_VmdCameraFrames.empty())
+		{
+			ImGui::Checkbox("Use VMD Camera", &m_->m_VmdCameraUse);
+			ImGui::SameLine();
+			if (ImGui::Button(m_->m_VmdCameraPlaying ? "Pause" : "Play"))
+			{
+				m_->m_VmdCameraPlaying = !m_->m_VmdCameraPlaying;
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Stop"))
+			{
+				m_->m_VmdCameraPlaying = false;
+				m_->m_VmdCameraCurrentFrame = (float)m_->m_VmdCameraFrames.front().frame;
+			}
+
+			int firstFrame = m_->m_VmdCameraFrames.front().frame;
+			int lastFrame  = m_->m_VmdCameraFrames.back().frame;
+			float curFrame = m_->m_VmdCameraCurrentFrame;
+			ImGui::Text("Frame: %.1f (%d ~ %d)", curFrame, firstFrame, lastFrame);
+
+            // MMD 좌표계와 엔진 좌표계의 스케일을 맞추기 위한 간단한 스케일 팩터
+            ImGui::SliderFloat("VMD Camera Scale", &m_->m_VmdCameraScale, 0.1f, 5.0f, "%.2f");
 		}
 
 		if (!m_->m_Models.empty())
