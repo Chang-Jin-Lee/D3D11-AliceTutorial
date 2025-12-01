@@ -1,10 +1,10 @@
 # D3D11-AliceTutorial
-Tutorial for D3D AliceEngine
+Tutorial for D3D
 
 이 저장소는 [DirectX SDK Samples - Direct3D11 Tutorials](https://github.com/walbourn/directx-sdk-samples/tree/main/Direct3D11Tutorials) 을 기반으로  
-학습하면서 이해하기 쉽도록 정리한 튜토리얼 프로젝트입니다.
+학습하면서 정리한 튜토리얼 프로젝트입니다.
 
-- 환경: Windows 10 SDK, Visual Studio 2022
+- 환경: Windows 11, Visual Studio 2022
 - 플랫폼: Win32 Desktop (Direct3D 11.0)
 - 목적: DirectX 11 그래픽스 파이프라인의 기초 학습 및 3D 기능 탐구
 
@@ -48,9 +48,9 @@ Tutorial for D3D AliceEngine
 
 ## 주의사항
 - 수학 라이브러리인 DirectXMath 사용
-- 셰이더 컴파일을 위해 D3DCompileFromFile 사용 (실험/학습 편의 목적)
+- 셰이더 컴파일을 위해 D3DCompileFromFile 사용
 - 텍스처 로딩을 위해 DDSTextureLoader 사용 (DirectXTK / DirectXTex 기반)
-- Live2D ㅍ로젝트에서 Cubism SDK 사용
+- Live2D 예제 프로젝트에서 Cubism SDK 사용
 
 ---
 
