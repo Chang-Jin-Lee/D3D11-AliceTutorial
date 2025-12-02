@@ -623,10 +623,11 @@ bool App::OnInitialize()
 	LoadSceneImage(m_->m_CurrentSceneImagePath);
 
 	// ====================================== 3D 모델 ======================================
-	LoadModelFromFile(L"..\\Resource\\fbx\\SkinningTest.fbx"); // 0
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping_idle_walk_run.fbx"); // 0
-	//LoadModelFromFile(L"..\\Resource\\fbx\\alice_normal_apply.fbx"); // 0
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Ground.fbx"); // 0
+	LoadModelFromFile(L"..\\Resource\\fbx\\Rapi.fbx"); // 0
+	LoadModelFromFile(L"..\\Resource\\fbx\\Neon.fbx"); // 1
+	LoadModelFromFile(L"..\\Resource\\fbx\\Anis.fbx"); // 2
+	LoadModelFromFile(L"..\\Resource\\fbx\\Alice.fbx"); // 3
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Ground.fbx"); // 4
 
 	m_->m_Objects.clear();
 	for (int mi = 0; mi < (int)m_->m_Models.size(); ++mi)
@@ -634,16 +635,26 @@ bool App::OnInitialize()
 		auto mo = std::make_unique<ModelObject>(m_->m_Models[mi]->modelName, mi);
 		m_->m_Objects.push_back(std::move(mo));
 	}
-	m_->m_Models[1]->scale = XMFLOAT3(2.0f, 1.0f, 8.0f);
-	m_->m_Models[1]->pos = XMFLOAT3(0.0f, -1.0f, 0.0f);
+	m_->m_Models[0]->modelShading = ShadingMode::PBR;
+	m_->m_Models[1]->modelShading = ShadingMode::PBR;
+	m_->m_Models[2]->modelShading = ShadingMode::PBR;
+	m_->m_Models[3]->modelShading = ShadingMode::PBR;
 
-	{
-		m_->m_Models[0]->useInstanceMaterial = true;
-		m_->m_Models[0]->instanceMaterial.ambient = XMFLOAT4(0.02f, 0.05f, 0.06f, 1.0f);
-		m_->m_Models[0]->instanceMaterial.diffuse = XMFLOAT4(0.15f, 0.70f, 0.85f, 1.0f);
-		m_->m_Models[0]->instanceMaterial.specular = XMFLOAT4(0.90f, 0.90f, 0.90f, 64.0f);
-		m_->m_Models[0]->modelShading = ShadingMode::TextureOnly;
-	}
+	m_->m_Models[0]->pos = XMFLOAT3(1.5f * -160, 0.0f, 0.0f);
+	m_->m_Models[1]->pos = XMFLOAT3(1.5f * -60, 0.0f, 0.0f);
+	m_->m_Models[2]->pos = XMFLOAT3(1.5f * 70, 0.0f, 0.0f);
+	m_->m_Models[3]->pos = XMFLOAT3(1.5f * 160, 0.0f, 0.0f);
+
+	m_->m_Models[0]->animator.SetCurrentIndex(4);  m_->m_Models[0]->uiAnimPlaying = true;
+	m_->m_Models[1]->animator.SetCurrentIndex(4);  m_->m_Models[1]->uiAnimPlaying = true;
+	m_->m_Models[2]->animator.SetCurrentIndex(4);  m_->m_Models[2]->uiAnimPlaying = true;
+	m_->m_Models[3]->animator.SetCurrentIndex(4);  m_->m_Models[3]->uiAnimPlaying = true;
+
+	m_->m_Models[4]->pos = XMFLOAT3(2.0f, 1.0f, 8.0f);
+	m_->m_Models[4]->pos = XMFLOAT3(0.0f, -1.0f, 0.0f);
+
+	m_->m_Models[4]->scale = XMFLOAT3(2.0f, 1.0f, 8.0f);
+	m_->m_Models[4]->pos = XMFLOAT3(0.0f, -1.0f, 0.0f);
 
 	// ====================================== 큐브 ======================================
 	auto co = std::make_unique<CubeObject>(
