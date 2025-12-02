@@ -2988,8 +2988,8 @@ void App::RenderSceneImageWindow()
 
 	// 씬 이미지 창 위치/크기 설정 (08_ImguiSystemInfo 참고)
 	ImGuiIO& io = ImGui::GetIO();
-	ImVec2 size(640.0f, 480.0f);
-	ImVec2 pos(io.DisplaySize.x - size.x - 10.0f, io.DisplaySize.y - size.y - 10.0f);
+	ImVec2 size(130.0f, 260.0f);
+	ImVec2 pos(io.DisplaySize.x - size.x - 330.0f, 20.0f);
 	ImGui::SetNextWindowPos(pos, ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowSize(size, ImGuiCond_FirstUseEver);
 	
