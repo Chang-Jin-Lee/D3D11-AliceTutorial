@@ -33,7 +33,9 @@ public:
 	UINT GetVertexStride() const;
 	UINT GetVertexOffset() const { return 0; }
 	const std::vector<FbxSubset>& GetSubsets() const;
-	const std::vector<ID3D11ShaderResourceView*>& GetMaterialSRVs() const;
+	const std::vector<ID3D11ShaderResourceView*>& GetMaterialSRVs() const;      // BaseColor / Diffuse
+	const std::vector<ID3D11ShaderResourceView*>& GetMetallicSRVs() const;      // PBR Metallic
+	const std::vector<ID3D11ShaderResourceView*>& GetRoughnessSRVs() const;     // PBR Roughness
 
 	// Skeleton
 	bool HasSkeleton() const;

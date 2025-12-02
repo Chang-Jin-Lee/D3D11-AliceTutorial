@@ -210,6 +210,8 @@ int FbxModel::GetIndexCount() const { return m_->geometry.GetIndexCount(); }
 UINT FbxModel::GetVertexStride() const { return m_->geometry.GetVertexStride(); }
 const std::vector<FbxSubset>& FbxModel::GetSubsets() const { return m_->geometry.GetSubsets(); }
 const std::vector<ID3D11ShaderResourceView*>& FbxModel::GetMaterialSRVs() const { return m_->materials.GetMaterialSRVs(); }
+const std::vector<ID3D11ShaderResourceView*>& FbxModel::GetMetallicSRVs() const { return m_->materials.GetMetallicSRVs(); }
+const std::vector<ID3D11ShaderResourceView*>& FbxModel::GetRoughnessSRVs() const { return m_->materials.GetRoughnessSRVs(); }
 
 // Skeleton/animation
 bool FbxModel::HasSkeleton() const { return m_->skeleton.HasBones(); }
