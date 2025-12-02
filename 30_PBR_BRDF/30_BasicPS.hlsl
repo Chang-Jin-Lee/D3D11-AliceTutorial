@@ -81,11 +81,21 @@ float4 main(VertexOut pIn) : SV_Target
 	float alphaTex = alphaBase * g_Material.diffuse.a;
 	clip(alphaTex - 0.1f);
 
-	// PBR을 사용하기 위한 베이스 알베도 (텍스처가 있으면 텍스처 * 머티리얼)
+	// PBR을 사용하기 위한 베이스 알베도
+	// BaseColor 텍스처는 sRGB로 저장되어 있으므로 선형 공간으로 변환 필요
+	// Roughness/Metalness는 데이터 텍스처이므로 선형 그대로 사용
 	float4 kd;
+	float roughnessTex = 1.0f;
+	float metalnessTex = 0.0f;
 	if (g_UseDiffuseMap != 0)
 	{
-		kd = textureColor * g_Material.diffuse;
+		// Roughness/Metalness는 데이터 텍스처이므로 선형 그대로 (감마 디코딩 전에 미리 저장)
+		roughnessTex = textureColor.g;
+		metalnessTex = textureColor.b;
+		
+		// BaseColor는 sRGB 텍스처를 선형 공간으로 디코딩: Linear = pow(sRGB, 2.2)
+		float3 linearColor = pow(max(textureColor.rgb, 0.0f), 2.2f);
+		kd = float4(linearColor, textureColor.a) * g_Material.diffuse;
 	}
 	else
 	{
@@ -124,11 +134,17 @@ float4 main(VertexOut pIn) : SV_Target
 		float VdotH = saturate(dot(V, H));
 
 		// PBR 머티리얼: 기본 색상(baseColor)과 metal/rough/AO 값을 사용하고,
-		// 텍스처가 있다면 해당 채널(G=roughness, B=metalness)로 보간합니다.
-		float useTex = (g_UseDiffuseMap != 0) ? 1.0f : 0.0f;
+		// 텍스처가 있다면 해당 채널(G=roughness, B=metalness)과 머티리얼 값을 곱합니다.
 		float3 albedoPBR = kd.rgb * g_PBRBaseColor.rgb;
-		float metalness = saturate(lerp(g_PBRMetalness, textureColor.b, useTex));
-		float roughness = saturate(lerp(g_PBRRoughness, textureColor.g, useTex));
+		float metalness = saturate(g_PBRMetalness);
+		float roughness = saturate(g_PBRRoughness);
+		if (g_UseDiffuseMap != 0)
+		{
+			// 텍스처가 있으면 텍스처 값과 머티리얼 값을 곱해서 사용 (텍스처가 스케일 역할)
+			// Roughness/Metalness는 데이터 텍스처이므로 선형 그대로 사용
+			metalness = saturate(metalness * metalnessTex);
+			roughness = saturate(roughness * roughnessTex);
+		}
 		roughness = max(roughness, 0.04f); // 완전 0은 되지 않도록 하자
 		float ao = saturate(g_PBRAmbientOcclusion);
 
@@ -151,13 +167,17 @@ float4 main(VertexOut pIn) : SV_Target
 		float3 diffuse = kD * albedoPBR * (1.0f / PI);
 
 		// 단일 디렉션 라이트 강도
-		float3 radiance = g_DirLight.diffuse.rgb;
+		// PBR diffuse가 1/PI로 나뉘므로 라이트 강도에 PI를 곱해서 보정
+		// 추가로 밝기 보정을 위해 약간 더 강하게
+		float3 radiance = g_DirLight.diffuse.rgb * PI * 1.5f;
 		float3 color = (diffuse + specular) * radiance * theta * ao;
 
-		// 아주 단순한 환경광 : 디렉션 라이트 ambient 사용
-		color += albedoPBR * g_DirLight.ambient.rgb * ao;
+		// 환경광 : 디렉션 라이트 ambient 사용 (더 밝게)
+		color += albedoPBR * g_DirLight.ambient.rgb * ao * 1.5f;
 
-		// 감마 보정 (sRGB, g_Gamma를 ImGui에서 조절)
+		// 감마 인코딩: 선형 공간 색상을 sRGB 공간으로 변환
+		// sRGB = pow(Linear, 1/gamma) - 사람의 눈이 선형적으로 느끼도록
+		// ImGui에서 g_Gamma 값을 조절할 수 있음 (기본값 2.2, 표준 sRGB 값)
 		float gamma = max(g_Gamma, 0.1f);
 		color = pow(saturate(color), 1.0f / gamma);
 
