@@ -1,9 +1,12 @@
 ﻿/*
-* @brief  : 마우스 픽킹으로 3D 씬 안의 FBX/PMX/OBJ 모델과 큐브를 선택/조작하는 예제입니다.
+* @brief  : PBR BRDF (Physically Based Rendering) 구현 및 마우스 픽킹 예제입니다.
 * @details:
-*   - AssetManager/SharedModelData를 사용해 여러 씬이 같은 3D 모델 리소스를 공유하며, 씬 전환 시에도 재사용합니다.
-*   - 카메라에서 발사한 레이를 이용해 모델과 큐브를 픽킹하고, 선택된 객체의 정보/트랜스폼/본/애니메이션 상태를 ImGui로 디버깅합니다.
-*   - 앞선 예제들의 섀도우 맵(PCF)·토ーン 셰이딩·디버그 드로우까지 함께 결합하여, 실제 게임 수준의 씬 편집/디버그 워크플로우를 연습할 수 있습니다.
+*   [PBR BRDF 구현]
+*   - Cook-Torrance 미세면 BRDF를 구현하여 물리 기반 렌더링을 수행합니다.
+*   - GGX/Trowbridge-Reitz 분포(D), Smith 기하 함수(G), Schlick 프레넬 근사(F)를 사용합니다.
+*   - 메탈니스-러프니스 워크플로우를 지원하며, 각 모델별로 PBR 머티리얼을 설정할 수 있습니다.
+*   - sRGB 텍스처의 감마 디코딩 및 최종 출력의 감마 인코딩을 구현하여 자연스러운 색상 표현을 지원합니다.
+*   - ImGui를 통해 Base Color, Metalness, Roughness, Ambient Occlusion, Gamma 값을 실시간으로 조절할 수 있습니다.
 */
 
 #include "App.h"
