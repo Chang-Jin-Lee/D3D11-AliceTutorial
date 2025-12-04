@@ -3,6 +3,8 @@
 #include "../Helper.h"
 
 #include <directxtk/WICTextureLoader.h>
+#include <directxtk/DDSTextureLoader.h>
+#include <DirectXTex.h>
 #include <wrl/client.h>
 #include <assimp/scene.h>
 #include <assimp/Importer.hpp>
@@ -154,25 +156,76 @@ static ID3D11ShaderResourceView* CreateSRVFromEmbedded(
 }
 
 
-// --------------------------------------------------------------------
-// 외부 TGA 텍스처를 Assimp로 로드해서 aiTexture처럼 취급하는 헬퍼
-//  - 별도 헤더 파싱 없이 Assimp 디코더를 그대로 사용
-// --------------------------------------------------------------------
-static HRESULT CreateTextureFromTgaWithAssimp(ID3D11Device* device, const wchar_t* path, ID3D11ShaderResourceView** outSRV)
+static HRESULT CreateTextureFromTgaFile(ID3D11Device* device, const wchar_t* path, ID3D11ShaderResourceView** outSRV)
 {
 	if (!device || !path || !outSRV) return E_INVALIDARG;
 	*outSRV = nullptr;
 
-	Assimp::Importer importer;
-	std::string pathA = Utf8FromWString(path);
-	const aiScene* s = importer.ReadFile(pathA, 0);
-	if (!s || s->mNumTextures == 0 || !s->mTextures[0]) return E_FAIL;
+	using namespace DirectX;
 
-	ID3D11ShaderResourceView* srv = CreateSRVFromEmbedded(device, s->mTextures[0]);
-	if (!srv) return E_FAIL;
+	TexMetadata metadata{};
+	ScratchImage image;
+	HRESULT hr = LoadFromTGAFile(path, &metadata, image);
+	if (FAILED(hr)) return hr;
 
-	*outSRV = srv;
-	return S_OK;
+	hr = CreateShaderResourceView(
+		device,
+		image.GetImages(),
+		image.GetImageCount(),
+		metadata,
+		outSRV);
+	return hr;
+}
+
+// --------------------------------------------------------------------
+// TGA 파일을 DirectX 텍스처로 변환 (Assimp 임베디드 텍스처)
+// --------------------------------------------------------------------
+static HRESULT CreateTextureFromTgaEmbedded(ID3D11Device* device, const aiTexture* tex, ID3D11ShaderResourceView** outSRV)
+{
+	if (!device || !tex || !outSRV) return E_INVALIDARG;
+	*outSRV = nullptr;
+
+	// Assimp 문서에 따르면 mHeight == 0 이면 압축된 데이터 (예: PNG/DDS)
+	// 가상 텍스처 버퍼: mWidth * mHeight texel, 각 texel당 4바이트(aiTexel)
+	const size_t texelCount = static_cast<size_t>(tex->mWidth) * tex->mHeight;
+	if (texelCount == 0) return E_FAIL;
+
+	// aiTexel 은 항상 RGBA(0-255)
+	std::vector<uint8_t> rgba(texelCount * 4);
+	for (size_t i = 0; i < texelCount; ++i)
+	{
+		const aiTexel& src = tex->pcData[i];
+		rgba[i * 4 + 0] = src.r;
+		rgba[i * 4 + 1] = src.g;
+		rgba[i * 4 + 2] = src.b;
+		rgba[i * 4 + 3] = src.a;
+	}
+
+	D3D11_TEXTURE2D_DESC desc{};
+	desc.Width = tex->mWidth;
+	desc.Height = tex->mHeight;
+	desc.MipLevels = 1;
+	desc.ArraySize = 1;
+	desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	desc.SampleDesc.Count = 1;
+	desc.Usage = D3D11_USAGE_IMMUTABLE;
+	desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+
+	D3D11_SUBRESOURCE_DATA init{};
+	init.pSysMem = rgba.data();
+	init.SysMemPitch = desc.Width * 4;
+
+	ComPtr<ID3D11Texture2D> tex2d;
+	HRESULT hr = device->CreateTexture2D(&desc, &init, tex2d.GetAddressOf());
+	if (FAILED(hr)) return hr;
+
+	D3D11_SHADER_RESOURCE_VIEW_DESC srvd{};
+	srvd.Format = desc.Format;
+	srvd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+	srvd.Texture2D.MipLevels = 1;
+	srvd.Texture2D.MostDetailedMip = 0;
+
+	return device->CreateShaderResourceView(tex2d.Get(), &srvd, outSRV);
 }
 
 // WIC + TGA 지원을 한꺼번에 처리하는 래퍼
@@ -197,7 +250,7 @@ static HRESULT CreateTextureFromFileWithTga(
 			std::wstring ext = path.substr(path.size() - 4);
 			if (ext == L".tga" || ext == L".TGA")
 			{
-				hr = CreateTextureFromTgaWithAssimp(device, path.c_str(), &srv);
+				hr = CreateTextureFromTgaFile(device, path.c_str(), &srv);
 			}
 		}
 	}
