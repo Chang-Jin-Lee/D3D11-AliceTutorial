@@ -177,57 +177,6 @@ static HRESULT CreateTextureFromTgaFile(ID3D11Device* device, const wchar_t* pat
 	return hr;
 }
 
-// --------------------------------------------------------------------
-// TGA 파일을 DirectX 텍스처로 변환 (Assimp 임베디드 텍스처)
-// --------------------------------------------------------------------
-static HRESULT CreateTextureFromTgaEmbedded(ID3D11Device* device, const aiTexture* tex, ID3D11ShaderResourceView** outSRV)
-{
-	if (!device || !tex || !outSRV) return E_INVALIDARG;
-	*outSRV = nullptr;
-
-	// Assimp 문서에 따르면 mHeight == 0 이면 압축된 데이터 (예: PNG/DDS)
-	// 가상 텍스처 버퍼: mWidth * mHeight texel, 각 texel당 4바이트(aiTexel)
-	const size_t texelCount = static_cast<size_t>(tex->mWidth) * tex->mHeight;
-	if (texelCount == 0) return E_FAIL;
-
-	// aiTexel 은 항상 RGBA(0-255)
-	std::vector<uint8_t> rgba(texelCount * 4);
-	for (size_t i = 0; i < texelCount; ++i)
-	{
-		const aiTexel& src = tex->pcData[i];
-		rgba[i * 4 + 0] = src.r;
-		rgba[i * 4 + 1] = src.g;
-		rgba[i * 4 + 2] = src.b;
-		rgba[i * 4 + 3] = src.a;
-	}
-
-	D3D11_TEXTURE2D_DESC desc{};
-	desc.Width = tex->mWidth;
-	desc.Height = tex->mHeight;
-	desc.MipLevels = 1;
-	desc.ArraySize = 1;
-	desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-	desc.SampleDesc.Count = 1;
-	desc.Usage = D3D11_USAGE_IMMUTABLE;
-	desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-
-	D3D11_SUBRESOURCE_DATA init{};
-	init.pSysMem = rgba.data();
-	init.SysMemPitch = desc.Width * 4;
-
-	ComPtr<ID3D11Texture2D> tex2d;
-	HRESULT hr = device->CreateTexture2D(&desc, &init, tex2d.GetAddressOf());
-	if (FAILED(hr)) return hr;
-
-	D3D11_SHADER_RESOURCE_VIEW_DESC srvd{};
-	srvd.Format = desc.Format;
-	srvd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-	srvd.Texture2D.MipLevels = 1;
-	srvd.Texture2D.MostDetailedMip = 0;
-
-	return device->CreateShaderResourceView(tex2d.Get(), &srvd, outSRV);
-}
-
 // WIC + TGA 지원을 한꺼번에 처리하는 래퍼
 static HRESULT CreateTextureFromFileWithTga(
 	ID3D11Device* device,
@@ -288,7 +237,7 @@ static ID3D11ShaderResourceView* LoadTextureFromMaterial(
 
 	ID3D11ShaderResourceView* result = nullptr;
 
-	// 1) 임베디드 텍스처(*index 포함)는 Assimp의 GetEmbeddedTexture로 한 번에 처리
+	// png, jpg등 으로 해봄
 	if (!t.empty())
 	{
 		const aiTexture* at = scene->GetEmbeddedTexture(t.c_str());
@@ -298,7 +247,7 @@ static ID3D11ShaderResourceView* LoadTextureFromMaterial(
 		}
 	}
 
-	// 2) 외부 파일
+	// 안되면 tga 해보자 
 	if (!result)
 	{
 		std::wstring wtex = WStringFromUtf8(t);
