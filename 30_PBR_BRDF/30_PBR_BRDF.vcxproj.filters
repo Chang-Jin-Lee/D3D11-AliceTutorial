@@ -37,12 +37,20 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <CopyFileToFolders Include="30_BasicPS.hlsl">
+    <FxCompile Include="30_BasicPS.hlsl">
       <Filter>Shaders</Filter>
-    </CopyFileToFolders>
-    <CopyFileToFolders Include="30_BasicVS.hlsl">
+    </FxCompile>
+    <FxCompile Include="30_BasicVS.hlsl">
       <Filter>Shaders</Filter>
-    </CopyFileToFolders>
+    </FxCompile>
+    <FxCompile Include="30_SkyBoxPS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="30_SkyBoxVS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+  </ItemGroup>
+  <ItemGroup>
     <CopyFileToFolders Include="30_LightingHelper.hlsli">
       <Filter>Shaders</Filter>
     </CopyFileToFolders>
@@ -50,12 +58,6 @@
       <Filter>Shaders</Filter>
     </CopyFileToFolders>
     <CopyFileToFolders Include="30_SkyBox.hlsli">
-      <Filter>Shaders</Filter>
-    </CopyFileToFolders>
-    <CopyFileToFolders Include="30_SkyBoxPS.hlsl">
-      <Filter>Shaders</Filter>
-    </CopyFileToFolders>
-    <CopyFileToFolders Include="30_SkyBoxVS.hlsl">
       <Filter>Shaders</Filter>
     </CopyFileToFolders>
   </ItemGroup>
