@@ -75,7 +75,7 @@ struct ConstantBuffer {
 	XMMATRIX world; XMMATRIX view; XMMATRIX proj; XMMATRIX worldInvTranspose;
 	Material material; DirectionalLight dirLight; XMFLOAT3 eyePos; int shadingMode = 0;
 	int enableNormalMap = 1; int useSpecularMap = 0; int useDiffuseMap = 1; float pad = 0.0f;
-	float gamma = 2.2f; XMFLOAT3 pbrPad = { 0,0,0 };
+	float gamma = 2.2f; int useTextureColor = 1; XMFLOAT2 pbrPad = { 0,0 };
 	XMFLOAT4 pbrBaseColor = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
 	float pbrMetalness = 0.0f;
 	float pbrRoughness = 0.5f;
@@ -455,6 +455,7 @@ struct App::Impl {
 	float							m_OutlineStrength = 1.0f;
 	int								m_EnableNormalMapForCube = 1;
 	int								m_UseSpecularMapForCube = 0;
+	int								m_UseTextureColor = 1;		// 0: 텍스처 색 무시, 1: 텍스처 색 사용(PBR)
 	int								m_LegacyShading = 1;
 	XMFLOAT4						m_ClearColor = { 0.125f, 0.125f, 0.125f, 1.0f };
 
@@ -1248,6 +1249,7 @@ void App::OnRender()
 	m_->m_ConstantBuffer.pad = 0.0f;
 	// 감마 값 반영 (PBR 포함 전체 셰이더 공용)
 	m_->m_ConstantBuffer.gamma = m_->m_Gamma;
+	m_->m_ConstantBuffer.useTextureColor = m_->m_UseTextureColor;
 	const PBRMaterialCPU& defPbr = m_->m_DefaultPbrMaterial;
 	m_->m_ConstantBuffer.pbrBaseColor = defPbr.baseColor;
 	m_->m_ConstantBuffer.pbrMetalness = defPbr.metalness;
@@ -2558,6 +2560,23 @@ void App::RenderControlPannel()
 	ImGui::SetNextWindowSize(ImVec2(300, 360), ImGuiCond_FirstUseEver);
 	if (ImGui::Begin("Controls"))
 	{
+		ImGui::SeparatorText("PBR Parameter");
+		// PBR / 전체 화면 감마 값 (1.4~10.0 범위에서 조절, 눈의 오차를 감안해 여유 범위 확보)
+		ImGui::SliderFloat("Gamma", &m_->m_Gamma, 1.4f, 10.0f, "%.2f");
+		// 텍스처 색 사용 여부 (PBR 전용)
+		ImGui::Checkbox("Use Texture Color (PBR)", (bool*)&m_->m_UseTextureColor);
+
+		ImGui::ColorEdit3("Base Color##PBR", &m_->m_DefaultPbrMaterial.baseColor.x);
+		ImGui::SliderFloat("Metalness##PBR", &m_->m_DefaultPbrMaterial.metalness, 0.0f, 1.0f, "%.2f");
+		ImGui::SliderFloat("Roughness##PBR", &m_->m_DefaultPbrMaterial.roughness, 0.04f, 1.0f, "%.2f");
+		ImGui::SliderFloat("Ambient Occlusion##PBR", &m_->m_DefaultPbrMaterial.ambientOcclusion, 0.0f, 1.0f, "%.2f");
+		if (ImGui::Button("Reset PBR Material"))
+		{
+			m_->m_DefaultPbrMaterial = PBRMaterialCPU{};
+		}
+
+		ImGui::Separator();
+
 		// SkyBox 선택
 		{
 			int cur = (m_->m_SkyBoxChoice == App::Impl::SkyBoxChoice::Off) ? 0 : (m_->m_SkyBoxChoice == App::Impl::SkyBoxChoice::Hanako ? 1 : 2);
@@ -2643,7 +2662,8 @@ void App::RenderControlPannel()
 			m_->m_DirLight = { XMFLOAT4(0,0,0,1), XMFLOAT4(1,1,1,1), XMFLOAT4(0.7f,0.7f,0.7f,1), XMFLOAT3(0,0,1), 0.0f };
 		}
 		ImGui::Separator();
-		ImGui::Text("Material / PBR");
+
+		ImGui::Text("Material");
 		ImGui::ColorEdit4("Ambient (ka)", &m_->m_Material.ambient.x);
 		ImGui::ColorEdit4("Diffuse (kd)", &m_->m_Material.diffuse.x);
 		ImGui::ColorEdit4("Specular (ks)", &m_->m_Material.specular.x);
@@ -2653,20 +2673,7 @@ void App::RenderControlPannel()
 		{
 			m_->m_Material = { XMFLOAT4(1,1,1,1), XMFLOAT4(1,1,1,1), XMFLOAT4(1,1,1,32), XMFLOAT4(0,0,0,0) };
 		}
-		// PBR / 전체 화면 감마 값 (1.4~10.0 범위에서 조절, 눈의 오차를 감안해 여유 범위 확보)
-		ImGui::SliderFloat("Gamma", &m_->m_Gamma, 1.4f, 10.0f, "%.2f");
 
-		ImGui::SeparatorText("PBR Material");
-		ImGui::ColorEdit3("Base Color##PBR", &m_->m_DefaultPbrMaterial.baseColor.x);
-		ImGui::SliderFloat("Metalness##PBR", &m_->m_DefaultPbrMaterial.metalness, 0.0f, 1.0f, "%.2f");
-		ImGui::SliderFloat("Roughness##PBR", &m_->m_DefaultPbrMaterial.roughness, 0.04f, 1.0f, "%.2f");
-		ImGui::SliderFloat("Ambient Occlusion##PBR", &m_->m_DefaultPbrMaterial.ambientOcclusion, 0.0f, 1.0f, "%.2f");
-		if (ImGui::Button("Reset PBR Material"))
-		{
-			m_->m_DefaultPbrMaterial = PBRMaterialCPU{};
-		}
-
-		ImGui::Separator();
 	}
 	ImGui::End();
 

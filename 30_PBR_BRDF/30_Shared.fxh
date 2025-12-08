@@ -39,7 +39,8 @@ cbuffer ConstantBuffer : register(b0)
     float  g_Pad;                       // 디버그/단축 경로용
     // PBR / 화면 감마 보정 값 (기본 2.2)
     float  g_Gamma;                     // 감마 값
-    float3 g_PBRPad;
+    int    g_UseTextureColor;           // 0: 텍스처 색 무시(고정 회색), 1: 텍스처 색 + BaseColor
+    float2 g_PBRPad;
 
     // PBR 전용 머티리얼 (baseColor, metalness, roughness, AO)
     float4 g_PBRBaseColor;

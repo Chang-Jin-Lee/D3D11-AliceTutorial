@@ -133,17 +133,25 @@ float4 main(VertexOut pIn) : SV_Target
 		float NdotH = saturate(dot(N, H));
 		float VdotH = saturate(dot(V, H));
 
-		// PBR 머티리얼: 기본 색상(baseColor)과 metal/rough/AO 값을 사용하고,
-		// 텍스처가 있다면 해당 채널(G=roughness, B=metalness)과 머티리얼 값을 곱합니다.
-		float3 albedoPBR = kd.rgb * g_PBRBaseColor.rgb;
+		// PBR 머티리얼:
+		//  - UseTextureColor = 0 : 텍스처 색을 무시하고 고정 회색(0.5,0.5,0.5) 사용 (BaseColor UI 영향 없음)
+		//  - UseTextureColor = 1 : 텍스처 색을 선형으로 디코딩 후 BaseColor로 틴트 (Blender 스타일)
+		float3 albedoPBR;
 		float metalness = saturate(g_PBRMetalness);
 		float roughness = saturate(g_PBRRoughness);
-		if (g_UseDiffuseMap != 0)
+		if (g_UseTextureColor != 0 && g_UseDiffuseMap != 0)
 		{
-			// 텍스처가 있으면 텍스처 값과 머티리얼 값을 곱해서 사용 (텍스처가 스케일 역할)
+			// 텍스처 색 + BaseColor
+			float3 texLinear = pow(max(textureColor.rgb, 0.0f), 2.2f);
+			albedoPBR = texLinear * g_PBRBaseColor.rgb;
 			// Roughness/Metalness는 데이터 텍스처이므로 선형 그대로 사용
 			metalness = saturate(metalness * metalnessTex);
 			roughness = saturate(roughness * roughnessTex);
+		}
+		else
+		{
+			// 텍스처 색 사용 안 함: 고정 회색
+			albedoPBR = g_PBRBaseColor.rgb;
 		}
 		roughness = max(roughness, 0.04f); // 완전 0은 되지 않도록 하자
 		float ao = saturate(g_PBRAmbientOcclusion);
