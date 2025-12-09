@@ -9,15 +9,22 @@
         struct VertexIn : float3 normalL : NORMAL; 추가 -> 정점 노말 벡터
         struct VertexOut : float3 posW : TEXCOORD0; 추가 -> 월드 공간에서의 위치
 */
-#include "30_LightingHelper.hlsli"
+#include "31_LightingHelper.hlsli"
 
-Texture2D g_DiffuseMap : register(t0);
-TextureCube g_TexCube : register(t1);
+Texture2D  g_DiffuseMap : register(t0);
+TextureCube g_TexCube   : register(t1);
 // Normal, Specular maps for normal mapping pipeline
-Texture2D g_NormalMap : register(t2);
-Texture2D g_SpecularMap : register(t3);
+Texture2D  g_NormalMap  : register(t2);
+Texture2D  g_SpecularMap: register(t3);
 // Shadow map (depth)
-Texture2D g_ShadowMap : register(t4);
+Texture2D  g_ShadowMap  : register(t4);
+// IBL (Image-Based Lighting) 텍스처들
+//  - g_IBL_Diffuse  : Diffuse IBL (Irradiance map, N 방향 샘플)
+//  - g_IBL_Specular : Specular IBL (Prefiltered env map, R 방향 + roughness)
+//  - g_IBL_BRDF_LUT : BRDF LUT (RG = A,B, NdotV/Roughness → 평균 F,G 계수)
+TextureCube g_IBL_Diffuse  : register(t5);
+TextureCube g_IBL_Specular : register(t6);
+Texture2D   g_IBL_BRDF_LUT : register(t7);
 SamplerState g_Sam : register(s0);
 SamplerState g_ShadowSamp : register(s1);
 

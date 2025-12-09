@@ -14,8 +14,33 @@
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
     <Filter Include="Shaders">
-      <UniqueIdentifier>{7fb198f5-f714-4491-94cd-18f7ffb91b53}</UniqueIdentifier>
+      <UniqueIdentifier>{77e1ff6e-75a7-49fe-b966-4f2438220750}</UniqueIdentifier>
     </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="31_BasicPS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="31_BasicVS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="31_SkyBoxPS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="31_SkyBoxVS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="31_LightingHelper.hlsli">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="31_Shared.fxh">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="31_SkyBox.hlsli">
+      <Filter>Shaders</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="App.cpp">
@@ -35,30 +60,5 @@
     <ClInclude Include="SceneB.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
-  </ItemGroup>
-  <ItemGroup>
-    <FxCompile Include="30_BasicPS.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="30_BasicVS.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="30_SkyBoxPS.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="30_SkyBoxVS.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <CopyFileToFolders Include="30_LightingHelper.hlsli">
-      <Filter>Shaders</Filter>
-    </CopyFileToFolders>
-    <CopyFileToFolders Include="30_Shared.fxh">
-      <Filter>Shaders</Filter>
-    </CopyFileToFolders>
-    <CopyFileToFolders Include="30_SkyBox.hlsli">
-      <Filter>Shaders</Filter>
-    </CopyFileToFolders>
   </ItemGroup>
 </Project>

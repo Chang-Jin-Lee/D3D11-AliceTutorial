@@ -37,28 +37,26 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="29_BasicPS.hlsl">
+    <CopyFileToFolders Include="29_BasicPS.hlsl">
       <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="29_BasicVS.hlsl">
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="29_BasicVS.hlsl">
       <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="29_SkyBoxPS.hlsl">
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="29_LightingHelper.hlsli">
       <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="29_SkyBoxVS.hlsl">
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="29_Shared.fxh">
       <Filter>Shaders</Filter>
-    </FxCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="29_LightingHelper.hlsli">
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="29_SkyBox.hlsli">
       <Filter>Shaders</Filter>
-    </None>
-    <None Include="29_Shared.fxh">
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="29_SkyBoxPS.hlsl">
       <Filter>Shaders</Filter>
-    </None>
-    <None Include="29_SkyBox.hlsli">
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="29_SkyBoxVS.hlsl">
       <Filter>Shaders</Filter>
-    </None>
+    </CopyFileToFolders>
   </ItemGroup>
 </Project>

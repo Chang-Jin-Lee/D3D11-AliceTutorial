@@ -1,4 +1,4 @@
-#include "30_Shared.fxh"
+#include "31_Shared.fxh"
 
 static const float PI = 3.14159265f;
 
@@ -103,12 +103,12 @@ float4 main(VertexOut pIn) : SV_Target
 	}
 	float3 albedo = kd.rgb;
 
-	// 월드 노말 계산(Nw) - 노말맵 토글에 따라 분기
+	// 월드 노말 계산(N) - 기본은 정점 노멀, 필요 시 노말맵에서 덮어쓰기
 	float3 N = normalize(pIn.normalW);
+	
 	if (g_EnableNormalMap != 0)
 	{
 		float3 T = normalize(pIn.tangentW);
-		float3 N = normalize(pIn.normalW);
 		float3 B = normalize(pIn.bitanW);
 		float handed = dot(cross(T, B), N);
 		if (handed < 0.0f) B = -B;
@@ -128,10 +128,10 @@ float4 main(VertexOut pIn) : SV_Target
 	// PBR Shading (Cook-Torrance, 단일 디렉션 라이트)
 	if (g_ShadingMode == 6)
 	{
-		float3 H = normalize(L + V);
-		float NdotV = saturate(dot(N, V));
-		float NdotH = saturate(dot(N, H));
-		float VdotH = saturate(dot(V, H));
+		float3 H     = normalize(L + V);
+		float  NdotV = saturate(dot(N, V));
+		float  NdotH = saturate(dot(N, H));
+		float  VdotH = saturate(dot(V, H));
 
 		// PBR 머티리얼:
 		//  - UseTextureColor = 0 : 텍스처 색을 무시하고 고정 회색(0.5,0.5,0.5) 사용 (BaseColor UI 영향 없음)
@@ -153,7 +153,8 @@ float4 main(VertexOut pIn) : SV_Target
 			// 텍스처 색 사용 안 함: 고정 회색
 			albedoPBR = g_PBRBaseColor.rgb;
 		}
-		roughness = max(roughness, 0.001f); // 완전 0은 되지 않도록 하자
+		// roughness = 0 이면 완전 거울이어야 하므로 아주 작은 값만 남기고 그대로 사용
+		roughness = max(roughness, 0.001f);
 		float ao = saturate(g_PBRAmbientOcclusion);
 
 		// F0 : 금속은 알베도, 비도체는 0.04 근처
@@ -171,17 +172,39 @@ float4 main(VertexOut pIn) : SV_Target
 
 		// 에너지 보존: 금속일수록 디퓨즈 감소
 		float3 kS = F;
+		// 금속(metalness=1)일 때는 디퓨즈(난반사) 성분이 0이 되도록 kD 를 정의
 		float3 kD = (1.0f - kS) * (1.0f - metalness);
 		float3 diffuse = kD * albedoPBR * (1.0f / PI);
 
 		// 단일 디렉션 라이트 강도
 		// PBR diffuse가 1/PI로 나뉘므로 라이트 강도에 PI를 곱해서 보정
 		// 추가로 밝기 보정을 위해 약간 더 강하게
-		float3 radiance = g_DirLight.diffuse.rgb * PI * 1.5f;
-		float3 color = (diffuse + specular) * radiance * theta * ao;
+		float3 radiance = g_DirLight.diffuse.rgb * PI * 1.1f;
+		float3 color    = (diffuse + specular) * radiance * theta * ao;
 
-		// 환경광 : 디렉션 라이트 ambient 사용 (더 밝게)
-		color += albedoPBR * g_DirLight.ambient.rgb * ao * 1.5f;
+		// --- 환경광(IBL) : Diffuse + Specular ------------------------------------
+		// Diffuse IBL : Irradiance map 를 법선 방향으로 샘플
+		//   → 직접광과 마찬가지로 kD 를 곱해서, 금속(metalness=1)일 때는 난반사를 0으로 만든다.
+		float3 diffuseIBL = kD * g_IBL_Diffuse.Sample(g_Sam, N).rgb * albedoPBR;
+
+		// Specular IBL : 사전 필터된 스펙큘러 큐브맵 + BRDF LUT (split-sum 근사)
+		float3 Renv = reflect(-V, N);
+		const float kMaxSpecularMip = 8.0f;       // BakerSampleSpecularHDR.dds 기준 예제 값
+		float3 prefilteredColor = g_IBL_Specular.SampleLevel(
+			g_Sam,
+			Renv,
+			roughness * kMaxSpecularMip).rgb;
+
+		// BRDF LUT 에서 (NdotV, roughness)에 대한 평균 계수 A,B 를 가져온다.
+		float2 specBRDF = g_IBL_BRDF_LUT.Sample(g_ShadowSamp, float2(NdotV, roughness)).rg;
+		float3 specularIBL = prefilteredColor * (F0 * specBRDF.x + specBRDF.y);
+
+		// AO로 환경광 전체를 감쇠
+		float3 iblColor = (diffuseIBL + specularIBL) * ao;
+
+		// 기존 단순 ambient 도 kD 를 곱해서 금속에는 거의 영향이 없도록 한다.
+		float3 simpleAmbient = kD * albedoPBR * g_DirLight.ambient.rgb * ao * 0.1f;
+		color += iblColor + simpleAmbient;
 
 		// 감마 인코딩: 선형 공간 색상을 sRGB 공간으로 변환
 		// sRGB = pow(Linear, 1/gamma) - 사람의 눈이 선형적으로 느끼도록

@@ -64,6 +64,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "29_MousePicking", "29_Mouse
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "30_PBR_BRDF", "30_PBR_BRDF\30_PBR_BRDF.vcxproj", "{EC1A96A8-FBBF-4029-8626-745D91061DB5}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "31_IBL", "31_IBL\31_IBL.vcxproj", "{59367423-C6A8-42FF-B95D-5B9A20CEC0E8}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -320,6 +322,14 @@ Global
 		{EC1A96A8-FBBF-4029-8626-745D91061DB5}.Release|x64.Build.0 = Release|x64
 		{EC1A96A8-FBBF-4029-8626-745D91061DB5}.Release|x86.ActiveCfg = Release|Win32
 		{EC1A96A8-FBBF-4029-8626-745D91061DB5}.Release|x86.Build.0 = Release|Win32
+		{59367423-C6A8-42FF-B95D-5B9A20CEC0E8}.Debug|x64.ActiveCfg = Debug|x64
+		{59367423-C6A8-42FF-B95D-5B9A20CEC0E8}.Debug|x64.Build.0 = Debug|x64
+		{59367423-C6A8-42FF-B95D-5B9A20CEC0E8}.Debug|x86.ActiveCfg = Debug|Win32
+		{59367423-C6A8-42FF-B95D-5B9A20CEC0E8}.Debug|x86.Build.0 = Debug|Win32
+		{59367423-C6A8-42FF-B95D-5B9A20CEC0E8}.Release|x64.ActiveCfg = Release|x64
+		{59367423-C6A8-42FF-B95D-5B9A20CEC0E8}.Release|x64.Build.0 = Release|x64
+		{59367423-C6A8-42FF-B95D-5B9A20CEC0E8}.Release|x86.ActiveCfg = Release|Win32
+		{59367423-C6A8-42FF-B95D-5B9A20CEC0E8}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
