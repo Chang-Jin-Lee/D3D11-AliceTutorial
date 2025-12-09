@@ -636,6 +636,7 @@ bool App::OnInitialize()
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\char\\char.fbx"); // 0
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\sphere.fbx"); // 0
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\sphere.fbx"); // 0
+	LoadModelFromFile(L"..\\Resource\\fbx\\Rapi.fbx"); // 0
 
 	m_->m_Objects.clear();
 	for (int mi = 0; mi < (int)m_->m_Models.size(); ++mi)
@@ -646,10 +647,14 @@ bool App::OnInitialize()
 	m_->m_Models[0]->modelShading = ShadingMode::PBR;
 	m_->m_Models[1]->modelShading = ShadingMode::PBR;
 	m_->m_Models[2]->modelShading = ShadingMode::PBR;
+	m_->m_Models[3]->modelShading = ShadingMode::PBR;
 
 	m_->m_Models[0]->pos = XMFLOAT3(0, 0.0f, 0.0f);
 	m_->m_Models[1]->pos = XMFLOAT3(130, 0.0f, 0.0f);
 	m_->m_Models[2]->pos = XMFLOAT3(-130, 0.0f, 0.0f);
+	m_->m_Models[2]->pos = XMFLOAT3(-130, 0.0f, 50.0f);
+	m_->m_Models[3]->pos = XMFLOAT3(90, 0.0f, 70.0f);
+	m_->m_Models[3]->scale = XMFLOAT3(0.5f, 0.5f, 0.5f);
 
 	// ====================================== 큐브 ======================================
 	auto co = std::make_unique<CubeObject>(
