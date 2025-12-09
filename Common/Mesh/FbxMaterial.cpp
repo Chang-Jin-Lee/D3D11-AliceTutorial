@@ -12,7 +12,7 @@
 
 using Microsoft::WRL::ComPtr;
 
-// ³»ºÎ ±¸Çö: º£ÀÌ½º ÄÃ·¯ / ¸ŞÅ»¸¯ / ·¯ÇÁ´Ï½º ¸ÊÀ» °¢°¢ °ü¸®
+// ë‚´ë¶€ êµ¬í˜„: ë² ì´ìŠ¤ ì»¬ëŸ¬ / ë©”íƒˆë¦­ / ëŸ¬í”„ë‹ˆìŠ¤ ë§µì„ ê°ê° ê´€ë¦¬
 struct FbxMaterialLoader::Impl
 {
 	std::vector<ID3D11ShaderResourceView*> baseColorSRVs;
@@ -20,8 +20,8 @@ struct FbxMaterialLoader::Impl
 	std::vector<ID3D11ShaderResourceView*> roughnessSRVs;
 	std::vector<ID3D11ShaderResourceView*> normalSRVs;
 	std::unordered_map<std::wstring, ID3D11ShaderResourceView*> cache;
-	ID3D11ShaderResourceView* white = nullptr; // ±âº» »ö»ó / roughness ±âº»°ª(1)
-	ID3D11ShaderResourceView* black = nullptr; // metallic ±âº»°ª(0)
+	ID3D11ShaderResourceView* white = nullptr; // ê¸°ë³¸ ìƒ‰ìƒ / roughness ê¸°ë³¸ê°’(1)
+	ID3D11ShaderResourceView* black = nullptr; // metallic ê¸°ë³¸ê°’(0)
 };
 
 FbxMaterialLoader::FbxMaterialLoader() : m_(new Impl) {}
@@ -49,7 +49,7 @@ void FbxMaterialLoader::Clear()
 
 const std::vector<ID3D11ShaderResourceView*>& FbxMaterialLoader::GetMaterialSRVs() const
 {
-	// ±âÁ¸ ÄÚµå È£È¯: diffuse/baseColor ¸Ê
+	// ê¸°ì¡´ ì½”ë“œ í˜¸í™˜: diffuse/baseColor ë§µ
 	return m_->baseColorSRVs;
 }
 
@@ -78,7 +78,7 @@ static void AddCache(std::unordered_map<std::wstring, ID3D11ShaderResourceView*>
 	if (v) { cache[key] = v; v->AddRef(); }
 }
 
-// ´Ü»ö(1x1) ÅØ½ºÃ³ SRV »ı¼º ÇïÆÛ
+// ë‹¨ìƒ‰(1x1) í…ìŠ¤ì²˜ SRV ìƒì„± í—¬í¼
 static void CreateSolidColorSRV(ID3D11Device* device, UINT rgba, ID3D11ShaderResourceView** outSRV)
 {
 	if (!device || !outSRV || *outSRV) return;
@@ -108,7 +108,7 @@ static void CreateSolidColorSRV(ID3D11Device* device, UINT rgba, ID3D11ShaderRes
 	HR_T(device->CreateShaderResourceView(tex.Get(), &srvd, outSRV));
 }
 
-// aiTexture(ÀÓº£µğµå ÅØ½ºÃ³)·ÎºÎÅÍ SRV »ı¼º
+// aiTexture(ì„ë² ë””ë“œ í…ìŠ¤ì²˜)ë¡œë¶€í„° SRV ìƒì„±
 static ID3D11ShaderResourceView* CreateSRVFromEmbedded(
 	ID3D11Device* device,
 	const aiTexture* at)
@@ -185,7 +185,7 @@ static HRESULT CreateTextureFromTgaFile(ID3D11Device* device, const wchar_t* pat
 	return hr;
 }
 
-// WIC + TGA Áö¿øÀ» ÇÑ²¨¹ø¿¡ Ã³¸®ÇÏ´Â ·¡ÆÛ
+// WIC + TGA ì§€ì›ì„ í•œêº¼ë²ˆì— ì²˜ë¦¬í•˜ëŠ” ë˜í¼
 static HRESULT CreateTextureFromFileWithTga(
 	ID3D11Device* device,
 	const std::wstring& path,
@@ -201,7 +201,7 @@ static HRESULT CreateTextureFromFileWithTga(
 	HRESULT hr = CreateWICTextureFromFile(device, path.c_str(), resPtr, &srv);
 	if (FAILED(hr))
 	{
-		// È®ÀåÀÚ°¡ .tga ÀÌ¸é Á÷Á¢ ÆÄ½Ì ½Ãµµ
+		// í™•ì¥ìê°€ .tga ì´ë©´ ì§ì ‘ íŒŒì‹± ì‹œë„
 		if (path.size() >= 4)
 		{
 			std::wstring ext = path.substr(path.size() - 4);
@@ -222,7 +222,7 @@ static HRESULT CreateTextureFromFileWithTga(
 	return S_OK;
 }
 
-// °øÅë ÅØ½ºÃ³ ·Î´õ: aiMaterial + aiTextureType ±â¹İÀ¸·Î ÇÑ Àå ·Îµå
+// ê³µí†µ í…ìŠ¤ì²˜ ë¡œë”: aiMaterial + aiTextureType ê¸°ë°˜ìœ¼ë¡œ í•œ ì¥ ë¡œë“œ
 static ID3D11ShaderResourceView* LoadTextureFromMaterial(
 	ID3D11Device* device,
 	const aiScene* scene,
@@ -245,7 +245,7 @@ static ID3D11ShaderResourceView* LoadTextureFromMaterial(
 
 	ID3D11ShaderResourceView* result = nullptr;
 
-	// png, jpgµî À¸·Î ÇØº½
+	// png, jpgë“± ìœ¼ë¡œ í•´ë´„
 	if (!t.empty())
 	{
 		const aiTexture* at = scene->GetEmbeddedTexture(t.c_str());
@@ -255,7 +255,7 @@ static ID3D11ShaderResourceView* LoadTextureFromMaterial(
 		}
 	}
 
-	// ¾ÈµÇ¸é tga ÇØº¸ÀÚ 
+	// ì•ˆë˜ë©´ tga í•´ë³´ì 
 	if (!result)
 	{
 		std::wstring wtex = WStringFromUtf8(t);
@@ -279,7 +279,7 @@ static ID3D11ShaderResourceView* LoadTextureFromMaterial(
 			}
 			else
 			{
-				// FBX°¡ ¿ÜºÎ ÅØ½ºÃ³¸¦ <fbxname>.fbm Æú´õ¿¡ Ç®¾î³õ´Â °æ¿ì Àç½Ãµµ
+				// FBXê°€ ì™¸ë¶€ í…ìŠ¤ì²˜ë¥¼ <fbxname>.fbm í´ë”ì— í’€ì–´ë†“ëŠ” ê²½ìš° ì¬ì‹œë„
 				std::wstring fileOnly = wtex;
 				size_t p = wtex.find_last_of(L"/\\");
 				if (p != std::wstring::npos) fileOnly = wtex.substr(p + 1);
@@ -310,7 +310,7 @@ static ID3D11ShaderResourceView* LoadTextureFromMaterial(
 				}
 				catch (...)
 				{
-					// directory_iterator ½ÇÆĞ ½Ã ¹«½ÃÇÏ°í Æú¹éÀ¸·Î ³Ñ¾î°¨
+					// directory_iterator ì‹¤íŒ¨ ì‹œ ë¬´ì‹œí•˜ê³  í´ë°±ìœ¼ë¡œ ë„˜ì–´ê°
 				}
 			}
 		}
@@ -330,7 +330,7 @@ bool FbxMaterialLoader::Load(ID3D11Device* device, const aiScene* scene, const s
 	if (!device || !scene) return false;
 	Clear();
 
-	// 1x1 È­ÀÌÆ®/ºí·¢ ÅØ½ºÃ³ »ı¼º (Æú¹é ¹× ±âº»°ª)
+	// 1x1 í™”ì´íŠ¸/ë¸”ë™ í…ìŠ¤ì²˜ ìƒì„± (í´ë°± ë° ê¸°ë³¸ê°’)
 	CreateSolidColorSRV(device, 0xFFFFFFFF, &m_->white);   // RGBA(1,1,1,1)
 	CreateSolidColorSRV(device, 0x000000FF, &m_->black);   // RGBA(0,0,0,1)
 
@@ -352,7 +352,7 @@ bool FbxMaterialLoader::Load(ID3D11Device* device, const aiScene* scene, const s
 			m_->cache,
 			m_->white);
 
-		// Metallic / Roughness (Assimp PBR ÅØ½ºÃ³ Å¸ÀÔ »ç¿ë)
+		// Metallic / Roughness (Assimp PBR í…ìŠ¤ì²˜ íƒ€ì… ì‚¬ìš©)
 		m_->metallicSRVs[m] = LoadTextureFromMaterial(
 			device, scene, mat,
 			aiTextureType_METALNESS,
@@ -367,7 +367,7 @@ bool FbxMaterialLoader::Load(ID3D11Device* device, const aiScene* scene, const s
 			m_->cache,
 			m_->white);
 
-		// Normal map (tangent-space). ¿ì¼± NORMALS, ¾øÀ¸¸é HEIGHTµµ ÇÑ ¹ø ´õ ½Ãµµ.
+		// Normal map (tangent-space). ìš°ì„  NORMALS, ì—†ìœ¼ë©´ HEIGHTë„ í•œ ë²ˆ ë” ì‹œë„.
 		ID3D11ShaderResourceView* nrm = LoadTextureFromMaterial(
 			device, scene, mat,
 			aiTextureType_NORMALS,
