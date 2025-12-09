@@ -1,9 +1,12 @@
 ﻿/*
-* @brief  : 하나의 씬에서 여러 FBX/PMX/OBJ 모델을 공유해서 사용하고, 씬 A/B를 전환하며 애니메이션/섀도우/디버그 드로우를 테스트하는 예제입니다.
+* @brief  : PBR BRDF (Physically Based Rendering) 구현 및 마우스 픽킹 예제입니다.
 * @details:
-*   - AssetManager/SharedModelData를 통해 여러 씬이 같은 3D 모델 리소스를 공유하고, 씬 전환 시에도 로딩 비용을 최소화합니다.
-*   - 방향성 광원 섀도우 맵(PCF)과 다양한 셰이딩(Phong/Blinn/Lambert/Toon)을 적용한 상태에서 애니메이션, 본, AABB, 라인 등 디버그 정보를 그립니다.
-*   - SceneA/SceneB를 오가며 같은 모델 데이터를 서로 다른 배치/연출로 재사용하는 구조를 보여줍니다.
+*   [PBR BRDF 구현]
+*   - Cook-Torrance 미세면 BRDF를 구현하여 물리 기반 렌더링을 수행합니다.
+*   - GGX/Trowbridge-Reitz 분포(D), Smith 기하 함수(G), Schlick 프레넬 근사(F)를 사용합니다.
+*   - 메탈니스-러프니스 워크플로우를 지원하며, 각 모델별로 PBR 머티리얼을 설정할 수 있습니다.
+*   - sRGB 텍스처의 감마 디코딩 및 최종 출력의 감마 인코딩을 구현하여 자연스러운 색상 표현을 지원합니다.
+*   - ImGui를 통해 Base Color, Metalness, Roughness, Ambient Occlusion, Gamma 값을 실시간으로 조절할 수 있습니다.
 */
 
 #include "App.h"
@@ -45,6 +48,7 @@
 #include "../Common/AssetManager.h"
 #include "../Common/Transform.h"
 #include "../Common/BaseObject.h"
+#include "../Common/Ray.h"
 #include "SceneA.h"
 #include "SceneB.h"
 #include <directxtk/GamePad.h>
@@ -59,10 +63,24 @@ using namespace DirectX::SimpleMath;
 // 내부 전용 타입들
 struct DirectionalLight { XMFLOAT4 ambient; XMFLOAT4 diffuse; XMFLOAT4 specular; XMFLOAT3 direction; float pad; };
 struct Material { XMFLOAT4 ambient; XMFLOAT4 diffuse; XMFLOAT4 specular; XMFLOAT4 reflect; };
+struct PBRMaterialCPU
+{
+	XMFLOAT4 baseColor = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+	float metalness = 0.0f;
+	float roughness = 0.5f;
+	float ambientOcclusion = 1.0f;
+	float pad = 0.0f;
+};
 struct ConstantBuffer {
 	XMMATRIX world; XMMATRIX view; XMMATRIX proj; XMMATRIX worldInvTranspose;
 	Material material; DirectionalLight dirLight; XMFLOAT3 eyePos; int shadingMode = 0;
 	int enableNormalMap = 1; int useSpecularMap = 0; int useDiffuseMap = 1; float pad = 0.0f;
+	float gamma = 2.2f; XMFLOAT3 pbrPad = { 0,0,0 };
+	XMFLOAT4 pbrBaseColor = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+	float pbrMetalness = 0.0f;
+	float pbrRoughness = 0.5f;
+	float pbrAO = 1.0f;
+	float pbrPad2 = 0.0f;
 	float outlineWidth = 0.15f; float outlinePow = 1.0f; float outlineThickness = 0.014f; float outlineStrength = 1.0f; XMFLOAT4 outlineColor = XMFLOAT4(0, 0, 0, 1);
 	// Shadow params
 	XMMATRIX lightViewProj;
@@ -73,7 +91,7 @@ struct ConstantBuffer {
 	// Debug/Lines
 	int      boundsBoneIndex = -1; XMFLOAT3 boundsPad = {0,0,0};
 };
-enum class ShadingMode { Phong = 0, BlinnPhong = 1, Lambert = 2, Unlit = 3, TextureOnly = 4, ToonShading = 5 };
+enum class ShadingMode { Phong = 0, BlinnPhong = 1, Lambert = 2, Unlit = 3, TextureOnly = 4, ToonShading = 5, PBR = 6 };
 enum class ModelSource { FBX, OBJ, PMX, Custom };
 struct ModelSubset { uint32_t start; uint32_t count; uint32_t materialIndex; };
 // 메시 통계 구조체
@@ -123,6 +141,8 @@ struct ModelEntry
 	float animUpdateAccum = 0.0f;
 	Material instanceMaterial{ {1,1,1,1}, {1,1,1,1}, {1,1,1,32}, {0,0,0,0} };
 	bool useInstanceMaterial = false;
+	PBRMaterialCPU instancePbrMaterial{};
+	bool useInstancePbrMaterial = false;
 
 	// 사전 계산된 메시 통계
 	MeshStats meshStats{};
@@ -416,9 +436,11 @@ struct App::Impl {
 	bool							m_RotateModel = false;
 
 	// 조명/재질
-	DirectionalLight				m_DirLight = { {0,0,0,1}, {1,1,1,1}, {0.7,0.7,0.7,1}, {0,-1.1,1}, 0.0f };
+	DirectionalLight				m_DirLight = { {0,0,0,1}, {1,1,1,1}, {0.7f,0.7f,0.7f,1}, {0,-1.1f,1}, 0.0f };
 	Material						m_Material = { {1,1,1,1}, {1,1,1,1}, {1,1,1,32}, {0,0,0,0} };
 	Material						m_mirrorCubeMaterial = { {0,0,0,1}, {0,0,0,1}, {0,0,0,32}, {1,1,1,0.02f} };
+	float							m_Gamma = 2.2f;			// 화면 감마 값 (ImGui에서 조절)
+	PBRMaterialCPU					m_DefaultPbrMaterial{};
 
 	// 라이트 마커 위치 / 카메라 기반 기본 행렬
 	XMFLOAT3						m_LightPosition = { 4.0f, 4.0f, 0.0f };
@@ -429,7 +451,7 @@ struct App::Impl {
 	// Outline params ImGui에서 제어하는 용도도
 	// Rim 파라미터 제거. 멀티패스 지오메트리 아웃라인만 사용
 	float							m_OutlineThickness = 0.08f;
-	XMFLOAT4						m_OutlineColor = XMFLOAT4(1.0, 0.7286, 0, 1);
+	XMFLOAT4						m_OutlineColor = XMFLOAT4(1.0, 0.7286f, 0, 1);
 	float							m_OutlineStrength = 1.0f;
 	int								m_EnableNormalMapForCube = 1;
 	int								m_UseSpecularMapForCube = 0;
@@ -604,9 +626,12 @@ bool App::OnInitialize()
 	LoadSceneImage(m_->m_CurrentSceneImagePath);
 
 	// ====================================== 3D 모델 ======================================
-	LoadModelFromFile(L"..\\Resource\\fbx\\SkinningTest.fbx"); // 0
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping_idle_walk_run.fbx"); // 0
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Ground.fbx"); // 0
+	LoadModelFromFile(L"..\\Resource\\fbx\\Rapi.fbx"); // 0
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\char\\char.fbx"); // 0
+	//LoadModelFromFile(L"..\\Resource\\fbx\\Neon.fbx"); // 1
+	//LoadModelFromFile(L"..\\Resource\\fbx\\Anis.fbx"); // 2
+	//LoadModelFromFile(L"..\\Resource\\fbx\\Alice.fbx"); // 3
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Ground.fbx"); // 4
 
 	m_->m_Objects.clear();
 	for (int mi = 0; mi < (int)m_->m_Models.size(); ++mi)
@@ -614,14 +639,23 @@ bool App::OnInitialize()
 		auto mo = std::make_unique<ModelObject>(m_->m_Models[mi]->modelName, mi);
 		m_->m_Objects.push_back(std::move(mo));
 	}
-	m_->m_Models[1]->scale = XMFLOAT3(2.0f, 1.0f, 8.0f);
+	m_->m_Models[0]->modelShading = ShadingMode::PBR;
+	m_->m_Models[1]->modelShading = ShadingMode::PBR;
+	//m_->m_Models[2]->modelShading = ShadingMode::PBR;
+	//m_->m_Models[3]->modelShading = ShadingMode::PBR;
 
-	{
-		m_->m_Models[0]->useInstanceMaterial = true;
-		m_->m_Models[0]->instanceMaterial.ambient = XMFLOAT4(0.02f, 0.05f, 0.06f, 1.0f);
-		m_->m_Models[0]->instanceMaterial.diffuse = XMFLOAT4(0.15f, 0.70f, 0.85f, 1.0f);
-		m_->m_Models[0]->instanceMaterial.specular = XMFLOAT4(0.90f, 0.90f, 0.90f, 64.0f);
-	}
+	m_->m_Models[0]->pos = XMFLOAT3(1.5f * -160, 0.0f, 0.0f);
+	m_->m_Models[1]->pos = XMFLOAT3(1.5f * -60, 0.0f, 0.0f);
+	//m_->m_Models[2]->pos = XMFLOAT3(1.5f * 70, 0.0f, 0.0f);
+	//m_->m_Models[3]->pos = XMFLOAT3(1.5f * 160, 0.0f, 0.0f);
+
+	m_->m_Models[0]->animator.SetCurrentIndex(4);  m_->m_Models[0]->uiAnimPlaying = true;
+	m_->m_Models[1]->animator.SetCurrentIndex(4);  m_->m_Models[1]->uiAnimPlaying = true;
+	//m_->m_Models[2]->animator.SetCurrentIndex(4);  m_->m_Models[2]->uiAnimPlaying = true;
+	//m_->m_Models[3]->animator.SetCurrentIndex(4);  m_->m_Models[3]->uiAnimPlaying = true;
+
+	m_->m_Models[2]->scale = XMFLOAT3(2.0f, 1.0f, 8.0f);
+	m_->m_Models[2]->pos = XMFLOAT3(0.0f, -1.0f, 0.0f);
 
 	// ====================================== 큐브 ======================================
 	auto co = std::make_unique<CubeObject>(
@@ -721,7 +755,7 @@ void App::OnUpdate(const float& dt)
 		};
 
 
-	// 3D 모델 애니메이션 업데이트 (공유 데이터는 중복 업데이트 안 함)
+	// 3D 모델 애니메이션 업데이트 (공유 데이터는 중복 업데이트 안함)
 	// 동시에 섀도우용 포커스 위치를 누적해서 한 번만 섀도우 행렬 계산
 	{
 		std::unordered_set<SharedModelData*> updated;
@@ -823,11 +857,9 @@ void App::OnUpdate(const float& dt)
 
 	// Camera의 View/Proj 
 	XMMATRIX model = XMMatrixIdentity();
-	XMMATRIX view = XMMatrixTranspose(m_Camera.GetViewMatrixXM());
-	XMMATRIX proj = XMMatrixTranspose(m_Camera.GetProjMatrixXM());
 	m_->m_baseProjection.world = XMMatrixTranspose(model);
-	m_->m_baseProjection.view = view;
-	m_->m_baseProjection.proj = proj;
+	m_->m_baseProjection.view = XMMatrixTranspose(m_Camera.GetViewMatrixXM());
+	m_->m_baseProjection.proj = XMMatrixTranspose(m_Camera.GetProjMatrixXM());
 	m_->m_baseProjection.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(model)));
 
 	XMFLOAT3 lightDir = m_->m_DirLight.direction;
@@ -838,7 +870,6 @@ void App::OnUpdate(const float& dt)
 	m_->m_baseProjection.dirLight = m_->m_DirLight;
 	m_->m_baseProjection.dirLight.direction = lightDir;
 	m_->m_baseProjection.dirLight.pad = 0.0f;
-
 	m_->m_baseProjection.eyePos = m_Camera.GetPosition();
 	m_->m_baseProjection.pad = 0.0f;
 
@@ -921,13 +952,72 @@ void App::OnUpdate(const float& dt)
 		}
 	}
 
+	// ====================================== 간단 마우스 피킹 (FBX/모델 위주) ======================================
+	auto& input = *InputSystem::Instance;
+	if (InputSystem::Instance && !ImGui::GetIO().WantCaptureMouse &&
+		input.m_MouseStateTracker.leftButton == Mouse::ButtonStateTracker::PRESSED)
+	{
+		PickingRay ray = PickingRay::ScreenPointToRay(
+			m_Camera,
+			(float)input.m_MouseState.x,
+			(float)input.m_MouseState.y,
+			(float)m_ClientWidth,
+			(float)m_ClientHeight);
 
+		int   pickedModel = -1;
+		float bestT       = FLT_MAX;
+
+		for (auto it = m_->m_Models.begin(); it != m_->m_Models.end(); ++it)
+		{
+			auto& mdl = **it;
+
+			XMFLOAT3 mn = mdl.boundsMin, mx = mdl.boundsMax;
+			XMFLOAT3 bmin{}, bmax{};
+
+			// 로컬 AABB(min,max)에 스케일과 위치를 그대로 적용해서 월드 AABB를 만든다 (회전은 무시)
+			float x0 = mn.x * mdl.scale.x + mdl.pos.x;
+			float x1 = mx.x * mdl.scale.x + mdl.pos.x;
+			bmin.x = std::min(x0, x1);
+			bmax.x = (std::max)(x0, x1);
+
+			float y0 = mn.y * mdl.scale.y + mdl.pos.y;
+			float y1 = mx.y * mdl.scale.y + mdl.pos.y;
+			bmin.y = std::min(y0, y1);
+			bmax.y = (std::max)(y0, y1);
+
+			float z0 = mn.z * mdl.scale.z + mdl.pos.z;
+			float z1 = mx.z * mdl.scale.z + mdl.pos.z;
+			bmin.z = std::min(z0, z1);
+			bmax.z = (std::max)(z0, z1);
+
+			float t;
+			if (ray.HitAABB(bmin, bmax, t) && t < bestT)
+			{
+				bestT      = t;
+				pickedModel = it - m_->m_Models.begin();
+			}
+		}
+
+		if (pickedModel >= 0)
+		{
+			m_->m_SelectedModelIdx = pickedModel;
+			auto itObj = std::find_if(
+				m_->m_Objects.begin(), m_->m_Objects.end(),
+				[pickedModel](const std::unique_ptr<BaseObject>& up)
+				{
+					if (!up || up->kind != ObjectKind::Model) return false;
+					return static_cast<ModelObject*>(up.get())->modelIndex == pickedModel;
+				});
+			if (itObj != m_->m_Objects.end()) m_->m_SelectedItem = std::distance(m_->m_Objects.begin(), itObj);
+			else m_->m_SelectedItem = -1;
+		}
+	}
 
 	// F7: 키가 눌려있는 동안에만 일정 간격으로 스폰
 	if (InputSystem::Instance && InputSystem::Instance->m_KeyboardStateTracker.IsKeyPressed(DirectX::Keyboard::Keys::F7))
 	{
-		if (LoadModelFromFile(L"..\\Resource\\fbx\\SkinningTest.fbx"))
-		//if (LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping_idle_walk_run.fbx"))
+		//if (LoadModelFromFile(L"..\\Resource\\fbx\\SkinningTest.fbx"))
+		if (LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping_idle_walk_run.fbx"))
 		{
 			int newIndex = (int)m_->m_Models.size() - 1;
 			if (newIndex >= 0)
@@ -940,6 +1030,7 @@ void App::OnUpdate(const float& dt)
 				int col = n % perRow;
 				int row = n / perRow;
 				auto& mdl = *m_->m_Models[(size_t)newIndex];
+				mdl.modelShading = ShadingMode::TextureOnly;
 				mdl.pos = XMFLOAT3(spacingX * (col - perRow / 2), 0.0f, 180.0f + spacingZ * row);
 				mdl.scale = XMFLOAT3(1.0f, 1.0f, 1.0f);
 				// 애니메이션 1번으로 설정 후 재생
@@ -1027,7 +1118,6 @@ static bool WorldToScreen(const DirectX::XMFLOAT3& world,
 // Render() 함수에 중요한 부분이 다 들어있습니다. 여기를 보면 됩니다
 void App::OnRender()
 {
-	// ============================== D3D11 백버퍼/깊이 버퍼 클리어 ==============================
 	float color[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
 	UINT stride = m_->m_VertextBufferStride;	// 바이트 수
 	UINT offset = m_->m_VertextBufferOffset;
@@ -1046,7 +1136,7 @@ void App::OnRender()
 	// ====================================== Shadow Pass (depth-only) ======================================
 	if (m_->m_ShadowEnabled && !m_->m_Models.empty() && m_->m_pShadowDSV)
 	{
-		// SRV/DSV 하자드 방지: 동일 리소스(섀도우 맵)를 DSV로 세팅하기 전에
+		// SRV/DSV 동일 리소스(섀도우 맵)를 DSV로 세팅하기 전에
 		// PS에서 사용 중인 SRV(t4)를 명시적으로 언바인드한다.
 		ID3D11ShaderResourceView* nullSRV = nullptr;
 		m_->m_pDeviceContext->PSSetShaderResources(4, 1, &nullSRV);
@@ -1097,13 +1187,15 @@ void App::OnRender()
 				ID3D11Buffer* nullCB = nullptr; m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &nullCB);
 			}
 
-			// Per-model world
-			XMMATRIX rotYaw = XMMatrixRotationY(XMConvertToRadians(mdlPtr->rotDeg.y));
-			XMMATRIX rotPitch = XMMatrixRotationX(XMConvertToRadians(mdlPtr->rotDeg.x));
-			XMMATRIX rotRoll = XMMatrixRotationZ(XMConvertToRadians(mdlPtr->rotDeg.z));
+			// 회전 행렬 생성
 			XMMATRIX S = XMMatrixScaling(mdlPtr->scale.x, mdlPtr->scale.y, mdlPtr->scale.z);
+			XMMATRIX R = XMMatrixRotationQuaternion(XMQuaternionRotationRollPitchYaw(
+				XMConvertToRadians(mdlPtr->rotDeg.x),
+				XMConvertToRadians(mdlPtr->rotDeg.y),
+				XMConvertToRadians(mdlPtr->rotDeg.z)
+			));
 			XMMATRIX T = XMMatrixTranslation(mdlPtr->pos.x, mdlPtr->pos.y, mdlPtr->pos.z);
-			XMMATRIX W = S * rotPitch * rotYaw * rotRoll * T;
+			XMMATRIX W = S * R * T;
 
 			// Fill CB
 			ConstantBuffer cb = m_->m_ConstantBuffer;
@@ -1119,9 +1211,7 @@ void App::OnRender()
 			memcpy(mapped.pData, &cb, sizeof(ConstantBuffer));
 			m_->m_pDeviceContext->Unmap(m_->m_pConstantBuffer, 0);
 			m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
-
-			for (const auto& sub : mdlPtr->shared->subsets)
-				m_->m_pDeviceContext->DrawIndexed(sub.count, sub.start, 0);
+			for (const auto& sub : mdlPtr->shared->subsets) m_->m_pDeviceContext->DrawIndexed(sub.count, sub.start, 0);
 		}
 
 		// Restore
@@ -1142,32 +1232,33 @@ void App::OnRender()
 	m_->m_ConstantBuffer.shadowMapSize = (float)m_->m_ShadowSize;
 	m_->m_ConstantBuffer.shadowPCFRadius = m_->m_ShadowPCFRadius;
 	m_->m_ConstantBuffer.shadowEnabled = m_->m_ShadowEnabled;
-	{
-		// 비균등 스케일을 해결한 코드. 역전치 곱하기
-		auto invWorlNormal = XMMatrixInverse(nullptr, m_->m_baseProjection.world);
-		m_->m_ConstantBuffer.worldInvTranspose = XMMatrixTranspose(invWorlNormal);
-	}
+	// 비균등 스케일을 해결한 코드. 역전치 곱하기
+	auto invWorlNormal = XMMatrixInverse(nullptr, m_->m_baseProjection.world);
+	m_->m_ConstantBuffer.worldInvTranspose = XMMatrixTranspose(invWorlNormal);
 
 	// 기본 광원/카메라 UI 반영
-	{
-		XMFLOAT3 lightDir = m_->m_DirLight.direction;
-		XMVECTOR v = XMVector3Normalize(XMLoadFloat3(&lightDir));
-		XMStoreFloat3(&lightDir, v);
-		// DirectionalLight 필드 대입 정규화된 방향
-		m_->m_ConstantBuffer.dirLight = m_->m_DirLight;
-		m_->m_ConstantBuffer.dirLight.direction = lightDir;
-		m_->m_ConstantBuffer.dirLight.pad = 0.0f;
-	}
-
+	XMFLOAT3 lightDir = m_->m_DirLight.direction;
+	XMVECTOR v = XMVector3Normalize(XMLoadFloat3(&lightDir));
+	XMStoreFloat3(&lightDir, v);
+	// DirectionalLight 필드 대입 정규화된 방향
+	m_->m_ConstantBuffer.dirLight = m_->m_DirLight;
+	m_->m_ConstantBuffer.dirLight.direction = lightDir;
+	m_->m_ConstantBuffer.dirLight.pad = 0.0f;
 	m_->m_ConstantBuffer.eyePos = m_Camera.GetPosition();
 	m_->m_ConstantBuffer.pad = 0.0f;
+	// 감마 값 반영 (PBR 포함 전체 셰이더 공용)
+	m_->m_ConstantBuffer.gamma = m_->m_Gamma;
+	const PBRMaterialCPU& defPbr = m_->m_DefaultPbrMaterial;
+	m_->m_ConstantBuffer.pbrBaseColor = defPbr.baseColor;
+	m_->m_ConstantBuffer.pbrMetalness = defPbr.metalness;
+	m_->m_ConstantBuffer.pbrRoughness = defPbr.roughness;
+	m_->m_ConstantBuffer.pbrAO = defPbr.ambientOcclusion;
 	// 셰이딩 모드 전달 (맵 플래그는 오브젝트별로 설정)
 	m_->m_ConstantBuffer.shadingMode = (int)m_->m_ShadingMode;
 	m_->m_ConstantBuffer.enableNormalMap = 0;
 	m_->m_ConstantBuffer.useSpecularMap = 0;
 	m_->m_ConstantBuffer.useDiffuseMap = 1;
 	// Outline params 업데이트
-	// Rim 파라미터 업로드 제거
 	m_->m_ConstantBuffer.outlineThickness = m_->m_OutlineThickness;
 	m_->m_ConstantBuffer.outlineColor = m_->m_OutlineColor;
 	m_->m_ConstantBuffer.outlineStrength = m_->m_OutlineStrength;
@@ -1178,7 +1269,6 @@ void App::OnRender()
 	HR_T(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedData));
 	memcpy_s(mappedData.pData, sizeof(ConstantBuffer), &m_->m_ConstantBuffer, sizeof(ConstantBuffer));
 	m_->m_pDeviceContext->Unmap(m_->m_pConstantBuffer, 0);
-
 	m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
 	m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
 	m_->m_pDeviceContext->PSSetSamplers(0, 1, &m_->m_pSamplerState);
@@ -1187,7 +1277,6 @@ void App::OnRender()
 	if (m_->m_pShadowSRV)     m_->m_pDeviceContext->PSSetShaderResources(4, 1, &m_->m_pShadowSRV);
     // 큐브맵을 t1 슬롯에 바인딩 (픽셀 셰이더에서 g_TexCube : t1)
     m_->m_pDeviceContext->PSSetShaderResources(1, 1, &m_->m_pTextureSRV);
-
 
     /// ====================================== 큐브 ======================================
     for (auto& objPtr : m_->m_Objects)
@@ -1203,12 +1292,14 @@ void App::OnRender()
 
 		// 월드 행렬 세팅 + CB 업로드
 		ConstantBuffer cb = m_->m_ConstantBuffer;
-        XMMATRIX rotYaw = XMMatrixRotationY(XMConvertToRadians(mc.rotationDeg.y));
-        XMMATRIX rotPitch = XMMatrixRotationX(XMConvertToRadians(mc.rotationDeg.x));
-        XMMATRIX rotRoll = XMMatrixRotationZ(XMConvertToRadians(mc.rotationDeg.z));
         XMMATRIX Sm = XMMatrixScaling(mc.scale.x, mc.scale.y, mc.scale.z);
+		XMMATRIX Rm = XMMatrixRotationQuaternion(XMQuaternionRotationRollPitchYaw(
+			XMConvertToRadians(mc.rotationDeg.x),
+			XMConvertToRadians(mc.rotationDeg.y),
+			XMConvertToRadians(mc.rotationDeg.z)
+		));
         XMMATRIX Tm = XMMatrixTranslation(mc.position.x, mc.position.y, mc.position.z);
-        XMMATRIX W = Sm * rotPitch * rotYaw * rotRoll * Tm;
+        XMMATRIX W = Sm * Rm * Tm;
         cb.world = XMMatrixTranspose(W);
         cb.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(W)));
         // 큐브 개별 머티리얼 적용
@@ -1221,6 +1312,11 @@ void App::OnRender()
 		// 큐브는 텍스처가 없어도 머티리얼 색으로 그려지도록 맵 사용 비활성화
 		cb.enableNormalMap = (cubeObj->useNormalMap != 0) ? 1 : 0;
 		cb.useSpecularMap = (cubeObj->useSpecularMap != 0) ? 1 : 0;
+		const PBRMaterialCPU& cubePbr = m_->m_DefaultPbrMaterial;
+		cb.pbrBaseColor = cubePbr.baseColor;
+		cb.pbrMetalness = cubePbr.metalness;
+		cb.pbrRoughness = cubePbr.roughness;
+		cb.pbrAO = cubePbr.ambientOcclusion;
 
         // 면별 텍스처 유무에 따라 useDiffuseMap 업데이트 후 CB 업로드 및 드로우
 		for (int face = 0; face < 6; ++face)
@@ -1240,7 +1336,6 @@ void App::OnRender()
 			m_->m_pDeviceContext->Unmap(m_->m_pConstantBuffer, 0);
 			m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
 			m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
-
 			m_->m_pDeviceContext->PSSetShaderResources(0, 1, &srvDiffuse);
 			m_->m_pDeviceContext->PSSetShaderResources(2, 1, &srvNormal);
 			m_->m_pDeviceContext->PSSetShaderResources(3, 1, &srvSpec);
@@ -1299,16 +1394,17 @@ void App::OnRender()
 				// 스키닝 미사용 시 VS b1 해제(안전)
 				ID3D11Buffer* nullCB = nullptr; m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &nullCB);
 			}
-			if (mdlPtr->shared)
-				m_->m_pDeviceContext->IASetIndexBuffer(mdlPtr->shared->ib, DXGI_FORMAT_R32_UINT, 0);
+			if (mdlPtr->shared) m_->m_pDeviceContext->IASetIndexBuffer(mdlPtr->shared->ib, DXGI_FORMAT_R32_UINT, 0);
 
 			// 월드 행렬 per-model
-			XMMATRIX rotYaw = XMMatrixRotationY(XMConvertToRadians(mdlPtr->rotDeg.y));
-			XMMATRIX rotPitch = XMMatrixRotationX(XMConvertToRadians(mdlPtr->rotDeg.x));
-			XMMATRIX rotRoll = XMMatrixRotationZ(XMConvertToRadians(mdlPtr->rotDeg.z));
 			XMMATRIX S = XMMatrixScaling(mdlPtr->scale.x, mdlPtr->scale.y, mdlPtr->scale.z);
+			XMMATRIX R = XMMatrixRotationQuaternion(XMQuaternionRotationRollPitchYaw(
+				XMConvertToRadians(mdlPtr->rotDeg.x),
+				XMConvertToRadians(mdlPtr->rotDeg.y),
+				XMConvertToRadians(mdlPtr->rotDeg.z)
+			));
 			XMMATRIX T = XMMatrixTranslation(mdlPtr->pos.x, mdlPtr->pos.y, mdlPtr->pos.z);
-			XMMATRIX W = S * rotPitch * rotYaw * rotRoll * T;
+			XMMATRIX W = S * R * T;
 
 			ConstantBuffer cb = m_->m_ConstantBuffer;
 			cb.world = XMMatrixTranspose(W);
@@ -1317,6 +1413,14 @@ void App::OnRender()
 			cb.shadingMode = (int)mdlPtr->modelShading;
 			cb.enableNormalMap = m_->m_EnableNormalMapForCube;
 			cb.useSpecularMap = m_->m_UseSpecularMapForCube;
+			const PBRMaterialCPU* activePbrPtr = nullptr;
+			if (mdlPtr->useInstancePbrMaterial) activePbrPtr = &mdlPtr->instancePbrMaterial;
+			else activePbrPtr = &m_->m_DefaultPbrMaterial;
+			const PBRMaterialCPU& activePbr = *activePbrPtr;
+			cb.pbrBaseColor = activePbr.baseColor;
+			cb.pbrMetalness = activePbr.metalness;
+			cb.pbrRoughness = activePbr.roughness;
+			cb.pbrAO = activePbr.ambientOcclusion;
 
 			D3D11_MAPPED_SUBRESOURCE mapped;
 			HR_T(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped));
@@ -1336,7 +1440,6 @@ void App::OnRender()
 				m_->m_pDeviceContext->PSSetShaderResources(0, 1, &srvDiffuse);
 				m_->m_pDeviceContext->PSSetShaderResources(2, 1, &srvNormal);
 				m_->m_pDeviceContext->PSSetShaderResources(3, 1, &srvSpec);
-
 				m_->m_pDeviceContext->DrawIndexed(sub.count, sub.start, 0);
 			}
 
@@ -1546,18 +1649,15 @@ void App::OnRender()
 					};
 					XMFLOAT4 col = XMFLOAT4(1, 1, 0, 1); // 노란색
 					// 12 엣지 드로우
-					m_->m_LineRenderer->DrawLine(m_->m_pDeviceContext, c[0], c[1], col, m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
-					m_->m_LineRenderer->DrawLine(m_->m_pDeviceContext, c[1], c[2], col, m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
-					m_->m_LineRenderer->DrawLine(m_->m_pDeviceContext, c[2], c[3], col, m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
-					m_->m_LineRenderer->DrawLine(m_->m_pDeviceContext, c[3], c[0], col, m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
-					m_->m_LineRenderer->DrawLine(m_->m_pDeviceContext, c[4], c[5], col, m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
-					m_->m_LineRenderer->DrawLine(m_->m_pDeviceContext, c[5], c[6], col, m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
-					m_->m_LineRenderer->DrawLine(m_->m_pDeviceContext, c[6], c[7], col, m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
-					m_->m_LineRenderer->DrawLine(m_->m_pDeviceContext, c[7], c[4], col, m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
-					m_->m_LineRenderer->DrawLine(m_->m_pDeviceContext, c[0], c[4], col, m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
-					m_->m_LineRenderer->DrawLine(m_->m_pDeviceContext, c[1], c[5], col, m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
-					m_->m_LineRenderer->DrawLine(m_->m_pDeviceContext, c[2], c[6], col, m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
-					m_->m_LineRenderer->DrawLine(m_->m_pDeviceContext, c[3], c[7], col, m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
+					auto Draw = [&](const int& i, const int& j) {
+						m_->m_LineRenderer->DrawLine(m_->m_pDeviceContext, c[i], c[j], col, m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
+					};
+					// 박스 면 4개 선 그리기 (밑면)
+					Draw(0, 1); Draw(1, 2); Draw(2, 3); Draw(3, 0);
+					// 박스 면 4개 선 그리기 (윗면)
+					Draw(4, 5); Draw(5, 6); Draw(6, 7); Draw(7, 4);
+					// 박스 세로 4개 선 그리기 (밑면과 윗면 연결)
+					Draw(0, 4); Draw(1, 5); Draw(2, 6); Draw(3, 7);
 
 					// VS/IL/b1 복원
 					if (prevVS) { m_->m_pDeviceContext->VSSetShader(prevVS, nullptr, 0); prevVS->Release(); }
@@ -2116,7 +2216,7 @@ void App::RenderWidgetUI()
 			std::string modeLine = std::string("Shader Mode: ") + shaderModeToString(mdl.modelShading);
 			std::string outline = std::string("Outline: ") + (mdl.outlineEnabled ? "On" : "Off");
 			ImVec2 sp;
-			if (WorldToScreen(mdl.pos + XMFLOAT3(0,1.6,0), view, proj, io.DisplaySize.x, io.DisplaySize.y, sp))
+			if (WorldToScreen(mdl.pos + XMFLOAT3(0,1.6f,0), view, proj, io.DisplaySize.x, io.DisplaySize.y, sp))
 			{
 				ImVec2 szLabel = ImGui::CalcTextSize(label.c_str());
 				ImVec2 szMode = ImGui::CalcTextSize(modeLine.c_str());
@@ -2165,7 +2265,7 @@ bool App::InitBasicEffect()
 	};
 
 	ID3D10Blob* vertexShaderBuffer = nullptr;
-	HR_T(CompileShaderFromFile(L"28_BasicVS.hlsl", "main", "vs_5_0", &vertexShaderBuffer));
+	HR_T(CompileShaderFromFile(L"30_BasicVS.hlsl", "main", "vs_5_0", &vertexShaderBuffer));
 	HR_T(m_->m_pDevice->CreateInputLayout(layout, ARRAYSIZE(layout),
 		vertexShaderBuffer->GetBufferPointer(), vertexShaderBuffer->GetBufferSize(), &m_->m_pInputLayout));
 
@@ -2182,7 +2282,7 @@ bool App::InitBasicEffect()
 		{ "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 	};
 	ID3D10Blob* vsNoTBN = nullptr;
-	HR_T(CompileShaderFromFile(L"28_BasicVS.hlsl", "VSNoTBN", "vs_5_0", &vsNoTBN));
+	HR_T(CompileShaderFromFile(L"30_BasicVS.hlsl", "VSNoTBN", "vs_5_0", &vsNoTBN));
 	HR_T(m_->m_pDevice->CreateInputLayout(layoutNoTBN, ARRAYSIZE(layoutNoTBN), vsNoTBN->GetBufferPointer(), vsNoTBN->GetBufferSize(), &m_->m_pInputLayoutNoTBN));
 	HR_T(m_->m_pDevice->CreateVertexShader(vsNoTBN->GetBufferPointer(), vsNoTBN->GetBufferSize(), nullptr, &m_->m_pVertexShaderNoTBN));
 	SAFE_RELEASE(vsNoTBN);
@@ -2195,7 +2295,7 @@ bool App::InitBasicEffect()
 		{ "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 	};
 	ID3D10Blob* vsLine = nullptr;
-	HR_T(CompileShaderFromFile(L"28_BasicVS.hlsl", "VSLine", "vs_5_0", &vsLine));
+	HR_T(CompileShaderFromFile(L"30_BasicVS.hlsl", "VSLine", "vs_5_0", &vsLine));
 
 	// FBX GPU 스키닝용 VS/IL 생성 (POSITION,NORMAL,TANGENT,BINORMAL,COLOR,TEXCOORD,BLENDINDICES,BLENDWEIGHT)
 	{
@@ -2211,7 +2311,7 @@ bool App::InitBasicEffect()
 			{ "BLENDWEIGHT",  0, DXGI_FORMAT_R32G32B32A32_FLOAT,0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 		};
 		ID3D10Blob* vsSkinned = nullptr;
-		HR_T(CompileShaderFromFile(L"28_BasicVS.hlsl", "VSSkinned", "vs_5_0", &vsSkinned));
+		HR_T(CompileShaderFromFile(L"30_BasicVS.hlsl", "VSSkinned", "vs_5_0", &vsSkinned));
 		HR_T(m_->m_pDevice->CreateInputLayout(layoutSkinned, ARRAYSIZE(layoutSkinned), vsSkinned->GetBufferPointer(), vsSkinned->GetBufferSize(), &m_->m_pInputLayoutSkinned));
 		HR_T(m_->m_pDevice->CreateVertexShader(vsSkinned->GetBufferPointer(), vsSkinned->GetBufferSize(), nullptr, &m_->m_pVertexShaderSkinned));
 		SAFE_RELEASE(vsSkinned);
@@ -2224,12 +2324,12 @@ bool App::InitBasicEffect()
 	// Outline VS
 	{
 		ID3D10Blob* vsOutline = nullptr;
-		HR_T(CompileShaderFromFile(L"28_BasicVS.hlsl", "VSOutline", "vs_5_0", &vsOutline));
+		HR_T(CompileShaderFromFile(L"30_BasicVS.hlsl", "VSOutline", "vs_5_0", &vsOutline));
 		HR_T(m_->m_pDevice->CreateVertexShader(vsOutline->GetBufferPointer(), vsOutline->GetBufferSize(), nullptr, &m_->m_pVertexShaderOutline));
 		SAFE_RELEASE(vsOutline);
 
 		ID3D10Blob* vsSkinnedOutline = nullptr;
-		HR_T(CompileShaderFromFile(L"28_BasicVS.hlsl", "VSSkinnedOutline", "vs_5_0", &vsSkinnedOutline));
+		HR_T(CompileShaderFromFile(L"30_BasicVS.hlsl", "VSSkinnedOutline", "vs_5_0", &vsSkinnedOutline));
 		HR_T(m_->m_pDevice->CreateVertexShader(vsSkinnedOutline->GetBufferPointer(), vsSkinnedOutline->GetBufferSize(), nullptr, &m_->m_pVertexShaderSkinnedOutline));
 		SAFE_RELEASE(vsSkinnedOutline);
 	}
@@ -2237,12 +2337,12 @@ bool App::InitBasicEffect()
 	// Shadow VS (depth-only)
 	{
 		ID3D10Blob* vsShadow = nullptr;
-		HR_T(CompileShaderFromFile(L"28_BasicVS.hlsl", "VSShadow", "vs_5_0", &vsShadow));
+		HR_T(CompileShaderFromFile(L"30_BasicVS.hlsl", "VSShadow", "vs_5_0", &vsShadow));
 		HR_T(m_->m_pDevice->CreateVertexShader(vsShadow->GetBufferPointer(), vsShadow->GetBufferSize(), nullptr, &m_->m_pVSShadow));
 		SAFE_RELEASE(vsShadow);
 
 		ID3D10Blob* vsSkinnedShadow = nullptr;
-		HR_T(CompileShaderFromFile(L"28_BasicVS.hlsl", "VSSkinnedShadow", "vs_5_0", &vsSkinnedShadow));
+		HR_T(CompileShaderFromFile(L"30_BasicVS.hlsl", "VSSkinnedShadow", "vs_5_0", &vsSkinnedShadow));
 		HR_T(m_->m_pDevice->CreateVertexShader(vsSkinnedShadow->GetBufferPointer(), vsSkinnedShadow->GetBufferSize(), nullptr, &m_->m_pVSSkinnedShadow));
 		SAFE_RELEASE(vsSkinnedShadow);
 	}
@@ -2250,7 +2350,7 @@ bool App::InitBasicEffect()
 
 	// Pixel Shader -------------------------------------
 	ID3D10Blob* pixelShaderBuffer = nullptr;
-	HR_T(CompileShaderFromFile(L"28_BasicPS.hlsl", "main", "ps_4_0", &pixelShaderBuffer));
+	HR_T(CompileShaderFromFile(L"30_BasicPS.hlsl", "main", "ps_4_0", &pixelShaderBuffer));
 	HR_T(m_->m_pDevice->CreatePixelShader(pixelShaderBuffer->GetBufferPointer(),
 		pixelShaderBuffer->GetBufferSize(), NULL, &m_->m_pPixelShader));
 	SAFE_RELEASE(pixelShaderBuffer);	// 픽셀 셰이더 버퍼 더이상 필요없음
@@ -2258,7 +2358,7 @@ bool App::InitBasicEffect()
 	// Outline 전용 Pixel Shader (PSOutline)
 	{
 		ID3D10Blob* psOutline = nullptr;
-		HR_T(CompileShaderFromFile(L"28_BasicPS.hlsl", "PSOutline", "ps_4_0", &psOutline));
+		HR_T(CompileShaderFromFile(L"30_BasicPS.hlsl", "PSOutline", "ps_4_0", &psOutline));
 		HR_T(m_->m_pDevice->CreatePixelShader(psOutline->GetBufferPointer(), psOutline->GetBufferSize(), nullptr, &m_->m_pPixelShaderOutline));
 		SAFE_RELEASE(psOutline);
 	}
@@ -2274,7 +2374,7 @@ bool App::InitSkyBoxEffect()
 	};
 
 	ID3D10Blob* vertexShaderBuffer = nullptr;
-	HR_T(CompileShaderFromFile(L"28_SkyBoxVS.hlsl", "VS", "vs_4_0", &vertexShaderBuffer));
+	HR_T(CompileShaderFromFile(L"30_SkyBoxVS.hlsl", "VS", "vs_4_0", &vertexShaderBuffer));
 	HR_T(m_->m_pDevice->CreateInputLayout(layout, ARRAYSIZE(layout),
 		vertexShaderBuffer->GetBufferPointer(), vertexShaderBuffer->GetBufferSize(), &m_->m_pSkyBoxInputLayout));
 
@@ -2284,7 +2384,7 @@ bool App::InitSkyBoxEffect()
 
 	// Pixel Shader -------------------------------------
 	ID3D10Blob* pixelShaderBuffer = nullptr;
-	HR_T(CompileShaderFromFile(L"28_SkyBoxPS.hlsl", "PS", "ps_4_0", &pixelShaderBuffer));
+	HR_T(CompileShaderFromFile(L"30_SkyBoxPS.hlsl", "PS", "ps_4_0", &pixelShaderBuffer));
 	HR_T(m_->m_pDevice->CreatePixelShader(pixelShaderBuffer->GetBufferPointer(),
 		pixelShaderBuffer->GetBufferSize(), NULL, &m_->m_pSkyBoxPixelShader));
 	SAFE_RELEASE(pixelShaderBuffer);	// 픽셀 셰이더 버퍼 더이상 필요없음
@@ -2417,6 +2517,7 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
 		// 모델별 셰이딩 초기값 = 현재 글로벌 셰이딩, 아웃라인 기본은 Toon일 때만 ON
 		entry->modelShading = m_->m_ShadingMode;
 		entry->outlineEnabled = (entry->modelShading == ShadingMode::ToonShading);
+		entry->instancePbrMaterial = m_->m_DefaultPbrMaterial;
 
 		// FBX 인스턴스 애니메이터를 로드 시점에 1회 초기화
 		if (entry->source == ModelSource::FBX && entry->shared && entry->shared->fbx)
@@ -2441,13 +2542,6 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
 
 void App::UnloadModel()
 {
-	if (m_->m_Models.empty())
-	{
-		m_->m_SelectedModelIdx = -1;
-		m_->m_SelectedBoneIdx = -1;
-		return;
-	}
-
 	m_->m_Models.clear();
 	m_->m_SelectedModelIdx = -1;
 	m_->m_SelectedBoneIdx = -1;
@@ -2523,7 +2617,7 @@ void App::RenderControlPannel()
 		ImGui::Text("Shading");
 		{
 			int mode = (int)m_->m_ShadingMode;
-			const char* modes[] = { "Phong", "Blinn-Phong", "Lambert", "Unlit", "TextureOnly", "ToonShading" };
+			const char* modes[] = { "Phong", "Blinn-Phong", "Lambert", "Unlit", "TextureOnly", "ToonShading", "PBR" };
 			if (ImGui::Combo("Shading Mode", &mode, modes, IM_ARRAYSIZE(modes)))
 			{
 				m_->m_ShadingMode = (ShadingMode)mode;
@@ -2546,19 +2640,32 @@ void App::RenderControlPannel()
 		ImGui::ColorEdit4("Specular", &m_->m_DirLight.specular.x);
 		if (ImGui::Button("Reset Light"))
 		{
-			m_->m_DirLight = { XMFLOAT4(0,0,0,1), XMFLOAT4(1,1,1,1), XMFLOAT4(0.7,0.7,0.7,1), XMFLOAT3(0,0,1), 0.0f };
+			m_->m_DirLight = { XMFLOAT4(0,0,0,1), XMFLOAT4(1,1,1,1), XMFLOAT4(0.7f,0.7f,0.7f,1), XMFLOAT3(0,0,1), 0.0f };
 		}
 		ImGui::Separator();
-		ImGui::Text("Material");
+		ImGui::Text("Material / PBR");
 		ImGui::ColorEdit4("Ambient (ka)", &m_->m_Material.ambient.x);
 		ImGui::ColorEdit4("Diffuse (kd)", &m_->m_Material.diffuse.x);
 		ImGui::ColorEdit4("Specular (ks)", &m_->m_Material.specular.x);
 		ImGui::DragFloat("Shininess (alpha)", &m_->m_Material.specular.w, 0.05f, 1.0f, 256.0f);
-		ImGui::ColorEdit4("Reflect (kr, a=roughness)", &m_->m_Material.reflect.x);
+		ImGui::ColorEdit4("Reflect (R=metal, A=roughness)", &m_->m_Material.reflect.x);
 		if (ImGui::Button("Reset Material"))
 		{
 			m_->m_Material = { XMFLOAT4(1,1,1,1), XMFLOAT4(1,1,1,1), XMFLOAT4(1,1,1,32), XMFLOAT4(0,0,0,0) };
 		}
+		// PBR / 전체 화면 감마 값 (1.4~10.0 범위에서 조절, 눈의 오차를 감안해 여유 범위 확보)
+		ImGui::SliderFloat("Gamma", &m_->m_Gamma, 1.4f, 10.0f, "%.2f");
+
+		ImGui::SeparatorText("PBR Material");
+		ImGui::ColorEdit3("Base Color##PBR", &m_->m_DefaultPbrMaterial.baseColor.x);
+		ImGui::SliderFloat("Metalness##PBR", &m_->m_DefaultPbrMaterial.metalness, 0.0f, 1.0f, "%.2f");
+		ImGui::SliderFloat("Roughness##PBR", &m_->m_DefaultPbrMaterial.roughness, 0.04f, 1.0f, "%.2f");
+		ImGui::SliderFloat("Ambient Occlusion##PBR", &m_->m_DefaultPbrMaterial.ambientOcclusion, 0.0f, 1.0f, "%.2f");
+		if (ImGui::Button("Reset PBR Material"))
+		{
+			m_->m_DefaultPbrMaterial = PBRMaterialCPU{};
+		}
+
 		ImGui::Separator();
 	}
 	ImGui::End();
@@ -2706,7 +2813,7 @@ void App::RenderModelPannel()
                     // 셰이딩 모드 선택 UI 
                     {
                         int modePer = (int)mdl.modelShading;
-                        const char* modes[] = { "Phong", "Blinn-Phong", "Lambert", "Unlit", "TextureOnly", "ToonShading" };
+                        const char* modes[] = { "Phong", "Blinn-Phong", "Lambert", "Unlit", "TextureOnly", "ToonShading", "PBR" };
                         if (ImGui::Combo("Shading Mode", &modePer, modes, IM_ARRAYSIZE(modes)))
                         {
                             mdl.modelShading = (ShadingMode)modePer;
@@ -2725,6 +2832,24 @@ void App::RenderModelPannel()
                         ImGui::DragFloat("Shininess (alpha)##inst", &mdl.instanceMaterial.specular.w, 0.05f, 1.0f, 256.0f);
                         ImGui::ColorEdit4("Reflect (kr,a)##inst", &mdl.instanceMaterial.reflect.x);
                     }
+
+					ImGui::SeparatorText("PBR Material");
+					ImGui::Checkbox("Use Instance PBR Material", &mdl.useInstancePbrMaterial);
+					if (mdl.useInstancePbrMaterial)
+					{
+						ImGui::ColorEdit3("Base Color##instPBR", &mdl.instancePbrMaterial.baseColor.x);
+						ImGui::SliderFloat("Metalness##instPBR", &mdl.instancePbrMaterial.metalness, 0.0f, 1.0f, "%.2f");
+						ImGui::SliderFloat("Roughness##instPBR", &mdl.instancePbrMaterial.roughness, 0.04f, 1.0f, "%.2f");
+						ImGui::SliderFloat("Ambient Occlusion##instPBR", &mdl.instancePbrMaterial.ambientOcclusion, 0.0f, 1.0f, "%.2f");
+					}
+					else
+					{
+						const auto& defPbr = m_->m_DefaultPbrMaterial;
+						ImGui::Text("Base Color: (%.2f, %.2f, %.2f)", defPbr.baseColor.x, defPbr.baseColor.y, defPbr.baseColor.z);
+						ImGui::Text("Metalness: %.2f", defPbr.metalness);
+						ImGui::Text("Roughness: %.2f", defPbr.roughness);
+						ImGui::Text("AO: %.2f", defPbr.ambientOcclusion);
+					}
 
                     ImGui::Separator();
                     // 디버그 AABB 기준 본 인덱스 설정 (-1: Auto)
