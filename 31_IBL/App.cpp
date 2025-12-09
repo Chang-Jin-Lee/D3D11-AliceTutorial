@@ -427,7 +427,7 @@ struct App::Impl {
 	float							m_OutlineThickness = 0.08f;
 	XMFLOAT4						m_OutlineColor = XMFLOAT4(1.0, 0.7286f, 0, 1);
 	float							m_OutlineStrength = 1.0f;
-	int								m_EnableNormalMapForCube = 1;
+	int								m_EnableNormalMapForCube = 0;
 	int								m_UseSpecularMapForCube = 0;
 	int								m_UseTextureColor = 1;		// 0: 텍스처 색 무시, 1: 텍스처 색 사용(PBR)
 	int								m_LegacyShading = 1;
@@ -633,10 +633,10 @@ bool App::OnInitialize()
 	m_->m_SkyBoxChoice = App::Impl::SkyBoxChoice::Sample;
 
 	// ====================================== 3D 모델 ======================================
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\char\\char.fbx"); // 0
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\sphere.fbx"); // 0
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\sphere.fbx"); // 0
 	LoadModelFromFile(L"..\\Resource\\fbx\\Rapi.fbx"); // 0
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\sphere.fbx"); // 0
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\sphere.fbx"); // 0
+	LoadModelFromFile(L"..\\Resource\\fbx\\Neon.fbx"); // 0
 
 	m_->m_Objects.clear();
 	for (int mi = 0; mi < (int)m_->m_Models.size(); ++mi)
@@ -650,6 +650,7 @@ bool App::OnInitialize()
 	m_->m_Models[3]->modelShading = ShadingMode::PBR;
 
 	m_->m_Models[0]->pos = XMFLOAT3(0, 0.0f, 0.0f);
+	m_->m_Models[0]->scale = XMFLOAT3(0.5f, 0.5f, 0.5f);
 	m_->m_Models[1]->pos = XMFLOAT3(130, 0.0f, 0.0f);
 	m_->m_Models[2]->pos = XMFLOAT3(-130, 0.0f, 0.0f);
 	m_->m_Models[2]->pos = XMFLOAT3(-130, 0.0f, 50.0f);
@@ -676,9 +677,9 @@ bool App::OnInitialize()
 	m_->m_Objects.push_back(std::move(co2));
 
 	// ====================================== 카메라 ======================================
-	m_Camera.SetPosition(XMFLOAT3(16.0f, 153.0f, -53.0f));
+	m_Camera.SetPosition(XMFLOAT3(14.0f, 114.0f, -108.0f));
 	m_Camera.SetSpeed(150.5f);
-	m_Camera.SetRotation(XMFLOAT3(12.0f, -15.0f, 0.0f));
+	m_Camera.SetRotation(XMFLOAT3(24.0f, -4.5f, 0.0f));
 
 	m_->m_OutlineThickness = 0.3f;
 	m_->m_OutlineColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 1);
