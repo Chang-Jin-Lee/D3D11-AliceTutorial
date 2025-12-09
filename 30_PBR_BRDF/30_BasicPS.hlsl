@@ -153,7 +153,7 @@ float4 main(VertexOut pIn) : SV_Target
 			// 텍스처 색 사용 안 함: 고정 회색
 			albedoPBR = g_PBRBaseColor.rgb;
 		}
-		roughness = max(roughness, 0.04f); // 완전 0은 되지 않도록 하자
+		roughness = max(roughness, 0.001f); // 완전 0은 되지 않도록 하자
 		float ao = saturate(g_PBRAmbientOcclusion);
 
 		// F0 : 금속은 알베도, 비도체는 0.04 근처

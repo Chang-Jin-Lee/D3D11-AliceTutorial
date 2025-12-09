@@ -2568,7 +2568,7 @@ void App::RenderControlPannel()
 
 		ImGui::ColorEdit3("Base Color##PBR", &m_->m_DefaultPbrMaterial.baseColor.x);
 		ImGui::SliderFloat("Metalness##PBR", &m_->m_DefaultPbrMaterial.metalness, 0.0f, 1.0f, "%.2f");
-		ImGui::SliderFloat("Roughness##PBR", &m_->m_DefaultPbrMaterial.roughness, 0.04f, 1.0f, "%.2f");
+		ImGui::SliderFloat("Roughness##PBR", &m_->m_DefaultPbrMaterial.roughness, 0.0f, 1.0f, "%.2f");
 		ImGui::SliderFloat("Ambient Occlusion##PBR", &m_->m_DefaultPbrMaterial.ambientOcclusion, 0.0f, 1.0f, "%.2f");
 		if (ImGui::Button("Reset PBR Material"))
 		{
@@ -2846,7 +2846,7 @@ void App::RenderModelPannel()
 					{
 						ImGui::ColorEdit3("Base Color##instPBR", &mdl.instancePbrMaterial.baseColor.x);
 						ImGui::SliderFloat("Metalness##instPBR", &mdl.instancePbrMaterial.metalness, 0.0f, 1.0f, "%.2f");
-						ImGui::SliderFloat("Roughness##instPBR", &mdl.instancePbrMaterial.roughness, 0.04f, 1.0f, "%.2f");
+						ImGui::SliderFloat("Roughness##instPBR", &mdl.instancePbrMaterial.roughness, 0.0f, 1.0f, "%.2f");
 						ImGui::SliderFloat("Ambient Occlusion##instPBR", &mdl.instancePbrMaterial.ambientOcclusion, 0.0f, 1.0f, "%.2f");
 					}
 					else
