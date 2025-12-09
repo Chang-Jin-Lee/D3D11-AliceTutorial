@@ -50,8 +50,8 @@ bool FbxModel::Load(ID3D11Device* device, const std::wstring& pathW)
 {
 	Release();
 	m_->importer = std::make_unique<Assimp::Importer>();
-    // FBX ÇÇ¹þ/ÇÁ¸®/Æ÷½ºÆ® È¸Àü º¸Á¸À» ²ô¸é Assimp°¡ »ý¼ºÇÏ´Â _$AssimpFbx$* ÇïÆÛ ³ëµå°¡ Á¦°ÅµÇ¾î
-    // º»/³ëµå ¼ö°¡ DCC(Blender)¿Í ´õ ÀÏÄ¡ÇÏ°Ô µË´Ï´Ù.
+    // FBX í”¼ë²—/í”„ë¦¬/í¬ìŠ¤íŠ¸ íšŒì „ ë³´ì¡´ì„ ë„ë©´ Assimpê°€ ìƒì„±í•˜ëŠ” _$AssimpFbx$* í—¬í¼ ë…¸ë“œê°€ ì œê±°ë˜ì–´
+    // ë³¸/ë…¸ë“œ ìˆ˜ê°€ DCC(Blender)ì™€ ë” ì¼ì¹˜í•˜ê²Œ ë©ë‹ˆë‹¤.
     m_->importer->SetPropertyBool(AI_CONFIG_IMPORT_FBX_PRESERVE_PIVOTS, false);
 	m_->importer->SetPropertyInteger(AI_CONFIG_PP_LBW_MAX_WEIGHTS, 4);
 	std::string pathA = Utf8FromWString(pathW);
