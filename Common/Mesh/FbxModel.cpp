@@ -212,6 +212,7 @@ const std::vector<FbxSubset>& FbxModel::GetSubsets() const { return m_->geometry
 const std::vector<ID3D11ShaderResourceView*>& FbxModel::GetMaterialSRVs() const { return m_->materials.GetMaterialSRVs(); }
 const std::vector<ID3D11ShaderResourceView*>& FbxModel::GetMetallicSRVs() const { return m_->materials.GetMetallicSRVs(); }
 const std::vector<ID3D11ShaderResourceView*>& FbxModel::GetRoughnessSRVs() const { return m_->materials.GetRoughnessSRVs(); }
+const std::vector<ID3D11ShaderResourceView*>& FbxModel::GetNormalSRVs() const { return m_->materials.GetNormalSRVs(); }
 
 // Skeleton/animation
 bool FbxModel::HasSkeleton() const { return m_->skeleton.HasBones(); }

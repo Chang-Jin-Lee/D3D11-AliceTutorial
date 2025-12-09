@@ -18,6 +18,7 @@ struct FbxMaterialLoader::Impl
 	std::vector<ID3D11ShaderResourceView*> baseColorSRVs;
 	std::vector<ID3D11ShaderResourceView*> metallicSRVs;
 	std::vector<ID3D11ShaderResourceView*> roughnessSRVs;
+	std::vector<ID3D11ShaderResourceView*> normalSRVs;
 	std::unordered_map<std::wstring, ID3D11ShaderResourceView*> cache;
 	ID3D11ShaderResourceView* white = nullptr; // 기본 색상 / roughness 기본값(1)
 	ID3D11ShaderResourceView* black = nullptr; // metallic 기본값(0)
@@ -31,9 +32,11 @@ void FbxMaterialLoader::Clear()
 	for (auto* p : m_->baseColorSRVs) SAFE_RELEASE(p);
 	for (auto* p : m_->metallicSRVs) SAFE_RELEASE(p);
 	for (auto* p : m_->roughnessSRVs) SAFE_RELEASE(p);
+	for (auto* p : m_->normalSRVs) SAFE_RELEASE(p);
 	m_->baseColorSRVs.clear();
 	m_->metallicSRVs.clear();
 	m_->roughnessSRVs.clear();
+	m_->normalSRVs.clear();
 
 	for (auto& kv : m_->cache) { SAFE_RELEASE(kv.second); }
 	m_->cache.clear();
@@ -58,6 +61,11 @@ const std::vector<ID3D11ShaderResourceView*>& FbxMaterialLoader::GetMetallicSRVs
 const std::vector<ID3D11ShaderResourceView*>& FbxMaterialLoader::GetRoughnessSRVs() const
 {
 	return m_->roughnessSRVs;
+}
+
+const std::vector<ID3D11ShaderResourceView*>& FbxMaterialLoader::GetNormalSRVs() const
+{
+	return m_->normalSRVs;
 }
 
 static ID3D11ShaderResourceView* FindCached(std::unordered_map<std::wstring, ID3D11ShaderResourceView*>& cache, const std::wstring& key)
@@ -330,6 +338,7 @@ bool FbxMaterialLoader::Load(ID3D11Device* device, const aiScene* scene, const s
 	m_->baseColorSRVs.assign(matCount, nullptr);
 	m_->metallicSRVs.assign(matCount, nullptr);
 	m_->roughnessSRVs.assign(matCount, nullptr);
+	m_->normalSRVs.assign(matCount, nullptr);
 
 	for (unsigned m = 0; m < scene->mNumMaterials; ++m)
 	{
@@ -357,6 +366,25 @@ bool FbxMaterialLoader::Load(ID3D11Device* device, const aiScene* scene, const s
 			baseDir,
 			m_->cache,
 			m_->white);
+
+		// Normal map (tangent-space). 우선 NORMALS, 없으면 HEIGHT도 한 번 더 시도.
+		ID3D11ShaderResourceView* nrm = LoadTextureFromMaterial(
+			device, scene, mat,
+			aiTextureType_NORMALS,
+			baseDir,
+			m_->cache,
+			nullptr);
+		if (!nrm)
+		{
+			nrm = LoadTextureFromMaterial(
+				device, scene, mat,
+				aiTextureType_HEIGHT,
+				baseDir,
+				m_->cache,
+				nullptr);
+		}
+		m_->normalSRVs[m] = nrm;
+
 	}
 
 	return true;

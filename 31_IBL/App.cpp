@@ -52,7 +52,6 @@
 #include "SceneA.h"
 #include "SceneB.h"
 #include <directxtk/GamePad.h>
-
 #pragma comment (lib, "d3d11.lib")
 #pragma comment(lib,"d3dcompiler.lib")
 #pragma comment(lib, "Comdlg32.lib")
@@ -112,7 +111,8 @@ struct SharedModelData
 	int           indexCount = 0;
 	UINT          stride = 0;
 	std::vector<ModelSubset> subsets;
-	std::vector<ID3D11ShaderResourceView*> materialSRVs; // 공유 텍스처
+	std::vector<ID3D11ShaderResourceView*> materialSRVs; // BaseColor/Albedo 텍스처
+	std::vector<ID3D11ShaderResourceView*> normalSRVs;   // 노말맵 텍스처 (옵션)
 };
 
 // 여러 모델을 그리기 위한 구조체
@@ -296,42 +296,6 @@ static bool ComputeMeshStats(ID3D11Device* device, ID3D11DeviceContext* ctx,
 	}
 	SAFE_RELEASE(staging);
 	return ok;
-}
-
-// GPU VB를 스테이징으로 복사해 로컬 공간 AABB(min/max) 계산 (pos는 오프셋 0에 float3로 가정)
-static bool ComputeLocalAABB(ID3D11Device* device, ID3D11DeviceContext* ctx,
-    ID3D11Buffer* vb, UINT vertexStride,
-    DirectX::XMFLOAT3& outMin, DirectX::XMFLOAT3& outMax)
-{
-    if (!device || !ctx || !vb || vertexStride < sizeof(float) * 3) return false;
-    D3D11_BUFFER_DESC vbd{}; vb->GetDesc(&vbd);
-    if (vbd.ByteWidth == 0) return false;
-
-    D3D11_BUFFER_DESC sd = vbd; sd.Usage = D3D11_USAGE_STAGING; sd.BindFlags = 0; sd.CPUAccessFlags = D3D11_CPU_ACCESS_READ; sd.MiscFlags = 0;
-    ID3D11Buffer* staging = nullptr;
-    if (FAILED(device->CreateBuffer(&sd, nullptr, &staging))) return false;
-    ctx->CopyResource(staging, vb);
-
-    bool ok = false;
-    D3D11_MAPPED_SUBRESOURCE mapped{};
-    if (SUCCEEDED(ctx->Map(staging, 0, D3D11_MAP_READ, 0, &mapped)))
-    {
-        const uint8_t* base = reinterpret_cast<const uint8_t*>(mapped.pData);
-        size_t vcount = vbd.ByteWidth / vertexStride;
-        using namespace DirectX;
-        XMFLOAT3 mn(FLT_MAX, FLT_MAX, FLT_MAX), mx(-FLT_MAX, -FLT_MAX, -FLT_MAX);
-        for (size_t i = 0; i < vcount; ++i)
-        {
-            const float* p = reinterpret_cast<const float*>(base + i * vertexStride);
-            float x = p[0], y = p[1], z = p[2];
-            if (x < mn.x) mn.x = x; if (y < mn.y) mn.y = y; if (z < mn.z) mn.z = z;
-            if (x > mx.x) mx.x = x; if (y > mx.y) mx.y = y; if (z > mx.z) mx.z = z;
-        }
-        ctx->Unmap(staging, 0);
-        outMin = mn; outMax = mx; ok = true;
-    }
-    SAFE_RELEASE(staging);
-    return ok;
 }
 
 // pImpl 정의
@@ -521,6 +485,7 @@ struct App::Impl {
 	bool                         m_ShowScenePopup = false;
 	float                        m_ScenePopupTimer = 0.0f;
 	std::string                  m_ScenePopupMessage;
+	
 };
 
 App::App() : m_(new Impl) {}
@@ -1278,9 +1243,18 @@ void App::OnRender()
 			for (const auto& sub : (mdlPtr->shared ? mdlPtr->shared->subsets : std::vector<ModelSubset>{}))
 			{
 				ID3D11ShaderResourceView* srvDiffuse = nullptr;
-				if (mdlPtr->shared && sub.materialIndex < mdlPtr->shared->materialSRVs.size()) srvDiffuse = mdlPtr->shared->materialSRVs[sub.materialIndex];
+				if (mdlPtr->shared && sub.materialIndex < mdlPtr->shared->materialSRVs.size())
+					srvDiffuse = mdlPtr->shared->materialSRVs[sub.materialIndex];
 				if (!srvDiffuse) srvDiffuse = m_->m_pFallbackWhite;
-				ID3D11ShaderResourceView* srvNormal = (m_->m_EnableNormalMapForCube != 0) ? m_->m_pFallbackNormal : nullptr;
+				ID3D11ShaderResourceView* srvNormal = nullptr;
+				if (m_->m_EnableNormalMapForCube != 0)
+				{
+					if (mdlPtr->shared && sub.materialIndex < mdlPtr->shared->normalSRVs.size())
+					{
+						srvNormal = mdlPtr->shared->normalSRVs[sub.materialIndex];
+					}
+					if (!srvNormal) srvNormal = m_->m_pFallbackNormal;
+				}
 				ID3D11ShaderResourceView* srvSpec = (m_->m_UseSpecularMapForCube != 0) ? m_->m_pFallbackWhite : nullptr;
 				m_->m_pDeviceContext->PSSetShaderResources(0, 1, &srvDiffuse);
 				m_->m_pDeviceContext->PSSetShaderResources(2, 1, &srvNormal);
@@ -1294,67 +1268,6 @@ void App::OnRender()
 	m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShader, nullptr, 0);
 	ID3D11Buffer* nullCB = nullptr;
 	m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &nullCB);
-
-	// ====================================== 라이트 위치 마커 큐브 ======================================
-	// 라이트 위치 마커 큐브 그리기 (작은 스케일, 흰색) - 항상
-	{
-		ConstantBuffer marker = m_->m_ConstantBuffer;
-		XMMATRIX S = XMMatrixScaling(1.0f, 1.0f, 1.0f);
-		XMMATRIX T = XMMatrixTranslation(m_->m_LightPosition.x, m_->m_LightPosition.y, m_->m_LightPosition.z);
-		marker.world = XMMatrixTranspose(S * T);
-		marker.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(S * T)));
-		marker.pad = 2.0f; // PS에서 흰색 출력 토글
-		marker.shadingMode = (int)m_->m_ShadingMode;
-
-		D3D11_MAPPED_SUBRESOURCE mapped;
-		HR_T(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped));
-		memcpy_s(mapped.pData, sizeof(ConstantBuffer), &marker, sizeof(ConstantBuffer));
-		m_->m_pDeviceContext->Unmap(m_->m_pConstantBuffer, 0);
-		m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
-		m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
-
-		UINT dbgStride = sizeof(VertexLightTex);
-		UINT dbgOffset = 0;
-		m_->m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-		m_->m_pDeviceContext->IASetVertexBuffers(0, 1, &m_->m_pDebugBoxVB, &dbgStride, &dbgOffset);
-		m_->m_pDeviceContext->IASetInputLayout(m_->m_pInputLayout);
-		m_->m_pDeviceContext->IASetIndexBuffer(m_->m_pDebugBoxIB, DXGI_FORMAT_R32_UINT, 0);
-		m_->m_pDeviceContext->DrawIndexed(m_->m_DebugBoxIndexCount, 0, 0);
-	}
-
-	// ====================================== 라이트 방향 표시 라인 마커 큐브 ======================================
-	// 라이트 방향 표시 라인 그리기(빨간색)
-	{
-		// pad=3.0은 라인 디버그에 이용.
-		ConstantBuffer lineCB = m_->m_ConstantBuffer;
-		lineCB.world = XMMatrixTranspose(XMMatrixIdentity());
-		lineCB.view = m_->m_baseProjection.view;
-		lineCB.proj = m_->m_baseProjection.proj;
-		lineCB.worldInvTranspose = XMMatrixIdentity();
-		lineCB.pad = 3.0f;
-		lineCB.shadingMode = (int)m_->m_ShadingMode;
-		D3D11_MAPPED_SUBRESOURCE mappedLine;
-		HR_T(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedLine));
-		memcpy_s(mappedLine.pData, sizeof(ConstantBuffer), &lineCB, sizeof(ConstantBuffer));
-		m_->m_pDeviceContext->Unmap(m_->m_pConstantBuffer, 0);
-		m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
-		m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
-
-		// 라인 전용 VS/InputLayout로 컬러 보존
-		ID3D11VertexShader* prevVS = nullptr; m_->m_pDeviceContext->VSGetShader(&prevVS, nullptr, nullptr);
-		ID3D11InputLayout* prevIL = nullptr; m_->m_pDeviceContext->IAGetInputLayout(&prevIL);
-		m_->m_pDeviceContext->VSSetShader(m_->m_pLineVS, nullptr, 0);
-		m_->m_pDeviceContext->IASetInputLayout(m_->m_pLineInputLayout);
-
-		// light direction (red)
-		m_->m_LineRenderer->DrawLightDirection(m_->m_pDeviceContext, m_->m_LightPosition, m_->m_DirLight.direction, 2.0f, m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
-		// symmetric axes centered at origin for better grid feel
-		m_->m_LineRenderer->DrawAxesSymmetric(m_->m_pDeviceContext, 2000.0f, m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
-
-		// 복원
-		if (prevVS) { m_->m_pDeviceContext->VSSetShader(prevVS, nullptr, 0); prevVS->Release(); }
-		if (prevIL) { m_->m_pDeviceContext->IASetInputLayout(prevIL); prevIL->Release(); }
-	}
 
 	// ====================================== SkyBox ======================================
 	// SkyBox 렌더링 (상태 보존/복구)
@@ -2011,6 +1924,7 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
 				shared->subsets.clear();
 				for (auto& s : shared->fbx->GetSubsets()) shared->subsets.push_back({ s.startIndex, s.indexCount, s.materialIndex });
 				shared->materialSRVs = shared->fbx->GetMaterialSRVs();
+				shared->normalSRVs   = shared->fbx->GetNormalSRVs();
 			}
 			else { m_->PushLog("[ERR] Failed FBX: " + Utf8FromWString(fileName)); }
 		}
@@ -2120,6 +2034,14 @@ void App::RenderControlPannel()
 		ImGui::SliderFloat("Gamma", &m_->m_Gamma, 1.4f, 10.0f, "%.2f");
 		// 텍스처 색 사용 여부 (PBR 전용)
 		ImGui::Checkbox("Use Texture Color (PBR)", (bool*)&m_->m_UseTextureColor);
+		// 노말맵 사용 여부 (PBR / 모델 공통)
+		{
+			bool useNormalMap = (m_->m_EnableNormalMapForCube != 0);
+			if (ImGui::Checkbox("Use Normal Map (PBR)", &useNormalMap))
+			{
+				m_->m_EnableNormalMapForCube = useNormalMap ? 1 : 0;
+			}
+		}
 
 		ImGui::ColorEdit3("Base Color##PBR", &m_->m_DefaultPbrMaterial.baseColor.x);
 		ImGui::SliderFloat("Metalness##PBR", &m_->m_DefaultPbrMaterial.metalness, 0.0f, 1.0f, "%.2f");

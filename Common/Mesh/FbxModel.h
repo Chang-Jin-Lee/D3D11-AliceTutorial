@@ -36,6 +36,7 @@ public:
 	const std::vector<ID3D11ShaderResourceView*>& GetMaterialSRVs() const;      // BaseColor / Diffuse
 	const std::vector<ID3D11ShaderResourceView*>& GetMetallicSRVs() const;      // PBR Metallic
 	const std::vector<ID3D11ShaderResourceView*>& GetRoughnessSRVs() const;     // PBR Roughness
+	const std::vector<ID3D11ShaderResourceView*>& GetNormalSRVs() const;        // Normal maps
 
 	// Skeleton
 	bool HasSkeleton() const;

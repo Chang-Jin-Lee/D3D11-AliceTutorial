@@ -103,12 +103,12 @@ float4 main(VertexOut pIn) : SV_Target
 	}
 	float3 albedo = kd.rgb;
 
-	// 월드 노말 계산(Nw) - 노말맵 토글에 따라 분기
+	// 월드 노말 계산(N) - 기본은 정점 노멀, 필요 시 노말맵에서 덮어쓰기
 	float3 N = normalize(pIn.normalW);
+	
 	if (g_EnableNormalMap != 0)
 	{
 		float3 T = normalize(pIn.tangentW);
-		float3 N = normalize(pIn.normalW);
 		float3 B = normalize(pIn.bitanW);
 		float handed = dot(cross(T, B), N);
 		if (handed < 0.0f) B = -B;

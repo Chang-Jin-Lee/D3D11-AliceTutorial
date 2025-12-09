@@ -23,6 +23,8 @@ public:
 	// PBR 확장을 위한 metallic / roughness 텍스처 슬롯 (index == aiMaterial index)
 	const std::vector<ID3D11ShaderResourceView*>& GetMetallicSRVs() const;
 	const std::vector<ID3D11ShaderResourceView*>& GetRoughnessSRVs() const;
+	// Normal map (tangent-space) 텍스처 슬롯 (index == aiMaterial index)
+	const std::vector<ID3D11ShaderResourceView*>& GetNormalSRVs() const;
 
 private:
 	struct Impl; Impl* m_;
