@@ -66,6 +66,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "30_PBR_BRDF", "30_PBR_BRDF\
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "31_IBL", "31_IBL\31_IBL.vcxproj", "{59367423-C6A8-42FF-B95D-5B9A20CEC0E8}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "32_Sound_FMOD", "32_Sound_FMOD\32_Sound_FMOD.vcxproj", "{B83903E5-A912-4767-8DF0-EE50956292BA}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -330,6 +332,14 @@ Global
 		{59367423-C6A8-42FF-B95D-5B9A20CEC0E8}.Release|x64.Build.0 = Release|x64
 		{59367423-C6A8-42FF-B95D-5B9A20CEC0E8}.Release|x86.ActiveCfg = Release|Win32
 		{59367423-C6A8-42FF-B95D-5B9A20CEC0E8}.Release|x86.Build.0 = Release|Win32
+		{B83903E5-A912-4767-8DF0-EE50956292BA}.Debug|x64.ActiveCfg = Debug|x64
+		{B83903E5-A912-4767-8DF0-EE50956292BA}.Debug|x64.Build.0 = Debug|x64
+		{B83903E5-A912-4767-8DF0-EE50956292BA}.Debug|x86.ActiveCfg = Debug|Win32
+		{B83903E5-A912-4767-8DF0-EE50956292BA}.Debug|x86.Build.0 = Debug|Win32
+		{B83903E5-A912-4767-8DF0-EE50956292BA}.Release|x64.ActiveCfg = Release|x64
+		{B83903E5-A912-4767-8DF0-EE50956292BA}.Release|x64.Build.0 = Release|x64
+		{B83903E5-A912-4767-8DF0-EE50956292BA}.Release|x86.ActiveCfg = Release|Win32
+		{B83903E5-A912-4767-8DF0-EE50956292BA}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
