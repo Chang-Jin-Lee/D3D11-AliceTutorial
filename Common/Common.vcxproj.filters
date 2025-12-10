@@ -22,6 +22,9 @@
     <Filter Include="Core">
       <UniqueIdentifier>{78ec844a-7d96-4daf-b00e-89ffb19b6746}</UniqueIdentifier>
     </Filter>
+    <Filter Include="mmd">
+      <UniqueIdentifier>{04275502-f276-466a-a1b5-fb74ec3dba1d}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="framework.h">
@@ -105,6 +108,12 @@
     <ClInclude Include="Ray.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
+    <ClInclude Include="mmd/VmdCameraPlayer.h">
+      <Filter>mmd</Filter>
+    </ClInclude>
+    <ClInclude Include="mmd/Vmd.h">
+      <Filter>mmd</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Common.cpp">
@@ -178,6 +187,12 @@
     </ClCompile>
     <ClCompile Include="Ray.cpp">
       <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="mmd/VmdCameraPlayer.cpp">
+      <Filter>mmd</Filter>
+    </ClCompile>
+    <ClCompile Include="mmd/Vmd.cpp">
+      <Filter>mmd</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

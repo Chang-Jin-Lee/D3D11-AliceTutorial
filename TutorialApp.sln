@@ -68,6 +68,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "31_IBL", "31_IBL\31_IBL.vcx
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "32_Sound_FMOD", "32_Sound_FMOD\32_Sound_FMOD.vcxproj", "{B83903E5-A912-4767-8DF0-EE50956292BA}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "33_Sound_Animation_Camera_Motion", "33_Sound_Animation_Camera_Motion\33_Sound_Animation_Camera_Motion.vcxproj", "{4A8D7734-9484-4CE1-BB92-16409D48F2F0}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -340,6 +342,14 @@ Global
 		{B83903E5-A912-4767-8DF0-EE50956292BA}.Release|x64.Build.0 = Release|x64
 		{B83903E5-A912-4767-8DF0-EE50956292BA}.Release|x86.ActiveCfg = Release|Win32
 		{B83903E5-A912-4767-8DF0-EE50956292BA}.Release|x86.Build.0 = Release|Win32
+		{4A8D7734-9484-4CE1-BB92-16409D48F2F0}.Debug|x64.ActiveCfg = Debug|x64
+		{4A8D7734-9484-4CE1-BB92-16409D48F2F0}.Debug|x64.Build.0 = Debug|x64
+		{4A8D7734-9484-4CE1-BB92-16409D48F2F0}.Debug|x86.ActiveCfg = Debug|Win32
+		{4A8D7734-9484-4CE1-BB92-16409D48F2F0}.Debug|x86.Build.0 = Debug|Win32
+		{4A8D7734-9484-4CE1-BB92-16409D48F2F0}.Release|x64.ActiveCfg = Release|x64
+		{4A8D7734-9484-4CE1-BB92-16409D48F2F0}.Release|x64.Build.0 = Release|x64
+		{4A8D7734-9484-4CE1-BB92-16409D48F2F0}.Release|x86.ActiveCfg = Release|Win32
+		{4A8D7734-9484-4CE1-BB92-16409D48F2F0}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
