@@ -6,5 +6,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	_In_ int       nCmdShow)
 {
 	App App;  // 생성자에서 아이콘,윈도우 이름만 바꾼다
+	App.SetClientSize(1600, 900);
 	return App.Run(hInstance);
 }
