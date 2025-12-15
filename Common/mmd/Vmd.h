@@ -1,7 +1,7 @@
 #pragma once
 
 // @brief   : VMD(Motion Data) 포맷 파서 (카메라/본/표정 등)
-// @details : 22_VMD 예제에서 사용하던 VMD 파서를 Common으로 옮긴 버전입니다.
+// @details : VMD 파서입니다.
 
 #include <vector>
 #include <string>

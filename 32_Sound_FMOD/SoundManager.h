@@ -1,7 +1,6 @@
 #pragma once
 
 // @brief  : FMOD 사운드 제어를 아주 단순하게 감싸는 헬퍼
-// @details: 32_Sound_FMOD 프로젝트 전용. 다른 프로젝트와는 의존성 없음.
 
 #include <string>
 
