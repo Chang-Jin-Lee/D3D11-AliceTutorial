@@ -60,5 +60,6 @@ private:
 
 	// @brief : 씬 이미지 로드
 	void LoadSceneImage(const std::wstring& path);
+	void ChangeIBLSkyBox(const std::wstring& path);
 };
 

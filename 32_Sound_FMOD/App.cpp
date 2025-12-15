@@ -329,9 +329,9 @@ struct App::Impl {
 	ID3D11BlendState*				m_pAlphaBlendState = nullptr;
 
 	// Skybox/큐브맵 자원 및 옵션
-	enum class SkyBoxChoice { Off = 0, Hanako = 1, CubeMap = 2, Sample };
+	enum class SkyBoxChoice { Off = 0, bridge = 1, indoor = 2, Baker };
 	// IBL 예제에서는 기본값을 Sample 환경맵으로 켜 둔다.
-	SkyBoxChoice					m_SkyBoxChoice = SkyBoxChoice::Sample;
+	SkyBoxChoice					m_SkyBoxChoice = SkyBoxChoice::Baker;
 	ID3D11ShaderResourceView*		m_pSkyHanakoSRV = nullptr;
 	ID3D11ShaderResourceView*		m_pSkyCubeMapSRV = nullptr;
 	ID3D11ShaderResourceView*		m_pTextureSRV = nullptr;           // 현재 스카이박스 SRV
@@ -618,32 +618,8 @@ bool App::OnInitialize()
 	//  - BakerSampleDiffuseHDR.dds  : Irradiance(난반사) 맵   → Diffuse IBL
 	//  - BakerSampleSpecularHDR.dds : Prefiltered Env 맵      → Specular IBL
 	//  - BakerSampleBrdf.dds        : BRDF LUT (NdotV,Roughness → A,B)
-	{
-		const std::wstring base = L"..\\Resource\\Skybox\\Sample\\";
-		HR_T(CreateDDSTextureFromFile(
-			m_->m_pDevice,
-			(base + L"BakerSampleDiffuseHDR.dds").c_str(),
-			nullptr,
-			&m_->m_pIblDiffuseSRV));
-
-		HR_T(CreateDDSTextureFromFile(
-			m_->m_pDevice,
-			(base + L"BakerSampleSpecularHDR.dds").c_str(),
-			nullptr,
-			&m_->m_pIblSpecularSRV));
-
-		HR_T(CreateDDSTextureFromFile(
-			m_->m_pDevice,
-			(base + L"BakerSampleBrdf.dds").c_str(),
-			nullptr,
-			&m_->m_pIblBrdfLutSRV));
-
-		m_->PushLog("[OK] Loaded IBL(Sample): Diffuse / Specular / BRDF LUT");
-	}
-
-	// IBL과 동일한 환경맵을 스카이박스에도 사용 (배경과 반사가 일치하도록)
-	ChangeSkyboxDDS(L"..\\Resource\\Skybox\\Sample\\BakerSampleEnvHDR.dds");
-	m_->m_SkyBoxChoice = App::Impl::SkyBoxChoice::Sample;
+	ChangeIBLSkyBox(L"..\\Resource\\Skybox\\Sample\\BakerSample");
+	m_->m_SkyBoxChoice = App::Impl::SkyBoxChoice::Baker;
 
 	// ====================================== 3D 모델 ======================================
 	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\char\\char.fbx"); // 0
@@ -2084,7 +2060,7 @@ void App::RenderControlPannel()
 		{
 			int cur = static_cast<int>(m_->m_SkyBoxChoice);
 
-			const char* items[] = { "Off", "Hanako.dds", "cubemap.dds", "Sample.dds" };
+			const char* items[] = { "Off", "bridge", "indoor", "baker" };
 
 			// 2. 콤보 선택 UI
 			if (ImGui::Combo("SkyBox Choice", &cur, items, IM_ARRAYSIZE(items)))
@@ -2098,20 +2074,18 @@ void App::RenderControlPannel()
 				}
 				else
 				{
-					const wchar_t* path = nullptr;
-
 					switch (m_->m_SkyBoxChoice)
 					{
-					case App::Impl::SkyBoxChoice::Hanako:
-						path = L"..\\Resource\\Skybox\\Hanako.dds";
+					case App::Impl::SkyBoxChoice::bridge:
+						ChangeIBLSkyBox(L"..\\Resource\\Skybox\\Bridge\\bridge");
 						break;
 
-					case App::Impl::SkyBoxChoice::CubeMap:
-						path = L"..\\Resource\\Skybox\\cubemap.dds";
+					case App::Impl::SkyBoxChoice::indoor:
+						ChangeIBLSkyBox(L"..\\Resource\\Skybox\\Indoor\\indoor");
 						break;
 
-					case App::Impl::SkyBoxChoice::Sample:
-						path = L"..\\Resource\\Skybox\\Sample.dds"; // 샘플용 경로
+					case App::Impl::SkyBoxChoice::Baker:
+						ChangeIBLSkyBox(L"..\\Resource\\Skybox\\Sample\\BakerSample");
 						break;
 
 					case App::Impl::SkyBoxChoice::Off:
@@ -2119,10 +2093,6 @@ void App::RenderControlPannel()
 						break;
 					}
 
-					if (path)
-					{
-						ChangeSkyboxDDS(path);
-					}
 				}
 			}
 
@@ -2842,6 +2812,37 @@ void App::LoadSceneImage(const std::wstring& path)
 	{
 		m_->PushLog("[ERR] Failed to load scene image: " + Utf8FromWString(path));
 	}
+}
+
+void App::ChangeIBLSkyBox(const std::wstring& path)
+{
+	m_->m_pIblDiffuseSRV = nullptr;
+	m_->m_pIblSpecularSRV = nullptr;
+	m_->m_pIblBrdfLutSRV = nullptr;
+	{
+		HR_T(CreateDDSTextureFromFile(
+			m_->m_pDevice,
+			(path + L"DiffuseHDR.dds").c_str(),
+			nullptr,
+			&m_->m_pIblDiffuseSRV));
+
+		HR_T(CreateDDSTextureFromFile(
+			m_->m_pDevice,
+			(path + L"SpecularHDR.dds").c_str(),
+			nullptr,
+			&m_->m_pIblSpecularSRV));
+
+		HR_T(CreateDDSTextureFromFile(
+			m_->m_pDevice,
+			(path + L"Brdf.dds").c_str(),
+			nullptr,
+			&m_->m_pIblBrdfLutSRV));
+
+		m_->PushLog("[OK] Loaded IBL(Sample): Diffuse / Specular / BRDF LUT");
+	}
+
+	// IBL과 동일한 환경맵을 스카이박스에도 사용 (배경과 반사가 일치하도록)
+	ChangeSkyboxDDS((path + L"EnvHDR.dds").c_str());
 }
 
 void App::ChangeScene(std::unique_ptr<Scene> next)
