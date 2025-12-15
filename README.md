@@ -46,6 +46,10 @@ D3D 그래픽스를 학습하면서 정리한 튜토리얼 프로젝트입니다
 |---|---|---|---|
 | <div align="center">[<img src="https://github.com/user-attachments/assets/d98018a9-b1a2-4dc6-bf2a-ff098796aedd" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/29_MousePicking)</div> | <div align="center">[<img src="https://github.com/user-attachments/assets/0a1d9fa5-5d8e-49be-bdd5-f36c3206f110" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/30_PBR_BRDF)</div> | <div align="center">[<img src="https://github.com/user-attachments/assets/b1ebb30c-3bd3-4804-a0d9-4c33b8d97531" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/31_IBL)</div> | <div align="center">[<img src="https://github.com/user-attachments/assets/e46606a6-984f-4bfa-876c-c9d062ca9e78" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/32_Sound_FMOD)</div> |
 
+| [33. Sound Animation Camera Motion](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/33_Sound_Animation_Camera_Motion) |
+|---|
+| <div align="center">[<img src="https://github.com/user-attachments/assets/eb54f18a-2317-4314-8f3b-5143fcce9d83" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/33_Sound_Animation_Camera_Motion)</div> |
+
 ---
 
 ## 주의사항
