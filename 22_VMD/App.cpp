@@ -266,44 +266,96 @@ static bool OpenFileDialogVMD(std::wstring& outPath)
     return false;
 }
 
-// VMD 카메라 프레임을 DirectX 카메라(Eye/Center/Up)로 변환하는 간단한 헬퍼
-// - scale: MMD 좌표를 엔진 좌표로 맞추기 위한 스케일 (1.0이면 그대로)
-// - MMD: Y-up, Z-forward(오른손)
-// - DirectX: Y-up, Z-forward(왼손)
-static void VmdCameraToEyeCenterUp(const vmd::VmdCameraFrame& cam, float scale, XMFLOAT3& outEye, XMFLOAT3& outCenter, XMFLOAT3& outUp)
+// VMD 카메라 프레임 → DirectX 카메라(Eye / Center / Up) 변환
+// - saba 의 MMDCamera + MMDLookAtCamera 공식을 그대로 옮기고,
+//   마지막에 OpenGL(RH) → DirectX(LH) 로 Z축만 한 번 더 반전한다.
+// - 입력(VMD 원본) 좌표계 : X 오른쪽, Y 위, Z 앞(+), 오른손
+// - 출력(DirectX) 좌표계   : X 오른쪽, Y 위, Z 앞(+), 왼손
+static void VmdCameraToEyeCenterUp(const vmd::VmdCameraFrame& cam, float scale,
+                                   XMFLOAT3& outEye, XMFLOAT3& outCenter, XMFLOAT3& outUp)
 {
-    // 1. 관심점(interest) Z축 반전
-    XMFLOAT3 interestDX(cam.position[0] * scale, cam.position[1] * scale, -cam.position[2] * scale);
+    using std::cosf;
+    using std::sinf;
+    using std::fabsf;
 
-    // 2. 회전 행렬 (Y -> Z(반전) -> X), cam.orientation는 라디안
-    //    - MMD(OpenGL, 오른손)과 DirectX(왼손) yaw 방향이 반대라서 Y 회전은 부호를 반대로 적용
-    XMMATRIX rotY = XMMatrixRotationY(-cam.orientation[1]);
-    XMMATRIX rotZ = XMMatrixRotationZ(-cam.orientation[2]);
-    XMMATRIX rotX = XMMatrixRotationX(cam.orientation[0]);
-    XMMATRIX rot  = rotY * rotZ * rotX;
+    // 0) VMD 원본 값
+    const float px = cam.position[0];
+    const float py = cam.position[1];
+    const float pz = cam.position[2];
+    const float pitch = cam.orientation[0]; // X
+    const float yaw   = cam.orientation[1]; // Y
+    const float roll  = cam.orientation[2]; // Z
+    const float dist  = fabsf(cam.distance) * scale; // 항상 양수 + 스케일
 
-    // 3. 카메라 위치: 타깃에서 distance만큼 뒤로 이동
-    //    - VMD에서는 distance가 보통 음수로 들어오므로, -distance * scale을 사용
-    float dist = -cam.distance * scale;
-    XMMATRIX viewOffset = XMMatrixTranslation(0, 0, dist);
-    viewOffset = rot * viewOffset;
+    // 1) MMD → saba(OpenGL) 좌표 : 관심점 Z축 반전, 스케일 적용
+    const float interestGL_x = px * scale;
+    const float interestGL_y = py * scale;
+    const float interestGL_z = -pz * scale;
 
-    XMFLOAT3 eyeDX;
-    XMStoreFloat3(&eyeDX, viewOffset.r[3] + XMLoadFloat3(&interestDX));
+    // 2) 회전 : saba 의 MMDLookAtCamera 와 동일한 순서
+    //    - 기준 좌표계 : X 오른쪽, Y 위, Z 뒤( -가 화면 밖 ) → RH
+    auto rotateMMD = [&](const XMFLOAT3& v) -> XMFLOAT3
+    {
+        // pitch(X) → roll(-Z) → yaw(Y) 순서로 적용 (열벡터 기준 Ry*Rz*Rx)
+        float x = v.x;
+        float y = v.y;
+        float z = v.z;
 
-    // 4. Forward / Up 벡터 계산
-    XMVECTOR forward = XMVector3TransformNormal(XMVectorSet(0, 0, -1, 0), rot);
-    XMVECTOR up      = XMVector3TransformNormal(XMVectorSet(0, 1, 0, 0),  rot);
-    XMVECTOR eyeVec  = XMLoadFloat3(&eyeDX);
-    XMVECTOR centerVec = eyeVec + forward;
+        // pitch : +X 축 회전
+        {
+            const float cp = cosf(pitch);
+            const float sp = sinf(pitch);
+            const float ny = y * cp - z * sp;
+            const float nz = y * sp + z * cp;
+            y = ny; z = nz;
+        }
 
-    XMFLOAT3 centerDX, upDX;
-    XMStoreFloat3(&centerDX, centerVec);
-    XMStoreFloat3(&upDX, up);
+        // roll : -Z 축 회전 == +Z 축으로 -roll 회전
+        {
+            const float cr = cosf(-roll);
+            const float sr = sinf(-roll);
+            const float nx = x * cr - y * sr;
+            const float ny = x * sr + y * cr;
+            x = nx; y = ny;
+        }
 
-    outEye    = eyeDX;
-    outCenter = centerDX;
-    outUp     = upDX;
+        // yaw : +Y 축 회전
+        {
+            const float cy = cosf(yaw);
+            const float sy = sinf(yaw);
+            const float nx = x * cy + z * sy;
+            const float nz = -x * sy + z * cy;
+            x = nx; z = nz;
+        }
+
+        return XMFLOAT3(x, y, z);
+    };
+
+    // saba(OpenGL, RH) 공간에서의 offset / forward / up
+    const XMFLOAT3 localOffsetGL(0.0f, 0.0f, dist);     // 카메라가 관심점에서 +Z 방향으로 떨어진 거리
+    const XMFLOAT3 forwardLocalGL(0.0f, 0.0f, -1.0f);   // 카메라가 바라보는 -Z
+    const XMFLOAT3 upLocalGL(0.0f, 1.0f, 0.0f);         // +Y
+
+    XMFLOAT3 offsetGL  = rotateMMD(localOffsetGL);
+    XMFLOAT3 forwardGL = rotateMMD(forwardLocalGL);
+    XMFLOAT3 upGL      = rotateMMD(upLocalGL);
+
+    // 관심점 + offset 이 eye, forward 가 center-eye (saba 와 동일)
+    XMFLOAT3 eyeGL(
+        interestGL_x + offsetGL.x,
+        interestGL_y + offsetGL.y,
+        interestGL_z + offsetGL.z
+    );
+    XMFLOAT3 centerGL(
+        eyeGL.x + forwardGL.x,
+        eyeGL.y + forwardGL.y,
+        eyeGL.z + forwardGL.z
+    );
+
+    // 3) OpenGL(RH) → DirectX(LH) : Z축만 한 번 더 반전
+    outEye    = XMFLOAT3( eyeGL.x,    eyeGL.y,    -eyeGL.z    );
+    outCenter = XMFLOAT3( centerGL.x, centerGL.y, -centerGL.z );
+    outUp     = XMFLOAT3(  upGL.x,     upGL.y,     -upGL.z     );
 }
 
 // VMD 파일에서 카메라 프레임만 안전하게 읽는 함수
@@ -781,8 +833,14 @@ bool App::OnInitialize()
 
     if (!InitTexture()) return false;
 
-    // 값 타입 매니저 사용(동적 할당 없음)
 
+	// ====================================== 3D 모델 ======================================
+	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\char\\char.fbx"); // 0
+	LoadModelFromFile(L"..\\Resource\\pmx\\Nikke-Alice\\alice-Apose.pmx"); // 0
+
+	m_->m_Models[0]->pos = XMFLOAT3(0, 0.0f, 0.0f);
+
+    // 값 타입 매니저 사용(동적 할당 없음)
 	if (!m_->m_SystemInfo.InitSysInfomation(m_->m_pDevice)) return false;
 
 	return true;
@@ -999,7 +1057,8 @@ void App::OnRender()
 		m_->m_ConstantBuffer.dirLight.pad = 0.0f;
 	}
 
-	m_->m_ConstantBuffer.eyePos = m_Camera.GetPosition();
+	// OnUpdate에서 계산된 카메라(Eye)를 그대로 사용 (VMD 카메라/기본 카메라 공통)
+	m_->m_ConstantBuffer.eyePos = m_->m_baseProjection.eyePos;
 	m_->m_ConstantBuffer.pad = 0.0f;
 	// 셰이딩 모드 전달
 	m_->m_ConstantBuffer.shadingMode = (int)m_->m_ShadingMode;
