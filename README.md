@@ -60,6 +60,10 @@ D3D 그래픽스를 학습하면서 정리한 튜토리얼 프로젝트입니다
 
 ---
 
+## 리소스파일
+- IBL Sky박스
+  - https://drive.google.com/file/d/1OOaj8Zh-6DOiRWh2kgyWCEB9SRHP6ZtJ/view?usp=sharing
+
 ## 참고 자료
 - [Direct3D 11 Tutorials (GitHub)](https://github.com/walbourn/directx-sdk-samples/tree/main/Direct3D11Tutorials)  
 - [MSDN Direct3D 11 Programming Guide](http://msdn.microsoft.com/en-us/library/windows/apps/ff729718.aspx)  
