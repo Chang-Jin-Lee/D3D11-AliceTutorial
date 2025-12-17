@@ -90,9 +90,12 @@ struct ConstantBuffer {
 	// Debug/Lines
 	int      boundsBoneIndex = -1; 
 	XMFLOAT3 boundsPad = {0,0,0};
-	float g_MaxHDRNits = 100.0f;  // 셰이더와 변수명 일치 (g_MaxHDRNits)
-	float g_Exposure = 1.0f;      // 셰이더와 변수명 일치 (g_Exposure)
-	float padding[2];
+};
+
+struct PostProcessConstantBuffer {
+	float g_Exposure;
+	float g_MaxHDRNits;
+	float g_Padding[2];
 };
 enum class ShadingMode { Phong = 0, BlinnPhong = 1, Lambert = 2, Unlit = 3, TextureOnly = 4, ToonShading = 5, PBR = 6 };
 enum class ModelSource { FBX, OBJ, PMX, Custom };
@@ -361,7 +364,9 @@ struct App::Impl {
 
 	// 공용 상수 버퍼 (b0)
 	ID3D11Buffer* m_pConstantBuffer = nullptr;
-	ConstantBuffer                m_ConstantBuffer{};                // CPU 캐시
+	ID3D11Buffer* m_pPostProcessConstantBuffer = nullptr;
+	ConstantBuffer					m_ConstantBuffer{};                // CPU 캐시
+	PostProcessConstantBuffer		m_PostProcessConstantBuffer{};     
 
 	// 유틸 렌더러/디버그 박스
 	class LineRenderer*				m_LineRenderer = nullptr;
@@ -503,10 +508,9 @@ struct App::Impl {
 
 	// HDR 관련 변수
 	// Quad를 그려야함
-	float m_MonitorMaxNits = 0.0f;
-	float m_Exposure = 0.0f;
+	float m_MonitorMaxNits = 1000.0f;  // HDR 모니터 기본값 (1000 nits)
+	float m_Exposure = 0.0f;           // Exposure 기본값 (0 = 1.0배, 변화 없음)
 	bool m_isHDRSupported = false;
-	bool m_forceLDR = false;
 	DXGI_FORMAT m_format = DXGI_FORMAT_R8G8B8A8_UNORM;
 
 	ID3D11Texture2D* m_pHdrRenderTarget = nullptr;	// 렌더 타겟 텍스처
@@ -676,7 +680,8 @@ bool App::OnInitialize()
 	//LoadModelFromFile(L"..\\Resource\\fbx\\Alice_UmaUma.fbx"); // 0
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\sphere.fbx"); // 1
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\sphere.fbx"); // 2
-	LoadModelFromFile(L"..\\Resource\\fbx\\Neon.fbx"); // 3
+	//LoadModelFromFile(L"..\\Resource\\fbx\\Neon.fbx"); // 3
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\sphere.fbx"); // 3
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Ground.fbx"); // 4
 
 	m_->m_Objects.clear();
@@ -1089,29 +1094,13 @@ void App::OnRender()
 	UINT stride = m_->m_VertextBufferStride;	// 바이트 수
 	UINT offset = m_->m_VertextBufferOffset;
 
-	//m_->m_pDeviceContext->ClearRenderTargetView(m_->m_pRenderTargetView, color);
-	if (m_->m_pHdrRenderTargetView)
-	{
-		// 렌더 타겟을 HDR 텍스처로 설정. 이후 호출되는 모든 Draw 함수는 자동으로 이 텍스처에 그려집니다.
-		float clr[4] = { m_->m_ClearColor.x, m_->m_ClearColor.y, m_->m_ClearColor.z, m_->m_ClearColor.w };
-		m_->m_pDeviceContext->ClearRenderTargetView(m_->m_pHdrRenderTargetView, clr);
-		m_->m_pDeviceContext->OMSetRenderTargets(1, &m_->m_pHdrRenderTargetView, m_->m_pDepthStencilView);
-	}
-	else
-	{
-		// 만약 HDR 리소스가 없다면 기존대로 설정.
-		m_->m_pDeviceContext->ClearRenderTargetView(m_->m_pRenderTargetView, color);
-	}
-
+	// 씬은 항상 HDR RT에 렌더링 (HDR 값을 저장하기 위해 필수)
+	// 마지막 톤매핑 패스에서 HDR/LDR 셰이더로 분기하여 백버퍼에 출력
+	float clr[4] = { m_->m_ClearColor.x, m_->m_ClearColor.y, m_->m_ClearColor.z, m_->m_ClearColor.w };
+	m_->m_pDeviceContext->ClearRenderTargetView(m_->m_pHdrRenderTargetView, clr);
+	m_->m_pDeviceContext->OMSetRenderTargets(1, &m_->m_pHdrRenderTargetView, m_->m_pDepthStencilView);
 	m_->m_pDeviceContext->ClearDepthStencilView(m_->m_pDepthStencilView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
 	m_->m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-	
-	// 컬러 클리어 및 스카이박스/배경 선택
-	if (m_->m_SkyBoxChoice == App::Impl::SkyBoxChoice::Off)
-	{
-		float clr[4] = { m_->m_ClearColor.x, m_->m_ClearColor.y, m_->m_ClearColor.z, m_->m_ClearColor.w };
-		m_->m_pDeviceContext->ClearRenderTargetView(m_->m_pRenderTargetView, clr);
-	}
 
 	// ====================================== Shadow Pass (depth-only) ======================================
 	if (m_->m_ShadowEnabled && !m_->m_Models.empty() && m_->m_pShadowDSV)
@@ -1194,10 +1183,9 @@ void App::OnRender()
 			for (const auto& sub : mdlPtr->shared->subsets) m_->m_pDeviceContext->DrawIndexed(sub.count, sub.start, 0);
 		}
 
-		// Restore
+		// Restore: 씬 렌더링은 항상 HDR RT에 수행
 		m_->m_pDeviceContext->RSSetState(nullptr);
 		m_->m_pDeviceContext->RSSetViewports(1, &oldVP);
-		//m_->m_pDeviceContext->OMSetRenderTargets(1, &m_->m_pRenderTargetView, m_->m_pDepthStencilView);
 		m_->m_pDeviceContext->OMSetRenderTargets(1, &m_->m_pHdrRenderTargetView, m_->m_pDepthStencilView);
 	}
 
@@ -1475,72 +1463,58 @@ void App::OnRender()
 	}
 
 	// ====================================== Tone Mapping ======================================
-	// 34_Shared.fxh에서 g_SceneHDR은 register(t8), g_SamplerLinear는 register(s2)로 선언됨
-	// 메인 렌더링의 t0~t7과 충돌을 피하기 위해 t8/s2를 사용
-	ID3D11ShaderResourceView* nullSRV_First[1] = { nullptr };
-	m_->m_pDeviceContext->PSSetShaderResources(8, 1, nullSRV_First);
+	// 이전 패스(Scene Render)에서 HDR RT를 RTV로 썼으므로, 
+	// 아래에서 RTV를 BackBuffer로 교체하는 순간 HDR RT는 자동으로 Unbind 됩니다.
+	// 굳이 nullSRV_First를 호출할 필요가 없습니다.
 
-	// 2. 렌더 타겟을 '화면(BackBuffer)'으로 변경
-	// 깊이 버퍼(DSV)는 필요 없으므로 nullptr로 설정하여 깊이 테스트를 끕니다.
+	// 1. 렌더 타겟 변경 (HDR RT -> BackBuffer)
+	// 깊이 버퍼(DSV)는 nullptr로 설정 (톤매핑은 깊이 테스트 불필요)
 	ID3D11RenderTargetView* nullRTV = nullptr;
-	m_->m_pDeviceContext->OMSetRenderTargets(1, &nullRTV, nullptr); // 기존 타겟 해제
-	m_->m_pDeviceContext->OMSetRenderTargets(1, &m_->m_pRenderTargetView, nullptr); // 백버퍼 연결
+	m_->m_pDeviceContext->OMSetRenderTargets(1, &m_->m_pRenderTargetView, nullptr);
 
-	// 3. 화면 클리어
-	m_->m_pDeviceContext->ClearRenderTargetView(m_->m_pRenderTargetView, color);
-
-	// 4. 톤 매핑을 위한 상수 버퍼(Constant Buffer) 업데이트
+	// 2. 톤 매핑 상수 버퍼 업데이트
 	{
-		ConstantBuffer cb = m_->m_ConstantBuffer; // 기존 값 복사
+		m_->m_PostProcessConstantBuffer.g_Exposure = m_->m_Exposure;
+		m_->m_PostProcessConstantBuffer.g_MaxHDRNits = m_->m_MonitorMaxNits;
 
-		// Quad는 2D이므로 월드/뷰/프로젝션 행렬은 Identity로
-		cb.world = XMMatrixIdentity();
-		cb.view = XMMatrixIdentity();
-		cb.proj = XMMatrixIdentity();
-
-		// 톤 매핑 셰이더가 사용하는 파라미터 주입 
-		// 셰이더 안에서 (Color * Exposure) 연산을 하는데 Exposure가 0이면 검은색이 됨.
-		cb.g_Exposure = m_->m_Exposure;                // 노출값 (예: 1.0 ~ 2.0)
-		cb.g_MaxHDRNits = m_->m_MonitorMaxNits;       // 모니터 최대 밝기 (예: 1000.0f)
-
-		// GPU로 업로드
 		D3D11_MAPPED_SUBRESOURCE mapped;
-		HR_T(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped));
-		memcpy_s(mapped.pData, sizeof(ConstantBuffer), &cb, sizeof(ConstantBuffer));
-		m_->m_pDeviceContext->Unmap(m_->m_pConstantBuffer, 0);
+		// D3D11_MAP_WRITE_DISCARD는 버퍼 내용을 전부 날리고 새로 씁니다.
+		HR_T(m_->m_pDeviceContext->Map(m_->m_pPostProcessConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped));
+		memcpy(mapped.pData, &m_->m_PostProcessConstantBuffer, sizeof(PostProcessConstantBuffer));
+		m_->m_pDeviceContext->Unmap(m_->m_pPostProcessConstantBuffer, 0);
 
-		// VS와 PS에 버퍼 연결
-		m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
-		m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
+		// PS에만 버퍼 연결 (VS가 행렬을 안 쓴다면 VS 연결 불필요)
+		m_->m_pDeviceContext->PSSetConstantBuffers(2, 1, &m_->m_pPostProcessConstantBuffer);
 	}
 
-	// 5. Quad 그리기 설정 (Input Layout, Vertex Buffer 등)
+	// 3. Quad 그리기 설정
 	m_->m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	m_->m_pDeviceContext->IASetVertexBuffers(0, 1, &m_->m_pQuadVertexBuffer, &m_->m_QuadVertexBufferStride, &m_->m_QuadVertexBufferOffset);
 	m_->m_pDeviceContext->IASetInputLayout(m_->m_pQuadInputLayout);
 	m_->m_pDeviceContext->IASetIndexBuffer(m_->m_pQuadIndexBuffer, DXGI_FORMAT_R16_UINT, 0);
+
+	// Vertex Shader 설정
 	m_->m_pDeviceContext->VSSetShader(m_->m_pQuadVertexShader, nullptr, 0);
 
-	// 6. 셰이더 선택 (HDR vs LDR)
-	switch (m_->m_format)
+	// 4. Pixel Shader 및 리소스 선택
+	if (m_->m_format == DXGI_FORMAT_R16G16B16A16_FLOAT || m_->m_format == DXGI_FORMAT_R10G10B10A2_UNORM)
 	{
-	case DXGI_FORMAT_R10G10B10A2_UNORM:
 		m_->m_pDeviceContext->PSSetShader(m_->m_pPS_ToneMappingHDR, nullptr, 0);
-		break;
-	default:
+	}
+	else
+	{
 		m_->m_pDeviceContext->PSSetShader(m_->m_pPS_ToneMappingLDR, nullptr, 0);
-		break;
 	}
 
-	// 7. 텍스처(SRV)와 샘플러 바인딩
-	// 7. 텍스쳐, 샘플러를 바인딩 g_SceneHDR : register(t8), g_SamplerLinear : register(s2)
+	// 5. 텍스쳐 바인딩 (Bind HDR Texture)
 	m_->m_pDeviceContext->PSSetShaderResources(8, 1, &m_->m_pHdrShaderResourceView);
 	m_->m_pDeviceContext->PSSetSamplers(2, 1, &m_->m_pSamplerLinear);
 
-	// 8. 그리기
+	// 6. 그리기 (Draw)
 	m_->m_pDeviceContext->DrawIndexed(m_->m_nQuadIndices, 0, 0);
 
-	// 9. 다음 프레임을 위해 SRV 해제
+	// 7. 리소스 해제 (필수)
+	// 다음 프레임에서 이 텍스처를 렌더 타겟(RTV)으로 써야 하므로, SRV 바인딩을 반드시 해제해야 함
 	ID3D11ShaderResourceView* nullSRV[1] = { nullptr };
 	m_->m_pDeviceContext->PSSetShaderResources(8, 1, nullSRV);
 
@@ -1567,61 +1541,14 @@ void App::OnRender()
 bool App::InitD3D()
 {
 	// HDR 지원 여부를 확인함
+	HRESULT hr = S_OK;
 	DXGI_FORMAT result;
 	m_->m_isHDRSupported = CheckHDRSupportAndGetMaxNits(m_->m_MonitorMaxNits, result);
 
-	if (!m_->m_forceLDR && m_->m_isHDRSupported)
+	if (m_->m_isHDRSupported)
 		CreateSwapChainAndBackBuffer(DXGI_FORMAT_R10G10B10A2_UNORM); // HDR
 	else
 		CreateSwapChainAndBackBuffer(DXGI_FORMAT_R8G8B8A8_UNORM); // LDR
-
-	HRESULT hr = S_OK;
-
-	// 스왑체인의 값들을 설정할 구조체를 만듭니다
-	DXGI_SWAP_CHAIN_DESC swapDesc = {};
-	swapDesc.BufferCount = 1;
-	swapDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-	swapDesc.OutputWindow = m_hWnd;
-	swapDesc.Windowed = true;
-	swapDesc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-	swapDesc.BufferDesc.Width = m_ClientWidth;
-	swapDesc.BufferDesc.Height = m_ClientHeight;
-	swapDesc.BufferDesc.RefreshRate.Numerator = 60;
-	swapDesc.BufferDesc.RefreshRate.Denominator = 1;
-	swapDesc.SampleDesc.Count = 1;
-	swapDesc.SampleDesc.Quality = 0;
-	swapDesc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
-
-	// 디버그 창을 띄우기 위함입니다.
-	UINT creationFlags = 0;
-#ifdef _DEBUG
-	creationFlags |= D3D11_CREATE_DEVICE_DEBUG;
-#endif
-
-	/*
-	* @brief  Direct3D 디바이스, 디바이스 컨텍스트, 스왑체인 생성
-	* @details
-	*   - Adapter        : NULL → 기본 GPU 사용
-	*   - DriverType     : D3D_DRIVER_TYPE_HARDWARE → 하드웨어 가속
-	*   - Flags          : creationFlags (디버그 모드 여부 포함)
-	*   - SwapChainDesc  : 백버퍼, 주사율 등 스왑체인 설정
-	*   - 반환           : m_pDevice, m_pDeviceContext, m_pSwapChain
-	*/
-	HR_T(D3D11CreateDeviceAndSwapChain(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, creationFlags, NULL, NULL,
-		D3D11_SDK_VERSION, &swapDesc, &m_->m_pSwapChain, &m_->m_pDevice, NULL, &m_->m_pDeviceContext));
-
-	/*
-	* @brief  스왑체인 백버퍼로 RTV를 만들고 OM 스테이지에 바인딩한다
-	* @details
-	*   - GetBuffer(0): 백버퍼(ID3D11Texture2D)를 획득
-	*   - CreateRenderTargetView: 백버퍼 기반 RTV 생성(리소스 내부 참조 증가)
-	*   - 로컬 텍스처 포인터는 Release로 정리 (RTV가 수명 관리)
-	*   - OMSetRenderTargets: 생성한 RTV를 렌더 타겟을 최종 출력 파이프라인에 바인딩
-	*/
-	ID3D11Texture2D* pBackBufferTexture = nullptr;
-	HR_T(m_->m_pSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&pBackBufferTexture));
-	HR_T(m_->m_pDevice->CreateRenderTargetView(pBackBufferTexture, NULL, &m_->m_pRenderTargetView));
-	SAFE_RELEASE(pBackBufferTexture);
 
 	// 깊이 스텐실 텍스처/뷰 생성
 	D3D11_TEXTURE2D_DESC dsDesc = {};
@@ -1630,8 +1557,8 @@ bool App::InitD3D()
 	dsDesc.MipLevels = 1;
 	dsDesc.ArraySize = 1;
 	dsDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	dsDesc.SampleDesc.Count = swapDesc.SampleDesc.Count;
-	dsDesc.SampleDesc.Quality = swapDesc.SampleDesc.Quality;
+	dsDesc.SampleDesc.Count = 1;
+	dsDesc.SampleDesc.Quality = 0;
 	dsDesc.Usage = D3D11_USAGE_DEFAULT;
 	dsDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
 	dsDesc.CPUAccessFlags = 0;
@@ -2231,6 +2158,17 @@ bool App::CreateQuad()
 	HR_T(m_->m_pDevice->CreatePixelShader(pixelShaderBuffer->GetBufferPointer(),
 		pixelShaderBuffer->GetBufferSize(), NULL, &m_->m_pPS_ToneMappingHDR));
 	SAFE_RELEASE(pixelShaderBuffer);	// 픽셀 셰이더 버퍼 더이상 필요없음.
+
+	D3D11_BUFFER_DESC pdbDesc = {};
+	pdbDesc.Usage = D3D11_USAGE_DYNAMIC;            // CPU가 매 프레임 쓸(Write) 것이므로 Dynamic
+	pdbDesc.ByteWidth = sizeof(PostProcessConstantBuffer);
+	pdbDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	pdbDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE; // CPU에서 접근 가능하게 설정
+	pdbDesc.MiscFlags = 0;
+	pdbDesc.StructureByteStride = 0;
+
+	// m_->m_pPostProcessBuffer에 생성
+	HR_T(m_->m_pDevice->CreateBuffer(&pdbDesc, nullptr, &m_->m_pPostProcessConstantBuffer));
 
 	return true;
 }

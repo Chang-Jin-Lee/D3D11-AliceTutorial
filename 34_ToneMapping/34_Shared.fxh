@@ -77,10 +77,6 @@ cbuffer ConstantBuffer              : register(b0)
     // Debug/Lines: AABB에 루트 본(또는 지정 본) 변환을 적용할 때 사용
     int    g_BoundsBoneIndex;           // <0: 사용 안함, >=0: g_BonePalette[idx] 적용
     float3 g_BoundsPad;
-
-    float  g_MaxHDRNits;
-    float g_Exposure;
-    float padding[2];
 }
 
 // GPU 스키닝을 위한 레지스터 (b1)
@@ -90,6 +86,13 @@ cbuffer BonesBuffer : register(b1)
 	row_major matrix g_BonePalette[MAX_BONES];
 	uint g_BoneCount;
 	float3 g_BonePad;
+}
+
+cbuffer PostProcessConstantBuffer : register(b2)
+{
+    float g_Exposure;
+    float g_MaxHDRNits;
+    float2 g_Padding; // 16바이트 정렬 맞춤
 }
 
 struct VertexIn
