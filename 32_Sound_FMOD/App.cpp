@@ -627,6 +627,7 @@ bool App::OnInitialize()
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\sphere.fbx"); // 0
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\sphere.fbx"); // 0
 	LoadModelFromFile(L"..\\Resource\\fbx\\Neon.fbx"); // 0
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Ground.fbx"); // 4
 
 	m_->m_Objects.clear();
 	for (int mi = 0; mi < (int)m_->m_Models.size(); ++mi)
@@ -646,6 +647,14 @@ bool App::OnInitialize()
 	m_->m_Models[2]->pos = XMFLOAT3(-130, 0.0f, 50.0f);
 	m_->m_Models[3]->pos = XMFLOAT3(90, 0.0f, 70.0f);
 	m_->m_Models[3]->scale = XMFLOAT3(0.5f, 0.5f, 0.5f);
+
+	m_->m_Models[4]->scale = XMFLOAT3(2.0f, 1.0f, 8.0f);
+	m_->m_Models[4]->pos = XMFLOAT3(0.0f, -2.0f, 0.0f);
+	m_->m_Models[4]->useInstancePbrMaterial = true;
+	m_->m_Models[4]->instancePbrMaterial.baseColor = XMFLOAT4(0.3f, 0.3f, 0.3f, 1.0f);
+	m_->m_Models[4]->instancePbrMaterial.metalness = 0.01f;
+	m_->m_Models[4]->instancePbrMaterial.roughness = 1.0f;
+	m_->m_Models[4]->instancePbrMaterial.ambientOcclusion = 1.0f;
 
 	// ====================================== 큐브 ======================================
 	auto co = std::make_unique<CubeObject>(
