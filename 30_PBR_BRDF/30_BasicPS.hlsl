@@ -153,7 +153,7 @@ float4 main(VertexOut pIn) : SV_Target
 			// 텍스처 색 사용 안 함: 고정 회색
 			albedoPBR = g_PBRBaseColor.rgb;
 		}
-		roughness = max(roughness, 0.001f); // 완전 0은 되지 않도록 하자
+		roughness = max(roughness, 0.04f); // 완전 0은 되지 않도록 하자
 		float ao = saturate(g_PBRAmbientOcclusion);
 
 		// F0 : 금속은 알베도, 비도체는 0.04 근처
@@ -177,17 +177,10 @@ float4 main(VertexOut pIn) : SV_Target
 		// 단일 디렉션 라이트 강도
 		// PBR diffuse가 1/PI로 나뉘므로 라이트 강도에 PI를 곱해서 보정
 		// 추가로 밝기 보정을 위해 약간 더 강하게
-		float3 radiance = g_DirLight.diffuse.rgb * PI * 1.5f;
+		float3 radiance = g_DirLight.diffuse.rgb * PI;
 		float3 color = (diffuse + specular) * radiance * theta * ao;
 
-		// 환경광 : 디렉션 라이트 ambient 사용 (더 밝게)
-		color += albedoPBR * g_DirLight.ambient.rgb * ao * 1.5f;
-
-		// 감마 인코딩: 선형 공간 색상을 sRGB 공간으로 변환
-		// sRGB = pow(Linear, 1/gamma) - 사람의 눈이 선형적으로 느끼도록
-		// ImGui에서 g_Gamma 값을 조절할 수 있음 (기본값 2.2, 표준 sRGB 값)
-		float gamma = max(g_Gamma, 0.1f);
-		color = pow(saturate(color), 1.0f / gamma);
+		color += albedoPBR * g_DirLight.ambient.rgb * ao;
 
 		return float4(color, alphaTex);
 	}

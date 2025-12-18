@@ -1,11 +1,12 @@
 ﻿/*
-* @brief  : Sound
-* @details:
+* @brief  : ToneMapping
+* @details: 톤 매핑, HDR 렌더링, 감마 보정 등을 구현한 데모입니다.
 */
 
 #include "App.h"
 #include "SoundManager.h"
 #include "../Common/Helper.h"
+#include "../Common/mmd/VmdCameraPlayer.h"
 #include <windows.h>
 #include <random>
 #include <d3d11.h>
@@ -47,6 +48,10 @@
 #include "SceneA.h"
 #include "SceneB.h"
 #include <directxtk/GamePad.h>
+
+#include <dxgi1_4.h>	// swapchain3 ToneMapping을 위한 것
+#include <dxgi1_6.h>	// swapchain3 ToneMapping을 위한 것
+
 #pragma comment (lib, "d3d11.lib")
 #pragma comment(lib,"d3dcompiler.lib")
 #pragma comment(lib, "Comdlg32.lib")
@@ -69,7 +74,7 @@ struct ConstantBuffer {
 	XMMATRIX world; XMMATRIX view; XMMATRIX proj; XMMATRIX worldInvTranspose;
 	Material material; DirectionalLight dirLight; XMFLOAT3 eyePos; int shadingMode = 0;
 	int enableNormalMap = 1; int useSpecularMap = 0; int useDiffuseMap = 1; float pad = 0.0f;
-	float gamma = 2.2f; int useTextureColor = 1; XMFLOAT2 pbrPad = { 0,0 };
+	int useTextureColor = 1; XMFLOAT3 pbrPad = { 0,0,0 };
 	XMFLOAT4 pbrBaseColor = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
 	float pbrMetalness = 0.0f;
 	float pbrRoughness = 0.5f;
@@ -83,7 +88,14 @@ struct ConstantBuffer {
 	float    shadowPCFRadius = 1.0f;
 	int      shadowEnabled = 1;
 	// Debug/Lines
-	int      boundsBoneIndex = -1; XMFLOAT3 boundsPad = {0,0,0};
+	int      boundsBoneIndex = -1; 
+	XMFLOAT3 boundsPad = {0,0,0};
+};
+
+struct PostProcessConstantBuffer {
+	float g_Exposure;
+	float g_MaxHDRNits;
+	float g_Padding[2];
 };
 enum class ShadingMode { Phong = 0, BlinnPhong = 1, Lambert = 2, Unlit = 3, TextureOnly = 4, ToonShading = 5, PBR = 6 };
 enum class ModelSource { FBX, OBJ, PMX, Custom };
@@ -179,6 +191,7 @@ struct CubeData
 	Transform tranform;
 	ECubeType type;
 };
+
 
 // 본 캐시/텍스트 일괄 구축 함수
 static void BuildBoneCacheStructure(ModelEntry& entry, const char* filter)
@@ -351,7 +364,9 @@ struct App::Impl {
 
 	// 공용 상수 버퍼 (b0)
 	ID3D11Buffer* m_pConstantBuffer = nullptr;
-	ConstantBuffer                m_ConstantBuffer{};                // CPU 캐시
+	ID3D11Buffer* m_pPostProcessConstantBuffer = nullptr;
+	ConstantBuffer					m_ConstantBuffer{};                // CPU 캐시
+	PostProcessConstantBuffer		m_PostProcessConstantBuffer{};     
 
 	// 유틸 렌더러/디버그 박스
 	class LineRenderer*				m_LineRenderer = nullptr;
@@ -416,7 +431,6 @@ struct App::Impl {
 	DirectionalLight				m_DirLight = { {0,0,0,1}, {1,1,1,1}, {0.7f,0.7f,0.7f,1}, {0,-1.1f,1}, 0.0f };
 	Material						m_Material = { {1,1,1,1}, {1,1,1,1}, {1,1,1,32}, {0,0,0,0} };
 	Material						m_mirrorCubeMaterial = { {0,0,0,1}, {0,0,0,1}, {0,0,0,32}, {1,1,1,0.02f} };
-	float							m_Gamma = 2.2f;			// 화면 감마 값 (ImGui에서 조절)
 	PBRMaterialCPU					m_DefaultPbrMaterial{};
 
 	// 라이트 마커 위치 / 카메라 기반 기본 행렬
@@ -424,7 +438,7 @@ struct App::Impl {
 	ConstantBuffer					m_baseProjection{};
 
 	// 셰이딩 옵션 / 클리어 컬러
-	ShadingMode						m_ShadingMode = ShadingMode::Phong;
+	ShadingMode						m_ShadingMode = ShadingMode::PBR;
 	// Outline params ImGui에서 제어하는 용도도
 	// Rim 파라미터 제거. 멀티패스 지오메트리 아웃라인만 사용
 	float							m_OutlineThickness = 0.08f;
@@ -488,7 +502,31 @@ struct App::Impl {
 	bool                         m_ShowScenePopup = false;
 	float                        m_ScenePopupTimer = 0.0f;
 	std::string                  m_ScenePopupMessage;
-	
+
+	// VMD 카메라 상태 (공용)
+	mmd::VmdCameraState            m_VmdCamera;
+
+	// HDR 관련 변수
+	// Quad를 그려야함
+	float m_MonitorMaxNits = 1000.0f;  // HDR 모니터 기본값 (1000 nits)
+	float m_Exposure = 0.0f;           // Exposure 기본값 (0 = 1.0배, 변화 없음)
+	bool m_isHDRSupported = false;
+	DXGI_FORMAT m_format = DXGI_FORMAT_R8G8B8A8_UNORM;
+
+	ID3D11Texture2D* m_pHdrRenderTarget = nullptr;	// 렌더 타겟 텍스처
+	ID3D11RenderTargetView* m_pHdrRenderTargetView = nullptr;
+	ID3D11ShaderResourceView* m_pHdrShaderResourceView = nullptr;
+	ID3D11SamplerState* m_pSamplerLinear = nullptr;			// 선형 필터링 샘플러 상태 객체
+
+	ID3D11VertexShader* m_pQuadVertexShader = nullptr;
+	ID3D11PixelShader* m_pPS_ToneMappingLDR = nullptr;
+	ID3D11PixelShader* m_pPS_ToneMappingHDR = nullptr;
+	ID3D11InputLayout* m_pQuadInputLayout = nullptr;
+	ID3D11Buffer* m_pQuadVertexBuffer = nullptr;
+	UINT m_QuadVertexBufferStride = 0;
+	UINT m_QuadVertexBufferOffset = 0;
+	ID3D11Buffer* m_pQuadIndexBuffer = nullptr;
+	int m_nQuadIndices = 0;
 };
 
 App::App() : m_(new Impl) {}
@@ -522,6 +560,21 @@ static bool OpenFileDialogModel(std::wstring& outPath)
 	ofn.lStructSize = sizeof(ofn);
 	ofn.hwndOwner = GameApp::m_hWnd;
 	ofn.lpstrFilter = L"Models (*.fbx;*.obj;*.pmx)\0*.fbx;*.obj;*.pmx\0All Files\0*.*\0\0";
+	ofn.lpstrFile = file;
+	ofn.nMaxFile = MAX_PATH;
+	ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
+	if (GetOpenFileNameW(&ofn)) { outPath = file; return true; }
+	return false;
+}
+
+// VMD 카메라용 파일 선택 대화상자
+static bool OpenFileDialogVMD(std::wstring& outPath)
+{
+	wchar_t file[MAX_PATH] = { 0 };
+	OPENFILENAMEW ofn{};
+	ofn.lStructSize = sizeof(ofn);
+	ofn.hwndOwner = GameApp::m_hWnd;
+	ofn.lpstrFilter = L"VMD Files (*.vmd)\0*.vmd\0All Files\0*.*\0\0";
 	ofn.lpstrFile = file;
 	ofn.nMaxFile = MAX_PATH;
 	ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
@@ -589,6 +642,7 @@ bool App::OnInitialize()
 
 	if (!InitBasicEffect()) return false;
 	if (!InitSkyBoxEffect()) return false;
+	if (!CreateQuad()) return false;
 
 	if (!InitScene()) return false;
 	if (!InitImGui()) return false;
@@ -622,11 +676,12 @@ bool App::OnInitialize()
 	m_->m_SkyBoxChoice = App::Impl::SkyBoxChoice::Baker;
 
 	// ====================================== 3D 모델 ======================================
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\char\\char.fbx"); // 0
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_rabbit.fbx"); // 0
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\sphere.fbx"); // 0
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\sphere.fbx"); // 0
-	LoadModelFromFile(L"..\\Resource\\fbx\\Neon.fbx"); // 0
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\char\\char.fbx"); // 0
+	//LoadModelFromFile(L"..\\Resource\\fbx\\Alice_UmaUma.fbx"); // 0
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\sphere.fbx"); // 1
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\sphere.fbx"); // 2
+	//LoadModelFromFile(L"..\\Resource\\fbx\\Neon.fbx"); // 3
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\sphere.fbx"); // 3
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Ground.fbx"); // 4
 
 	m_->m_Objects.clear();
@@ -641,10 +696,8 @@ bool App::OnInitialize()
 	m_->m_Models[3]->modelShading = ShadingMode::PBR;
 
 	m_->m_Models[0]->pos = XMFLOAT3(0, 0.0f, 0.0f);
-	//m_->m_Models[0]->scale = XMFLOAT3(0.5f, 0.5f, 0.5f);
-	m_->m_Models[1]->pos = XMFLOAT3(130, 0.0f, 0.0f);
-	m_->m_Models[2]->pos = XMFLOAT3(-130, 0.0f, 0.0f);
-	m_->m_Models[2]->pos = XMFLOAT3(-130, 0.0f, 50.0f);
+	m_->m_Models[1]->pos = XMFLOAT3(130, 50.0f, 0.0f);
+	m_->m_Models[2]->pos = XMFLOAT3(-130, 50.0f, 0.0f);
 	m_->m_Models[3]->pos = XMFLOAT3(90, 0.0f, 70.0f);
 	m_->m_Models[3]->scale = XMFLOAT3(0.5f, 0.5f, 0.5f);
 
@@ -712,7 +765,25 @@ void App::OnUpdate(const float& dt)
 		// 모델 중심을 포커스로 사용하여 카메라 움직임과 무관하게 안정화
 		XMVECTOR focus = XMLoadFloat3(&focusF);
 
-		XMVECTOR fwd = XMVector3Normalize(XMLoadFloat3(&m_->m_DirLight.direction)); // 라이트가 비추는 방향
+		// 1. 원본 방향 벡터 로드
+		XMVECTOR rawDir = XMLoadFloat3(&m_->m_DirLight.direction);
+
+		// 2. 벡터의 길이(제곱)를 구해서 0에 가까운지 확인 (Epsilon 체크)
+		XMVECTOR lenSq = XMVector3LengthSq(rawDir);
+		float lenSqVal = XMVectorGetX(lenSq);
+		XMVECTOR fwd;
+		// 1e-6f는 0에 매우 가까운 작은 수 (FLT_EPSILON 등을 써도 됨)
+		if (lenSqVal < 1.0e-6f)
+		{
+			// 예외 처리: 방향이 0이면 기본값(예: 수직 아래)으로 강제 설정
+			fwd = XMVectorSet(0.0f, -1.0f, 0.0f, 0.0f);
+		}
+		else
+		{
+			// 정상이면 정규화 수행
+			fwd = XMVector3Normalize(rawDir);
+		}
+
 		float r = m_->m_ShadowOrthoRadius;
 		// 큰 오브젝트에서도 라이트 카메라가 항상 AABB 뒤쪽에 위치하도록 반경만큼 뒤로 물린다
 		float backDist = r;
@@ -862,8 +933,31 @@ void App::OnUpdate(const float& dt)
 	// Camera의 View/Proj 
 	XMMATRIX model = XMMatrixIdentity();
 	m_->m_baseProjection.world = XMMatrixTranspose(model);
-	m_->m_baseProjection.view = XMMatrixTranspose(m_Camera.GetViewMatrixXM());
-	m_->m_baseProjection.proj = XMMatrixTranspose(m_Camera.GetProjMatrixXM());
+
+	// VMD 카메라 업데이트 및 적용
+	mmd::UpdateVmdCamera(dt, m_->m_VmdCamera);
+	XMMATRIX view{}, proj{};
+	XMFLOAT3 eye{};
+	bool useVmdCam = mmd::EvaluateVmdCamera(
+		m_->m_VmdCamera,
+		m_Camera.GetFovYRad(),
+		AspectRatio(),
+		m_Camera.GetNearZ(),
+		m_Camera.GetFarZ(),
+		view, proj, eye);
+
+	if (useVmdCam)
+	{
+		m_->m_baseProjection.view = XMMatrixTranspose(view);
+		m_->m_baseProjection.proj = XMMatrixTranspose(proj);
+		m_->m_baseProjection.eyePos = eye;
+	}
+	else
+	{
+		m_->m_baseProjection.view = XMMatrixTranspose(m_Camera.GetViewMatrixXM());
+		m_->m_baseProjection.proj = XMMatrixTranspose(m_Camera.GetProjMatrixXM());
+		m_->m_baseProjection.eyePos = m_Camera.GetPosition();
+	}
 	m_->m_baseProjection.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(model)));
 
 	XMFLOAT3 lightDir = m_->m_DirLight.direction;
@@ -874,7 +968,6 @@ void App::OnUpdate(const float& dt)
 	m_->m_baseProjection.dirLight = m_->m_DirLight;
 	m_->m_baseProjection.dirLight.direction = lightDir;
 	m_->m_baseProjection.dirLight.pad = 0.0f;
-	m_->m_baseProjection.eyePos = m_Camera.GetPosition();
 	m_->m_baseProjection.pad = 0.0f;
 
 	// 머티리얼을 기본 캐시에 반영해 둔다
@@ -920,6 +1013,69 @@ void App::OnUpdate(const float& dt)
 			m_->m_ScenePopupMessage = Utf8FromWString(L"기뻐요 토끼씨!");
 		}
 	}
+
+	// ====================================== 간단 마우스 피킹 (FBX/모델 위주) ======================================
+	if (InputSystem::Instance && !ImGui::GetIO().WantCaptureMouse)
+	{
+		auto& input = *InputSystem::Instance;
+		if (input.m_MouseStateTracker.leftButton == Mouse::ButtonStateTracker::PRESSED)
+		{
+			PickingRay ray = PickingRay::ScreenPointToRay(
+				m_Camera,
+				(float)input.m_MouseState.x,
+				(float)input.m_MouseState.y,
+				(float)m_ClientWidth,
+				(float)m_ClientHeight);
+
+			int   pickedModel = -1;
+			float bestT = FLT_MAX;
+
+			for (auto it = m_->m_Models.begin(); it != m_->m_Models.end(); ++it)
+			{
+				auto& mdl = **it;
+
+				XMFLOAT3 mn = mdl.boundsMin, mx = mdl.boundsMax;
+				XMFLOAT3 bmin{}, bmax{};
+
+				// 로컬 AABB(min,max)에 스케일과 위치를 그대로 적용해서 월드 AABB를 만든다 (회전은 무시)
+				float x0 = mn.x * mdl.scale.x + mdl.pos.x;
+				float x1 = mx.x * mdl.scale.x + mdl.pos.x;
+				bmin.x = std::min(x0, x1);
+				bmax.x = (std::max)(x0, x1);
+
+				float y0 = mn.y * mdl.scale.y + mdl.pos.y;
+				float y1 = mx.y * mdl.scale.y + mdl.pos.y;
+				bmin.y = std::min(y0, y1);
+				bmax.y = (std::max)(y0, y1);
+
+				float z0 = mn.z * mdl.scale.z + mdl.pos.z;
+				float z1 = mx.z * mdl.scale.z + mdl.pos.z;
+				bmin.z = std::min(z0, z1);
+				bmax.z = (std::max)(z0, z1);
+
+				float t;
+				if (ray.HitAABB(bmin, bmax, t) && t < bestT)
+				{
+					bestT = t;
+					pickedModel = (int)(it - m_->m_Models.begin());
+				}
+			}
+
+			if (pickedModel >= 0)
+			{
+				m_->m_SelectedModelIdx = pickedModel;
+				auto itObj = std::find_if(
+					m_->m_Objects.begin(), m_->m_Objects.end(),
+					[pickedModel](const std::unique_ptr<BaseObject>& up)
+					{
+						if (!up || up->kind != ObjectKind::Model) return false;
+						return static_cast<ModelObject*>(up.get())->modelIndex == pickedModel;
+					});
+				if (itObj != m_->m_Objects.end()) m_->m_SelectedItem = (int)std::distance(m_->m_Objects.begin(), itObj);
+				else m_->m_SelectedItem = -1;
+			}
+		}
+	}
 }
 
 inline ImVec2 operator+(const ImVec2& lhs, const ImVec2& rhs)
@@ -934,20 +1090,17 @@ inline ImVec2 operator-(const ImVec2& lhs, const ImVec2& rhs)
 // Render() 함수에 중요한 부분이 다 들어있습니다. 여기를 보면 됩니다
 void App::OnRender()
 {
-	float color[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+	float color[4] = { 1.0f, 0.0f, 0.0f, 1.0f };
 	UINT stride = m_->m_VertextBufferStride;	// 바이트 수
 	UINT offset = m_->m_VertextBufferOffset;
 
-	m_->m_pDeviceContext->ClearRenderTargetView(m_->m_pRenderTargetView, color);
+	// 씬은 항상 HDR RT에 렌더링 (HDR 값을 저장하기 위해 필수)
+	// 마지막 톤매핑 패스에서 HDR/LDR 셰이더로 분기하여 백버퍼에 출력
+	float clr[4] = { m_->m_ClearColor.x, m_->m_ClearColor.y, m_->m_ClearColor.z, m_->m_ClearColor.w };
+	m_->m_pDeviceContext->ClearRenderTargetView(m_->m_pHdrRenderTargetView, clr);
+	m_->m_pDeviceContext->OMSetRenderTargets(1, &m_->m_pHdrRenderTargetView, m_->m_pDepthStencilView);
 	m_->m_pDeviceContext->ClearDepthStencilView(m_->m_pDepthStencilView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
 	m_->m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-	
-	// 컬러 클리어 및 스카이박스/배경 선택
-	if (m_->m_SkyBoxChoice == App::Impl::SkyBoxChoice::Off)
-	{
-		float clr[4] = { m_->m_ClearColor.x, m_->m_ClearColor.y, m_->m_ClearColor.z, m_->m_ClearColor.w };
-		m_->m_pDeviceContext->ClearRenderTargetView(m_->m_pRenderTargetView, clr);
-	}
 
 	// ====================================== Shadow Pass (depth-only) ======================================
 	if (m_->m_ShadowEnabled && !m_->m_Models.empty() && m_->m_pShadowDSV)
@@ -1030,10 +1183,10 @@ void App::OnRender()
 			for (const auto& sub : mdlPtr->shared->subsets) m_->m_pDeviceContext->DrawIndexed(sub.count, sub.start, 0);
 		}
 
-		// Restore
+		// Restore: 씬 렌더링은 항상 HDR RT에 수행
 		m_->m_pDeviceContext->RSSetState(nullptr);
 		m_->m_pDeviceContext->RSSetViewports(1, &oldVP);
-		m_->m_pDeviceContext->OMSetRenderTargets(1, &m_->m_pRenderTargetView, m_->m_pDepthStencilView);
+		m_->m_pDeviceContext->OMSetRenderTargets(1, &m_->m_pHdrRenderTargetView, m_->m_pDepthStencilView);
 	}
 
 	/// ====================================== 카메라 ======================================
@@ -1062,9 +1215,8 @@ void App::OnRender()
 	m_->m_ConstantBuffer.dirLight.pad = 0.0f;
 	m_->m_ConstantBuffer.eyePos = m_Camera.GetPosition();
 	m_->m_ConstantBuffer.pad = 0.0f;
-	// 감마 값 반영 (PBR 포함 전체 셰이더 공용)
-	m_->m_ConstantBuffer.gamma = m_->m_Gamma;
 	m_->m_ConstantBuffer.useTextureColor = m_->m_UseTextureColor;
+	// skipGammaCorrection은 HDR RT 렌더링 여부에 따라 OnRender() 시작 부분에서 설정됨
 	const PBRMaterialCPU& defPbr = m_->m_DefaultPbrMaterial;
 	m_->m_ConstantBuffer.pbrBaseColor = defPbr.baseColor;
 	m_->m_ConstantBuffer.pbrMetalness = defPbr.metalness;
@@ -1310,6 +1462,63 @@ void App::OnRender()
 		m_->m_LineRenderer->DrawAxesOverlay(m_->m_pDeviceContext, XMMatrixTranspose(m_->m_baseProjection.view), DirectX::XMFLOAT2(-0.9f, 0.85f), 0.08f, m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
 	}
 
+	// ====================================== Tone Mapping ======================================
+	// 이전 패스(Scene Render)에서 HDR RT를 RTV로 썼으므로, 
+	// 아래에서 RTV를 BackBuffer로 교체하는 순간 HDR RT는 자동으로 Unbind 됩니다.
+	// 굳이 nullSRV_First를 호출할 필요가 없습니다.
+
+	// 1. 렌더 타겟 변경 (HDR RT -> BackBuffer)
+	// 깊이 버퍼(DSV)는 nullptr로 설정 (톤매핑은 깊이 테스트 불필요)
+	ID3D11RenderTargetView* nullRTV = nullptr;
+	m_->m_pDeviceContext->OMSetRenderTargets(1, &m_->m_pRenderTargetView, nullptr);
+
+	// 2. 톤 매핑 상수 버퍼 업데이트
+	{
+		m_->m_PostProcessConstantBuffer.g_Exposure = m_->m_Exposure;
+		m_->m_PostProcessConstantBuffer.g_MaxHDRNits = m_->m_MonitorMaxNits;
+
+		D3D11_MAPPED_SUBRESOURCE mapped;
+		// D3D11_MAP_WRITE_DISCARD는 버퍼 내용을 전부 날리고 새로 씁니다.
+		HR_T(m_->m_pDeviceContext->Map(m_->m_pPostProcessConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped));
+		memcpy(mapped.pData, &m_->m_PostProcessConstantBuffer, sizeof(PostProcessConstantBuffer));
+		m_->m_pDeviceContext->Unmap(m_->m_pPostProcessConstantBuffer, 0);
+
+		// PS에만 버퍼 연결 (VS가 행렬을 안 쓴다면 VS 연결 불필요)
+		m_->m_pDeviceContext->PSSetConstantBuffers(2, 1, &m_->m_pPostProcessConstantBuffer);
+	}
+
+	// 3. Quad 그리기 설정
+	m_->m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	m_->m_pDeviceContext->IASetVertexBuffers(0, 1, &m_->m_pQuadVertexBuffer, &m_->m_QuadVertexBufferStride, &m_->m_QuadVertexBufferOffset);
+	m_->m_pDeviceContext->IASetInputLayout(m_->m_pQuadInputLayout);
+	m_->m_pDeviceContext->IASetIndexBuffer(m_->m_pQuadIndexBuffer, DXGI_FORMAT_R16_UINT, 0);
+
+	// Vertex Shader 설정
+	m_->m_pDeviceContext->VSSetShader(m_->m_pQuadVertexShader, nullptr, 0);
+
+	// 4. Pixel Shader 및 리소스 선택
+	if (m_->m_format == DXGI_FORMAT_R16G16B16A16_FLOAT || m_->m_format == DXGI_FORMAT_R10G10B10A2_UNORM)
+	{
+		m_->m_pDeviceContext->PSSetShader(m_->m_pPS_ToneMappingHDR, nullptr, 0);
+	}
+	else
+	{
+		m_->m_pDeviceContext->PSSetShader(m_->m_pPS_ToneMappingLDR, nullptr, 0);
+	}
+
+	// 5. 텍스쳐 바인딩 (Bind HDR Texture)
+	m_->m_pDeviceContext->PSSetShaderResources(8, 1, &m_->m_pHdrShaderResourceView);
+	m_->m_pDeviceContext->PSSetSamplers(2, 1, &m_->m_pSamplerLinear);
+
+	// 6. 그리기 (Draw)
+	m_->m_pDeviceContext->DrawIndexed(m_->m_nQuadIndices, 0, 0);
+
+	// 7. 리소스 해제 (필수)
+	// 다음 프레임에서 이 텍스처를 렌더 타겟(RTV)으로 써야 하므로, SRV 바인딩을 반드시 해제해야 함
+	ID3D11ShaderResourceView* nullSRV[1] = { nullptr };
+	m_->m_pDeviceContext->PSSetShaderResources(8, 1, nullSRV);
+
+
 	// ====================================== ImGui ======================================
 	// ImGui 프레임 및 UI 렌더링
 	ImGui_ImplDX11_NewFrame();
@@ -1331,53 +1540,15 @@ void App::OnRender()
 
 bool App::InitD3D()
 {
+	// HDR 지원 여부를 확인함
 	HRESULT hr = S_OK;
+	DXGI_FORMAT result;
+	m_->m_isHDRSupported = CheckHDRSupportAndGetMaxNits(m_->m_MonitorMaxNits, result);
 
-	// 스왑체인의 값들을 설정할 구조체를 만듭니다
-	DXGI_SWAP_CHAIN_DESC swapDesc = {};
-	swapDesc.BufferCount = 1;
-	swapDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-	swapDesc.OutputWindow = m_hWnd;
-	swapDesc.Windowed = true;
-	swapDesc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-	swapDesc.BufferDesc.Width = m_ClientWidth;
-	swapDesc.BufferDesc.Height = m_ClientHeight;
-	swapDesc.BufferDesc.RefreshRate.Numerator = 60;
-	swapDesc.BufferDesc.RefreshRate.Denominator = 1;
-	swapDesc.SampleDesc.Count = 1;
-	swapDesc.SampleDesc.Quality = 0;
-	swapDesc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
-
-	// 디버그 창을 띄우기 위함입니다.
-	UINT creationFlags = 0;
-#ifdef _DEBUG
-	creationFlags |= D3D11_CREATE_DEVICE_DEBUG;
-#endif
-
-	/*
-	* @brief  Direct3D 디바이스, 디바이스 컨텍스트, 스왑체인 생성
-	* @details
-	*   - Adapter        : NULL → 기본 GPU 사용
-	*   - DriverType     : D3D_DRIVER_TYPE_HARDWARE → 하드웨어 가속
-	*   - Flags          : creationFlags (디버그 모드 여부 포함)
-	*   - SwapChainDesc  : 백버퍼, 주사율 등 스왑체인 설정
-	*   - 반환           : m_pDevice, m_pDeviceContext, m_pSwapChain
-	*/
-	HR_T(D3D11CreateDeviceAndSwapChain(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, creationFlags, NULL, NULL,
-		D3D11_SDK_VERSION, &swapDesc, &m_->m_pSwapChain, &m_->m_pDevice, NULL, &m_->m_pDeviceContext));
-
-	/*
-	* @brief  스왑체인 백버퍼로 RTV를 만들고 OM 스테이지에 바인딩한다
-	* @details
-	*   - GetBuffer(0): 백버퍼(ID3D11Texture2D)를 획득
-	*   - CreateRenderTargetView: 백버퍼 기반 RTV 생성(리소스 내부 참조 증가)
-	*   - 로컬 텍스처 포인터는 Release로 정리 (RTV가 수명 관리)
-	*   - OMSetRenderTargets: 생성한 RTV를 렌더 타겟을 최종 출력 파이프라인에 바인딩
-	*/
-	ID3D11Texture2D* pBackBufferTexture = nullptr;
-	HR_T(m_->m_pSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&pBackBufferTexture));
-	HR_T(m_->m_pDevice->CreateRenderTargetView(pBackBufferTexture, NULL, &m_->m_pRenderTargetView));
-	SAFE_RELEASE(pBackBufferTexture);
+	if (m_->m_isHDRSupported)
+		CreateSwapChainAndBackBuffer(DXGI_FORMAT_R10G10B10A2_UNORM); // HDR
+	else
+		CreateSwapChainAndBackBuffer(DXGI_FORMAT_R8G8B8A8_UNORM); // LDR
 
 	// 깊이 스텐실 텍스처/뷰 생성
 	D3D11_TEXTURE2D_DESC dsDesc = {};
@@ -1386,8 +1557,8 @@ bool App::InitD3D()
 	dsDesc.MipLevels = 1;
 	dsDesc.ArraySize = 1;
 	dsDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	dsDesc.SampleDesc.Count = swapDesc.SampleDesc.Count;
-	dsDesc.SampleDesc.Quality = swapDesc.SampleDesc.Quality;
+	dsDesc.SampleDesc.Count = 1;
+	dsDesc.SampleDesc.Quality = 0;
 	dsDesc.Usage = D3D11_USAGE_DEFAULT;
 	dsDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
 	dsDesc.CPUAccessFlags = 0;
@@ -1467,6 +1638,36 @@ bool App::InitD3D()
 		HR_T(m_->m_pDevice->CreateBlendState(&bd, &m_->m_pAlphaBlendState));
 	}
 
+	// ====================================== HDR Render Target 생성 ======================================
+	// HDR 씬 렌더링을 위한 R16G16B16A16_FLOAT 포맷의 렌더 타겟 생성
+	// 이 텍스처는 1.0을 넘는 HDR 값을 저장할 수 있으며, 이후 톤매핑 패스에서 샘플링됨
+	D3D11_TEXTURE2D_DESC hdrRTDesc = {};
+	hdrRTDesc.Width = static_cast<UINT>(m_ClientWidth);
+	hdrRTDesc.Height = static_cast<UINT>(m_ClientHeight);
+	hdrRTDesc.MipLevels = 1;
+	hdrRTDesc.ArraySize = 1;
+	hdrRTDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT; // HDR 값을 저장할 수 있는 포맷
+	hdrRTDesc.SampleDesc.Count = 1;   // MSAA 없음
+	hdrRTDesc.SampleDesc.Quality = 0;
+	hdrRTDesc.Usage = D3D11_USAGE_DEFAULT;
+	hdrRTDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE; // RTV와 SRV 모두 가능
+
+	HR_T(m_->m_pDevice->CreateTexture2D(&hdrRTDesc, nullptr, &m_->m_pHdrRenderTarget));
+	HR_T(m_->m_pDevice->CreateRenderTargetView(m_->m_pHdrRenderTarget, nullptr, &m_->m_pHdrRenderTargetView));
+	HR_T(m_->m_pDevice->CreateShaderResourceView(m_->m_pHdrRenderTarget, nullptr, &m_->m_pHdrShaderResourceView));
+
+	// ====================================== 톤매핑용 선형 샘플러 생성 ======================================
+	// 톤매핑 패스에서 HDR 텍스처를 샘플링할 때 사용할 선형 필터링 샘플러
+	D3D11_SAMPLER_DESC samplerLinearDesc = {};
+	samplerLinearDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+	samplerLinearDesc.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP; // 가장자리 클램프
+	samplerLinearDesc.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+	samplerLinearDesc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+	samplerLinearDesc.ComparisonFunc = D3D11_COMPARISON_NEVER;
+	samplerLinearDesc.MinLOD = 0;
+	samplerLinearDesc.MaxLOD = D3D11_FLOAT32_MAX;
+	HR_T(m_->m_pDevice->CreateSamplerState(&samplerLinearDesc, &m_->m_pSamplerLinear));
+
 	return true;
 }
 
@@ -1478,6 +1679,12 @@ void App::UninitD3D()
 		m_->m_pDeviceContext->ClearState();
 		m_->m_pDeviceContext->Flush();
 	}
+
+	// HDR 관련 리소스 해제
+	SAFE_RELEASE(m_->m_pSamplerLinear);
+	SAFE_RELEASE(m_->m_pHdrShaderResourceView);
+	SAFE_RELEASE(m_->m_pHdrRenderTargetView);
+	SAFE_RELEASE(m_->m_pHdrRenderTarget);
 
 	SAFE_RELEASE(m_->m_pDepthStencilState);
 	SAFE_RELEASE(m_->m_pDepthStencilStateReadOnly);
@@ -1683,6 +1890,9 @@ void App::UninitScene()
 	if (m_->m_LineRenderer) { m_->m_LineRenderer->Release(); delete m_->m_LineRenderer; m_->m_LineRenderer = nullptr; }
 	if (m_->m_Skybox) { m_->m_Skybox->Release(); delete m_->m_Skybox; m_->m_Skybox = nullptr; }
 
+	SAFE_RELEASE(m_->m_pPS_ToneMappingLDR);
+	SAFE_RELEASE(m_->m_pPS_ToneMappingHDR);
+
 	// 모델 리소스 해제
 	UnloadModel();
 }
@@ -1746,7 +1956,7 @@ bool App::InitBasicEffect()
 	};
 
 	ID3D10Blob* vertexShaderBuffer = nullptr;
-	HR_T(CompileShaderFromFile(L"32_BasicVS.hlsl", "main", "vs_5_0", &vertexShaderBuffer));
+	HR_T(CompileShaderFromFile(L"34_BasicVS.hlsl", "main", "vs_5_0", &vertexShaderBuffer));
 	HR_T(m_->m_pDevice->CreateInputLayout(layout, ARRAYSIZE(layout),
 		vertexShaderBuffer->GetBufferPointer(), vertexShaderBuffer->GetBufferSize(), &m_->m_pInputLayout));
 
@@ -1763,7 +1973,7 @@ bool App::InitBasicEffect()
 		{ "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 	};
 	ID3D10Blob* vsNoTBN = nullptr;
-	HR_T(CompileShaderFromFile(L"32_BasicVS.hlsl", "VSNoTBN", "vs_5_0", &vsNoTBN));
+	HR_T(CompileShaderFromFile(L"34_BasicVS.hlsl", "VSNoTBN", "vs_5_0", &vsNoTBN));
 	HR_T(m_->m_pDevice->CreateInputLayout(layoutNoTBN, ARRAYSIZE(layoutNoTBN), vsNoTBN->GetBufferPointer(), vsNoTBN->GetBufferSize(), &m_->m_pInputLayoutNoTBN));
 	HR_T(m_->m_pDevice->CreateVertexShader(vsNoTBN->GetBufferPointer(), vsNoTBN->GetBufferSize(), nullptr, &m_->m_pVertexShaderNoTBN));
 	SAFE_RELEASE(vsNoTBN);
@@ -1776,7 +1986,7 @@ bool App::InitBasicEffect()
 		{ "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 	};
 	ID3D10Blob* vsLine = nullptr;
-	HR_T(CompileShaderFromFile(L"32_BasicVS.hlsl", "VSLine", "vs_5_0", &vsLine));
+	HR_T(CompileShaderFromFile(L"34_BasicVS.hlsl", "VSLine", "vs_5_0", &vsLine));
 
 	// FBX GPU 스키닝용 VS/IL 생성 (POSITION,NORMAL,TANGENT,BINORMAL,COLOR,TEXCOORD,BLENDINDICES,BLENDWEIGHT)
 	{
@@ -1792,7 +2002,7 @@ bool App::InitBasicEffect()
 			{ "BLENDWEIGHT",  0, DXGI_FORMAT_R32G32B32A32_FLOAT,0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 		};
 		ID3D10Blob* vsSkinned = nullptr;
-		HR_T(CompileShaderFromFile(L"32_BasicVS.hlsl", "VSSkinned", "vs_5_0", &vsSkinned));
+		HR_T(CompileShaderFromFile(L"34_BasicVS.hlsl", "VSSkinned", "vs_5_0", &vsSkinned));
 		HR_T(m_->m_pDevice->CreateInputLayout(layoutSkinned, ARRAYSIZE(layoutSkinned), vsSkinned->GetBufferPointer(), vsSkinned->GetBufferSize(), &m_->m_pInputLayoutSkinned));
 		HR_T(m_->m_pDevice->CreateVertexShader(vsSkinned->GetBufferPointer(), vsSkinned->GetBufferSize(), nullptr, &m_->m_pVertexShaderSkinned));
 		SAFE_RELEASE(vsSkinned);
@@ -1801,16 +2011,15 @@ bool App::InitBasicEffect()
 	HR_T(m_->m_pDevice->CreateVertexShader(vsLine->GetBufferPointer(), vsLine->GetBufferSize(), nullptr, &m_->m_pLineVS));
 	SAFE_RELEASE(vsLine);
 
-	// 이번 프로젝트 코드
 	// Outline VS
 	{
 		ID3D10Blob* vsOutline = nullptr;
-		HR_T(CompileShaderFromFile(L"32_BasicVS.hlsl", "VSOutline", "vs_5_0", &vsOutline));
+		HR_T(CompileShaderFromFile(L"34_BasicVS.hlsl", "VSOutline", "vs_5_0", &vsOutline));
 		HR_T(m_->m_pDevice->CreateVertexShader(vsOutline->GetBufferPointer(), vsOutline->GetBufferSize(), nullptr, &m_->m_pVertexShaderOutline));
 		SAFE_RELEASE(vsOutline);
 
 		ID3D10Blob* vsSkinnedOutline = nullptr;
-		HR_T(CompileShaderFromFile(L"32_BasicVS.hlsl", "VSSkinnedOutline", "vs_5_0", &vsSkinnedOutline));
+		HR_T(CompileShaderFromFile(L"34_BasicVS.hlsl", "VSSkinnedOutline", "vs_5_0", &vsSkinnedOutline));
 		HR_T(m_->m_pDevice->CreateVertexShader(vsSkinnedOutline->GetBufferPointer(), vsSkinnedOutline->GetBufferSize(), nullptr, &m_->m_pVertexShaderSkinnedOutline));
 		SAFE_RELEASE(vsSkinnedOutline);
 	}
@@ -1818,12 +2027,12 @@ bool App::InitBasicEffect()
 	// Shadow VS (depth-only)
 	{
 		ID3D10Blob* vsShadow = nullptr;
-		HR_T(CompileShaderFromFile(L"32_BasicVS.hlsl", "VSShadow", "vs_5_0", &vsShadow));
+		HR_T(CompileShaderFromFile(L"34_BasicVS.hlsl", "VSShadow", "vs_5_0", &vsShadow));
 		HR_T(m_->m_pDevice->CreateVertexShader(vsShadow->GetBufferPointer(), vsShadow->GetBufferSize(), nullptr, &m_->m_pVSShadow));
 		SAFE_RELEASE(vsShadow);
 
 		ID3D10Blob* vsSkinnedShadow = nullptr;
-		HR_T(CompileShaderFromFile(L"32_BasicVS.hlsl", "VSSkinnedShadow", "vs_5_0", &vsSkinnedShadow));
+		HR_T(CompileShaderFromFile(L"34_BasicVS.hlsl", "VSSkinnedShadow", "vs_5_0", &vsSkinnedShadow));
 		HR_T(m_->m_pDevice->CreateVertexShader(vsSkinnedShadow->GetBufferPointer(), vsSkinnedShadow->GetBufferSize(), nullptr, &m_->m_pVSSkinnedShadow));
 		SAFE_RELEASE(vsSkinnedShadow);
 	}
@@ -1831,7 +2040,7 @@ bool App::InitBasicEffect()
 
 	// Pixel Shader -------------------------------------
 	ID3D10Blob* pixelShaderBuffer = nullptr;
-	HR_T(CompileShaderFromFile(L"32_BasicPS.hlsl", "main", "ps_4_0", &pixelShaderBuffer));
+	HR_T(CompileShaderFromFile(L"34_BasicPS.hlsl", "main", "ps_4_0", &pixelShaderBuffer));
 	HR_T(m_->m_pDevice->CreatePixelShader(pixelShaderBuffer->GetBufferPointer(),
 		pixelShaderBuffer->GetBufferSize(), NULL, &m_->m_pPixelShader));
 	SAFE_RELEASE(pixelShaderBuffer);	// 픽셀 셰이더 버퍼 더이상 필요없음
@@ -1839,10 +2048,11 @@ bool App::InitBasicEffect()
 	// Outline 전용 Pixel Shader (PSOutline)
 	{
 		ID3D10Blob* psOutline = nullptr;
-		HR_T(CompileShaderFromFile(L"32_BasicPS.hlsl", "PSOutline", "ps_4_0", &psOutline));
+		HR_T(CompileShaderFromFile(L"34_BasicPS.hlsl", "PSOutline", "ps_4_0", &psOutline));
 		HR_T(m_->m_pDevice->CreatePixelShader(psOutline->GetBufferPointer(), psOutline->GetBufferSize(), nullptr, &m_->m_pPixelShaderOutline));
 		SAFE_RELEASE(psOutline);
 	}
+
 	return true;
 }
 
@@ -1855,7 +2065,7 @@ bool App::InitSkyBoxEffect()
 	};
 
 	ID3D10Blob* vertexShaderBuffer = nullptr;
-	HR_T(CompileShaderFromFile(L"32_SkyBoxVS.hlsl", "VS", "vs_4_0", &vertexShaderBuffer));
+	HR_T(CompileShaderFromFile(L"34_SkyBoxVS.hlsl", "VS", "vs_4_0", &vertexShaderBuffer));
 	HR_T(m_->m_pDevice->CreateInputLayout(layout, ARRAYSIZE(layout),
 		vertexShaderBuffer->GetBufferPointer(), vertexShaderBuffer->GetBufferSize(), &m_->m_pSkyBoxInputLayout));
 
@@ -1865,10 +2075,101 @@ bool App::InitSkyBoxEffect()
 
 	// Pixel Shader -------------------------------------
 	ID3D10Blob* pixelShaderBuffer = nullptr;
-	HR_T(CompileShaderFromFile(L"32_SkyBoxPS.hlsl", "PS", "ps_4_0", &pixelShaderBuffer));
+	HR_T(CompileShaderFromFile(L"34_SkyBoxPS.hlsl", "PS", "ps_4_0", &pixelShaderBuffer));
 	HR_T(m_->m_pDevice->CreatePixelShader(pixelShaderBuffer->GetBufferPointer(),
 		pixelShaderBuffer->GetBufferSize(), NULL, &m_->m_pSkyBoxPixelShader));
 	SAFE_RELEASE(pixelShaderBuffer);	// 픽셀 셰이더 버퍼 더이상 필요없음
+	return true;
+}
+
+bool App::CreateQuad()
+{
+	HRESULT hr = 0; // 결과값.
+	ID3D10Blob* errorMessage = nullptr;	 // 에러 메시지를 저장할 버퍼.	
+	// 정점 선언.
+	struct QuadVertex
+	{
+		Vector3 position;		// Normalized Device coordinate position
+		Vector2 uv;				// Texture coordinate position
+
+		QuadVertex(float x, float y, float z, float u, float v) : position(x, y, z), uv(u, v) {}
+		QuadVertex(Vector3 p, Vector2 u) : position(p), uv(u) {}
+	};
+
+	QuadVertex QuadVertices[] =
+	{
+		QuadVertex(Vector3(-1.0f,  1.0f, 1.0f), Vector2(0.0f,0.0f)),	// Left Top 
+		QuadVertex(Vector3(1.0f,  1.0f, 1.0f), Vector2(1.0f, 0.0f)),	// Right Top
+		QuadVertex(Vector3(-1.0f, -1.0f, 1.0f), Vector2(0.0f, 1.0f)),	// Left Bottom
+		QuadVertex(Vector3(1.0f, -1.0f, 1.0f), Vector2(1.0f, 1.0f))		// Right Bottom
+	};
+
+	D3D11_BUFFER_DESC vbDesc = {};
+	vbDesc.ByteWidth = sizeof(QuadVertex) * ARRAYSIZE(QuadVertices);
+	vbDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+	vbDesc.Usage = D3D11_USAGE_DEFAULT;
+	D3D11_SUBRESOURCE_DATA vbData = {};
+	vbData.pSysMem = QuadVertices;	// 배열 데이터 할당.
+	HR_T(m_->m_pDevice->CreateBuffer(&vbDesc, &vbData, &m_->m_pQuadVertexBuffer));
+	m_->m_QuadVertexBufferStride = sizeof(QuadVertex);		// 버텍스 버퍼 정보
+	m_->m_QuadVertexBufferOffset = 0;
+
+	// InputLayout 생성 	
+	D3D11_INPUT_ELEMENT_DESC layout[] = // 입력 레이아웃.
+	{   // SemanticName , SemanticIndex , Format , InputSlot , AlignedByteOffset , InputSlotClass , InstanceDataStepRate	
+		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0,  D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 }
+	};
+	ID3D10Blob* vertexShaderBuffer = nullptr;
+	HR_T(CompileShaderFromFile(L"34_QuadVS.hlsl", "main", "vs_5_0", &vertexShaderBuffer));
+	HR_T(m_->m_pDevice->CreateInputLayout(layout, ARRAYSIZE(layout),
+		vertexShaderBuffer->GetBufferPointer(), vertexShaderBuffer->GetBufferSize(), &m_->m_pQuadInputLayout));
+
+	// 버텍스 셰이더 생성
+	HR_T(m_->m_pDevice->CreateVertexShader(vertexShaderBuffer->GetBufferPointer(),
+		vertexShaderBuffer->GetBufferSize(), NULL, &m_->m_pQuadVertexShader));
+	SAFE_RELEASE(vertexShaderBuffer);	// 버퍼 해제.
+
+	// 인덱스 버퍼 생성
+	WORD indices[] =
+	{
+		0, 1, 2,
+		2, 1, 3
+	};
+	m_->m_nQuadIndices = ARRAYSIZE(indices);	// 인덱스 개수 저장.
+	D3D11_BUFFER_DESC ibDesc = {};
+	ibDesc.ByteWidth = sizeof(WORD) * ARRAYSIZE(indices);
+	ibDesc.BindFlags = D3D11_BIND_INDEX_BUFFER;
+	ibDesc.Usage = D3D11_USAGE_DEFAULT;
+	D3D11_SUBRESOURCE_DATA ibData = {};
+	ibData.pSysMem = indices;
+	HR_T(m_->m_pDevice->CreateBuffer(&ibDesc, &ibData, &m_->m_pQuadIndexBuffer));
+
+	// 픽셀 셰이더 생성
+	ID3D10Blob* pixelShaderBuffer = nullptr;
+
+
+	HR_T(CompileShaderFromFile(L"34_ToneMappingPS_LDR.hlsl", "main", "ps_5_0", &pixelShaderBuffer));
+	HR_T(m_->m_pDevice->CreatePixelShader(pixelShaderBuffer->GetBufferPointer(),
+		pixelShaderBuffer->GetBufferSize(), NULL, &m_->m_pPS_ToneMappingLDR));
+	SAFE_RELEASE(pixelShaderBuffer);	// 픽셀 셰이더 버퍼 더이상 필요없음.
+
+	HR_T(CompileShaderFromFile(L"34_ToneMappingPS_HDR.hlsl", "main", "ps_5_0", &pixelShaderBuffer));
+	HR_T(m_->m_pDevice->CreatePixelShader(pixelShaderBuffer->GetBufferPointer(),
+		pixelShaderBuffer->GetBufferSize(), NULL, &m_->m_pPS_ToneMappingHDR));
+	SAFE_RELEASE(pixelShaderBuffer);	// 픽셀 셰이더 버퍼 더이상 필요없음.
+
+	D3D11_BUFFER_DESC pdbDesc = {};
+	pdbDesc.Usage = D3D11_USAGE_DYNAMIC;            // CPU가 매 프레임 쓸(Write) 것이므로 Dynamic
+	pdbDesc.ByteWidth = sizeof(PostProcessConstantBuffer);
+	pdbDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	pdbDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE; // CPU에서 접근 가능하게 설정
+	pdbDesc.MiscFlags = 0;
+	pdbDesc.StructureByteStride = 0;
+
+	// m_->m_pPostProcessBuffer에 생성
+	HR_T(m_->m_pDevice->CreateBuffer(&pdbDesc, nullptr, &m_->m_pPostProcessConstantBuffer));
+
 	return true;
 }
 
@@ -2040,9 +2341,11 @@ void App::RenderControlPannel()
 	ImGui::SetNextWindowSize(ImVec2(300, 360), ImGuiCond_FirstUseEver);
 	if (ImGui::Begin("Controls"))
 	{
+		ImGui::SeparatorText("Tone Mapping Parameter");
+		ImGui::SliderFloat("Exposure", &m_->m_Exposure, -2.0f, 2.0f, "%.2f");
+		ImGui::SliderFloat("Monitor Max Nits", &m_->m_MonitorMaxNits, 0.0f, 50000.0f, "%.2f");
+
 		ImGui::SeparatorText("PBR Parameter");
-		// PBR / 전체 화면 감마 값 (1.4~10.0 범위에서 조절, 눈의 오차를 감안해 여유 범위 확보)
-		ImGui::SliderFloat("Gamma", &m_->m_Gamma, 1.4f, 10.0f, "%.2f");
 		// 텍스처 색 사용 여부 (PBR 전용)
 		ImGui::Checkbox("Use Texture Color (PBR)", (bool*)&m_->m_UseTextureColor);
 		// 노말맵 사용 여부 (PBR / 모델 공통)
@@ -2143,6 +2446,45 @@ void App::RenderControlPannel()
 					m_Camera.SetRotation(rotDeg);
 				}
 			}
+		}
+		ImGui::Separator();
+		ImGui::Text("VMD Camera");
+		if (ImGui::Button("Load VMD Camera and Play"))
+		{
+			std::wstring vmdPath;
+			if (OpenFileDialogVMD(vmdPath))
+			{
+				if (mmd::LoadVmdCameraFromFile(vmdPath, m_->m_VmdCamera))
+				{
+					m_->PushLog("[OK] Loaded VMD Camera");
+				}
+				else
+				{
+					m_->PushLog("[ERR] Failed to load VMD Camera");
+				}
+			}
+		}
+		if (!m_->m_VmdCamera.frames.empty())
+		{
+			ImGui::Checkbox("Use VMD Camera", &m_->m_VmdCamera.use);
+			ImGui::SameLine();
+			if (ImGui::Button(m_->m_VmdCamera.playing ? "Pause##VMD" : "Play##VMD"))
+			{
+				m_->m_VmdCamera.playing = !m_->m_VmdCamera.playing;
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Stop##VMD"))
+			{
+				m_->m_VmdCamera.playing = false;
+				if (!m_->m_VmdCamera.frames.empty())
+					m_->m_VmdCamera.currentFrame = (float)m_->m_VmdCamera.frames.front().frame;
+			}
+
+			int firstFrame = m_->m_VmdCamera.frames.front().frame;
+			int lastFrame = m_->m_VmdCamera.frames.back().frame;
+			float curFrame = m_->m_VmdCamera.currentFrame;
+			ImGui::Text("Frame: %.1f (%d ~ %d)", curFrame, firstFrame, lastFrame);
+			ImGui::SliderFloat("VMD Camera Scale", &m_->m_VmdCamera.scale, 0.1f, 5.0f, "%.2f");
 		}
 		ImGui::Separator();
 		ImGui::Text("Shading");
@@ -2875,3 +3217,145 @@ void App::TrimVideoMemory()
 	}
 }
 
+bool App::CheckHDRSupportAndGetMaxNits(float& outMaxNits, DXGI_FORMAT& outFormat)
+{
+	using namespace Microsoft::WRL;
+	ComPtr<IDXGIFactory4> pFactory;
+	HRESULT hr = CreateDXGIFactory1(IID_PPV_ARGS(&pFactory));
+	if (FAILED(hr))
+	{
+		LOG_ERRORA("ERROR: DXGI Factory 생성 실패.\n");
+		return false;
+	}
+	// 2. 주 그래픽 어댑터 (0번) 열거
+	ComPtr<IDXGIAdapter1> pAdapter;
+	UINT adapterIndex = 0;
+	while (pFactory->EnumAdapters1(adapterIndex, &pAdapter) != DXGI_ERROR_NOT_FOUND)
+	{
+		DXGI_ADAPTER_DESC1 desc;
+		pAdapter->GetDesc1(&desc);
+
+		// WARP 어댑터(소프트웨어)를 건너뛰고 주 어댑터만 사용하도록 선택할 수 있습니다.
+		if (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE)
+		{
+			adapterIndex++;
+			pAdapter.Reset();
+			continue;
+		}
+		break;
+	}
+
+	if (!pAdapter)
+	{
+		LOG_ERRORA("ERROR: 유효한 하드웨어 어댑터를 찾을 수 없습니다.\n");
+		return false;
+	}
+
+	// 3. 주 모니터 출력 (0번) 열거
+	ComPtr<IDXGIOutput> pOutput;
+	hr = pAdapter->EnumOutputs(0, &pOutput); // 0번 출력
+	if (FAILED(hr))
+	{
+		LOG_ERRORA("ERROR: 주 모니터 출력(Output 0)을 찾을 수 없습니다.\n");
+		return false;
+	}
+
+	// 4. HDR 정보를 얻기 위해 IDXGIOutput6으로 쿼리
+	ComPtr<IDXGIOutput6> pOutput6;
+	hr = pOutput.As(&pOutput6);
+	if (FAILED(hr))
+	{
+		printf("INFO: IDXGIOutput6 인터페이스를 얻을 수 없습니다. HDR 정보를 얻을 수 없습니다.\n");
+		outMaxNits = 100.0f;
+		outFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
+		return false;
+	}
+
+	// 5. DXGI_OUTPUT_DESC1에서 HDR 정보 확인
+	DXGI_OUTPUT_DESC1 desc1 = {};
+	hr = pOutput6->GetDesc1(&desc1);
+	if (FAILED(hr))
+	{
+		printf("ERROR: GetDesc1 호출 실패.\n");
+		return false;
+	}
+
+	// 6. HDR 활성화 조건 분석
+	bool isHDRColorSpace = (desc1.ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020);
+	outMaxNits = (float)desc1.MaxLuminance;
+
+	// OS가 HDR을 켰을 때 MaxLuminance는 100 Nits(SDR 기준)를 초과합니다.
+	bool isHDRActive = outMaxNits > 100.0f;
+
+	if (isHDRColorSpace && isHDRActive)
+	{
+		// 최종 판단: HDR 지원 및 OS 활성화
+		outFormat = DXGI_FORMAT_R10G10B10A2_UNORM; // HDR 포맷 설정
+		printf("SUCCESS: HDR 활성화됨. MaxNits: %.1f, Format: R10G10B10A2_UNORM\n", outMaxNits);
+		return true;
+	}
+	else
+	{
+		// HDR 지원 안함 또는 OS에서 비활성화
+		outMaxNits = 100.0f; // SDR 기본값
+		outFormat = DXGI_FORMAT_R8G8B8A8_UNORM; // SDR 포맷 설정
+		printf("INFO: HDR 비활성화. MaxNits: 100.0, Format: R8G8B8A8_UNORM\n");
+		return false;
+	}
+	return true;
+}
+
+//  DXGI_FORMAT_R8G8B8A8_UNORM : LDR
+//  DXGI_FORMAT_R10G10B10A2_UNORM   : HDR
+void App::CreateSwapChainAndBackBuffer(DXGI_FORMAT format)
+{
+	m_->m_format = format;
+	if (!(format == DXGI_FORMAT_R8G8B8A8_UNORM ||
+		format == DXGI_FORMAT_R10G10B10A2_UNORM))
+	{
+		m_->m_format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	}
+
+	HRESULT hr = 0;	// 결과값.
+
+	// 스왑체인 속성 설정 구조체 생성.
+	DXGI_SWAP_CHAIN_DESC swapDesc = {};
+	swapDesc.BufferCount = 2;
+	swapDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+	swapDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+	swapDesc.OutputWindow = m_hWnd;	// 스왑체인 출력할 창 핸들 값.
+	swapDesc.Windowed = true;		// 창 모드 여부 설정.
+	swapDesc.BufferDesc.Format = m_->m_format;
+	// 백버퍼(텍스처)의 가로/세로 크기 설정.
+	swapDesc.BufferDesc.Width = m_ClientWidth;
+	swapDesc.BufferDesc.Height = m_ClientHeight;
+	// 화면 주사율 설정.
+	swapDesc.BufferDesc.RefreshRate.Numerator = 60;
+	swapDesc.BufferDesc.RefreshRate.Denominator = 1;
+	// 샘플링 관련 설정.
+	swapDesc.SampleDesc.Count = 1;
+	swapDesc.SampleDesc.Quality = 0;
+
+	UINT creationFlags = 0;
+#ifdef _DEBUG
+	creationFlags |= D3D11_CREATE_DEVICE_DEBUG;
+#endif
+	// 1. 장치 생성.   2.스왑체인 생성. 3.장치 컨텍스트 생성.
+	HR_T(D3D11CreateDeviceAndSwapChain(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, creationFlags, NULL, NULL,
+		D3D11_SDK_VERSION, &swapDesc, &m_->m_pSwapChain, &m_->m_pDevice, NULL, &m_->m_pDeviceContext));
+
+	// 4. 렌더타겟뷰 생성.  (백버퍼를 이용하는 렌더타겟뷰)	
+	ID3D11Texture2D* pBackBufferTexture = nullptr;
+	HR_T(m_->m_pSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&pBackBufferTexture));
+	HR_T(m_->m_pDevice->CreateRenderTargetView(pBackBufferTexture, NULL, &m_->m_pRenderTargetView));  // 텍스처는 내부 참조 증가
+	SAFE_RELEASE(pBackBufferTexture);	//외부 참조 카운트를 감소시킨다.
+
+	Microsoft::WRL::ComPtr<IDXGISwapChain3> swapChain3;
+	HR_T(m_->m_pSwapChain->QueryInterface(__uuidof(IDXGISwapChain3), (void**)&swapChain3));
+	if (m_->m_format == DXGI_FORMAT_R10G10B10A2_UNORM)
+	{
+		// EOTF = PQ (ST.2084 / G2084)  , 색역(Primaries) = Rec.2020 , RGB Full Range
+		// 이 스왑체인의 0.0~1.0 값은 선형 RGB나 감마 값이 아니라 PQ로 인코딩된 HDR10 신호로 해석하라”
+		HR_T(swapChain3->SetColorSpace1(DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020));
+	}
+}

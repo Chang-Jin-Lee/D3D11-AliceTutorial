@@ -628,11 +628,9 @@ bool App::OnInitialize()
 
 	// ====================================== 3D 모델 ======================================
 	LoadModelFromFile(L"..\\Resource\\fbx\\Rapi.fbx"); // 0
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\char\\char.fbx"); // 0
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Neon.fbx"); // 1
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Anis.fbx"); // 2
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Alice.fbx"); // 3
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Ground.fbx"); // 4
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\char\\char.fbx"); // 1
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Ground.fbx"); // 2
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Ground.fbx"); // 3
 
 	m_->m_Objects.clear();
 	for (int mi = 0; mi < (int)m_->m_Models.size(); ++mi)
@@ -642,21 +640,23 @@ bool App::OnInitialize()
 	}
 	m_->m_Models[0]->modelShading = ShadingMode::PBR;
 	m_->m_Models[1]->modelShading = ShadingMode::PBR;
-	//m_->m_Models[2]->modelShading = ShadingMode::PBR;
-	//m_->m_Models[3]->modelShading = ShadingMode::PBR;
 
 	m_->m_Models[0]->pos = XMFLOAT3(1.5f * -160, 0.0f, 0.0f);
 	m_->m_Models[1]->pos = XMFLOAT3(1.5f * -60, 0.0f, 0.0f);
-	//m_->m_Models[2]->pos = XMFLOAT3(1.5f * 70, 0.0f, 0.0f);
-	//m_->m_Models[3]->pos = XMFLOAT3(1.5f * 160, 0.0f, 0.0f);
 
 	m_->m_Models[0]->animator.SetCurrentIndex(4);  m_->m_Models[0]->uiAnimPlaying = true;
 	m_->m_Models[1]->animator.SetCurrentIndex(4);  m_->m_Models[1]->uiAnimPlaying = true;
-	//m_->m_Models[2]->animator.SetCurrentIndex(4);  m_->m_Models[2]->uiAnimPlaying = true;
-	//m_->m_Models[3]->animator.SetCurrentIndex(4);  m_->m_Models[3]->uiAnimPlaying = true;
 
 	m_->m_Models[2]->scale = XMFLOAT3(2.0f, 1.0f, 8.0f);
 	m_->m_Models[2]->pos = XMFLOAT3(0.0f, -1.0f, 0.0f);
+
+	m_->m_Models[3]->scale = XMFLOAT3(2.0f, 1.0f, 8.0f);
+	m_->m_Models[3]->pos = XMFLOAT3(0.0f, -2.0f, 0.0f);
+	m_->m_Models[3]->useInstancePbrMaterial = true;
+	m_->m_Models[3]->instancePbrMaterial.baseColor = XMFLOAT4(0.3f, 0.3f, 0.3f, 1.0f);
+	m_->m_Models[3]->instancePbrMaterial.metalness = 0.01f;
+	m_->m_Models[3]->instancePbrMaterial.roughness = 1.0f;
+	m_->m_Models[3]->instancePbrMaterial.ambientOcclusion = 1.0f;
 
 	// ====================================== 큐브 ======================================
 	auto co = std::make_unique<CubeObject>(

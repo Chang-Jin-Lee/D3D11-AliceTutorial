@@ -165,10 +165,12 @@ bool GameApp::Run(HINSTANCE hInstance)
 				TranslateMessage(&m_msg); // 키입력관련 메시지 변환  WM_KEYDOWN -> WM_CHAR
 				DispatchMessage(&m_msg);
 			}
-
-			Update();
-			Render();
-
+			else // 중요함
+			{
+				//큐가 비어서 더 이상 처리할 메시지가 없을 때(Idle) 렌더링 수행
+				Update();
+				Render();
+			}
 		}
 	}
 	catch (const std::exception& e)
