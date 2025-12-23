@@ -46,6 +46,7 @@ public:
 	void RenderConsolPannel();
 	void RenderSceneImageWindow();
 	void RenderGBufferDebug();  // G-Buffer 디버그 뷰
+	void RenderDeferredUI();    // Deferred Rendering UI
 
 	// 로더 API
 	bool LoadModelFromFile(const std::wstring& pathW);

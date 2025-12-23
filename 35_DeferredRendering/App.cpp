@@ -1791,6 +1791,7 @@ void App::PassUI()
 	RenderConsolPannel();
 	m_->m_SystemInfo.RenderUI();
 	RenderSceneImageWindow();
+	RenderDeferredUI();
 
 	ImGui::Render();
 	ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
@@ -3547,6 +3548,69 @@ void App::RenderGBufferDebug()
 			ImGui::Text("%s", gbufferNames[i]);
 			ImGui::Image((ImTextureID)m_->m_pGBufferSRVs[i].Get(), ImVec2(128, 128));
 			ImGui::Separator();
+		}
+	}
+	ImGui::End();
+}
+
+// Deferred Rendering UI - 설정 및 G-Buffer 디버그 뷰
+void App::RenderDeferredUI()
+{
+	// Deferred Rendering이 활성화되지 않았으면 표시하지 않음
+	if (!m_->m_UseDeferredRendering) return;
+
+	// Deferred Rendering Settings 윈도우
+	ImGuiIO& io = ImGui::GetIO();
+	ImVec2 settingsPos(20.0f, 20.0f);
+	ImGui::SetNextWindowPos(settingsPos, ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(350.0f, 500.0f), ImGuiCond_FirstUseEver);
+
+	// G-Buffer Debug View 윈도우
+	ImVec2 gbufferPos(io.DisplaySize.x - 350.0f, 20.0f);
+	ImGui::SetNextWindowPos(gbufferPos, ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(330.0f, 600.0f), ImGuiCond_FirstUseEver);
+
+	if (ImGui::Begin("G-Buffer Debug View"))
+	{
+		ImGui::Text("G-Buffer Contents");
+		ImGui::Separator();
+
+		// 각 G-Buffer 텍스처 이름
+		const char* gbufferNames[] = {
+			"PositionWS",
+			"NormalWS",
+			"Metalness",
+			"Roughness",
+			"BaseColor"
+		};
+
+		// G-Buffer 텍스처들을 2x3 그리드로 표시
+		for (int i = 0; i < Impl::GBufferCount; ++i)
+		{
+			ImGui::BeginGroup();
+			ImGui::Text("%s", gbufferNames[i]);
+			ImGui::Image((ImTextureID)m_->m_pGBufferSRVs[i].Get(), ImVec2(128, 128));
+			ImGui::EndGroup();
+
+			// 2개씩 한 줄에 배치
+			if ((i + 1) % 2 != 0 && i < Impl::GBufferCount - 1)
+			{
+				ImGui::SameLine();
+			}
+			else
+			{
+				ImGui::Separator();
+			}
+		}
+
+		// Depth Buffer 표시 (있는 경우)
+		if (m_->m_pDepthStencilView)
+		{
+			ImGui::Separator();
+			ImGui::Text("Depth Buffer");
+			// Depth SRV가 별도로 있는지 확인 필요
+			// 일반적으로 Depth는 별도 SRV로 접근하므로, 여기서는 주석 처리
+			// ImGui::Image((ImTextureID)m_->m_pDepthSRV.Get(), ImVec2(128, 128));
 		}
 	}
 	ImGui::End();
