@@ -67,9 +67,6 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="..\35_DeferredRendering\35_DeferredGBufferPS.hlsl" />
-    <FxCompile Include="..\35_DeferredRendering\35_DeferredGBufferVS.hlsl" />
-    <FxCompile Include="..\35_DeferredRendering\35_DeferredLightPS.hlsl" />
     <FxCompile Include="34_QuadVS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Vertex</ShaderType>

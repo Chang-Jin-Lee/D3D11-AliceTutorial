@@ -75,14 +75,5 @@
     <FxCompile Include="34_QuadVS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
-    <FxCompile Include="..\35_DeferredRendering\35_DeferredGBufferPS.hlsl">
-      <Filter>헤더 파일</Filter>
-    </FxCompile>
-    <FxCompile Include="..\35_DeferredRendering\35_DeferredLightPS.hlsl">
-      <Filter>헤더 파일</Filter>
-    </FxCompile>
-    <FxCompile Include="..\35_DeferredRendering\35_DeferredGBufferVS.hlsl">
-      <Filter>헤더 파일</Filter>
-    </FxCompile>
   </ItemGroup>
 </Project>

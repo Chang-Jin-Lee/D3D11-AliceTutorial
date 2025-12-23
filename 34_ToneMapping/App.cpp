@@ -95,7 +95,8 @@ struct ConstantBuffer {
 struct PostProcessConstantBuffer {
 	float g_Exposure;
 	float g_MaxHDRNits;
-	float g_Padding[2];
+	float g_Intensity;
+	float g_Padding;
 };
 enum class ShadingMode { Phong = 0, BlinnPhong = 1, Lambert = 2, Unlit = 3, TextureOnly = 4, ToonShading = 5, PBR = 6 };
 enum class ModelSource { FBX, OBJ, PMX, Custom };
@@ -510,6 +511,7 @@ struct App::Impl {
 	// Quad를 그려야함
 	float m_MonitorMaxNits = 1000.0f;  // HDR 모니터 기본값 (1000 nits)
 	float m_Exposure = 0.0f;           // Exposure 기본값 (0 = 1.0배, 변화 없음)
+	float m_Intensity = 1.0f;           
 	bool m_isHDRSupported = false;
 	DXGI_FORMAT m_format = DXGI_FORMAT_R8G8B8A8_UNORM;
 
@@ -676,8 +678,8 @@ bool App::OnInitialize()
 	m_->m_SkyBoxChoice = App::Impl::SkyBoxChoice::Baker;
 
 	// ====================================== 3D 모델 ======================================
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\char\\char.fbx"); // 0
-	LoadModelFromFile(L"..\\Resource\\fbx\\Alice_UmaUma.fbx"); // 0
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\char\\char.fbx"); // 0
+	//LoadModelFromFile(L"..\\Resource\\fbx\\Alice_UmaUma.fbx"); // 0
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\sphere.fbx"); // 1
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\sphere.fbx"); // 2
 	//LoadModelFromFile(L"..\\Resource\\fbx\\Neon.fbx"); // 3
@@ -1476,6 +1478,7 @@ void App::OnRender()
 	{
 		m_->m_PostProcessConstantBuffer.g_Exposure = m_->m_Exposure;
 		m_->m_PostProcessConstantBuffer.g_MaxHDRNits = m_->m_MonitorMaxNits;
+		m_->m_PostProcessConstantBuffer.g_Intensity = m_->m_Intensity;
 
 		D3D11_MAPPED_SUBRESOURCE mapped;
 		// D3D11_MAP_WRITE_DISCARD는 버퍼 내용을 전부 날리고 새로 씁니다.
@@ -2344,6 +2347,7 @@ void App::RenderControlPannel()
 		ImGui::SeparatorText("Tone Mapping Parameter");
 		ImGui::SliderFloat("Exposure", &m_->m_Exposure, -2.0f, 2.0f, "%.2f");
 		ImGui::SliderFloat("Monitor Max Nits", &m_->m_MonitorMaxNits, 0.0f, 50000.0f, "%.2f");
+		ImGui::SliderFloat("Intensity", &m_->m_Intensity, 0.3f, 3.0f, "%.1f");
 
 		ImGui::SeparatorText("PBR Parameter");
 		// 텍스처 색 사용 여부 (PBR 전용)
