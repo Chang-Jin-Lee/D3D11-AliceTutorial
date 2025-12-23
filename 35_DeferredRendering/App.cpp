@@ -522,9 +522,12 @@ struct App::Impl {
 
 	// 씬 이미지 창 관련
 	std::wstring                 m_CurrentSceneImagePath = L"..\\Resource\\Image\\SceneA.png";
+	std::wstring                 m_OriginalSceneImagePath = L"..\\Resource\\Image\\SceneA.png";  // 원본 이미지 경로
+	std::wstring                 m_TempSceneImagePath;  // 임시 이미지 경로
 	ID3D11ShaderResourceView*    m_pSceneImageSRV = nullptr;
 	ImVec2                       m_SceneImageSize = ImVec2(0, 0);
 	bool                         m_ShowSceneImageWindow = true;
+	bool                         m_IsUsingTempImage = false;  // 임시 이미지 사용 중인지 여부
 	
 	// 씬 변경 팝업 관련
 	bool                         m_ShowScenePopup = false;
@@ -697,6 +700,8 @@ bool App::OnInitialize()
 	}
 
 	// ====================================== 씬 이미지 초기 로드 ======================================
+	// 원본 이미지 경로 초기화
+	m_->m_OriginalSceneImagePath = m_->m_CurrentSceneImagePath;
 	LoadSceneImage(m_->m_CurrentSceneImagePath);
 
 	// ====================================== IBL 텍스처 로드 (Sample 세트) ======================================
@@ -1007,6 +1012,7 @@ void App::OnUpdate(const float& dt)
 	m_->m_SystemInfo.Tick(dt);
 
 	// 씬 변경 팝업 타이머 업데이트
+	// 씬 이미지 팝업 및 임시 이미지 타이머 업데이트
 	if (m_->m_ShowScenePopup)
 	{
 		m_->m_ScenePopupTimer -= dt;
@@ -1014,34 +1020,14 @@ void App::OnUpdate(const float& dt)
 		{
 			m_->m_ShowScenePopup = false;
 			m_->m_ScenePopupTimer = 0.0f;
-		}
-	}
-
-	if (ImGui::IsKeyPressed(ImGuiKey_F6, true))
-	{
-		TrimVideoMemory(); // 전환 직전 Trim
-		if (m_SceneIndex == 0)
-		{
-			m_->m_SpawnTotal = 0;
-			m_->PushLog("[OK] Cleared all model instances");
-			LoadSceneImage(m_->m_CurrentSceneImagePath);
-			// 팝업 표시
-			m_->m_ShowScenePopup = true;
-			m_->m_ScenePopupTimer = 2.0f;
-			m_->m_ScenePopupMessage = Utf8FromWString(L"안녕하세요 토끼씨!");
-		}
-		else
-		{
-			m_->m_SpawnTotal = 0;
-			m_->PushLog("[Scene Change] Change Scane to <SceneA>");
-			m_SceneIndex = 0;
-			// 씬 이미지 경로 변경
-			m_->m_CurrentSceneImagePath = L"..\\Resource\\Image\\SceneA.png";
-			LoadSceneImage(m_->m_CurrentSceneImagePath);
-			// 팝업 표시
-			m_->m_ShowScenePopup = true;
-			m_->m_ScenePopupTimer = 2.0f;
-			m_->m_ScenePopupMessage = Utf8FromWString(L"기뻐요 토끼씨!");
+			
+			// 임시 이미지 사용 중이었다면 원본 이미지로 복원
+			if (m_->m_IsUsingTempImage)
+			{
+				m_->m_IsUsingTempImage = false;
+				LoadSceneImage(m_->m_OriginalSceneImagePath);
+				m_->m_CurrentSceneImagePath = m_->m_OriginalSceneImagePath;
+			}
 		}
 	}
 
@@ -3462,9 +3448,24 @@ void App::RenderSceneImageWindow()
 	
 	if (ImGui::Begin("Scene Image", &m_->m_ShowSceneImageWindow))
 	{
-		// 현재 씬 정보 표시
-		const char* sceneName = (m_SceneIndex == 0) ? "SceneA" : "SceneB";
-		ImGui::Text("Current Scene: %s", sceneName);
+		// 빛나는 글씨 효과로 "눌러보세요!" 텍스트 표시
+		// 펄스 효과를 위한 시간 기반 색상 계산 (더 빠르고 눈에 띄게)
+		float time = (float)ImGui::GetTime();
+		float pulse = (sinf(time * 5.0f) + 1.0f) * 0.5f; // 0.0 ~ 1.0 사이 값 (속도 증가)
+		
+		// 밝은 노란색에서 흰색으로 강렬한 펄스 효과
+		// 색상 범위를 넓혀서 더 눈에 띄게 만듦
+		float r = 0.9f + pulse * 0.1f;  // 0.9 ~ 1.0 (약간 변동)
+		float g = 0.5f + pulse * 0.5f;  // 0.5 ~ 1.0 (넓은 범위)
+		float b = 0.0f + pulse * 0.8f;  // 0.0 ~ 0.8 (더 넓은 범위)
+		float a = 0.5f + pulse * 0.5f;  // 0.5 ~ 1.0 (더 넓은 범위)
+		
+		// 글씨 크기 키우기
+		ImGui::SetWindowFontScale(1.5f);  // 기본 크기의 1.5배
+		ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(r, g, b, a));
+		ImGui::Text("%s", Utf8FromWString(L"눌러보세요!").c_str());
+		ImGui::PopStyleColor();
+		ImGui::SetWindowFontScale(1.0f);  // 원래 크기로 복원
 		ImGui::Separator();
 		
 		// 이미지 표시
@@ -3483,6 +3484,46 @@ void App::RenderSceneImageWindow()
 			// 이미지 위치 계산
 			ImVec2 imagePos = ImGui::GetCursorScreenPos();
 			ImVec2 imageSize(displayWidth, displayHeight);
+			
+			// 이미지를 클릭 가능한 버튼처럼 표시 (투명 버튼 위에 이미지)
+			ImGui::PushID("SceneImageButton");
+			if (ImGui::InvisibleButton("##SceneImage", imageSize))
+			{
+				// 이미지 클릭 시 임시 이미지로 변경
+				if (!m_->m_IsUsingTempImage && !m_->m_ShowScenePopup)
+				{
+					// 원본 이미지 경로 저장
+					m_->m_OriginalSceneImagePath = m_->m_CurrentSceneImagePath;
+					
+					// 현재 씬에 따라 다른 임시 이미지와 메시지 설정
+					if (m_SceneIndex == 0)
+					{
+						// SceneA일 때 SceneB 이미지로 변경
+						m_->m_TempSceneImagePath = L"..\\Resource\\Image\\SceneB.png";
+						m_->m_ScenePopupMessage = Utf8FromWString(L"안녕하세요 토끼씨!");
+					}
+					else
+					{
+						// SceneB일 때 SceneA 이미지로 변경
+						m_->m_TempSceneImagePath = L"..\\Resource\\Image\\SceneA.png";
+						m_->m_ScenePopupMessage = Utf8FromWString(L"기뻐요 토끼씨!");
+					}
+					
+					// 임시 이미지 로드
+					LoadSceneImage(m_->m_TempSceneImagePath);
+					m_->m_CurrentSceneImagePath = m_->m_TempSceneImagePath;
+					m_->m_IsUsingTempImage = true;
+					
+					// 팝업 표시 및 타이머 시작 (2초 후 원본으로 복원)
+					m_->m_ShowScenePopup = true;
+					m_->m_ScenePopupTimer = 2.0f;
+				}
+			}
+			ImGui::PopID();
+			
+			// 이미지 표시 (버튼 위에)
+			ImGui::SetItemAllowOverlap();
+			ImGui::SetCursorScreenPos(imagePos);
 			ImGui::Image((ImTextureID)m_->m_pSceneImageSRV, imageSize);
 			
 			// 팝업 표시 (이미지 위에 오버레이)
