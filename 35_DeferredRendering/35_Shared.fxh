@@ -93,7 +93,8 @@ cbuffer PostProcessConstantBuffer : register(b2)
 {
     float g_Exposure;
     float g_MaxHDRNits;
-    float2 g_Padding; // 16바이트 정렬 맞춤
+    float g_Intensity;
+    float g_Padding; // 16바이트 정렬 맞춤
 }
 
 struct VertexIn

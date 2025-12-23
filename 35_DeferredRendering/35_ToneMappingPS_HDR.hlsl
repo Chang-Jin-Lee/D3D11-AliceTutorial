@@ -41,5 +41,5 @@ float4 main(PS_INPUT_QUAD input) : SV_Target
     float3 C_ST2084 = LinearToST2084(C_Rec2020);
     
     // 최종 PQ 인코딩된 값 [0.0, 1.0]을 R10G10B10A2_UNORM 백버퍼에 출력
-    return float4(C_ST2084, 1.0);
+    return float4(C_ST2084, 1.0) * g_Intensity;
 }

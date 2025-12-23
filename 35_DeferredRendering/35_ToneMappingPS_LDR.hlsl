@@ -19,5 +19,5 @@ float4 main(PS_INPUT_QUAD input) : SV_Target
    
     float3 C_final;
     C_final = LinearToSRGB(C_tonemapped);    
-    return float4(C_final, 1.0);
+    return float4(C_final, 1.0) * g_Intensity;
 }
