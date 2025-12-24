@@ -232,7 +232,7 @@ float4 main(VertexOut pIn) : SV_Target
 
 		float shadowVis = CalcShadowFactor(pIn.posShadowH);
 		float3 radiance = g_DirLight.diffuse.rgb * PI;
-		float3 directLighting = (diffuse + specular) * radiance * theta * ao * shadowVis;
+		float3 directLighting = (diffuse + specular) * radiance * theta * ao * shadowVis * g_DirLight.intensity;
 
 
 		// =================================== 3. Indirect Light (IBL) ==================================
@@ -267,7 +267,7 @@ float4 main(VertexOut pIn) : SV_Target
 		float NdotV = saturate(dot(N, V));
 		float specGate = step(0.0f, NdotL) * step(0.0f, NdotV);
 		float s = pow(max(dot(R, V), 0.0f), max(g_Material.specular.w, 1.0f)) * specGate;
-		specularTerm = s * g_Material.specular * g_DirLight.specular;
+		specularTerm = s * g_Material.specular * g_DirLight.specular * g_DirLight.intensity;
 	}
 	else if (g_ShadingMode == 1)
 	{
@@ -277,7 +277,7 @@ float4 main(VertexOut pIn) : SV_Target
         float NdotV = saturate(dot(N, V));
         float specGate = step(0.0f, NdotL) * step(0.0f, NdotV);
         float s = pow(NdotH, g_Material.specular.w) * specGate;
-        specularTerm = s * g_Material.specular * g_DirLight.specular;
+        specularTerm = s * g_Material.specular * g_DirLight.specular * g_DirLight.intensity;
 	}
 	else if (g_ShadingMode == 2)
 	{
@@ -304,7 +304,7 @@ float4 main(VertexOut pIn) : SV_Target
 			only = g_Material.diffuse;
 		}
         only.a = alphaTex;
-        return only;
+        return only * g_DirLight.intensity;
 	}
 	
 	// kd = (useTex ? texture : 1) * material.diffuse
@@ -321,7 +321,7 @@ float4 main(VertexOut pIn) : SV_Target
         float mipBias = roughness * roughness * kMaxMip;
         float4 reflectionColor = g_TexCube.SampleBias(g_Sam, Renv, mipBias);
         float reflectGate = theta;
-        litColor += (g_Material.reflect * reflectGate) * reflectionColor;
+        litColor += (g_Material.reflect * reflectGate) * reflectionColor * g_DirLight.intensity;
     }
 
     // ToonShading (5): 램프 셰이딩만 적용 (림/외곽선 제거)
@@ -343,7 +343,7 @@ float4 main(VertexOut pIn) : SV_Target
         float specBand = smoothstep(0.85f, 0.95f, NdotH) * step(0.0f, NdotL);
         float4 toonSpec = specBand * g_Material.specular * g_DirLight.specular;
         float4 outCol = toonDiffuse + toonSpec;
-        outCol.a = alphaTex;
+        outCol.a = alphaTex * g_DirLight.intensity;
         return outCol;
     }
 

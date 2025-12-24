@@ -60,7 +60,7 @@ using namespace DirectX;
 using namespace DirectX::SimpleMath;
 
 // 내부 전용 타입들
-struct DirectionalLight { XMFLOAT4 ambient; XMFLOAT4 diffuse; XMFLOAT4 specular; XMFLOAT3 direction; float pad; };
+struct DirectionalLight { XMFLOAT4 ambient; XMFLOAT4 diffuse; XMFLOAT4 specular; XMFLOAT3 direction; float intensity; };
 struct Material { XMFLOAT4 ambient; XMFLOAT4 diffuse; XMFLOAT4 specular; XMFLOAT4 reflect; };
 struct PBRMaterialCPU
 {
@@ -95,8 +95,7 @@ struct ConstantBuffer {
 struct PostProcessConstantBuffer {
 	float g_Exposure;
 	float g_MaxHDRNits;
-	float g_Intensity;
-	float g_Padding;
+	float g_Padding[2];
 };
 enum class ShadingMode { Phong = 0, BlinnPhong = 1, Lambert = 2, Unlit = 3, TextureOnly = 4, ToonShading = 5, PBR = 6 };
 enum class ModelSource { FBX, OBJ, PMX, Custom };
@@ -429,7 +428,7 @@ struct App::Impl {
 	bool							m_RotateModel = false;
 
 	// 조명/재질
-	DirectionalLight				m_DirLight = { {0,0,0,1}, {1,1,1,1}, {0.7f,0.7f,0.7f,1}, {0,-1.1f,1}, 0.0f };
+	DirectionalLight				m_DirLight = { {0,0,0,1}, {1,1,1,1}, {0.7f,0.7f,0.7f,1}, {0,-1.1f,1}, 1.0f };
 	Material						m_Material = { {1,1,1,1}, {1,1,1,1}, {1,1,1,32}, {0,0,0,0} };
 	Material						m_mirrorCubeMaterial = { {0,0,0,1}, {0,0,0,1}, {0,0,0,32}, {1,1,1,0.02f} };
 	PBRMaterialCPU					m_DefaultPbrMaterial{};
@@ -511,7 +510,6 @@ struct App::Impl {
 	// Quad를 그려야함
 	float m_MonitorMaxNits = 1000.0f;  // HDR 모니터 기본값 (1000 nits)
 	float m_Exposure = 0.0f;           // Exposure 기본값 (0 = 1.0배, 변화 없음)
-	float m_Intensity = 1.0f;           
 	bool m_isHDRSupported = false;
 	DXGI_FORMAT m_format = DXGI_FORMAT_R8G8B8A8_UNORM;
 
@@ -969,7 +967,6 @@ void App::OnUpdate(const float& dt)
 	// DirectionalLight 정규화된 방향으로 대입 
 	m_->m_baseProjection.dirLight = m_->m_DirLight;
 	m_->m_baseProjection.dirLight.direction = lightDir;
-	m_->m_baseProjection.dirLight.pad = 0.0f;
 	m_->m_baseProjection.pad = 0.0f;
 
 	// 머티리얼을 기본 캐시에 반영해 둔다
@@ -1214,7 +1211,6 @@ void App::OnRender()
 	// DirectionalLight 필드 대입 정규화된 방향
 	m_->m_ConstantBuffer.dirLight = m_->m_DirLight;
 	m_->m_ConstantBuffer.dirLight.direction = lightDir;
-	m_->m_ConstantBuffer.dirLight.pad = 0.0f;
 	m_->m_ConstantBuffer.eyePos = m_Camera.GetPosition();
 	m_->m_ConstantBuffer.pad = 0.0f;
 	m_->m_ConstantBuffer.useTextureColor = m_->m_UseTextureColor;
@@ -1478,7 +1474,6 @@ void App::OnRender()
 	{
 		m_->m_PostProcessConstantBuffer.g_Exposure = m_->m_Exposure;
 		m_->m_PostProcessConstantBuffer.g_MaxHDRNits = m_->m_MonitorMaxNits;
-		m_->m_PostProcessConstantBuffer.g_Intensity = m_->m_Intensity;
 
 		D3D11_MAPPED_SUBRESOURCE mapped;
 		// D3D11_MAP_WRITE_DISCARD는 버퍼 내용을 전부 날리고 새로 씁니다.
@@ -1807,7 +1802,7 @@ bool App::InitScene()
 	m_->m_baseProjection.dirLight.diffuse = DirectX::XMFLOAT4(1, 1, 1, 1);
 	m_->m_baseProjection.dirLight.specular = DirectX::XMFLOAT4(1, 1, 1, 1);
 	m_->m_baseProjection.dirLight.direction = DirectX::XMFLOAT3(0, -1, 1);
-	m_->m_baseProjection.dirLight.pad = 0.0f;
+	m_->m_baseProjection.dirLight.intensity = 1.0f;
 	m_->m_baseProjection.eyePos = m_Camera.GetPosition();
 	m_->m_baseProjection.pad = 0.0f;
 
@@ -2347,7 +2342,6 @@ void App::RenderControlPannel()
 		ImGui::SeparatorText("Tone Mapping Parameter");
 		ImGui::SliderFloat("Exposure", &m_->m_Exposure, -2.0f, 2.0f, "%.2f");
 		ImGui::SliderFloat("Monitor Max Nits", &m_->m_MonitorMaxNits, 0.0f, 50000.0f, "%.2f");
-		ImGui::SliderFloat("Intensity", &m_->m_Intensity, 0.3f, 3.0f, "%.1f");
 
 		ImGui::SeparatorText("PBR Parameter");
 		// 텍스처 색 사용 여부 (PBR 전용)
@@ -2512,12 +2506,13 @@ void App::RenderControlPannel()
 		ImGui::Separator();
 		ImGui::Text("Light");
 		ImGui::DragFloat3("Light Direction", &m_->m_DirLight.direction.x, 0.05f);
+		ImGui::SliderFloat("Intensity", &m_->m_DirLight.intensity, 0.1f, 30.0f, "%.1f");
 		ImGui::ColorEdit4("Ambient", &m_->m_DirLight.ambient.x);
 		ImGui::ColorEdit4("Diffuse", &m_->m_DirLight.diffuse.x);
 		ImGui::ColorEdit4("Specular", &m_->m_DirLight.specular.x);
 		if (ImGui::Button("Reset Light"))
 		{
-			m_->m_DirLight = { XMFLOAT4(0,0,0,1), XMFLOAT4(1,1,1,1), XMFLOAT4(0.7f,0.7f,0.7f,1), XMFLOAT3(0,0,1), 0.0f };
+			m_->m_DirLight = { XMFLOAT4(0,0,0,1), XMFLOAT4(1,1,1,1), XMFLOAT4(0.7f,0.7f,0.7f,1), XMFLOAT3(0,0,1), 1.0f };
 		}
 		ImGui::Separator();
 
