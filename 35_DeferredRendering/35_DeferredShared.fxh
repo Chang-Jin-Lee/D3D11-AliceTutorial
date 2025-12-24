@@ -75,8 +75,7 @@ cbuffer PostProcessConstantBuffer : register(b2)
 {
     float g_Exposure;
     float g_MaxHDRNits;
-    float g_Intensity;
-    float g_Padding; // 16바이트 정렬 맞춤
+    float2 g_Padding; // 16바이트 정렬 맞춤
 }
 
 // 디렉션 라이트 상수 버퍼
@@ -84,6 +83,8 @@ cbuffer DirectionalLightBuffer : register(b3)
 {
     float4 g_LightDirection;  // xyz: 방향, w: 강도
     float4 g_LightColor;      // rgb: 색상, w: unused
+	float g_intensity;        // 라이트 강도
+	float g_pad[3];
 };
 
 

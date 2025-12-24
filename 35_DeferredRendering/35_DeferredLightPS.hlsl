@@ -66,7 +66,7 @@ float4 main(PS_INPUT_QUAD pIn) : SV_Target
     float shadowVis = CalcShadowFactorDeferred(posW);
     
     float3 lightColor = g_LightColor.rgb * g_LightDirection.w;
-    float3 color = (diffuse + specular) * lightColor * NdotL * shadowVis;
+    float3 color = (diffuse + specular) * lightColor * NdotL * shadowVis * g_intensity;
     
     // IBL (Image-Based Lighting) Ãß°¡
     {

@@ -136,7 +136,7 @@ float4 main(VertexOut pIn) : SV_Target
 
 		float shadowVis = CalcShadowFactor(pIn.posShadowH);
 		float3 radiance = g_DirLight.diffuse.rgb * PI;
-		float3 directLighting = (diffuse + specular) * radiance * theta * ao * shadowVis;
+		float3 directLighting = (diffuse + specular) * radiance * theta * ao * shadowVis * g_DirLight.intensity;
 
 
 		// =================================== 3. Indirect Light (IBL) ==================================
@@ -170,7 +170,7 @@ float4 main(VertexOut pIn) : SV_Target
 		float3 R = reflect(-L, N);
 		float NdotV = saturate(dot(N, V));
 		float specGate = step(0.0f, NdotL) * step(0.0f, NdotV);
-		float s = pow(max(dot(R, V), 0.0f), max(g_Material.specular.w, 1.0f)) * specGate;
+		float s = pow(max(dot(R, V), 0.0f), max(g_Material.specular.w, 1.0f)) * specGate * g_DirLight.intensity;
 		specularTerm = s * g_Material.specular * g_DirLight.specular;
 	}
 	else if (g_ShadingMode == 1)
@@ -181,7 +181,7 @@ float4 main(VertexOut pIn) : SV_Target
         float NdotV = saturate(dot(N, V));
         float specGate = step(0.0f, NdotL) * step(0.0f, NdotV);
         float s = pow(NdotH, g_Material.specular.w) * specGate;
-        specularTerm = s * g_Material.specular * g_DirLight.specular;
+        specularTerm = s * g_Material.specular * g_DirLight.specular * g_DirLight.intensity;
 	}
 	else if (g_ShadingMode == 2)
 	{
@@ -208,7 +208,7 @@ float4 main(VertexOut pIn) : SV_Target
 			only = g_Material.diffuse;
 		}
         only.a = alphaTex;
-        return only;
+        return only * g_DirLight.intensity;
 	}
 	
 	// kd = (useTex ? texture : 1) * material.diffuse
@@ -225,7 +225,7 @@ float4 main(VertexOut pIn) : SV_Target
         float mipBias = roughness * roughness * kMaxMip;
         float4 reflectionColor = g_TexCube.SampleBias(g_Sam, Renv, mipBias);
         float reflectGate = theta;
-        litColor += (g_Material.reflect * reflectGate) * reflectionColor;
+        litColor += (g_Material.reflect * reflectGate) * reflectionColor * g_DirLight.intensity;
     }
 
     // ToonShading (5): 램프 셰이딩만 적용 (림/외곽선 제거)
@@ -248,7 +248,7 @@ float4 main(VertexOut pIn) : SV_Target
         float4 toonSpec = specBand * g_Material.specular * g_DirLight.specular;
         float4 outCol = toonDiffuse + toonSpec;
         outCol.a = alphaTex;
-        return outCol;
+        return outCol * g_DirLight.intensity;
     }
 
     litColor.a = alphaTex;

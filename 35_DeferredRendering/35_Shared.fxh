@@ -59,8 +59,7 @@ cbuffer ConstantBuffer              : register(b0)
     float  g_PBRRoughness;
     float  g_PBRAmbientOcclusion;
     float  g_PBRPad2;
-// 이번 프로젝트 코드
-//////////////////////////////////////////////////////////////////////////
+
     // Toon/Outline params (packed tightly)
     float  g_OutlineWidth;              // 림 밴드 폭 (PS Rim 용)
     float  g_OutlinePow;                // 림 감마/파워 (PS Rim 용)
@@ -93,8 +92,7 @@ cbuffer PostProcessConstantBuffer : register(b2)
 {
     float g_Exposure;
     float g_MaxHDRNits;
-    float g_Intensity;
-    float g_Padding; // 16바이트 정렬 맞춤
+    float2 g_Padding; // 16바이트 정렬 맞춤
 }
 
 struct VertexIn
