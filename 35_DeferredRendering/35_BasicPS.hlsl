@@ -1,100 +1,4 @@
-#include "34_Shared.fxh"
-
-static const float PI			= 3.14159265f;
-static const float TWO_PI		= 6.28318530718f;
-static const float INV_PI		= 0.31830988618f; // 1 / PI
-static const float INV_TWO_PI	= 0.15915494309f; // 1 / (2 * PI)
-
-// -----------------------------------------------------------------------------
-// PBR용 간단한 헬퍼 함수들. GGX, Schlick를 위한 것
-// 각 함수가 의미하는 수식은 아래와 같습니다.
-// -----------------------------------------------------------------------------
-
-// NDF: GGX / Trowbridge-Reitz
-//  D_ggx(n·h, α) = α² / ( π * ((n·h)²(α² - 1) + 1)² ),  α = roughness²
-float DistributionGGX(float NdotH, float roughness)
-{
-    float a  = roughness * roughness;
-    float a2 = a * a;
-    float denom = max(NdotH * NdotH * (a2 - 1.0f) + 1.0f, 1e-4f);
-    return a2 / (PI * denom * denom);
-}
-
-// 단일 방향에 대한 Schlick-GGX Geometry term
-//  G₁_schlick(n·x) = (n·x) / ( (n·x)(1 - k) + k ),  k = (r²) / 8,  r = roughness + 1
-float GeometrySchlickGGX(float NdotX, float roughness)
-{
-    float r = roughness + 1.0f;
-    float k = (r * r) * 0.125f; // (r^2)/8, Epic에서 제안하는 형태
-    return NdotX / (NdotX * (1.0f - k) + k);
-}
-
-// 양방향(뷰 + 라이트)에 대한 Smith Geometry term
-//  G_smith(n·v, n·l) = G₁_schlick(n·v) * G₁_schlick(n·l)
-float GeometrySmith(float NdotV, float NdotL, float roughness)
-{
-    float gv = GeometrySchlickGGX(NdotV, roughness);
-    float gl = GeometrySchlickGGX(NdotL, roughness);
-    return gv * gl;
-}
-
-// Schlick 근사 Fresnel
-//  F_schlick(F?, cosθ) = F? + (1 - F?) * (1 - cosθ)?
-float3 FresnelSchlick(float3 F0, float cosTheta)
-{
-    return F0 + (1.0f - F0) * pow(1.0f - cosTheta, 5.0f);
-}
-
-// -----------------------------------------------------------------------------
-// 그림자 계산 함수
-// -----------------------------------------------------------------------------
-float CalcShadowFactor(float4 posShadowH)
-{
-    // 그림자가 꺼져 있으면 그림자 없음(1.0) 반환
-    if (g_ShadowEnabled == 0)
-        return 1.0f;
-
-    // 동차 좌표계 나눗셈 (NDC 변환)
-    float3 sh = posShadowH.xyz / posShadowH.w;
-    
-    // NDC [-1, 1] -> UV [0, 1] 변환 (Y축 반전)
-    float2 uv = sh.xy * float2(0.5f, -0.5f) + float2(0.5f, 0.5f);
-    float currentDepth = sh.z;
-
-    // 쉐도우 맵 범위를 벗어났다면 그림자 없음 처리
-    if (uv.x < 0.0f || uv.x > 1.0f || uv.y < 0.0f || uv.y > 1.0f)
-    {
-        return 1.0f;
-    }
-
-    // PCF (Percentage Closer Filtering)
-    float texelSize = 1.0f / max(g_ShadowMapSize, 1.0f);
-    float r = max(g_ShadowPCFRadius, 0.0f) * texelSize;
-    float sum = 0.0f;
-    int taps = 0;
-
-    [unroll]
-    for (int dy = -1; dy <= 1; ++dy)
-    {
-        [unroll]
-        for (int dx = -1; dx <= 1; ++dx)
-        {
-            float2 uvOff = uv + float2(dx, dy) * r;
-            float mapDepth = g_ShadowMap.Sample(g_ShadowSamp, uvOff).r;
-
-            // 현재 깊이(bias 적용)가 맵의 깊이보다 작거나 같으면 빛을 받음(1.0)
-            if (currentDepth - g_ShadowBias <= mapDepth)
-            {
-                sum += 1.0f;
-            }
-            // 아니면 그림자(0.0) -> sum에 더하지 않음
-            
-            taps++;
-        }
-    }
-
-    return sum / max(taps, 1);
-}
+#include "35_Shared.fxh"
 
 // 픽셀 셰이더
 float4 main(VertexOut pIn) : SV_Target
@@ -266,8 +170,8 @@ float4 main(VertexOut pIn) : SV_Target
 		float3 R = reflect(-L, N);
 		float NdotV = saturate(dot(N, V));
 		float specGate = step(0.0f, NdotL) * step(0.0f, NdotV);
-		float s = pow(max(dot(R, V), 0.0f), max(g_Material.specular.w, 1.0f)) * specGate;
-		specularTerm = s * g_Material.specular * g_DirLight.specular * g_DirLight.intensity;
+		float s = pow(max(dot(R, V), 0.0f), max(g_Material.specular.w, 1.0f)) * specGate * g_DirLight.intensity;
+		specularTerm = s * g_Material.specular * g_DirLight.specular;
 	}
 	else if (g_ShadingMode == 1)
 	{
@@ -343,8 +247,8 @@ float4 main(VertexOut pIn) : SV_Target
         float specBand = smoothstep(0.85f, 0.95f, NdotH) * step(0.0f, NdotL);
         float4 toonSpec = specBand * g_Material.specular * g_DirLight.specular;
         float4 outCol = toonDiffuse + toonSpec;
-        outCol.a = alphaTex * g_DirLight.intensity;
-        return outCol;
+        outCol.a = alphaTex;
+        return outCol * g_DirLight.intensity;
     }
 
     litColor.a = alphaTex;
