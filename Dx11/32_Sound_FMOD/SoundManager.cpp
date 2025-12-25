@@ -16,6 +16,7 @@ namespace
 	FMOD::System* g_System = nullptr;
 
 	// [리소스 저장소] 파일경로(Key) -> FMOD 사운드 객체(Value)
+	// 리소스 매니저에 연결해야하는 로직임 엔진에서 쓸때는 이 부분을 연결하셈
 	std::map<std::wstring, FMOD::Sound*> g_SoundBank;
 
 	// BGM 채널 (BGM은 한 번에 하나만 재생한다고 가정)
@@ -97,19 +98,19 @@ void Sound::Update()
 	CleanupSFX();
 }
 
-// 핵심: 파일을 로드해서 맵에 저장
+// 파일을 로드해서 맵에 저장
 bool Sound::Load(const std::wstring& path, Type type)
 {
 	if (!g_System && !Initialize()) return false;
 
-	// 1. 이미 로드되어 있는지 확인 (캐싱)
+	// 이미 로드되어 있는지 확인 (캐싱)
 	auto it = g_SoundBank.find(path);
 	if (it != g_SoundBank.end())
 	{
 		return true; // 이미 있음
 	}
 
-	// 2. FMOD 사운드 생성
+	// FMOD 사운드 생성
 	FMOD::Sound* newSound = nullptr;
 	std::string pathU8 = Utf8FromWString(path);
 	FMOD_MODE mode = FMOD_DEFAULT;
@@ -133,7 +134,7 @@ bool Sound::Load(const std::wstring& path, Type type)
 		return false;
 	}
 
-	// 3. 맵에 등록
+	//맵에 등록
 	g_SoundBank[path] = newSound;
 	return true;
 }
