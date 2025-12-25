@@ -64,7 +64,7 @@ namespace Sound
 	// @brief 현재 재생 중인 모든 SFX 정지
 	void StopAllSFX();
 
-	// @brief [추가] 가장 최근에 재생된 SFX 하나만 정지
+	// @brief 가장 최근에 재생된 SFX 하나만 정지
     void StopLastSFX();
 
 	// @brief SFX 볼륨 설정 (0.0 ~ 1.0)
