@@ -47,6 +47,7 @@
 #include "SceneA.h"
 #include "SceneB.h"
 #include <directxtk/GamePad.h>
+#include "../Common/InputSystem.h"
 #pragma comment (lib, "d3d11.lib")
 #pragma comment(lib,"d3dcompiler.lib")
 #pragma comment(lib, "Comdlg32.lib")
@@ -609,6 +610,17 @@ bool App::OnInitialize()
 	else
 	{
 		m_->PushLog("[OK] FMOD initialized");
+		
+		// test.wav 파일 미리 로드 (중첩 재생 테스트용, SFX 타입)
+		std::wstring soundPath = L"..\\Resource\\sound\\test.wav";
+		if (Sound::Load(soundPath, Sound::Type::SFX))
+		{
+			m_->PushLog("[OK] test.wav loaded for testing");
+		}
+		else
+		{
+			m_->PushLog("[ERR] Failed to load test.wav");
+		}
 	}
 
 	// ====================================== 씬 이미지 초기 로드 ======================================
@@ -918,6 +930,34 @@ void App::OnUpdate(const float& dt)
 			m_->m_ShowScenePopup = true;
 			m_->m_ScenePopupTimer = 2.0f;
 			m_->m_ScenePopupMessage = Utf8FromWString(L"기뻐요 토끼씨!");
+		}
+	}
+
+	// ====================================== 사운드 중첩 재생 테스트 (1, 2, 3 숫자 키) ======================================
+	if (InputSystem::Instance)
+	{
+		const auto& keyTracker = InputSystem::Instance->m_KeyboardStateTracker;
+
+		// 1 키: test.wav를 중첩 재생 (새로운 채널로 계속 추가)
+		if (keyTracker.IsKeyPressed(Keyboard::Keys::D1))
+		{
+			std::wstring soundPath = L"..\\Resource\\sound\\test.wav";
+			Sound::PlaySFX(soundPath);
+			m_->PushLog("[Sound] test.wav started (overlap play)");
+		}
+
+		// 2 키: 현재 재생 중인 모든 SFX 정지 (BGM은 계속 재생)
+		if (keyTracker.IsKeyPressed(Keyboard::Keys::D2))
+		{
+			Sound::StopAllSFX();
+			m_->PushLog("[Sound] All SFX stopped");
+		}
+
+		// 3 키: BGM 정지
+		if (keyTracker.IsKeyPressed(Keyboard::Keys::D3))
+		{
+			Sound::StopLastSFX();
+			m_->PushLog("[Sound] Last SFX stopped");
 		}
 	}
 }
@@ -2306,7 +2346,7 @@ void App::RenderModelPannel()
                                 if (GetOpenFileNameW(&ofn))
                                 {
                                     mdl.audioPath = file;
-                                    mdl.audioLoaded = Sound::LoadMusic(mdl.audioPath);
+                                    mdl.audioLoaded = Sound::Load(mdl.audioPath, Sound::Type::BGM);
                                     if (mdl.audioLoaded)
                                     {
                                         m_->PushLog("[OK] Audio loaded (FMOD)");
@@ -2329,11 +2369,11 @@ void App::RenderModelPannel()
                                 {
                                     if (playFBX)
                                     {
-                                        Sound::Play();
+                                        Sound::PlayBGM(mdl.audioPath);
                                     }
                                     else
                                     {
-                                        Sound::Pause(true);
+                                        Sound::PauseBGM(true);
                                     }
                                 }
                             }
@@ -2343,15 +2383,15 @@ void App::RenderModelPannel()
                             float curF = (float)cur, durF = (float)dur;
                             if (durF > 0.0f)
                             {
-                                // 애니메이션 타임라인과 사운드 재생 위치를 동일한 초 단위로 맞춘다.
-                                if (ImGui::SliderFloat("Time (s)", &curF, 0.0f, durF))
+                            // 애니메이션 타임라인과 사운드 재생 위치를 동일한 초 단위로 맞춘다.
+                            if (ImGui::SliderFloat("Time (s)", &curF, 0.0f, durF))
+                            {
+                                mdl.animator.SetTimeSec((double)curF);
+                                if (mdl.audioLoaded)
                                 {
-                                    mdl.animator.SetTimeSec((double)curF);
-                                    if (mdl.audioLoaded)
-                                    {
-                                        Sound::SetTimeSeconds(curF);
-                                    }
+                                    Sound::SetBGMTimeSeconds(curF);
                                 }
+                            }
                             }
 
                             // 정지 / 현재 시간 출력 (애니+오디오 동시 제어)
@@ -2362,11 +2402,11 @@ void App::RenderModelPannel()
                                 {
                                     mdl.animator.SetPlaying(false);
                                     mdl.animator.SetTimeSec(0.0);
-                                    Sound::Stop();
-                                    Sound::SetTimeSeconds(0.0f);
+                                    Sound::StopBGM();
+                                    Sound::SetBGMTimeSeconds(0.0f);
                                 }
-                                float curAudio = Sound::GetTimeSeconds();
-                                float lenAudio = Sound::GetLengthSeconds();
+                                float curAudio = Sound::GetBGMTimeSeconds();
+                                float lenAudio = Sound::GetBGMLengthSeconds();
                                 ImGui::Text("Audio Time: %.2f / %.2f sec", curAudio, lenAudio);
                             }
                         }
@@ -2567,7 +2607,7 @@ void App::RenderSceneCollection()
 			if (GetOpenFileNameW(&ofn))
 			{
 				m_->m_AudioPath = file;
-				m_->m_AudioLoaded = Sound::LoadMusic(m_->m_AudioPath);
+				m_->m_AudioLoaded = Sound::Load(m_->m_AudioPath, Sound::Type::BGM);
 				if (m_->m_AudioLoaded)
 				{
 					m_->PushLog("[OK] Audio loaded (FMOD) : " + Utf8FromWString(m_->m_AudioPath));
@@ -2584,31 +2624,31 @@ void App::RenderSceneCollection()
 		ImGui::BeginDisabled(!audioLoaded);
 		if (ImGui::Button("Play##GlobalAudio"))
 		{
-			Sound::Play();
+			Sound::PlayBGM(m_->m_AudioPath);
 		}
 		ImGui::SameLine();
 		if (ImGui::Button("Pause##GlobalAudio"))
 		{
-			Sound::Pause(true);
+			Sound::PauseBGM(true);
 		}
 		ImGui::SameLine();
 		if (ImGui::Button("Stop##GlobalAudio"))
 		{
-			Sound::Stop();
-			Sound::SetTimeSeconds(0.0f);
+			Sound::StopBGM();
+			Sound::SetBGMTimeSeconds(0.0f);
 		}
 		ImGui::EndDisabled();
 
 		if (audioLoaded)
 		{
-			float cur = Sound::GetTimeSeconds();
-			float len = Sound::GetLengthSeconds();
+			float cur = Sound::GetBGMTimeSeconds();
+			float len = Sound::GetBGMLengthSeconds();
 			ImGui::Text("Time: %.2f / %.2f sec", cur, len);
 			if (len > 0.0f)
 			{
 				if (ImGui::SliderFloat("Time (s)##GlobalAudio", &cur, 0.0f, len))
 				{
-					Sound::SetTimeSeconds(cur);
+					Sound::SetBGMTimeSeconds(cur);
 				}
 			}
 		}
