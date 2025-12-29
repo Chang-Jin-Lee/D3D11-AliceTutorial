@@ -8,14 +8,28 @@ GBufferOut main(VertexOut pIn)
     GBufferOut gOut;
     
     // 텍스처 샘플링
-    float4 diffuseTex = g_DiffuseMap.Sample(g_Sam, pIn.tex);
-
-    // 알파 클리핑 (Alpha Test)
-    // 텍스처를 사용하는 경우, 알파값이 0.1보다 작으면 픽셀을 버림(Discard)
+    float4 textureColor;
     if (g_UseDiffuseMap != 0)
     {
-        clip(diffuseTex.a - 0.1f);
+        textureColor = g_DiffuseMap.Sample(g_Sam, pIn.tex);
     }
+    else
+    {
+        textureColor = float4(1,1,1,1);
+    }
+
+    // 알파 컷아웃
+    float alphaBase;
+    if (g_UseDiffuseMap != 0)
+    {
+        alphaBase = textureColor.a;
+    }
+    else
+    {
+        alphaBase = 1.0f;
+    }
+    float alphaTex = alphaBase * g_Material.diffuse.a;
+    clip(alphaTex - 0.1f);
     
     // 월드 노말 계산 (노말맵 적용)
     float3 N = normalize(pIn.normalW);
@@ -32,22 +46,51 @@ GBufferOut main(VertexOut pIn)
         N = normalize(mul(N_ts, TBN));
     }
     
-    // PBR 머티리얼 파라미터
-    float3 baseColor = (g_UseDiffuseMap != 0) ? diffuseTex.rgb : float3(1, 1, 1);
-    baseColor *= g_PBRBaseColor.rgb;
+    // PBR 머티리얼 파라미터 (Forward와 동일한 로직)
+    float roughnessTex = 1.0f;
+    float metalnessTex = 0.0f;
+    float3 baseColor;
     
-    // Roughness/Metalness는 텍스처에서 추출하거나 상수 버퍼에서 가져옴
-    float roughness = saturate(g_PBRRoughness);
+    if (g_UseDiffuseMap != 0)
+    {
+        // 텍스처에서 Roughness/Metalness 추출
+        roughnessTex = textureColor.g;
+        metalnessTex = textureColor.b;
+    }
+    
+    // BaseColor 계산
+    if (g_UseTextureColor != 0 && g_UseDiffuseMap != 0)
+    {
+        // 텍스처 색상 사용 (sRGB 그대로 저장, Light PS에서 선형 변환)
+        baseColor = textureColor.rgb * g_PBRBaseColor.rgb;
+    }
+    else
+    {
+        // 텍스처 색 사용 안 함: g_PBRBaseColor는 선형 공간이므로 sRGB로 인코딩해서 저장
+        // Light PS에서 감마 디코딩하면 원래 선형 값이 됨 
+        baseColor = pow(max(g_PBRBaseColor.rgb, 0.0f), 1.0f / 2.2f);
+    }
+    
+    // Roughness/Metalness 계산
     float metalness = saturate(g_PBRMetalness);
+    float roughness = saturate(g_PBRRoughness);
+    
+    if (g_UseTextureColor != 0 && g_UseDiffuseMap != 0)
+    {
+        metalness = saturate(metalness * metalnessTex);
+        roughness = saturate(roughness * roughnessTex);
+    }
     
     // G-Buffer 출력
     // 0: PositionWS (월드 좌표)
-    // 1: NormalWS (월드 노말, -1~1을 0~1로 변환)
+    // 1: NormalWS (월드 노말, -1~1을 0~1로 변환, 정밀도 향상을 위해 정규화 보장)
     // 2: Metalness (금속성)
     // 3: Roughness (거칠기)
     // 4: BaseColor (베이스 컬러, sRGB)
     gOut.PositionWS = float4(pIn.posW, 1.0f);
-    gOut.NormalWS = float4(N * 0.5f + 0.5f, 1.0f);
+    // 노말을 정규화한 후 저장 (Forward와 동일한 정규화 보장)
+    float3 N_final = normalize(N);
+    gOut.NormalWS = float4(N_final * 0.5f + 0.5f, 1.0f);
     gOut.Metalness = float4(metalness, 0, 0, 1);
     gOut.Roughness = float4(roughness, 0, 0, 1);
     gOut.BaseColor = float4(baseColor, 1.0f);

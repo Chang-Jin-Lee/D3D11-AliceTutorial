@@ -740,7 +740,7 @@ bool App::OnInitialize()
 	m_->m_Models[4]->scale = XMFLOAT3(2.0f, 1.0f, 8.0f);
 	m_->m_Models[4]->pos = XMFLOAT3(0.0f, -2.0f, 0.0f);
 	m_->m_Models[4]->useInstancePbrMaterial = true;
-	m_->m_Models[4]->instancePbrMaterial.baseColor = XMFLOAT4(0.3f, 0.3f, 0.3f, 1.0f);
+	m_->m_Models[4]->instancePbrMaterial.baseColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f);
 	m_->m_Models[4]->instancePbrMaterial.metalness = 0.01f;
 	m_->m_Models[4]->instancePbrMaterial.roughness = 1.0f;
 	m_->m_Models[4]->instancePbrMaterial.ambientOcclusion = 1.0f;

@@ -19,70 +19,72 @@ float4 main(PS_INPUT_QUAD pIn) : SV_Target
 
     // 언패킹
     float3 posW = positionWS.xyz;
-    float3 N = normalize(normalWS_packed.xyz * 2.0f - 1.0f); // 0~1을 -1~1로 변환
+    // 노말 언패킹 및 정규화 (Forward와 동일한 정규화 보장)
+    float3 N_unpacked = normalWS_packed.xyz * 2.0f - 1.0f; // 0~1을 -1~1로 변환
+    float3 N = normalize(N_unpacked); // Forward와 동일하게 정규화
     float metalness = metalness_packed.r;
     float roughness = max(roughness_packed.r, 0.04f); // 최소 거칠기 보장
     float3 albedo = baseColor.rgb;
     float3 albedoLinear = pow(max(albedo, 0.0f), 2.2f);
     
-    // 라이팅 벡터 계산
+    // 공통으로 쓰일 라이팅 벡터들 (Forward와 동일)
     float3 L = normalize(-g_LightDirection.xyz);
     float3 V = normalize(g_EyePosW - posW);
     float3 H = normalize(L + V);
     
-    float NdotL = saturate(dot(N, L));
+    float NdotL = dot(N, L);
+    float theta = saturate(NdotL);
     float NdotV = saturate(dot(N, V));
     float NdotH = saturate(dot(N, H));
     float VdotH = saturate(dot(V, H));
     
-    // PBR 계산 (Cook-Torrance BRDF)
-    // 1. Fresnel (F0 계산)
-    float3 F0 = lerp(float3(0.04f, 0.04f, 0.04f), albedoLinear, metalness);
+    // PBR 계산 (Forward와 동일한 헬퍼 함수 사용)
+    // 1. Albedo & Material Setup
+    float3 albedoPBR = albedoLinear;
+    roughness = max(roughness, 0.04f); // Forward와 동일: 최소 거칠기 보정
+    float ao = saturate(g_PBRAmbientOcclusion);
     
-    // 2. Distribution (GGX)
-    float a = roughness * roughness;
-    float a2 = a * a;
-    float denom = (NdotH * NdotH * (a2 - 1.0f) + 1.0f);
-    float D = a2 / (3.14159265f * denom * denom);
+    // 2. Direct Light Calculation (Forward와 동일)
+    // F0 : 금속은 알베도, 비도체는 0.04 근처
+    float3 F0 = lerp(float3(0.04f, 0.04f, 0.04f), albedoPBR, metalness);
+    float D = DistributionGGX(NdotH, roughness);
+    float G = GeometrySmith(NdotV, theta, roughness);
+    float3 F = FresnelSchlick(F0, VdotH);
     
-    // 3. Geometry (Smith)
-    float k = (roughness + 1.0f) * (roughness + 1.0f) * 0.125f;
-    float G1_L = NdotL / (NdotL * (1.0f - k) + k);
-    float G1_V = NdotV / (NdotV * (1.0f - k) + k);
-    float G = G1_L * G1_V;
+    // 스펙큘러 BRDF
+    float3 numerator = D * G * F;
+    float denomSpec = max(4.0f * NdotV * theta, 1e-4f);
+    float3 specular = numerator / denomSpec;
     
-    // 4. Fresnel (Schlick)
-    float3 F = F0 + (1.0f - F0) * pow(1.0f - VdotH, 5.0f);
+    // 에너지 보존: 금속일수록 디퓨즈 감소
+    float3 kS = F;
+    float3 kD = (1.0f - kS) * (1.0f - metalness);
+    float3 diffuse = kD * albedoPBR * INV_PI;
     
-    // Cook-Torrance BRDF
-    float3 specular = (D * G * F) / max(4.0f * NdotV * NdotL, 0.001f);
-    
-    // Diffuse (Lambert)
-    float3 kS = F; // Specular contribution
-    float3 kD = (1.0f - kS) * (1.0f - metalness); // Diffuse contribution
-    float3 diffuse = kD * albedoLinear * INV_PI;
-    
-    // 최종 조명 계산
+    // 그림자 가시성 계산 (Forward와 동일한 함수 사용)
     float shadowVis = CalcShadowFactorDeferred(posW);
     
-    float3 lightColor = g_LightColor.rgb * g_LightDirection.w;
-    float3 color = (diffuse + specular) * lightColor * NdotL * shadowVis * g_intensity;
+    // 라이트 계산 (Forward와 동일: g_DirLight.diffuse.rgb * PI * g_DirLight.intensity)
+    // Deferred에서는 g_LightColor와 g_intensity를 사용하지만, Forward와 동일한 결과를 위해 변환
+    float3 radiance = g_LightColor.rgb * PI;
+    float3 directLighting = (diffuse + specular) * radiance * theta * ao * shadowVis * g_intensity;
     
-    // IBL (Image-Based Lighting) 추가
-    {
-        // Diffuse IBL (Irradiance)
-        float3 diffuseIBL = kD * g_IBL_Diffuse.Sample(g_SamplerLinear, N).rgb * albedoLinear;
-        
-        // Specular IBL (Prefiltered + BRDF LUT)
-        float3 R = reflect(-V, N);
-        float3 prefilteredColor = g_IBL_Specular.SampleLevel(g_SamplerLinear, R, roughness * 8.0f).rgb;
-        float2 BRDF = g_IBL_BRDF_LUT.Sample(g_SamplerLinear, float2(NdotV, roughness)).rg;
-        float3 specularIBL = prefilteredColor * (F0 * BRDF.x + BRDF.y);
-        
-        float ao = saturate(g_PBRAmbientOcclusion);
-
-        color += (diffuseIBL + specularIBL) * ao;
-    }
+    // 3. Indirect Light (IBL) - Forward와 동일
+    // Diffuse IBL : Irradiance map을 법선 방향으로 샘플
+    float3 diffuseIBL = kD * g_IBL_Diffuse.Sample(g_Sam, N).rgb * albedoPBR;
+    
+    // Specular IBL : 사전 필터된 스펙큘러 큐브맵 + BRDF LUT (split-sum 근사)
+    float3 Renv = reflect(-V, N);
+    const float kMaxSpecularMip = 8.0f;
+    float3 prefilteredColor = g_IBL_Specular.SampleLevel(g_Sam, Renv, roughness * kMaxSpecularMip).rgb;
+    float2 specBRDF = g_IBL_BRDF_LUT.Sample(g_ShadowSamp, float2(NdotV, roughness)).rg;
+    float3 specularIBL = prefilteredColor * (F0 * specBRDF.x + specBRDF.y);
+    
+    // AO로 환경광 전체를 감쇠
+    float3 iblColor = (diffuseIBL + specularIBL) * ao;
+    
+    // 4. Final Combination
+    float3 color = directLighting + iblColor;
     
     return float4(color, 1.0f);
 }
