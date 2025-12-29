@@ -204,30 +204,30 @@ float CalcShadowFactorDeferred(float3 posW)
         return 1.0f;
 
     // 5. PCF (Percentage Closer Filtering)
-    float shadow = 0.0f;
-    float texelSize = 1.0f / g_ShadowMapSize;
+    float texelSize = 1.0f / max(g_ShadowMapSize, 1.0f);
+    float r = max(g_ShadowPCFRadius, 0.0f) * texelSize;
+    float sum = 0.0f;
+    int taps = 0;
 
-    // 간단한 3x3 PCF
     [unroll]
-        for (int y = -1; y <= 1; ++y)
+        for (int dy = -1; dy <= 1; ++dy)
         {
             [unroll]
-            for (int x = -1; x <= 1; ++x)
+            for (int dx = -1; dx <= 1; ++dx)
             {
-                float2 uvOffset = float2(x, y) * texelSize;
-                float pcfDepth = g_ShadowMap.Sample(g_ShadowSamp, shadowUV + uvOffset).r;
+                float2 uvOff = shadowUV + float2(dx, dy) * r;
+                float mapDepth = g_ShadowMap.Sample(g_ShadowSamp, uvOff).r;
 
-                // 섀도우 맵의 깊이가 현재 픽셀 깊이보다 작으면(더 가까우면) 그림자
-                if (currentDepth - g_ShadowBias > pcfDepth)
+                // 현재 깊이(bias 적용)가 섀도우 맵보다 작거나 같으면 빛 받음(1.0)
+                if (currentDepth - g_ShadowBias <= mapDepth)
                 {
-                    shadow += 0.0f; // Shadowed
+                    sum += 1.0f;
                 }
-                else
-                {
-                    shadow += 1.0f; // Lit
-                }
+                // 아니면 그림자(0.0) -> sum에 더하지 않음
+
+                taps++;
             }
         }
 
-    return shadow / 9.0f;
+    return sum / max(taps, 1);
 }
