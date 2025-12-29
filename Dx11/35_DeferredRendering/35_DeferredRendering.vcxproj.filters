@@ -59,6 +59,12 @@
     <None Include="35_SkyBox.hlsli">
       <Filter>Shaders</Filter>
     </None>
+    <None Include="35_DeferredShared.fxh">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="35_PBRHelper.hlsli">
+      <Filter>Shaders</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="App.cpp">
