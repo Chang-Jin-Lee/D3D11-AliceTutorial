@@ -83,14 +83,12 @@ GBufferOut main(VertexOut pIn)
     
     // G-Buffer 출력
     // 0: PositionWS (월드 좌표)
-    // 1: NormalWS (월드 노말, -1~1을 0~1로 변환, 정밀도 향상을 위해 정규화 보장)
+    // 1: NormalWS (월드 노말, -1~1을 0~1로 변환)
     // 2: Metalness (금속성)
     // 3: Roughness (거칠기)
     // 4: BaseColor (베이스 컬러, sRGB)
     gOut.PositionWS = float4(pIn.posW, 1.0f);
-    // 노말을 정규화한 후 저장 (Forward와 동일한 정규화 보장)
-    float3 N_final = normalize(N);
-    gOut.NormalWS = float4(N_final * 0.5f + 0.5f, 1.0f);
+    gOut.NormalWS = float4(N, 1.0f);
     gOut.Metalness = float4(metalness, 0, 0, 1);
     gOut.Roughness = float4(roughness, 0, 0, 1);
     gOut.BaseColor = float4(baseColor, 1.0f);
