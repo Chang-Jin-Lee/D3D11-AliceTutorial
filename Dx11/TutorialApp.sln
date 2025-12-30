@@ -74,6 +74,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "34_ToneMapping", "34_ToneMa
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "35_DeferredRendering", "35_DeferredRendering\35_DeferredRendering.vcxproj", "{9C87FAF4-F600-418B-B061-8399AD3327F4}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "36_AdvancedAnim_Sound_Click", "36_AdvancedAnim_Sound_Click\36_AdvancedAnim_Sound_Click.vcxproj", "{5184D70C-CF0E-49D6-A640-4684FEF025C9}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -370,6 +372,14 @@ Global
 		{9C87FAF4-F600-418B-B061-8399AD3327F4}.Release|x64.Build.0 = Release|x64
 		{9C87FAF4-F600-418B-B061-8399AD3327F4}.Release|x86.ActiveCfg = Release|Win32
 		{9C87FAF4-F600-418B-B061-8399AD3327F4}.Release|x86.Build.0 = Release|Win32
+		{5184D70C-CF0E-49D6-A640-4684FEF025C9}.Debug|x64.ActiveCfg = Debug|x64
+		{5184D70C-CF0E-49D6-A640-4684FEF025C9}.Debug|x64.Build.0 = Debug|x64
+		{5184D70C-CF0E-49D6-A640-4684FEF025C9}.Debug|x86.ActiveCfg = Debug|Win32
+		{5184D70C-CF0E-49D6-A640-4684FEF025C9}.Debug|x86.Build.0 = Debug|Win32
+		{5184D70C-CF0E-49D6-A640-4684FEF025C9}.Release|x64.ActiveCfg = Release|x64
+		{5184D70C-CF0E-49D6-A640-4684FEF025C9}.Release|x64.Build.0 = Release|x64
+		{5184D70C-CF0E-49D6-A640-4684FEF025C9}.Release|x86.ActiveCfg = Release|Win32
+		{5184D70C-CF0E-49D6-A640-4684FEF025C9}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
