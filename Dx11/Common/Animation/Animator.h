@@ -1,4 +1,5 @@
 #pragma once
+
 #include <vector>
 #include <string>
 #include <unordered_map>
@@ -6,453 +7,368 @@
 #include <cmath>
 #include <cstdint>
 #include <DirectXMath.h>
-#include <assimp/scene.h> 
+#include <assimp/scene.h>
+#include <d3d11.h>
+#include <wrl/client.h>
 
 using namespace DirectX;
+using Microsoft::WRL::ComPtr;
 
 // =========================================================
-// [기본 구조체] TransformSRT
-// 스켈레톤 쪽은 Assimp 채널과 동일한 관례(Translate -> Rotate -> Scale)를 그대로 쓴다.
-// (기존 `FbxAnimation.cpp`의 로컬 행렬 합성과 동일하게 맞춰야 GPU 스키닝 팔레트가 깨지지 않는다)
+// [상수 정의]
+// =========================================================
+static constexpr int MAX_BONES = 1023;
+
+// =========================================================
+// [TransformSRT] 
+// 행렬을 Scale, Rotation, Translation 성분으로 분리하여 관리
 // =========================================================
 struct TransformSRT {
-    XMVECTOR S{ 1,1,1,0 };     // Scale (크기)
-    XMVECTOR R{ 0,0,0,1 };     // Rotation (회전 - Quaternion)
-    XMVECTOR T{ 0,0,0,1 };     // Translation (이동)
+    XMVECTOR S{ 1.0f, 1.0f, 1.0f, 0.0f };
+    XMVECTOR R{ 0.0f, 0.0f, 0.0f, 1.0f }; // Quaternion
+    XMVECTOR T{ 0.0f, 0.0f, 0.0f, 1.0f };
 
-    // TRS -> 행렬 변환
-    // (FbxAnimation과 일치: mLocal = mT * mR * mS)
+    // TRS -> Matrix 변환
+    // IMPORTANT:
+    // - 이 프로젝트의 기존 스키닝 경로(`FbxAnimation.cpp`)는
+    //   local = (T * R * S), global = (parent * local) 규약을 사용한다.
+    // - CharacterAnimator도 반드시 동일한 규약을 따라야 팔레트가 깨지지 않는다.
     XMMATRIX ToMatrix() const {
-        const XMMATRIX mS = XMMatrixScalingFromVector(S);
-        const XMMATRIX mR = XMMatrixRotationQuaternion(R);
-        const XMMATRIX mT = XMMatrixTranslationFromVector(T);
-        return mT * mR * mS;
+        return XMMatrixTranslationFromVector(T) *
+            XMMatrixRotationQuaternion(R) *
+            XMMatrixScalingFromVector(S);
     }
 
-    // 두 포즈 선형 보간 (Transition Blending)
+    // 1. 키프레임 보간 & 전환 블렌딩 (A-B 사이 보간)
     static TransformSRT Lerp(const TransformSRT& a, const TransformSRT& b, float t) {
-        TransformSRT result;
-        result.S = XMVectorLerp(a.S, b.S, t);
-        result.R = XMQuaternionSlerp(a.R, b.R, t); // 회전은 구면 보간
-        result.T = XMVectorLerp(a.T, b.T, t);
-        return result;
+        TransformSRT res;
+        res.S = XMVectorLerp(a.S, b.S, t);           // Scale: 선형 보간
+        res.R = XMQuaternionSlerp(a.R, b.R, t);      // Rotation: 구면 보간 (Slerp)
+        res.T = XMVectorLerp(a.T, b.T, t);           // Position: 선형 보간
+        return res;
     }
 
-    // 애디티브 연산: (타겟 - 베이스) + 현재
-    static TransformSRT Additive(const TransformSRT& current, const TransformSRT& add, const TransformSRT& base, float alpha) {
+    // 2. 애디티브 연산: Current + (Add - Ref) * Alpha
+    static TransformSRT Additive(const TransformSRT& current, const TransformSRT& add, const TransformSRT& ref, float alpha) {
         if (alpha <= 0.001f) return current;
-        
-        // 1. 차이(Delta) 계산
-        XMVECTOR deltaT = XMVectorSubtract(add.T, base.T);
-        // 쿼터니언 차이: Add * Inverse(Base)
-        XMVECTOR invBaseR = XMQuaternionInverse(base.R);
-        XMVECTOR deltaR = XMQuaternionMultiply(add.R, invBaseR);
 
-        // 2. 현재 상태에 차이 적용 (알파값으로 강도 조절)
-        TransformSRT result;
-        result.S = current.S; // 스케일은 보통 애디티브하지 않음 (필요시 추가)
-        
-        // 위치: 현재 + (델타 * 강도)
-        result.T = XMVectorAdd(current.T, XMVectorScale(deltaT, alpha));
-        
-        // 회전: (델타 * 강도) * 현재
+        TransformSRT res = current;
+
+        // 위치: (Add - Ref) * Alpha 더하기
+        XMVECTOR deltaT = XMVectorSubtract(add.T, ref.T);
+        res.T = XMVectorAdd(current.T, XMVectorScale(deltaT, alpha));
+
+        // 회전: (Add * InvRef) 만큼 회전 추가
+        XMVECTOR invRefR = XMQuaternionInverse(ref.R);
+        XMVECTOR deltaR = XMQuaternionMultiply(add.R, invRefR); // 차이 회전값
+
+        // Alpha만큼 적용 (Identity에서 DeltaR로 Slerp)
         XMVECTOR weightedDeltaR = XMQuaternionSlerp(XMQuaternionIdentity(), deltaR, alpha);
-        result.R = XMQuaternionMultiply(weightedDeltaR, current.R);
+        res.R = XMQuaternionMultiply(weightedDeltaR, current.R); // 현재 회전에 누적
 
-        return result;
+        return res;
     }
 };
 
 // =========================================================
-// [소켓 시스템] 언리얼 스타일
+// [Socket] 무기 등을 부착할 위치
 // =========================================================
 struct Socket {
-    std::string name;           // 소켓 이름 (예: "Muzzle")
-    std::string parentBoneName; // 부착될 본 이름 (예: "Hand_R")
-    int parentBoneIndex = -1;   // 본 인덱스 캐시
-    XMMATRIX offsetMatrix;      // 소켓의 로컬 오프셋 (SRT)
-    XMMATRIX finalWorldMatrix;  // 계산된 최종 월드 행렬
+    std::string name;
+    std::string parentBoneName;
+    int parentNodeIndex = -1; // 전체 노드 배열에서의 인덱스
 
-    // ImGui 편집용 (offsetMatrix를 언제든 재생성 가능하게 값도 들고 있는다)
     XMFLOAT3 offsetPos = { 0,0,0 };
-    XMFLOAT3 offsetRotDeg = { 0,0,0 };
+    XMFLOAT3 offsetRot = { 0,0,0 }; // Degree
     XMFLOAT3 offsetScale = { 1,1,1 };
- // node 계층 기준 parent(노드 인덱스). boneNames에 없어도(메시에 가중치가 안 걸려도) 붙일 수 있게.
- int parentNodeIndex = -1;
+
+    // NOTE: 미초기화 경고/버그 방지를 위해 기본값을 Identity로 둔다.
+    XMMATRIX offsetMatrix = XMMatrixIdentity();     // 로컬 오프셋
+    XMMATRIX finalWorldMatrix = XMMatrixIdentity(); // 최종 월드 행렬
+
+    void UpdateOffset() {
+        XMMATRIX mS = XMMatrixScaling(offsetScale.x, offsetScale.y, offsetScale.z);
+        XMMATRIX mR = XMMatrixRotationRollPitchYaw(
+            XMConvertToRadians(offsetRot.x),
+            XMConvertToRadians(offsetRot.y),
+            XMConvertToRadians(offsetRot.z));
+        XMMATRIX mT = XMMatrixTranslation(offsetPos.x, offsetPos.y, offsetPos.z);
+        // 동일 규약: local = T * R * S
+        offsetMatrix = mT * mR * mS;
+    }
 };
 
 // =========================================================
-// [고급 애니메이터] 캐릭터 전용 컨트롤러
+// [CharacterAnimator]
+// 핵심 기능: 블렌딩, 애디티브, 레이어드, IK, 소켓
 // =========================================================
 class CharacterAnimator {
+private:
+    // 참조 데이터 (소유권 없음)
+    const aiScene* m_Scene = nullptr;
+    const std::unordered_map<std::string, int>* m_NodeIndexMap = nullptr;
+    XMFLOAT4X4 m_GlobalInverse = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
+
+    // 구조 데이터
+    std::vector<std::string> m_BoneNames;
+    std::vector<XMMATRIX> m_BoneOffsets;     // Inverse Bind Pose
+    std::vector<int> m_BoneNodeIndices;      // Bone Name -> Node Index
+
+    // 노드 캐시 (빠른 접근용)
+    std::vector<const aiNode*> m_NodePtrs;
+    std::vector<int> m_NodeParents;
+    std::vector<std::string> m_NodeNames;
+
+    // 매 프레임 계산되는 데이터
+    std::vector<TransformSRT> m_LocalSRTs;   // 로컬 변환 (애니메이션 적용)
+    std::vector<XMMATRIX> m_GlobalMatrices;  // 글로벌 변환 (계층 구조 반영)
+
+    // 소켓 및 GPU 버퍼
+    std::vector<Socket> m_Sockets;
+    ComPtr<ID3D11Buffer> m_pBoneBuffer;
+
 public:
-    // 외부(앱)에서 애니메이션 포인터를 안전하게 가져오기 위한 도우미용
-    const aiScene* scene = nullptr;
-    const std::unordered_map<std::string, int>* nodeIndexOfName = nullptr;
-    XMFLOAT4X4 globalInverseF = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
+    // 외부에서 접근 가능한 최종 행렬 (렌더링용)
+    std::vector<XMMATRIX> finalTransforms;
 
-    std::vector<std::string> boneNames;
- std::vector<int> boneParents;      // (legacy) 본-리스트 기준 부모. 이제 사용하지 않음(중간 노드 누락 가능)
-    std::vector<XMMATRIX> boneOffsets; // 바인드 포즈 역행렬
-    std::unordered_map<std::string, int> boneIndexMap;
-    std::vector<int> boneNodeIndices; // boneNames -> nodeIndexOfName
-    
-    // GPU 업로드용 최종 행렬
-    std::vector<XMMATRIX> finalTransforms; 
-    // 소켓 계산/IK 등에 쓰기 위한 글로벌(노드) 행렬 캐시 (boneNames 기준, Off 미적용)
-    std::vector<XMMATRIX> boneGlobals; 
-
- // ===== 노드 전체 계층(=FbxAnimation::EvaluateGlobals와 동일한 의미) =====
- // nodeIndexOfName.size()에 정렬된 캐시들. "중간 노드 스케일/축"을 반드시 포함해야 함.
- std::vector<const aiNode*> nodePtrByIndex;
- std::vector<int> nodeParentByIndex;
- std::vector<std::string> nodeNameByIndex;
-    
-    // 소켓 목록
-    std::vector<Socket> sockets;
-
-    // 초기화
-    void Initialize(
-        const aiScene* inScene,
-        const std::unordered_map<std::string, int>& inNodeIndexOfName,
-        const XMFLOAT4X4& inGlobalInverse,
-        const std::vector<std::string>& inBoneNames,
-        const std::vector<DirectX::XMFLOAT4X4>& inBoneOffsets)
+    // -----------------------------------------------------------------
+    // [초기화]
+    // -----------------------------------------------------------------
+    void Initialize(ID3D11Device* device, const aiScene* scene,
+        const std::unordered_map<std::string, int>& nodeMap,
+        const XMFLOAT4X4& globalInv,
+        const std::vector<std::string>& boneNames,
+        const std::vector<DirectX::XMFLOAT4X4>& boneOffsets)
     {
-        scene = inScene;
-        nodeIndexOfName = &inNodeIndexOfName;
-        globalInverseF = inGlobalInverse;
+        m_Scene = scene;
+        m_NodeIndexMap = &nodeMap;
+        m_GlobalInverse = globalInv;
+        m_BoneNames = boneNames;
 
-        boneNames = inBoneNames;
-        const size_t count = boneNames.size();
-        boneParents.assign(count, -1);
-        boneOffsets.resize(count);
-        finalTransforms.assign(count, XMMatrixIdentity());
-        boneGlobals.assign(count, XMMatrixIdentity());
-        boneNodeIndices.assign(count, -1);
-        boneIndexMap.clear();
-        boneIndexMap.reserve(count);
+        size_t boneCount = boneNames.size();
+        m_BoneOffsets.resize(boneCount);
+        m_BoneNodeIndices.assign(boneCount, -1);
+        finalTransforms.assign(boneCount, XMMatrixIdentity());
 
-        // 1) 이름 -> boneIndex 맵을 먼저 완성
-        for (size_t i = 0; i < count; ++i)
-            boneIndexMap[boneNames[i]] = (int)i;
-
-        // 2) 오프셋/부모/노드 인덱스 설정
-        for (size_t i = 0; i < count; ++i) {
-            boneOffsets[i] = XMLoadFloat4x4(&inBoneOffsets[i]);
-
-            auto itNode = inNodeIndexOfName.find(boneNames[i]);
-            boneNodeIndices[i] = (itNode != inNodeIndexOfName.end()) ? itNode->second : -1;
-
-            // 부모 본 인덱스: Assimp 노드의 부모가 "본 리스트"에 포함된 경우만 연결
-            if (inScene && inScene->mRootNode) {
-                aiNode* node = inScene->mRootNode->FindNode(boneNames[i].c_str());
-                if (node && node->mParent) {
-                    const std::string pName = node->mParent->mName.C_Str();
-                    auto itB = boneIndexMap.find(pName);
-                    boneParents[i] = (itB != boneIndexMap.end()) ? itB->second : -1;
-                }
+        // 1. 본 오프셋 및 인덱스 매핑
+        for (size_t i = 0; i < boneCount; ++i) {
+            m_BoneOffsets[i] = XMLoadFloat4x4(&boneOffsets[i]);
+            if (nodeMap.count(boneNames[i])) {
+                m_BoneNodeIndices[i] = nodeMap.at(boneNames[i]);
             }
         }
 
-        // 3) 노드 전체 계층 캐시 구축 (nodeIndexOfName 인덱스 정렬)
-        nodePtrByIndex.clear();
-        nodeParentByIndex.clear();
-        nodeNameByIndex.clear();
-        nodePtrByIndex.resize(inNodeIndexOfName.size(), nullptr);
-        nodeParentByIndex.resize(inNodeIndexOfName.size(), -1);
-        nodeNameByIndex.resize(inNodeIndexOfName.size());
-        if (inScene && inScene->mRootNode) {
-            std::function<void(const aiNode*, int)> build = [&](const aiNode* node, int parentIdx) {
-                auto it = inNodeIndexOfName.find(node->mName.C_Str());
-                const int idx = (it != inNodeIndexOfName.end()) ? it->second : -1;
-                if (idx >= 0 && (size_t)idx < nodePtrByIndex.size()) {
-                    nodePtrByIndex[(size_t)idx] = node;
-                    nodeParentByIndex[(size_t)idx] = parentIdx;
-                    nodeNameByIndex[(size_t)idx] = node->mName.C_Str();
-                }
-                for (unsigned ci = 0; ci < node->mNumChildren; ++ci) {
-                    build(node->mChildren[ci], idx);
-                }
-            };
-            build(inScene->mRootNode, -1);
+        // 2. 전체 노드 계층 구조 캐싱 (재귀 없이 순회하기 위해)
+        size_t nodeCount = nodeMap.size();
+        m_NodePtrs.resize(nodeCount, nullptr);
+        m_NodeParents.resize(nodeCount, -1);
+        m_NodeNames.resize(nodeCount);
+        m_LocalSRTs.resize(nodeCount);
+        m_GlobalMatrices.resize(nodeCount, XMMatrixIdentity());
+
+        if (m_Scene && m_Scene->mRootNode) {
+            BuildNodeHierarchy(m_Scene->mRootNode, -1);
+        }
+
+        // 3. GPU 버퍼 생성 (최대 크기 1023으로 고정)
+        if (device) {
+            D3D11_BUFFER_DESC desc = {};
+            desc.Usage = D3D11_USAGE_DYNAMIC;
+            desc.ByteWidth = sizeof(XMFLOAT4X4) * MAX_BONES + sizeof(unsigned int) * 4; // 넉넉하게
+            desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+            desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+            device->CreateBuffer(&desc, nullptr, m_pBoneBuffer.GetAddressOf());
         }
     }
 
-    // 소켓 오프셋 행렬 재계산 (ImGui 수정 후 호출)
-    static XMMATRIX BuildOffsetMatrix_SRT(const XMFLOAT3& pos, const XMFLOAT3& rotDeg, const XMFLOAT3& scale) {
-        const XMMATRIX mS = XMMatrixScaling(scale.x, scale.y, scale.z);
-        const XMMATRIX mR = XMMatrixRotationRollPitchYaw(
-            XMConvertToRadians(rotDeg.x),
-            XMConvertToRadians(rotDeg.y),
-            XMConvertToRadians(rotDeg.z));
-        const XMMATRIX mT = XMMatrixTranslation(pos.x, pos.y, pos.z);
-        return mS * mR * mT;
-    }
-
-    // 소켓 추가
-    void AddSocket(std::string name, std::string parentBone, XMFLOAT3 pos, XMFLOAT3 rotDeg, XMFLOAT3 scale) {
-        Socket s;
-        s.name = name;
-        s.parentBoneName = parentBone;
-        if(boneIndexMap.count(parentBone)) s.parentBoneIndex = boneIndexMap[parentBone];
-        
-        s.offsetPos = pos;
-        s.offsetRotDeg = rotDeg;
-        s.offsetScale = scale;
-        // 소켓 오프셋 행렬 생성 (S * R * T) - UI에서 직관적
-        s.offsetMatrix = BuildOffsetMatrix_SRT(pos, rotDeg, scale);
-        
-        sockets.push_back(s);
-    }
-
-    // 소켓 편집(없으면 생성)
-    Socket* FindSocket(const std::string& socketName) {
-        for (auto& s : sockets) if (s.name == socketName) return &s;
-        return nullptr;
-    }
-    void SetSocketSRT(const std::string& socketName, const std::string& parentBone, const XMFLOAT3& pos, const XMFLOAT3& rotDeg, const XMFLOAT3& scale) {
-        Socket* s = FindSocket(socketName);
-        if (!s) {
-            AddSocket(socketName, parentBone, pos, rotDeg, scale);
-            return;
-        }
-        s->parentBoneName = parentBone;
-        auto it = boneIndexMap.find(parentBone);
-        s->parentBoneIndex = (it != boneIndexMap.end()) ? it->second : -1;
-        // node 인덱스는 boneNames에 없어도 찾을 수 있어야 함
-        if (nodeIndexOfName) {
-            auto itN = nodeIndexOfName->find(parentBone);
-            s->parentNodeIndex = (itN != nodeIndexOfName->end()) ? itN->second : -1;
-        }
-        s->offsetPos = pos;
-        s->offsetRotDeg = rotDeg;
-        s->offsetScale = scale;
-        s->offsetMatrix = BuildOffsetMatrix_SRT(pos, rotDeg, scale);
-    }
-
-    // =========================================================
-    // [메인 업데이트] 4가지 기술 통합 구현
-    // =========================================================
+    // -----------------------------------------------------------------
+    // [메인 업데이트]
+    // -----------------------------------------------------------------
     void UpdateAnimation(
-        float dt, 
+        float dt,
         const aiAnimation* animA, float timeA,
         const aiAnimation* animB, float timeB,
         float blendFactor,
-        const aiAnimation* upperAnim = nullptr, float timeUpper = 0.f,
-        const aiAnimation* addAnim = nullptr, float timeAdd = 0.f,
-        const aiAnimation* refAnim = nullptr,
-        // ---- Procedural Additive (랜덤 반동/흔들림 등) ----
-        float proceduralAdditiveAlpha = 0.0f,
-        uint32_t proceduralSeed = 0,
-        // ---- IK (Reload 등에서 손을 목표로 붙이기) ----
-        bool enableIK = false,
-        const char* ikTipBoneName = nullptr,
-        int ikChainLength = 0,
-        XMVECTOR ikTargetModelSpace = XMVectorZero(),
-        float ikWeight = 1.0f
+        const aiAnimation* animUpper = nullptr, float timeUpper = 0.f, // 상체 레이어
+        const aiAnimation* animAdd = nullptr, float timeAdd = 0.f,     // 애디티브
+        const aiAnimation* animRef = nullptr,                          // 애디티브 기준
+        float proceduralRecoil = 0.0f, uint32_t seed = 0,              // 절차적 흔들림
+        bool enableIK = false, const char* ikTipBone = nullptr, int chainLen = 0, XMVECTOR ikTarget = XMVectorZero(), float ikWeight = 0.0f
     ) {
-        if (!scene || !nodeIndexOfName) return;
+        if (m_NodePtrs.empty()) return;
 
         // =========================================================
-        // 핵심 수정:
-        // - FbxAnimation은 "노드 전체 계층"을 기준으로 글로벌을 만든다.
-        // - 채널이 없으면 node->mTransformation(기본 로컬)을 사용한다.
-        // - 이 기본 로컬에는 root 스케일/축 보정이 들어있을 수 있으므로, 여기서도 반드시 동일하게 해야 함.
+        // [Idle 검증용 패스트패스]
+        // - 지금 단계의 목표: FbxAnimation과 "완전히 같은" 결과로 Idle이 정상 스키닝되는지 확인.
+        // - 아래 조건(단일 애니메이션, 블렌드/레이어/애디티브/IK/노이즈 없음)에서는
+        //   FbxAnimation.cpp와 동일한 평가식을 사용한다:
+        //     local = (채널 있으면 T*R*S, 없으면 node->mTransformation 원본)
+        //     global = parent * local
+        //     final = Gi * global(node) * Off
         // =========================================================
-        const size_t nodeCount = nodePtrByIndex.size();
-        if (nodeCount == 0) return;
+        const bool isSimpleSingleAnim =
+            (animA == animB) &&
+            (blendFactor == 0.0f) &&
+            (animUpper == nullptr) &&
+            (animAdd == nullptr) &&
+            (animRef == nullptr) &&
+            (proceduralRecoil == 0.0f) &&
+            (!enableIK);
+        if (isSimpleSingleAnim) {
+            EvaluateLikeFbxAnimation(animA, timeA);
 
-        auto BuildChannelMap = [&](const aiAnimation* anim, std::vector<const aiNodeAnim*>& out) {
-            out.assign(nodeCount, nullptr);
-            if (!anim) return;
-            for (unsigned i = 0; i < anim->mNumChannels; ++i) {
-                const aiNodeAnim* ch = anim->mChannels[i];
-                auto it = nodeIndexOfName->find(ch->mNodeName.C_Str());
-                if (it != nodeIndexOfName->end()) {
-                    const int idx = it->second;
-                    if (idx >= 0 && (size_t)idx < out.size()) out[(size_t)idx] = ch;
+            // 팔레트 계산
+            XMMATRIX mGlobalInv = XMLoadFloat4x4(&m_GlobalInverse);
+            for (size_t bi = 0; bi < m_BoneNodeIndices.size(); ++bi) {
+                const int nodeIdx = m_BoneNodeIndices[bi];
+                if (nodeIdx >= 0 && nodeIdx < (int)m_GlobalMatrices.size()) {
+                    finalTransforms[bi] = mGlobalInv * m_GlobalMatrices[(size_t)nodeIdx] * m_BoneOffsets[bi];
+                }
+                else {
+                    finalTransforms[bi] = XMMatrixIdentity();
                 }
             }
-        };
 
-        std::vector<const aiNodeAnim*> chA, chB, chUpper, chAdd, chRef;
-        BuildChannelMap(animA, chA);
-        BuildChannelMap(animB, chB);
-        BuildChannelMap(upperAnim, chUpper);
-        BuildChannelMap(addAnim, chAdd);
-        BuildChannelMap(refAnim, chRef);
-
-        auto MatrixToSRT = [&](const aiMatrix4x4& m) -> TransformSRT {
-            XMFLOAT4X4 fm;
-            fm._11 = (float)m.a1; fm._12 = (float)m.a2; fm._13 = (float)m.a3; fm._14 = (float)m.a4;
-            fm._21 = (float)m.b1; fm._22 = (float)m.b2; fm._23 = (float)m.b3; fm._24 = (float)m.b4;
-            fm._31 = (float)m.c1; fm._32 = (float)m.c2; fm._33 = (float)m.c3; fm._34 = (float)m.c4;
-            fm._41 = (float)m.d1; fm._42 = (float)m.d2; fm._43 = (float)m.d3; fm._44 = (float)m.d4;
-            const XMMATRIX M = XMLoadFloat4x4(&fm);
-            XMVECTOR S, R, T;
-            TransformSRT s{};
-            if (XMMatrixDecompose(&S, &R, &T, M)) {
-                s.S = S; s.R = R; s.T = T;
+            // 소켓 갱신
+            for (auto& s : m_Sockets) {
+                if (s.parentNodeIndex >= 0 && s.parentNodeIndex < (int)m_GlobalMatrices.size()) {
+                    s.finalWorldMatrix = s.offsetMatrix * m_GlobalMatrices[(size_t)s.parentNodeIndex];
+                }
+                else {
+                    s.finalWorldMatrix = s.offsetMatrix;
+                }
             }
-            return s;
-        };
+            return;
+        }
 
-        auto SampleNodeSRT = [&](const aiAnimation* anim, const std::vector<const aiNodeAnim*>& chMap, int nodeIdx, float timeSec) -> TransformSRT {
-            // 채널이 없으면 node->mTransformation(기본 로컬)
-            const aiNode* node = (nodeIdx >= 0 && (size_t)nodeIdx < nodePtrByIndex.size()) ? nodePtrByIndex[(size_t)nodeIdx] : nullptr;
-            if (!anim || nodeIdx < 0 || (size_t)nodeIdx >= chMap.size() || !chMap[(size_t)nodeIdx] || !node) {
-                return node ? MatrixToSRT(node->mTransformation) : TransformSRT{};
-            }
-            const aiNodeAnim* ch = chMap[(size_t)nodeIdx];
-            const double tps = (anim->mTicksPerSecond != 0.0) ? anim->mTicksPerSecond : 25.0;
-            const double dur = (anim->mDuration > 0.0) ? anim->mDuration : 0.0;
-            double tTicks = (double)timeSec * tps;
-            if (dur > 0.0) {
-                tTicks = std::fmod(tTicks, dur);
-                if (tTicks < 0.0) tTicks += dur;
-            }
-            const aiVector3D S = (ch->mNumScalingKeys > 0) ? InterpVec(ch->mScalingKeys, ch->mNumScalingKeys, tTicks) : aiVector3D(1, 1, 1);
-            const aiVector3D T = (ch->mNumPositionKeys > 0) ? InterpVec(ch->mPositionKeys, ch->mNumPositionKeys, tTicks) : aiVector3D(0, 0, 0);
-            const aiQuaternion R = (ch->mNumRotationKeys > 0) ? InterpQuat(ch->mRotationKeys, ch->mNumRotationKeys, tTicks) : aiQuaternion();
-            TransformSRT s{};
-            s.S = XMVectorSet(S.x, S.y, S.z, 0.0f);
-            s.T = XMVectorSet(T.x, T.y, T.z, 1.0f);
-            s.R = XMVectorSet(R.x, R.y, R.z, R.w);
-            return s;
-        };
-
-        // 1) 로컬 SRT 계산 (노드 전체 기준)
-        std::vector<TransformSRT> localSRTs(nodeCount);
-        for (int idx = 0; idx < (int)nodeCount; ++idx) {
-            const std::string& nName = nodeNameByIndex[(size_t)idx];
-            const TransformSRT srtA = SampleNodeSRT(animA, chA, idx, timeA);
-            const TransformSRT srtB = SampleNodeSRT(animB, chB, idx, timeB);
-
+        // 1. 모든 노드의 로컬 SRT 계산
+        for (size_t i = 0; i < m_NodePtrs.size(); ++i) {
+            // A. 전환 블렌딩 (Idle <-> Run)
+            TransformSRT srtA = GetNodeSRT(animA, (int)i, timeA);
+            TransformSRT srtB = GetNodeSRT(animB, (int)i, timeB);
             TransformSRT finalSRT = TransformSRT::Lerp(srtA, srtB, blendFactor);
 
-            // Layer mask: 문자열 기반 간이 마스크 (추후 UI에서 mask 목록 지정 가능)
-            const bool isUpper =
-                (nName.find("Spine") != std::string::npos) ||
-                (nName.find("Chest") != std::string::npos) ||
-                (nName.find("Neck") != std::string::npos) ||
-                (nName.find("Head") != std::string::npos) ||
-                (nName.find("Arm") != std::string::npos) ||
-                (nName.find("Hand") != std::string::npos) ||
-                (nName.find("Shoulder") != std::string::npos);
-
-            if (isUpper && upperAnim) {
-                const TransformSRT srtUpper = SampleNodeSRT(upperAnim, chUpper, idx, timeUpper);
-                finalSRT = TransformSRT::Lerp(finalSRT, srtUpper, 0.9f);
+            // B. 상체 레이어드 (ShootStance)
+            if (animUpper && IsUpperBody(m_NodeNames[i])) {
+                TransformSRT srtUpper = GetNodeSRT(animUpper, (int)i, timeUpper);
+                finalSRT = TransformSRT::Lerp(finalSRT, srtUpper, 0.95f); // 부드러운 전환
             }
 
-            // Additive
-            if (addAnim && refAnim) {
-                const TransformSRT srtAdd = SampleNodeSRT(addAnim, chAdd, idx, timeAdd);
-                const TransformSRT srtRef = SampleNodeSRT(refAnim, chRef, idx, 0.0f);
+            // C. 애디티브 (사격 반동)
+            if (animAdd && animRef) {
+                TransformSRT srtAdd = GetNodeSRT(animAdd, (int)i, timeAdd);
+                TransformSRT srtRef = GetNodeSRT(animRef, (int)i, 0.0f);
                 finalSRT = TransformSRT::Additive(finalSRT, srtAdd, srtRef, 1.0f);
             }
 
-            localSRTs[(size_t)idx] = finalSRT;
+            // D. 절차적 흔들림 (Procedural Noise)
+            if (proceduralRecoil > 0.0f && IsUpperBody(m_NodeNames[i])) {
+                ApplyProceduralNoise(finalSRT, (int)i, timeA, proceduralRecoil, seed);
+            }
+
+            m_LocalSRTs[i] = finalSRT;
         }
 
-        // ---- Procedural Additive: 간단 랜덤 흔들림(상체/팔/머리 위주) ----
-        // - 실제 게임에서는 Shoot 애니메이션을 Additive로 쓰는 게 더 정교하지만,
-        //   여기서는 "즉시 결과 확인"을 위해 노이즈 기반의 회전 델타를 추가한다.
-        if (proceduralAdditiveAlpha > 0.0f) {
-            auto Hash01 = [](uint32_t x) -> float {
-                // xorshift32
-                x ^= x << 13; x ^= x >> 17; x ^= x << 5;
-                // 0..1
-                return (float)(x & 0x00FFFFFF) / (float)0x01000000;
-            };
-            const float a = (proceduralAdditiveAlpha > 1.0f) ? 1.0f : proceduralAdditiveAlpha;
-            for (size_t i = 0; i < nodeCount; ++i) {
-                const std::string& bn = nodeNameByIndex[i];
-                const bool upperLike =
-                    (bn.find("Spine") != std::string::npos) ||
-                    (bn.find("Head") != std::string::npos) ||
-                    (bn.find("Neck") != std::string::npos) ||
-                    (bn.find("Arm") != std::string::npos) ||
-                    (bn.find("Hand") != std::string::npos);
-                if (!upperLike) continue;
+        // 2. IK 계산 (로컬 회전 수정) 
+        if (enableIK && ikTipBone) {
+            SolveIK_CCD(ikTipBone, ikTarget, chainLen, ikWeight);
+        }
 
-                // boneIndex + seed로 고정된 위상/주파수 부여
-                uint32_t h = (uint32_t)i * 747796405u + proceduralSeed * 2891336453u + 1u;
-                float p0 = Hash01(h) * XM_2PI;
-                float p1 = Hash01(h ^ 0xA3C59AC3u) * XM_2PI;
-                float p2 = Hash01(h ^ 0x1B56C4E9u) * XM_2PI;
+        // 3. 글로벌 행렬 갱신 (부모 * 로컬) - 계층 구조 순회
+        // 루트부터 리프까지 순서대로 계산해야 함. Assimp 인덱스가 위상 정렬되어 있지 않을 수 있으므로
+        // 안전하게 재귀적으로 계산하되, 계산 여부를 체크함.
+        std::vector<bool> isCalculated(m_NodePtrs.size(), false);
+        for (size_t i = 0; i < m_NodePtrs.size(); ++i) {
+            ComputeGlobalMatrix((int)i, isCalculated);
+        }
 
-                // 작은 각도(라디안). alpha로 강도 조절.
-                const float rx = std::sinf((timeA * 11.0f) + p0) * (0.02f * a);
-                const float ry = std::sinf((timeA * 17.0f) + p1) * (0.02f * a);
-                const float rz = std::sinf((timeA * 23.0f) + p2) * (0.02f * a);
-
-                XMVECTOR qDelta = XMQuaternionRotationRollPitchYaw(rx, ry, rz);
-                localSRTs[i].R = XMQuaternionNormalize(XMQuaternionMultiply(qDelta, localSRTs[i].R));
+        // 4. 최종 스키닝 행렬 생성 (GlobalInv * NodeGlobal * BoneOffset) 
+        XMMATRIX mGlobalInv = XMLoadFloat4x4(&m_GlobalInverse);
+        for (size_t i = 0; i < m_BoneNames.size(); ++i) {
+            int nodeIdx = m_BoneNodeIndices[i];
+            if (nodeIdx >= 0 && nodeIdx < (int)m_GlobalMatrices.size()) {
+                finalTransforms[i] = mGlobalInv * m_GlobalMatrices[nodeIdx] * m_BoneOffsets[i];
             }
         }
 
-        // ---- IK (CCD) ----
-        // - 타겟은 "캐릭터 모델 로컬 공간"으로 받는다 (aliceWorld 역행렬을 곱해 만든 공간)
-        if (enableIK && ikTipBoneName && ikChainLength > 0 && ikWeight > 0.0f) {
-            // IK 대상은 boneNames에 없을 수 있으니 nodeIndexOfName에서 먼저 찾는다.
-            auto itNode = nodeIndexOfName->find(std::string(ikTipBoneName));
-            if (itNode != nodeIndexOfName->end()) {
-                SolveIK_CCD(localSRTs, itNode->second, ikChainLength, ikTargetModelSpace, ikWeight);
-            }
-        }
-
-        // 2) 글로벌 행렬 계층 구조 계산 (FbxAnimation::EvaluateGlobals와 동일: parent * local)
-        std::vector<XMMATRIX> globals(nodeCount, XMMatrixIdentity());
-        std::vector<uint8_t> done(nodeCount, 0);
-        auto computeNode = [&](auto&& self, int idx) -> void {
-            if (idx < 0 || (size_t)idx >= nodeCount) return;
-            if (done[(size_t)idx]) return;
-            const int pi = nodeParentByIndex[(size_t)idx];
-            if (pi >= 0) self(self, pi);
-            const XMMATRIX L = localSRTs[(size_t)idx].ToMatrix(); // TRS
-            const XMMATRIX P = (pi >= 0) ? globals[(size_t)pi] : XMMatrixIdentity();
-            globals[(size_t)idx] = P * L;
-            done[(size_t)idx] = 1;
-        };
-        // bone 노드만 계산해도 되지만, IK/소켓 안정성을 위해 전체를 한 번에 계산
-        for (int i = 0; i < (int)nodeCount; ++i) computeNode(computeNode, i);
-
-        // 3) 최종 스키닝 행렬 (Gi * G * Off) - 기존 FbxAnimation과 동일
-        const XMMATRIX Gi = XMLoadFloat4x4(&globalInverseF);
-        for(size_t bi=0; bi<boneNames.size(); ++bi) {
-            const int nodeIdx = boneNodeIndices[bi];
-            const XMMATRIX G = (nodeIdx >= 0 && (size_t)nodeIdx < globals.size()) ? globals[(size_t)nodeIdx] : XMMatrixIdentity();
-            boneGlobals[bi] = G;
-            finalTransforms[bi] = (Gi * G) * boneOffsets[bi];
-        }
-
-        // 4) 소켓 업데이트 (캐릭터 기준 월드의 직전 단계: 본 글로벌 기준)
-        for(auto& socket : sockets) {
-            int nodeIdx = socket.parentNodeIndex;
-            if (nodeIdx < 0 && socket.parentBoneIndex >= 0 && (size_t)socket.parentBoneIndex < boneNodeIndices.size())
-                nodeIdx = boneNodeIndices[(size_t)socket.parentBoneIndex];
-            if(nodeIdx >= 0 && (size_t)nodeIdx < globals.size()) {
-                socket.finalWorldMatrix = socket.offsetMatrix * globals[(size_t)nodeIdx];
+        // 5. 소켓 월드 행렬 갱신
+        for (auto& s : m_Sockets) {
+            if (s.parentNodeIndex >= 0 && s.parentNodeIndex < (int)m_GlobalMatrices.size()) {
+                s.finalWorldMatrix = s.offsetMatrix * m_GlobalMatrices[s.parentNodeIndex];
             }
         }
     }
 
-    // 소켓의 최종 월드 행렬 가져오기
-    XMMATRIX GetSocketWorldMatrix(const std::string& socketName, CXMMATRIX characterWorld) {
-        for(const auto& s : sockets) {
-            if(s.name == socketName) {
-                return s.finalWorldMatrix * characterWorld;
+    // -----------------------------------------------------------------
+    // [GPU 업로드]
+    // -----------------------------------------------------------------
+    void UploadPalette(ID3D11DeviceContext* ctx, const std::vector<XMMATRIX>& pal) {
+        if (!ctx || !m_pBoneBuffer) return;
+
+        D3D11_MAPPED_SUBRESOURCE mapped;
+        if (SUCCEEDED(ctx->Map(m_pBoneBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
+            // 구조체 정의 없이 포인터로 직접 접근 (충돌 방지)
+            XMFLOAT4X4* pDest = reinterpret_cast<XMFLOAT4X4*>(mapped.pData);
+
+            size_t count = std::min(pal.size(), (size_t)MAX_BONES);
+            for (size_t i = 0; i < count; ++i) {
+                XMStoreFloat4x4(&pDest[i], XMMatrixTranspose(pal[i]));
             }
+
+            // 본 개수 정보 기록 (버퍼 끝부분)
+            uint8_t* pByteDest = reinterpret_cast<uint8_t*>(mapped.pData);
+            unsigned int* pCount = reinterpret_cast<unsigned int*>(pByteDest + sizeof(XMFLOAT4X4) * MAX_BONES);
+            *pCount = (unsigned int)count;
+
+            ctx->Unmap(m_pBoneBuffer.Get(), 0);
         }
-        return characterWorld; 
     }
+
+    // -----------------------------------------------------------------
+    // [소켓 관련]
+    // -----------------------------------------------------------------
+    void SetSocketSRT(const std::string& name, const std::string& parentBone, XMFLOAT3 pos, XMFLOAT3 rot, XMFLOAT3 scale) {
+        // 기존 소켓 찾기
+        auto it = std::find_if(m_Sockets.begin(), m_Sockets.end(), [&](const Socket& s) { return s.name == name; });
+        Socket* s = (it != m_Sockets.end()) ? &(*it) : &m_Sockets.emplace_back();
+
+        s->name = name;
+        s->parentBoneName = parentBone;
+        s->offsetPos = pos; s->offsetRot = rot; s->offsetScale = scale;
+        s->UpdateOffset();
+
+        if (m_NodeIndexMap && m_NodeIndexMap->count(parentBone)) {
+            s->parentNodeIndex = m_NodeIndexMap->at(parentBone);
+        }
+    }
+
+    XMMATRIX GetSocketWorldMatrix(const std::string& name, CXMMATRIX charWorld) {
+        for (const auto& s : m_Sockets) {
+            if (s.name == name) return s.finalWorldMatrix * charWorld;
+        }
+        return charWorld;
+    }
+
+    ID3D11Buffer* GetBoneCB() const { return m_pBoneBuffer.Get(); }
 
 private:
-    static aiVector3D InterpVec(const aiVectorKey* keys, unsigned count, double tTicks)
-    {
-        if (count == 0) return aiVector3D(0, 0, 0);
+    // -----------------------------------------------------------------
+    // [내부 로직 함수들] - 람다 제거됨
+    // -----------------------------------------------------------------
+
+    // aiMatrix4x4 -> XMMATRIX (분해/재조합 없이 원본 행렬을 그대로 사용)
+    static XMMATRIX AiToXM(const aiMatrix4x4& m) {
+        XMFLOAT4X4 fm;
+        fm._11 = (float)m.a1; fm._12 = (float)m.a2; fm._13 = (float)m.a3; fm._14 = (float)m.a4;
+        fm._21 = (float)m.b1; fm._22 = (float)m.b2; fm._23 = (float)m.b3; fm._24 = (float)m.b4;
+        fm._31 = (float)m.c1; fm._32 = (float)m.c2; fm._33 = (float)m.c3; fm._34 = (float)m.c4;
+        fm._41 = (float)m.d1; fm._42 = (float)m.d2; fm._43 = (float)m.d3; fm._44 = (float)m.d4;
+        return XMLoadFloat4x4(&fm);
+    }
+
+    // FbxAnimation.cpp의 보간 로직과 동일한 형태(클램프 기반)
+    static aiVector3D InterpVecFbx(const aiVectorKey* keys, unsigned count, double tTicks, const aiVector3D& fallback) {
+        if (!keys || count == 0) return fallback;
         if (count == 1) return keys[0].mValue;
         unsigned i = 0;
         while (i + 1 < count && tTicks >= keys[i + 1].mTime) ++i;
@@ -463,9 +379,9 @@ private:
         const aiVector3D v1 = keys[j].mValue;
         return v0 + (float)a * (v1 - v0);
     }
-    static aiQuaternion InterpQuat(const aiQuatKey* keys, unsigned count, double tTicks)
-    {
-        if (count == 0) return aiQuaternion();
+
+    static aiQuaternion InterpQuatFbx(const aiQuatKey* keys, unsigned count, double tTicks, const aiQuaternion& fallback) {
+        if (!keys || count == 0) return fallback;
         if (count == 1) return keys[0].mValue;
         unsigned i = 0;
         while (i + 1 < count && tTicks >= keys[i + 1].mTime) ++i;
@@ -478,109 +394,290 @@ private:
         return q;
     }
 
-    // Assimp 채널에서 시간(timeSec)에 해당하는 키프레임 SRT 추출 (보간 포함)
-    TransformSRT SampleBone(const aiAnimation* anim, const std::string& name, float timeSec) {
-        TransformSRT result{};
-        if (!anim) return result;
+    void EvaluateLikeFbxAnimation(const aiAnimation* anim, float timeSec) {
+        const size_t nodeCount = m_NodePtrs.size();
+        if (nodeCount == 0 || !m_NodeIndexMap) return;
 
-        const aiNodeAnim* ch = nullptr;
-        for (unsigned i = 0; i < anim->mNumChannels; ++i) {
-            const aiNodeAnim* c = anim->mChannels[i];
-            if (c && name == std::string(c->mNodeName.C_Str())) { ch = c; break; }
+        // channel map (nodeIdx -> channel)
+        std::vector<const aiNodeAnim*> chOfNode(nodeCount, nullptr);
+        if (anim) {
+            for (unsigned ci = 0; ci < anim->mNumChannels; ++ci) {
+                const aiNodeAnim* ch = anim->mChannels[ci];
+                if (!ch) continue;
+                auto it = m_NodeIndexMap->find(ch->mNodeName.C_Str());
+                if (it == m_NodeIndexMap->end()) continue;
+                const int idx = it->second;
+                if (idx >= 0 && (size_t)idx < chOfNode.size()) chOfNode[(size_t)idx] = ch;
+            }
         }
-        if (!ch) return result; // 채널 없으면 identity
 
-        const double tps = (anim->mTicksPerSecond != 0.0) ? anim->mTicksPerSecond : 25.0;
-        const double dur = (anim->mDuration > 0.0) ? anim->mDuration : 0.0;
+        // local matrices
+        std::vector<XMMATRIX> locals(nodeCount, XMMatrixIdentity());
+        const double tps = (anim && anim->mTicksPerSecond != 0.0) ? anim->mTicksPerSecond : 25.0;
+        const double dur = (anim && anim->mDuration > 0.0) ? anim->mDuration : 0.0;
         double tTicks = (double)timeSec * tps;
         if (dur > 0.0) {
             tTicks = std::fmod(tTicks, dur);
             if (tTicks < 0.0) tTicks += dur;
         }
 
-        const aiVector3D S = (ch->mNumScalingKeys > 0) ? InterpVec(ch->mScalingKeys, ch->mNumScalingKeys, tTicks) : aiVector3D(1, 1, 1);
-        const aiVector3D T = (ch->mNumPositionKeys > 0) ? InterpVec(ch->mPositionKeys, ch->mNumPositionKeys, tTicks) : aiVector3D(0, 0, 0);
-        const aiQuaternion R = (ch->mNumRotationKeys > 0) ? InterpQuat(ch->mRotationKeys, ch->mNumRotationKeys, tTicks) : aiQuaternion();
+        for (size_t i = 0; i < nodeCount; ++i) {
+            const aiNode* node = m_NodePtrs[i];
+            if (!node) {
+                locals[i] = XMMatrixIdentity();
+                continue;
+            }
+            const aiNodeAnim* ch = (i < chOfNode.size()) ? chOfNode[i] : nullptr;
+            if (anim && ch) {
+                const aiVector3D S = InterpVecFbx(ch->mScalingKeys, ch->mNumScalingKeys, tTicks, aiVector3D(1, 1, 1));
+                const aiVector3D T = InterpVecFbx(ch->mPositionKeys, ch->mNumPositionKeys, tTicks, aiVector3D(0, 0, 0));
+                const aiQuaternion R = InterpQuatFbx(ch->mRotationKeys, ch->mNumRotationKeys, tTicks, aiQuaternion());
 
-        result.S = XMVectorSet(S.x, S.y, S.z, 0.0f);
-        result.T = XMVectorSet(T.x, T.y, T.z, 1.0f);
-        result.R = XMVectorSet(R.x, R.y, R.z, R.w);
-        return result;
+                aiMatrix4x4 mS; mS.Scaling(S, mS);
+                aiMatrix4x4 mR = aiMatrix4x4(R.GetMatrix());
+                aiMatrix4x4 mT; mT.Translation(T, mT);
+                const aiMatrix4x4 mLocal = mT * mR * mS; // TRS (FbxAnimation과 동일)
+                locals[i] = AiToXM(mLocal);
+            }
+            else {
+                // 채널이 없으면 bind pose 원본 로컬 행렬을 그대로 사용
+                locals[i] = AiToXM(node->mTransformation);
+            }
+        }
+
+        // globals = parent * local (memoization)
+        m_GlobalMatrices.assign(nodeCount, XMMatrixIdentity());
+        std::vector<uint8_t> done(nodeCount, 0);
+        auto computeNode = [&](auto&& self, int idx) -> void {
+            if (idx < 0 || (size_t)idx >= nodeCount) return;
+            if (done[(size_t)idx]) return;
+            const int pi = m_NodeParents[(size_t)idx];
+            if (pi >= 0) self(self, pi);
+            const XMMATRIX parent = (pi >= 0 && (size_t)pi < nodeCount) ? m_GlobalMatrices[(size_t)pi] : XMMatrixIdentity();
+            m_GlobalMatrices[(size_t)idx] = parent * locals[(size_t)idx];
+            done[(size_t)idx] = 1;
+        };
+        for (int i = 0; i < (int)nodeCount; ++i) computeNode(computeNode, i);
     }
 
-    // 간단한 CCD IK Solver (로컬 회전만 업데이트)
-    // - tipIndex: 끝(예: Hand_L)
-    // - chainLength: tip부터 몇 개 부모까지 포함할지
-    // - targetMS: 캐릭터 모델 로컬 공간 타겟 위치 (w=1)
-    void SolveIK_CCD(std::vector<TransformSRT>& srts, int tipIndex, int chainLength, XMVECTOR targetMS, float weight) {
-        if (tipIndex < 0 || (size_t)tipIndex >= srts.size()) return;
-        if (chainLength <= 0) return;
-        if (weight <= 0.0f) return;
-        if (weight > 1.0f) weight = 1.0f;
+    // 계층 구조 빌드
+    void BuildNodeHierarchy(const aiNode* node, int parentIdx) {
+        if (!node || !m_NodeIndexMap) return;
 
-        // 체인 구성 (tip -> root 방향)
-        std::vector<int> joints;
-        joints.reserve(chainLength);
-        int curr = tipIndex;
-        for (int i = 0; i < chainLength && curr != -1; ++i) {
-            joints.push_back(curr);
-            // 노드 전체 계층 기준 부모
-            curr = (curr >= 0 && (size_t)curr < nodeParentByIndex.size()) ? nodeParentByIndex[(size_t)curr] : -1;
-        }
-        if (joints.size() < 2) return;
-
-        auto RecomputeGlobals = [&](std::vector<XMMATRIX>& globals) {
-            globals.assign(srts.size(), XMMatrixIdentity());
-            for (size_t i = 0; i < srts.size(); ++i) {
-                const XMMATRIX localM = srts[i].ToMatrix();
-                const int parent = (i < nodeParentByIndex.size()) ? nodeParentByIndex[i] : -1;
-                globals[i] = (parent != -1) ? (globals[(size_t)parent] * localM) : localM;
+        // NOTE:
+        // - nodeIndexMap에 일부 중간 노드가 누락된 경우라도 서브트리를 끊지 않는다.
+        // - "가장 가까운 유효 parent"를 자식에게 전달해 계층이 유지되게 한다.
+        int idx = -1;
+        auto it = m_NodeIndexMap->find(node->mName.C_Str());
+        if (it != m_NodeIndexMap->end()) {
+            idx = it->second;
+            if (idx >= 0 && idx < (int)m_NodePtrs.size()) {
+                m_NodePtrs[(size_t)idx] = node;
+                m_NodeParents[(size_t)idx] = parentIdx;
+                m_NodeNames[(size_t)idx] = node->mName.C_Str();
             }
-        };
+        }
 
-        // 반복 횟수: 너무 크면 흔들림/불안정. 우선 8회 정도.
-        const int iterations = 8;
-        std::vector<XMMATRIX> globals;
-        for (int it = 0; it < iterations; ++it) {
-            RecomputeGlobals(globals);
+        const int parentForChildren = (idx >= 0) ? idx : parentIdx;
+        for (unsigned i = 0; i < node->mNumChildren; ++i) {
+            BuildNodeHierarchy(node->mChildren[i], parentForChildren);
+        }
+    }
 
-            const XMVECTOR tipPos = XMVector3TransformCoord(XMVectorZero(), globals[(size_t)tipIndex]);
-            const XMVECTOR toTarget = XMVectorSubtract(targetMS, tipPos);
-            if (XMVectorGetX(XMVector3LengthSq(toTarget)) < 1.0e-5f) break;
+    // 글로벌 행렬 계산 (재귀 + 메모이제이션)
+    void ComputeGlobalMatrix(int idx, std::vector<bool>& calculated) {
+        if (idx < 0 || idx >= (int)m_GlobalMatrices.size() || calculated[idx]) return;
 
-            // 관절을 따라가며 tip을 target로 끌어당김
-            for (size_t ji = 1; ji < joints.size(); ++ji) {
-                const int j = joints[ji];
-                const XMMATRIX Gj = globals[(size_t)j];
+        int pIdx = m_NodeParents[idx];
+        if (pIdx != -1) {
+            ComputeGlobalMatrix(pIdx, calculated); // 부모 먼저 계산
+        }
 
-                const XMVECTOR jointPos = XMVector3TransformCoord(XMVectorZero(), Gj);
-                const XMVECTOR curTipPos = XMVector3TransformCoord(XMVectorZero(), globals[(size_t)tipIndex]);
+        XMMATRIX local = m_LocalSRTs[idx].ToMatrix(); // local = T * R * S
+        XMMATRIX parent = (pIdx != -1) ? m_GlobalMatrices[pIdx] : XMMatrixIdentity();
 
-                XMVECTOR v1 = XMVectorSubtract(curTipPos, jointPos);
-                XMVECTOR v2 = XMVectorSubtract(targetMS, jointPos);
-                const float l1 = XMVectorGetX(XMVector3Length(v1));
-                const float l2 = XMVectorGetX(XMVector3Length(v2));
-                if (l1 < 1.0e-5f || l2 < 1.0e-5f) continue;
-                v1 = XMVectorScale(v1, 1.0f / l1);
-                v2 = XMVectorScale(v2, 1.0f / l2);
+        // FbxAnimation과 동일: ChildGlobal = ParentGlobal * ChildLocal
+        m_GlobalMatrices[idx] = parent * local;
+        calculated[idx] = true;
+    }
 
-                float dot = XMVectorGetX(XMVector3Dot(v1, v2));
-                if (dot > 1.0f) dot = 1.0f;
-                if (dot < -1.0f) dot = -1.0f;
-                const float angle = std::acos(dot) * weight;
-                if (angle < 1.0e-4f) continue;
+    // 애니메이션에서 노드의 SRT 추출 (키프레임 보간 포함)
+    TransformSRT GetNodeSRT(const aiAnimation* anim, int nodeIndex, float time) {
+        // 1. 애니메이션이 없거나 채널이 없으면? -> Bind Pose(기본 자세) 반환 [중요!]
+        // (이게 없으면 캐릭터가 원점으로 뭉개짐)
+        if (!anim) return GetBindPoseSRT(nodeIndex);
 
-                XMVECTOR axisWS = XMVector3Cross(v1, v2);
-                if (XMVectorGetX(XMVector3LengthSq(axisWS)) < 1.0e-8f) continue;
-                axisWS = XMVector3Normalize(axisWS);
+        const aiNodeAnim* ch = FindChannel(anim, m_NodeNames[nodeIndex]);
+        if (!ch) return GetBindPoseSRT(nodeIndex);
 
-                // 월드 축을 조인트 로컬 축으로 변환 (번역 제거 + 역행렬)
-                XMMATRIX GjNoT = Gj; GjNoT.r[3] = XMVectorSet(0, 0, 0, 1);
-                XMMATRIX invGj = XMMatrixInverse(nullptr, GjNoT);
-                XMVECTOR axisLS = XMVector3Normalize(XMVector3TransformNormal(axisWS, invGj));
+        // 2. 시간 계산
+        double tps = (anim->mTicksPerSecond != 0) ? anim->mTicksPerSecond : 25.0;
+        double ticks = time * tps;
+        if (anim->mDuration > 0) ticks = fmod(ticks, anim->mDuration);
 
-                const XMVECTOR qDelta = XMQuaternionRotationAxis(axisLS, angle);
-                srts[(size_t)j].R = XMQuaternionNormalize(XMQuaternionMultiply(qDelta, srts[(size_t)j].R));
+        // 3. 키프레임 보간
+        TransformSRT srt;
+        aiVector3D S = InterpScale(ch, ticks);
+        aiQuaternion R = InterpRot(ch, ticks);
+        aiVector3D T = InterpPos(ch, ticks);
+
+        srt.S = XMVectorSet(S.x, S.y, S.z, 0.f);
+        srt.R = XMVectorSet(R.x, R.y, R.z, R.w);
+        srt.T = XMVectorSet(T.x, T.y, T.z, 1.f);
+        return srt;
+    }
+
+    // Bind Pose (기본 트랜스폼) 가져오기
+    TransformSRT GetBindPoseSRT(int nodeIndex) {
+        TransformSRT srt;
+        if (nodeIndex >= 0 && m_NodePtrs[nodeIndex]) {
+            aiVector3D s, t; aiQuaternion r;
+            m_NodePtrs[nodeIndex]->mTransformation.Decompose(s, r, t);
+            srt.S = XMVectorSet(s.x, s.y, s.z, 0.f);
+            srt.R = XMVectorSet(r.x, r.y, r.z, r.w);
+            srt.T = XMVectorSet(t.x, t.y, t.z, 1.f);
+        }
+        return srt;
+    }
+
+    const aiNodeAnim* FindChannel(const aiAnimation* anim, const std::string& name) {
+        for (unsigned i = 0; i < anim->mNumChannels; ++i) {
+            if (std::string(anim->mChannels[i]->mNodeName.C_Str()) == name)
+                return anim->mChannels[i];
+        }
+        return nullptr;
+    }
+
+    // 보간 헬퍼 함수들
+    aiVector3D InterpPos(const aiNodeAnim* ch, double t) {
+        if (ch->mNumPositionKeys == 0) return aiVector3D(0, 0, 0);
+        if (ch->mNumPositionKeys == 1) return ch->mPositionKeys[0].mValue;
+
+        unsigned int i = 0;
+        for (; i < ch->mNumPositionKeys - 1; i++)
+            if (t < ch->mPositionKeys[i + 1].mTime) break;
+
+        const auto& k1 = ch->mPositionKeys[i];
+        const auto& k2 = ch->mPositionKeys[(i + 1) % ch->mNumPositionKeys];
+        float dt = (float)(k2.mTime - k1.mTime);
+        float alpha = (dt > 0) ? (float)((t - k1.mTime) / dt) : 0.0f;
+        return k1.mValue + (k2.mValue - k1.mValue) * alpha;
+    }
+
+    aiQuaternion InterpRot(const aiNodeAnim* ch, double t) {
+        if (ch->mNumRotationKeys == 0) return aiQuaternion(1, 0, 0, 0);
+        if (ch->mNumRotationKeys == 1) return ch->mRotationKeys[0].mValue;
+
+        unsigned int i = 0;
+        for (; i < ch->mNumRotationKeys - 1; i++)
+            if (t < ch->mRotationKeys[i + 1].mTime) break;
+
+        const auto& k1 = ch->mRotationKeys[i];
+        const auto& k2 = ch->mRotationKeys[(i + 1) % ch->mNumRotationKeys];
+        float dt = (float)(k2.mTime - k1.mTime);
+        float alpha = (dt > 0) ? (float)((t - k1.mTime) / dt) : 0.0f;
+        aiQuaternion out;
+        aiQuaternion::Interpolate(out, k1.mValue, k2.mValue, alpha);
+        return out.Normalize();
+    }
+
+    aiVector3D InterpScale(const aiNodeAnim* ch, double t) {
+        if (ch->mNumScalingKeys == 0) return aiVector3D(1, 1, 1);
+        if (ch->mNumScalingKeys == 1) return ch->mScalingKeys[0].mValue;
+
+        unsigned int i = 0;
+        for (; i < ch->mNumScalingKeys - 1; i++)
+            if (t < ch->mScalingKeys[i + 1].mTime) break;
+
+        const auto& k1 = ch->mScalingKeys[i];
+        const auto& k2 = ch->mScalingKeys[(i + 1) % ch->mNumScalingKeys];
+        float dt = (float)(k2.mTime - k1.mTime);
+        float alpha = (dt > 0) ? (float)((t - k1.mTime) / dt) : 0.0f;
+        return k1.mValue + (k2.mValue - k1.mValue) * alpha;
+    }
+
+    // 마스크 (상체 판별)
+    bool IsUpperBody(const std::string& name) {
+        const char* keys[] = { "Spine", "Neck", "Head", "Arm", "Hand", "Weapon" };
+        for (auto k : keys) if (name.find(k) != std::string::npos) return true;
+        return false;
+    }
+
+    // 절차적 노이즈 (흔들림)
+    void ApplyProceduralNoise(TransformSRT& srt, int idx, float time, float strength, uint32_t seed) {
+        auto Hash = [](uint32_t x) { x ^= x << 13; x ^= x >> 17; return (float)(x & 0xFFFF) / 65536.0f; };
+        uint32_t h = (uint32_t)idx * 12345 + seed;
+
+        float rx = sinf(time * 10.0f + Hash(h) * 6.28f) * strength * 0.05f;
+        float ry = sinf(time * 7.0f + Hash(h + 1) * 6.28f) * strength * 0.05f;
+        float rz = sinf(time * 13.0f + Hash(h + 2) * 6.28f) * strength * 0.05f;
+
+        XMVECTOR deltaR = XMQuaternionRotationRollPitchYaw(rx, ry, rz);
+        srt.R = XMQuaternionMultiply(deltaR, srt.R);
+    }
+
+    // IK Solver (CCD)
+    void SolveIK_CCD(const std::string& tipName, XMVECTOR target, int chainLen, float weight) {
+        if (!m_NodeIndexMap->count(tipName)) return;
+        int tipIdx = m_NodeIndexMap->at(tipName);
+
+        // 체인 구성
+        std::vector<int> chain;
+        int curr = tipIdx;
+        for (int i = 0; i <= chainLen && curr != -1; ++i) {
+            chain.push_back(curr);
+            curr = m_NodeParents[curr];
+        }
+        if (chain.empty()) return;
+
+        // IK 반복 (5회)
+        for (int iter = 0; iter < 5; ++iter) {
+            // 현재 상태의 글로벌 행렬 갱신 (IK 계산을 위해)
+            // 성능 최적화: 전체 노드가 아닌 IK 체인 관련 노드만 갱신하는 것이 좋음
+            // 여기선 간단하게 전체 부모 관계가 갱신되었다고 가정하거나, 필요 시 여기서 재계산
+            std::vector<bool> calc(m_NodePtrs.size(), false);
+            for (int node : chain) ComputeGlobalMatrix(node, calc); // 최소한 체인은 갱신
+
+            XMVECTOR effectorPos = m_GlobalMatrices[tipIdx].r[3];
+
+            // 루트부터가 아닌, Tip의 부모부터 역순으로 처리 (Tip -> Parent -> ...)
+            for (size_t i = 1; i < chain.size(); ++i) {
+                int jointIdx = chain[i];
+                ComputeGlobalMatrix(jointIdx, calc); // 안전장치
+
+                XMVECTOR jointPos = m_GlobalMatrices[jointIdx].r[3];
+                XMVECTOR toEffector = XMVector3Normalize(XMVectorSubtract(effectorPos, jointPos));
+                XMVECTOR toTarget = XMVector3Normalize(XMVectorSubtract(target, jointPos));
+
+                float dot = XMVectorGetX(XMVector3Dot(toEffector, toTarget));
+                if (dot > 0.999f) continue;
+
+                // 회전 축과 각도
+                XMVECTOR axis = XMVector3Cross(toEffector, toTarget);
+                axis = XMVector3Normalize(axis);
+                float angle = acosf(std::clamp(dot, -1.0f, 1.0f)) * weight;
+
+                // 글로벌 회전을 로컬 회전으로 변환
+                // (부모의 역회전을 곱해야 함 - 간략화: 현재 로컬에 델타 곱하기)
+                // 정확하게 하려면: JointWorldRot * Delta * Inverse(JointWorldRot) ... 복잡함
+                // 여기서는 로컬 축 기준으로 가정하고 단순 적용
+                XMVECTOR qDelta = XMQuaternionRotationAxis(axis, angle);
+
+                // 부모 공간으로 축 변환 (간이 IK)
+                // 실제론 World Axis를 Local Space로 가져와야 함:
+                // LocalAxis = XMVector3TransformNormal(axis, XMMatrixInverse(nullptr, ParentGlobal))
+                int pIdx = m_NodeParents[jointIdx];
+                if (pIdx != -1) {
+                    XMMATRIX mInvP = XMMatrixInverse(nullptr, m_GlobalMatrices[pIdx]);
+                    XMVECTOR localAxis = XMVector3TransformNormal(axis, mInvP);
+                    qDelta = XMQuaternionRotationAxis(localAxis, angle);
+                }
+
+                m_LocalSRTs[jointIdx].R = XMQuaternionMultiply(m_LocalSRTs[jointIdx].R, qDelta);
+                m_LocalSRTs[jointIdx].R = XMQuaternionNormalize(m_LocalSRTs[jointIdx].R);
+
+                // 이펙터 위치 갱신을 위해 다음 반복 전 글로벌 행렬 재계산 필요
+                // 여기선 생략 (다음 이터레이션 혹은 프레임에 반영)
             }
         }
     }

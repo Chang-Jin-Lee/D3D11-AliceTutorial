@@ -182,7 +182,7 @@ struct ModelEntry {
 	bool showBoneDetails = false;
 
 	// 인스턴스 전용 애니메이터/머티리얼
-	FbxAnimation animator; // FBX 전용: per-instance bone palette
+	FbxAnimation fbxBaseAnimator; // FBX 전용: per-instance bone palette
 	bool animatorInited = false;
 	// 애니메이션 업데이트 LOD를 위한 누적 시간 (입력/ImGui 프리즈 방지용)
 	float animUpdateAccum = 0.0f;
@@ -955,6 +955,7 @@ bool App::OnInitialize() {
 	// - Alice(0): 캐릭터
 	// - AmazingWonderland(1): 라이플
 	// - 캐릭터 본("Hand_R")에 WeaponPoint 소켓 생성 후, 매 프레임 라이플 트랜스폼 동기화
+	/*
 	if (m_->m_UseAdvancedRig && m_->m_Models.size() >= 2) {
 		const int ci = m_->m_CharModelIndex;
 		if (ci >= 0 && ci < (int)m_->m_Models.size()) {
@@ -992,6 +993,7 @@ bool App::OnInitialize() {
 			}
 
 			m_->m_CharRig.Initialize(
+				m_->m_pDevice,
 				alice.shared->fbx->GetScenePtr(),
 				alice.shared->fbx->GetNodeIndexOfName(),
 				alice.shared->fbx->GetGlobalInverse(),
@@ -1013,6 +1015,52 @@ bool App::OnInitialize() {
 			m_->m_CharRigInited = false;
 			m_->PushLog("[WARN] AdvancedRig: Alice model has no skeleton (socket disabled)");
 		}
+		}
+	}
+	*/
+
+	// ====================================== 간단한 Idle 애니메이션 테스트 ======================================
+	// - CharacterAnimator를 사용해서 Idle 애니메이션만 실행
+	if (m_->m_Models.size() > 0) {
+		const int ci = m_->m_CharModelIndex;
+		if (ci >= 0 && ci < (int)m_->m_Models.size()) {
+			auto& alice = *m_->m_Models[(size_t)ci];
+			if (alice.shared && alice.shared->fbx && alice.shared->fbx->HasSkeleton()) {
+				// Idle 애니메이션 찾기
+				auto ToLower = [](std::string s) {
+					for (char& c : s) c = (char)std::tolower((unsigned char)c);
+					return s;
+				};
+				auto FindByContains = [&](const std::string& key) -> int {
+					const auto& names = alice.shared->fbx->GetAnimationNames();
+					const std::string k = ToLower(key);
+					for (int i = 0; i < (int)names.size(); ++i) {
+						if (ToLower(names[(size_t)i]).find(k) != std::string::npos)
+							return i;
+					}
+					return -1;
+				};
+				int idxIdle = FindByContains("idle");
+				if (idxIdle >= 0) {
+					m_->m_CharAnimIdxIdle = idxIdle;
+				}
+
+				// CharacterAnimator 초기화
+				m_->m_CharRig.Initialize(
+					m_->m_pDevice,
+					alice.shared->fbx->GetScenePtr(),
+					alice.shared->fbx->GetNodeIndexOfName(),
+					alice.shared->fbx->GetGlobalInverse(),
+					alice.shared->fbx->GetBoneNames(),
+					alice.shared->fbx->GetBoneOffsets());
+
+				m_->m_CharRigInited = true;
+				m_->PushLog("[OK] CharacterAnimator: Idle animation initialized");
+			}
+			else {
+				m_->m_CharRigInited = false;
+				m_->PushLog("[WARN] CharacterAnimator: Model has no skeleton");
+			}
 		}
 	}
 
@@ -1128,6 +1176,7 @@ void App::OnUpdate(const float& dt) {
 		// ===================== AdvancedRig: Alice 애니메이션 + 소켓으로 Rifle 장착 =====================
 		// - 이 블록은 "공유 데이터" 최적화와 별개로, 캐릭터(0)만 특별 처리한다.
 		// - 이후 일반 루프에서는 캐릭터(0)의 기본 FbxAnimation::UpdateAndUpload를 스킵한다.
+		/*
 		if (m_->m_UseAdvancedRig && m_->m_CharRigInited && m_->m_Models.size() >= 2) {
 			const int ci = m_->m_CharModelIndex;
 			const int wi = m_->m_WeaponModelIndex;
@@ -1275,8 +1324,8 @@ void App::OnUpdate(const float& dt) {
 				m_->m_IKWeight);
 
 			// GPU 업로드는 기존 per-instance animator의 CB를 그대로 사용
-			alice.animator.EnsureBoneCB(m_->m_pDevice, 1023);
-			alice.animator.UploadPalette(m_->m_pDeviceContext, m_->m_CharRig.finalTransforms);
+			alice.fbxBaseAnimator.EnsureBoneCB(m_->m_pDevice, 1023);
+			alice.fbxBaseAnimator.UploadPalette(m_->m_pDeviceContext, m_->m_CharRig.finalTransforms);
 
 			// 소켓 월드 행렬로 Rifle 트랜스폼 동기화
 			// - "WeaponPoint"는 캐릭터(앨리스) 본 공간의 오프셋 + 본 글로벌 + 앨리스 월드
@@ -1301,6 +1350,49 @@ void App::OnUpdate(const float& dt) {
 				const float roll = std::atan2(sinr, cosr);
 				rifle.rotDeg = XMFLOAT3(XMConvertToDegrees(pitch), XMConvertToDegrees(yaw), XMConvertToDegrees(roll));
 			}
+			}
+		}
+		*/
+
+		// ===================== 간단한 Idle 애니메이션 테스트 =====================
+		// - CharacterAnimator를 사용해서 Idle 애니메이션만 실행
+		if (m_->m_CharRigInited && m_->m_Models.size() > 0) {
+			const int ci = m_->m_CharModelIndex;
+			if (ci >= 0 && ci < (int)m_->m_Models.size()) {
+				auto& alice = *m_->m_Models[(size_t)ci];
+				if (alice.shared && alice.shared->fbx && alice.shared->fbx->HasSkeleton()) {
+					// 시간 업데이트
+					m_->m_CharTimeSec += dt;
+
+					// Idle 애니메이션 포인터 획득
+					const aiScene* sc = alice.shared->fbx->GetScenePtr();
+					const aiAnimation* animIdle = nullptr;
+					if (sc && sc->mNumAnimations > 0) {
+						const int iIdle = m_->m_CharAnimIdxIdle;
+						if (iIdle >= 0 && (unsigned)iIdle < sc->mNumAnimations) {
+							animIdle = sc->mAnimations[iIdle];
+						}
+					}
+
+					// CharacterAnimator로 Idle 애니메이션만 실행 (블렌딩 없음)
+					if (animIdle) {
+						m_->m_CharRig.UpdateAnimation(
+							dt,
+							animIdle, m_->m_CharTimeSec,  // animA, timeA
+							animIdle, m_->m_CharTimeSec,  // animB, timeB (같은 애니메이션)
+							0.0f,                        // blendFactor (블렌딩 없음)
+							nullptr, 0.0f,              // upperAnim, timeUpper 없음
+							nullptr, 0.0f,              // addAnim, timeAdd 없음
+							nullptr,                    // refAnim 없음
+							0.0f, 0u,                    // proceduralAdditiveAlpha, proceduralSeed 없음
+							false, nullptr, 0, XMVectorZero(), 0.0f  // IK 없음
+						);
+
+						// GPU 업로드
+						alice.fbxBaseAnimator.EnsureBoneCB(m_->m_pDevice, 1023);
+						alice.fbxBaseAnimator.UploadPalette(m_->m_pDeviceContext, m_->m_CharRig.finalTransforms);
+					}
+				}
 			}
 		}
 
@@ -1392,14 +1484,14 @@ void App::OnUpdate(const float& dt) {
 			if (mdl.source == ModelSource::FBX && mdl.shared->fbx) {
 				// 인스턴스별 애니메이션 업데이트 (공유 지오메트리/스켈레톤 사용)
 				if (!mdl.animatorInited) {
-					mdl.animator.InitMetadata(mdl.shared->fbx->GetScenePtr());
-					mdl.animator.SetSharedContext(mdl.shared->fbx->GetScenePtr(),
+					mdl.fbxBaseAnimator.InitMetadata(mdl.shared->fbx->GetScenePtr());
+					mdl.fbxBaseAnimator.SetSharedContext(mdl.shared->fbx->GetScenePtr(),
 						mdl.shared->fbx->GetNodeIndexOfName(),
 						&mdl.shared->fbx->GetBoneNames(),
 						&mdl.shared->fbx->GetBoneOffsets(),
 						&mdl.shared->fbx->GetGlobalInverse());
 					auto t = mdl.shared->fbx->GetCurrentAnimationType();
-					mdl.animator.SetType(t == FbxModel::AnimationType::Rigid
+					mdl.fbxBaseAnimator.SetType(t == FbxModel::AnimationType::Rigid
 						? FbxAnimation::AnimType::Rigid
 						: (t == FbxModel::AnimationType::Skinned
 							? FbxAnimation::AnimType::Skinned
@@ -1412,9 +1504,9 @@ void App::OnUpdate(const float& dt) {
 					const double dtAnim = (double)mdl.animUpdateAccum;
 					mdl.animUpdateAccum = 0.0f;
 
-					mdl.animator.SetPlaying(mdl.uiAnimPlaying);
-					mdl.animator.EnsureBoneCB(m_->m_pDevice, 1023);
-					mdl.animator.UpdateAndUpload(m_->m_pDeviceContext, dtAnim,
+					mdl.fbxBaseAnimator.SetPlaying(mdl.uiAnimPlaying);
+					mdl.fbxBaseAnimator.EnsureBoneCB(m_->m_pDevice, 1023);
+					mdl.fbxBaseAnimator.UpdateAndUpload(m_->m_pDeviceContext, dtAnim,
 						mdl.shared->fbx->GetScenePtr(),
 						mdl.shared->fbx->GetNodeIndexOfName(),
 						mdl.shared->fbx->GetBoneNames(),
@@ -1625,7 +1717,7 @@ void App::PassDebugDraw()
 		}
 		if (mdlPtr->boundsValid && mdlPtr->source == ModelSource::FBX && mdlPtr->shared && mdlPtr->shared->fbx) {
 			// 애니메이션 샘플링
-			int curClip = mdlPtr->animator.GetCurrentIndex();
+			int curClip = mdlPtr->fbxBaseAnimator.GetCurrentIndex();
 			const aiScene* sc = mdlPtr->shared->fbx->GetScenePtr();
 			if (sc && curClip >= 0 && (size_t)curClip < sc->mNumAnimations)
 			{
@@ -1708,7 +1800,7 @@ void App::PassDebugDraw()
 			XMMATRIX T = XMMatrixTranslation(mdlPtr->pos.x, mdlPtr->pos.y, mdlPtr->pos.z);
 			XMMATRIX W = S * R * T;
 			// ConstantBuffer 설정, DrawLine 호출 등
-			ID3D11Buffer* cbBones = mdlPtr->animator.GetBoneCB();
+			ID3D11Buffer* cbBones = mdlPtr->fbxBaseAnimator.GetBoneCB();
 			// 라인용 상수버퍼: 이 모델의 월드 행렬 사용
 			ConstantBuffer lineCB = m_->m_ConstantBuffer;
 			lineCB.world = XMMatrixTranspose(W);
@@ -1743,7 +1835,7 @@ void App::PassDebugDraw()
 			// 팔레트 기반 본 선택(-1 아님)일 때는 샘플 AABB를 사용하지 않음
 			if (useBoneIdx < 0 && !mdlPtr->animAabbMinSamples.empty() && !mdlPtr->animAabbMaxSamples.empty() && mdlPtr->animAabbSampleDt > 0.0f)
 			{
-				double t = mdlPtr->animator.GetTimeSec();
+				double t = mdlPtr->fbxBaseAnimator.GetTimeSec();
 				int idx = (int)std::floor(t / (double)mdlPtr->animAabbSampleDt + 0.5);
 				if (idx < 0) idx = 0; if (idx >= (int)mdlPtr->animAabbMinSamples.size()) idx = (int)mdlPtr->animAabbMinSamples.size() - 1;
 				mn = mdlPtr->animAabbMinSamples[(size_t)idx];
@@ -1828,14 +1920,14 @@ void App::PassShadow() {
 			hasSkeleton = mdl->shared->pmx->HasSkeleton();
 
 		bool useSkin =
-			hasSkeleton && m_->m_pVSSkinnedShadow && mdl->animator.GetBoneCB();
+			hasSkeleton && m_->m_pVSSkinnedShadow && mdl->fbxBaseAnimator.GetBoneCB();
 
 		if (useSkin) {
 			m_->m_pDeviceContext->IASetInputLayout(m_->m_pInputLayoutSkinned);
 			m_->m_pDeviceContext->VSSetShader(m_->m_pVSSkinnedShadow, nullptr, 0);
 			ID3D11Buffer* boneCB = (mdl->source == ModelSource::PMX)
 				? mdl->shared->pmx->GetBoneConstantBuffer()
-				: mdl->animator.GetBoneCB();
+				: mdl->fbxBaseAnimator.GetBoneCB();
 			m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &boneCB);
 		}
 		else {
@@ -2059,7 +2151,7 @@ void App::PassMainScene() {
 			ID3D11Buffer* cbBones = nullptr;
 			bool hasSkeleton = false;
 			if (mdlPtr->source == ModelSource::FBX && mdlPtr->shared->fbx) {
-				cbBones = mdlPtr->animator.GetBoneCB();
+				cbBones = mdlPtr->fbxBaseAnimator.GetBoneCB();
 				hasSkeleton = mdlPtr->shared->fbx->HasSkeleton();
 			}
 			else if (mdlPtr->source == ModelSource::PMX && mdlPtr->shared->pmx) {
@@ -2277,7 +2369,7 @@ void App::PassGBuffer() {
 			else if (mdlPtr->source == ModelSource::PMX && mdlPtr->shared->pmx)
 				hasSkeleton = mdlPtr->shared->pmx->HasSkeleton();
 
-			ID3D11Buffer* cbBones = mdlPtr->animator.GetBoneCB();
+			ID3D11Buffer* cbBones = mdlPtr->fbxBaseAnimator.GetBoneCB();
 			bool useSkinned = hasSkeleton && m_->m_pVertexShaderSkinned && cbBones;
 
 			if (useSkinned) {
@@ -3526,14 +3618,14 @@ bool App::LoadModelFromFile(const std::wstring& pathW) {
 		// FBX 인스턴스 애니메이터를 로드 시점에 1회 초기화
 		if (entry->source == ModelSource::FBX && entry->shared &&
 			entry->shared->fbx) {
-			entry->animator.InitMetadata(entry->shared->fbx->GetScenePtr());
-			entry->animator.SetSharedContext(entry->shared->fbx->GetScenePtr(),
+			entry->fbxBaseAnimator.InitMetadata(entry->shared->fbx->GetScenePtr());
+			entry->fbxBaseAnimator.SetSharedContext(entry->shared->fbx->GetScenePtr(),
 				entry->shared->fbx->GetNodeIndexOfName(),
 				&entry->shared->fbx->GetBoneNames(),
 				&entry->shared->fbx->GetBoneOffsets(),
 				&entry->shared->fbx->GetGlobalInverse());
 			auto t = entry->shared->fbx->GetCurrentAnimationType();
-			entry->animator.SetType(t == FbxModel::AnimationType::Rigid
+			entry->fbxBaseAnimator.SetType(t == FbxModel::AnimationType::Rigid
 				? FbxAnimation::AnimType::Rigid
 				: (t == FbxModel::AnimationType::Skinned
 					? FbxAnimation::AnimType::Skinned
@@ -3832,7 +3924,7 @@ void App::RenderModelPannel() {
 							const auto& names = mdl.shared->fbx->GetAnimationNames();
 							if (mdl.uiSelectedAnim < 0 ||
 								mdl.uiSelectedAnim >= (int)names.size())
-								mdl.uiSelectedAnim = mdl.animator.GetCurrentIndex();
+								mdl.uiSelectedAnim = mdl.fbxBaseAnimator.GetCurrentIndex();
 
 							ImGui::Text("FBX Animations");
 							if (ImGui::BeginListBox(
@@ -3843,7 +3935,7 @@ void App::RenderModelPannel() {
 									bool sel = (a == mdl.uiSelectedAnim);
 									if (ImGui::Selectable(names[a].c_str(), sel)) {
 										mdl.uiSelectedAnim = a;
-										mdl.animator.SetCurrentIndex(a);
+										mdl.fbxBaseAnimator.SetCurrentIndex(a);
 										m_->PushLog(std::string("[OK] FBX Anim -> ") + names[a]);
 									}
 									if (sel)
@@ -3876,9 +3968,9 @@ void App::RenderModelPannel() {
 								}
 							}
 
-							bool playFBX = mdl.animator.IsPlaying();
+							bool playFBX = mdl.fbxBaseAnimator.IsPlaying();
 							if (ImGui::Checkbox("Play", &playFBX)) {
-								mdl.animator.SetPlaying(playFBX);
+								mdl.fbxBaseAnimator.SetPlaying(playFBX);
 								mdl.uiAnimPlaying = playFBX;
 
 								// 애니메이션 재생 상태에 맞춰 사운드도 같이 제어
@@ -3892,15 +3984,15 @@ void App::RenderModelPannel() {
 								}
 							}
 
-							double cur = mdl.animator.GetTimeSec();
-							double dur = mdl.animator.GetClipDurationSec(
-								mdl.animator.GetCurrentIndex());
+							double cur = mdl.fbxBaseAnimator.GetTimeSec();
+							double dur = mdl.fbxBaseAnimator.GetClipDurationSec(
+								mdl.fbxBaseAnimator.GetCurrentIndex());
 							float curF = (float)cur, durF = (float)dur;
 							if (durF > 0.0f) {
 								// 애니메이션 타임라인과 사운드 재생 위치를 동일한 초 단위로
 								// 맞춘다.
 								if (ImGui::SliderFloat("Time (s)", &curF, 0.0f, durF)) {
-									mdl.animator.SetTimeSec((double)curF);
+									mdl.fbxBaseAnimator.SetTimeSec((double)curF);
 									if (mdl.audioLoaded) {
 										Sound::SetTimeSeconds(curF);
 									}
@@ -3911,8 +4003,8 @@ void App::RenderModelPannel() {
 							if (mdl.audioLoaded) {
 								ImGui::SeparatorText("Audio Sync (FMOD)");
 								if (ImGui::Button("Stop (Anim + Audio)##FBX")) {
-									mdl.animator.SetPlaying(false);
-									mdl.animator.SetTimeSec(0.0);
+									mdl.fbxBaseAnimator.SetPlaying(false);
+									mdl.fbxBaseAnimator.SetTimeSec(0.0);
 									Sound::Stop();
 									Sound::SetTimeSeconds(0.0f);
 								}
@@ -4374,6 +4466,7 @@ void App::RenderAdvancedRigUI() {
 			m_->m_Models[0]->shared->fbx->HasSkeleton()) {
 			auto& alice = *m_->m_Models[0];
 			m_->m_CharRig.Initialize(
+				m_->m_pDevice,
 				alice.shared->fbx->GetScenePtr(),
 				alice.shared->fbx->GetNodeIndexOfName(),
 				alice.shared->fbx->GetGlobalInverse(),
