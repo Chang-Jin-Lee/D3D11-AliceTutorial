@@ -137,6 +137,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="Animation\Animator.h" />
     <ClInclude Include="AssetManager.h" />
     <ClInclude Include="BaseObject.h" />
     <ClInclude Include="Camera.h" />
@@ -168,6 +169,7 @@
     <ClInclude Include="Vertex.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Animation\Animator.cpp" />
     <ClCompile Include="AssetManager.cpp" />
     <ClCompile Include="BaseObject.cpp" />
     <ClCompile Include="Camera.cpp" />

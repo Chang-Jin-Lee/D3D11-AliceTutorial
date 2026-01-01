@@ -48,6 +48,7 @@ public:
 	void RenderSceneImageWindow();
 	void RenderGBufferDebug();  // G-Buffer 디버그 뷰
 	void RenderDeferredUI();    // Deferred Rendering UI
+	void RenderAdvancedRigUI(); // Advanced Animation(Socket/Blend/Layer/IK) UI
 
 	// 로더 API
 	bool LoadModelFromFile(const std::wstring& pathW);

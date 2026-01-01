@@ -25,6 +25,9 @@
     <Filter Include="mmd">
       <UniqueIdentifier>{04275502-f276-466a-a1b5-fb74ec3dba1d}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Animation">
+      <UniqueIdentifier>{d17dde4a-806c-450b-a0f2-53414953a234}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="framework.h">
@@ -114,6 +117,9 @@
     <ClInclude Include="mmd/Vmd.h">
       <Filter>mmd</Filter>
     </ClInclude>
+    <ClInclude Include="Animation\Animator.h">
+      <Filter>Animation</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Common.cpp">
@@ -193,6 +199,9 @@
     </ClCompile>
     <ClCompile Include="mmd/Vmd.cpp">
       <Filter>mmd</Filter>
+    </ClCompile>
+    <ClCompile Include="Animation\Animator.cpp">
+      <Filter>Animation</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

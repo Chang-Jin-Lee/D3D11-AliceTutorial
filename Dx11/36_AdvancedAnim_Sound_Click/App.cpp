@@ -27,6 +27,7 @@
 #include <assimp/scene.h>
 #include <cfloat>
 #include <cmath>
+#include <cctype>
 #include <commdlg.h>
 #include <cstring>
 #include <d3d11.h>
@@ -52,6 +53,7 @@
 
 #include <dxgi1_4.h> // swapchain3 ToneMapping을 위한 것
 #include <dxgi1_6.h> // swapchain3 ToneMapping을 위한 것
+#include "../Common/Animation/Animator.h"
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "d3dcompiler.lib")
@@ -642,6 +644,55 @@ struct App::Impl {
 	// VMD 카메라 상태 (공용)
 	mmd::VmdCameraState m_VmdCamera;
 
+	// ===================== Advanced Character Rig (Socket/Blend/Layer/IK) =====================
+	// - Alice(캐릭터) 본에 소켓을 만들고, 그 소켓으로 Rifle(총)을 장착하는 데모
+	// - "트랜스폼이 깨지지 않게" 하기 위해: (Gi*G*Off) 팔레트 수식은 FbxAnimation과 동일하게 유지
+	bool m_UseAdvancedRig = true;
+	bool m_CharRigInited = false;
+	CharacterAnimator m_CharRig;
+	int m_CharModelIndex = 0;
+	int m_WeaponModelIndex = 1;
+
+	// 캐릭터 소켓(언리얼 WeaponPoint) 기본값/ImGui 편집용
+	std::string m_CharWeaponSocketName = "WeaponPoint";
+	std::string m_CharWeaponParentBone = "Hand_R";
+	XMFLOAT3 m_CharWeaponSocketPos = { 0.1f, 0.05f, 0.0f };
+	XMFLOAT3 m_CharWeaponSocketRotDeg = { 0.0f, 90.0f, 0.0f };
+	XMFLOAT3 m_CharWeaponSocketScale = { 1.0f, 1.0f, 1.0f };
+
+	// 간단 상태(우선은 Idle<->Run + ShootStance 상체 레이어만 연결)
+	float m_CharTimeSec = 0.0f;
+	float m_CharBlend01 = 0.0f; // 0..1 locomotion (0:Idle, 0.5:Walk, 1:Run)
+	bool  m_CharFireHold = false;
+	// 애니메이션 인덱스(앨리스 FBX 기준) - ImGui에서 교체 가능
+	int m_CharAnimIdxIdle = 0;
+	int m_CharAnimIdxWalk = 1;
+	int m_CharAnimIdxRun = 1;
+	int m_CharAnimIdxShoot = 2;
+	int m_CharAnimIdxShootStance = 2;
+	int m_CharAnimIdxReload = 3;
+
+	// 상체 상태용 타이머(사격 1회 재생 등)
+	float m_ShootTimer = 0.0f;
+	float m_ShootDuration = 0.25f; // 초 (클립 길이 대신 간단히 고정)
+
+	// Procedural recoil(Additive) 파라미터
+	bool  m_RecoilEnabled = true;
+	float m_RecoilAlpha = 0.0f;      // 0..1 (현재 프레임 강도)
+	float m_RecoilKick = 1.0f;       // 발사 시 즉시 추가되는 강도
+	float m_RecoilDecay = 10.0f;     // 감쇠 속도(클수록 빨리 사라짐)
+	uint32_t m_RecoilSeed = 1337u;   // 노이즈 시드(고정)
+
+	// Reload IK(왼손->탄창) 파라미터 (데모용: 타겟은 "총 로컬 소켓"으로 만든다)
+	bool m_ReloadIKEnabled = true;
+	std::string m_IKTipBone = "Hand_L";
+	int   m_IKChainLength = 3; // Hand_L, ForeArm_L, UpperArm_L 정도
+	float m_IKWeight = 1.0f;
+	// 총의 탄창 소켓(총 로컬 공간) - ImGui로 조절
+	XMFLOAT3 m_WeaponMagSocketPos = { 0.0f, 0.0f, 0.0f };
+	XMFLOAT3 m_WeaponMagSocketRotDeg = { 0.0f, 0.0f, 0.0f };
+	XMFLOAT3 m_WeaponMagSocketScale = { 1.0f, 1.0f, 1.0f };
+
 	// HDR 관련 변수
 	// Quad를 그려야함
 	float m_MonitorMaxNits = 1000.0f; // HDR 모니터 기본값 (1000 nits)
@@ -900,6 +951,71 @@ bool App::OnInitialize() {
 	m_->m_OutlineThickness = 0.3f;
 	m_->m_OutlineColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 1);
 
+	// ====================================== Advanced Rig 초기화 (Socket) ======================================
+	// - Alice(0): 캐릭터
+	// - AmazingWonderland(1): 라이플
+	// - 캐릭터 본("Hand_R")에 WeaponPoint 소켓 생성 후, 매 프레임 라이플 트랜스폼 동기화
+	if (m_->m_UseAdvancedRig && m_->m_Models.size() >= 2) {
+		const int ci = m_->m_CharModelIndex;
+		if (ci >= 0 && ci < (int)m_->m_Models.size()) {
+			auto& alice = *m_->m_Models[(size_t)ci];
+		if (alice.shared && alice.shared->fbx && alice.shared->fbx->HasSkeleton()) {
+			// 애니메이션 이름 기반으로 기본 인덱스 매핑 (없으면 0/1/2 fallback)
+			{
+				auto ToLower = [](std::string s) {
+					for (char& c : s) c = (char)std::tolower((unsigned char)c);
+					return s;
+					};
+				auto FindByContains = [&](const std::string& key) -> int {
+					const auto& names = alice.shared->fbx->GetAnimationNames();
+					const std::string k = ToLower(key);
+					for (int i = 0; i < (int)names.size(); ++i) {
+						if (ToLower(names[(size_t)i]).find(k) != std::string::npos)
+							return i;
+					}
+					return -1;
+					};
+				int idxIdle = FindByContains("idle");
+				int idxWalk = FindByContains("walk");
+				int idxRun = FindByContains("run");
+				int idxShoot = FindByContains("shoot");
+				int idxShootStance = FindByContains("shootstance");
+				if (idxShootStance < 0) idxShootStance = FindByContains("shoot_stance");
+				if (idxShootStance < 0) idxShootStance = FindByContains("stance");
+				int idxReload = FindByContains("reload");
+				if (idxIdle >= 0) m_->m_CharAnimIdxIdle = idxIdle;
+				if (idxWalk >= 0) m_->m_CharAnimIdxWalk = idxWalk;
+				if (idxRun >= 0) m_->m_CharAnimIdxRun = idxRun;
+				if (idxShoot >= 0) m_->m_CharAnimIdxShoot = idxShoot;
+				if (idxShootStance >= 0) m_->m_CharAnimIdxShootStance = idxShootStance;
+				if (idxReload >= 0) m_->m_CharAnimIdxReload = idxReload;
+			}
+
+			m_->m_CharRig.Initialize(
+				alice.shared->fbx->GetScenePtr(),
+				alice.shared->fbx->GetNodeIndexOfName(),
+				alice.shared->fbx->GetGlobalInverse(),
+				alice.shared->fbx->GetBoneNames(),
+				alice.shared->fbx->GetBoneOffsets());
+
+			// 언리얼 스타일: 이름/부모본/오프셋(SRT)을 "값"으로 저장해두고 언제든 수정 가능
+			m_->m_CharRig.SetSocketSRT(
+				m_->m_CharWeaponSocketName,
+				m_->m_CharWeaponParentBone,
+				m_->m_CharWeaponSocketPos,
+				m_->m_CharWeaponSocketRotDeg,
+				m_->m_CharWeaponSocketScale);
+
+			m_->m_CharRigInited = true;
+			m_->PushLog("[OK] AdvancedRig: Character socket initialized (WeaponPoint @ Hand_R)");
+		}
+		else {
+			m_->m_CharRigInited = false;
+			m_->PushLog("[WARN] AdvancedRig: Alice model has no skeleton (socket disabled)");
+		}
+		}
+	}
+
 	return true;
 }
 
@@ -1009,6 +1125,185 @@ void App::OnUpdate(const float& dt) {
 		XMFLOAT3 sceneCenter = { 0.0f, 0.0f, 0.0f };
 		int sceneModelCount = 0;
 
+		// ===================== AdvancedRig: Alice 애니메이션 + 소켓으로 Rifle 장착 =====================
+		// - 이 블록은 "공유 데이터" 최적화와 별개로, 캐릭터(0)만 특별 처리한다.
+		// - 이후 일반 루프에서는 캐릭터(0)의 기본 FbxAnimation::UpdateAndUpload를 스킵한다.
+		if (m_->m_UseAdvancedRig && m_->m_CharRigInited && m_->m_Models.size() >= 2) {
+			const int ci = m_->m_CharModelIndex;
+			const int wi = m_->m_WeaponModelIndex;
+			if (ci < 0 || wi < 0 || ci >= (int)m_->m_Models.size() || wi >= (int)m_->m_Models.size()) {
+				// invalid indices -> fallback to normal update path
+			}
+			else {
+				auto& alice = *m_->m_Models[(size_t)ci];
+				auto& rifle = *m_->m_Models[(size_t)wi];
+
+			// 입력(간단): WASD 이동, Shift 달리기, 마우스 좌클릭 = 사격 자세(상체 레이어)
+			bool move = false;
+			bool run = false;
+			bool fireHold = false;
+			bool firePressed = false;
+			bool reloadHold = false;
+			if (InputSystem::Instance && !ImGui::GetIO().WantCaptureKeyboard) {
+				const auto& ks = InputSystem::Instance->m_KeyboardState;
+				move = ks.IsKeyDown(Keyboard::W) || ks.IsKeyDown(Keyboard::A) ||
+					ks.IsKeyDown(Keyboard::S) || ks.IsKeyDown(Keyboard::D);
+				run = move && (ks.IsKeyDown(Keyboard::LeftShift) || ks.IsKeyDown(Keyboard::RightShift));
+				reloadHold = ks.IsKeyDown(Keyboard::R);
+			}
+			if (InputSystem::Instance && !ImGui::GetIO().WantCaptureMouse) {
+				fireHold = (InputSystem::Instance->m_MouseState.leftButton != 0);
+				firePressed = (InputSystem::Instance->m_MouseStateTracker.leftButton == Mouse::ButtonStateTracker::PRESSED);
+			}
+
+			m_->m_CharTimeSec += dt;
+			// Locomotion: 0(Idle) - 0.5(Walk) - 1(Run)
+			const float targetBlend = (!move) ? 0.0f : (run ? 1.0f : 0.5f);
+			m_->m_CharBlend01 = m_->m_CharBlend01 + (targetBlend - m_->m_CharBlend01) * (dt * 5.0f);
+			if (m_->m_CharBlend01 < 0.0f) m_->m_CharBlend01 = 0.0f;
+			if (m_->m_CharBlend01 > 1.0f) m_->m_CharBlend01 = 1.0f;
+			m_->m_CharFireHold = fireHold;
+
+			// 사격 1회 트리거: firePressed 시 Shoot 타이머 시작
+			if (firePressed) {
+				m_->m_ShootTimer = m_->m_ShootDuration;
+			}
+			if (m_->m_ShootTimer > 0.0f) {
+				m_->m_ShootTimer -= dt;
+				if (m_->m_ShootTimer < 0.0f) m_->m_ShootTimer = 0.0f;
+			}
+
+			// Procedural recoil(Additive) 업데이트
+			// - 눌렀을 때 킥을 더하고, 매 프레임 감쇠시킨다.
+			if (m_->m_RecoilEnabled) {
+				if (firePressed) {
+					m_->m_RecoilAlpha += m_->m_RecoilKick;
+					if (m_->m_RecoilAlpha > 1.0f) m_->m_RecoilAlpha = 1.0f;
+				}
+				const float decay = (m_->m_RecoilDecay < 0.0f) ? 0.0f : m_->m_RecoilDecay;
+				m_->m_RecoilAlpha *= std::exp(-decay * dt);
+				if (m_->m_RecoilAlpha < 0.0001f) m_->m_RecoilAlpha = 0.0f;
+			}
+			else {
+				m_->m_RecoilAlpha = 0.0f;
+			}
+
+			// 애니메이션 포인터 획득 (이름 매칭은 UI에서 개선할 예정)
+			const aiScene* sc = (alice.shared && alice.shared->fbx) ? alice.shared->fbx->GetScenePtr() : nullptr;
+			const aiAnimation* animIdle = nullptr;
+			const aiAnimation* animWalk = nullptr;
+			const aiAnimation* animRunA = nullptr;
+			const aiAnimation* animUpper = nullptr;
+			if (sc && sc->mNumAnimations > 0) {
+				// 안전: 인덱스가 부족하면 nullptr로 남겨둔다.
+				const int iIdle = m_->m_CharAnimIdxIdle;
+				const int iWalk = m_->m_CharAnimIdxWalk;
+				const int iRun = m_->m_CharAnimIdxRun;
+				const int iShoot = m_->m_CharAnimIdxShoot;
+				const int iStance = m_->m_CharAnimIdxShootStance;
+				const int iReload = m_->m_CharAnimIdxReload;
+				animIdle = (iIdle >= 0 && (unsigned)iIdle < sc->mNumAnimations) ? sc->mAnimations[iIdle] : nullptr;
+				animWalk = (iWalk >= 0 && (unsigned)iWalk < sc->mNumAnimations) ? sc->mAnimations[iWalk] : animIdle;
+				animRunA = (iRun >= 0 && (unsigned)iRun < sc->mNumAnimations) ? sc->mAnimations[iRun] : animIdle;
+
+				// Upper 결정 우선순위: Reload(키홀드) > Shoot(타이머) > ShootStance(홀드)
+				if (reloadHold && iReload >= 0 && (unsigned)iReload < sc->mNumAnimations) {
+					animUpper = sc->mAnimations[iReload];
+				}
+				else if (m_->m_ShootTimer > 0.0f && iShoot >= 0 && (unsigned)iShoot < sc->mNumAnimations) {
+					animUpper = sc->mAnimations[iShoot];
+				}
+				else if (fireHold && iStance >= 0 && (unsigned)iStance < sc->mNumAnimations) {
+					animUpper = sc->mAnimations[iStance];
+				}
+			}
+
+			// Locomotion 3점 블렌딩을 2점 블렌딩으로 쪼갠다.
+			const aiAnimation* baseA = animIdle;
+			const aiAnimation* baseB = animWalk;
+			float baseBlend = 0.0f;
+			if (m_->m_CharBlend01 <= 0.5f) {
+				baseA = animIdle;
+				baseB = animWalk;
+				baseBlend = (m_->m_CharBlend01 / 0.5f);
+			}
+			else {
+				baseA = animWalk;
+				baseB = animRunA;
+				baseBlend = ((m_->m_CharBlend01 - 0.5f) / 0.5f);
+			}
+			if (baseBlend < 0.0f) baseBlend = 0.0f;
+			if (baseBlend > 1.0f) baseBlend = 1.0f;
+
+			// 캐릭터 포즈 평가 + 팔레트 업로드
+			// - base: Idle <-> Run
+			// - upper: fireHold일 때 ShootStance를 상체에 덮어쓰기(레이어)
+			// - IK: reloadHold일 때(임시) 왼손을 "탄창 소켓" 쪽으로 당겨본다.
+			XMVECTOR ikTargetMS = XMVectorZero();
+			bool enableIK = false;
+			if (reloadHold && m_->m_ReloadIKEnabled) {
+				// 총(라이플)의 "탄창 소켓"을 월드 위치로 만든 뒤, 앨리스 모델 로컬로 변환
+				const XMMATRIX magLocal = CharacterAnimator::BuildOffsetMatrix_SRT(
+					m_->m_WeaponMagSocketPos,
+					m_->m_WeaponMagSocketRotDeg,
+					m_->m_WeaponMagSocketScale);
+				// rifleMat은 아래에서 계산하지만, IK는 애니 평가 시점에 필요하므로
+				// 일단 이전 프레임 기준으로도 동작 가능. 여기서는 현재 프레임에 계산할 rifleMat을 미리 구한다.
+				const XMMATRIX aliceWorld = alice.GetWorldMatrix();
+				const XMMATRIX rifleMatNow = m_->m_CharRig.GetSocketWorldMatrix(m_->m_CharWeaponSocketName, aliceWorld);
+				const XMMATRIX magWorld = magLocal * rifleMatNow;
+				const XMVECTOR magPosWS = XMVector3TransformCoord(XMVectorZero(), magWorld);
+				const XMMATRIX invAliceWorld = XMMatrixInverse(nullptr, aliceWorld);
+				ikTargetMS = XMVector3TransformCoord(magPosWS, invAliceWorld);
+				enableIK = true;
+			}
+
+			m_->m_CharRig.UpdateAnimation(
+				dt,
+				baseA, m_->m_CharTimeSec,
+				baseB, m_->m_CharTimeSec,
+				baseBlend,
+				animUpper, m_->m_CharTimeSec,
+				nullptr, 0.0f, nullptr,
+				// procedural additive
+				m_->m_RecoilAlpha, m_->m_RecoilSeed,
+				// IK
+				enableIK,
+				m_->m_IKTipBone.c_str(),
+				m_->m_IKChainLength,
+				ikTargetMS,
+				m_->m_IKWeight);
+
+			// GPU 업로드는 기존 per-instance animator의 CB를 그대로 사용
+			alice.animator.EnsureBoneCB(m_->m_pDevice, 1023);
+			alice.animator.UploadPalette(m_->m_pDeviceContext, m_->m_CharRig.finalTransforms);
+
+			// 소켓 월드 행렬로 Rifle 트랜스폼 동기화
+			// - "WeaponPoint"는 캐릭터(앨리스) 본 공간의 오프셋 + 본 글로벌 + 앨리스 월드
+			// - 분해해서 Rifle(pos/rotDeg/scale)에 적용한다.
+			const XMMATRIX aliceWorld = alice.GetWorldMatrix();
+			const XMMATRIX rifleMat = m_->m_CharRig.GetSocketWorldMatrix(m_->m_CharWeaponSocketName, aliceWorld);
+
+			XMVECTOR S, R, T;
+			if (XMMatrixDecompose(&S, &R, &T, rifleMat)) {
+				XMStoreFloat3(&rifle.scale, S);
+				XMStoreFloat3(&rifle.pos, T);
+				// 회전은 Euler(deg)로 근사 변환 (향후: ModelEntry에 Quaternion 지원 시 교체 권장)
+				XMFLOAT4 rq{}; XMStoreFloat4(&rq, R);
+				// pitch(x), yaw(y), roll(z) 순서 가정
+				const float sinp = 2.0f * (rq.w * rq.x + rq.y * rq.z);
+				const float cosp = 1.0f - 2.0f * (rq.x * rq.x + rq.y * rq.y);
+				const float pitch = std::atan2(sinp, cosp);
+				const float siny = 2.0f * (rq.w * rq.y - rq.z * rq.x);
+				const float yaw = (std::fabs(siny) >= 1.0f) ? std::copysign(XM_PIDIV2, siny) : std::asin(siny);
+				const float sinr = 2.0f * (rq.w * rq.z + rq.x * rq.y);
+				const float cosr = 1.0f - 2.0f * (rq.y * rq.y + rq.z * rq.z);
+				const float roll = std::atan2(sinr, cosr);
+				rifle.rotDeg = XMFLOAT3(XMConvertToDegrees(pitch), XMConvertToDegrees(yaw), XMConvertToDegrees(roll));
+			}
+			}
+		}
+
 		for (auto& mdlPtr : m_->m_Models) {
 			auto& mdl = *mdlPtr;
 			if (mdl.autoRotate) {
@@ -1025,6 +1320,74 @@ void App::OnUpdate(const float& dt) {
 			sceneCenter.y += mdl.pos.y;
 			sceneCenter.z += mdl.pos.z;
 			sceneModelCount++;
+
+			// AdvancedRig 대상 캐릭터는 여기서 기본 업데이트를 하지 않는다.
+			const bool isRigCharacter = (m_->m_CharModelIndex >= 0 &&
+				m_->m_CharModelIndex < (int)m_->m_Models.size() &&
+				mdlPtr.get() == m_->m_Models[(size_t)m_->m_CharModelIndex].get());
+			if (isRigCharacter && m_->m_UseAdvancedRig && m_->m_CharRigInited) {
+				// shared 중복 업데이트 방지 마킹은 유지
+				updated.insert(mdl.shared.get());
+				continue;
+			}
+
+			// 2. 애니메이션 로직 실행
+			//if (isInit) {
+			//	static float totalTime = 0.0f;
+			//	static float blendWeight = 0.0f;
+			//	static bool isShoot = false;
+			//	totalTime += dt;
+			//
+			//	// 키 입력
+			//	bool keyRun = InputSystem::Instance->m_KeyboardState.IsKeyDown(DirectX::Keyboard::Z);
+			//	bool keyShoot = InputSystem::Instance->m_KeyboardState.IsKeyDown(DirectX::Keyboard::X);
+			//
+			//	// 블렌딩 가중치 부드럽게 변경 (0:Idle <-> 1:Run)
+			//	float targetW = keyRun ? 1.0f : 0.0f;
+			//	blendWeight = blendWeight + (targetW - blendWeight) * dt * 5.0f;
+			//
+			//	// Assimp 씬 데이터
+			//	const aiScene* scene = m_->m_Models[0]->shared->fbx->GetScenePtr();
+			//
+			//	// 애니메이션 인덱스 가정 (실제 파일 순서 확인 필요)
+			//	// 0:Idle, 2:Run, 3:ShootStance, 5:Reload
+			//	const aiAnimation* animIdle = scene->mAnimations[0];
+			//	const aiAnimation* animRun = scene->mAnimations[2];
+			//	const aiAnimation* animShoot = scene->mAnimations[3];
+			//	const aiAnimation* animReload = scene->mAnimations[5]; // IK 타겟용
+			//
+			//	// [핵심] 통합 업데이트 호출
+			//	charAnim.UpdateAnimation(
+			//		dt,
+			//		animIdle, totalTime,      // A: Idle
+			//		animRun, totalTime,       // B: Run
+			//		blendWeight,              // 0~1 보간
+			//		keyShoot ? animShoot : nullptr, totalTime, // 상체 레이어 (사격 자세)
+			//		nullptr, 0.f, nullptr     // Additive (생략)
+			//	);
+			//
+			//	// 3. 결과 행렬 GPU 업로드
+			//	m_->m_Models[0]->animator.UploadPalette(m_->m_pDeviceContext, charAnim.finalTransforms);
+			//
+			//	// 4. 소켓을 이용한 라이플 트랜스폼 동기화
+			//	// 앨리스의 현재 월드 행렬
+			//	XMMATRIX aliceWorld = aliceObj->GetWorldMatrix();
+			//
+			//	// 소켓의 최종 월드 행렬 계산 (소켓 로컬 * 부모 본 * 앨리스 월드)
+			//	XMMATRIX rifleMat = charAnim.GetSocketWorldMatrix("WeaponPoint", aliceWorld);
+			//
+			//	// 라이플 모델에 분해하여 적용 (Decompose)
+			//	XMVECTOR S, R, T;
+			//	XMMatrixDecompose(&S, &R, &T, rifleMat);
+			//
+			//	XMStoreFloat3(&rifleObj->scale, S);
+			//	XMStoreFloat3(&rifleObj->pos, T);
+			//
+			//	// 회전은 Quaternion -> Euler 변환이 필요하거나, 
+			//	// 모델 클래스가 Quaternion을 지원하도록 수정해야 함.
+			//	// 여기서는 예시로 Quaternion 값을 직접 사용한다고 가정.
+			//	// rifleObj->rotQuat = R; 
+			//}
 
 			if (mdl.source == ModelSource::FBX && mdl.shared->fbx) {
 				// 인스턴스별 애니메이션 업데이트 (공유 지오메트리/스켈레톤 사용)
@@ -1073,9 +1436,10 @@ void App::OnUpdate(const float& dt) {
 				}
 			}
 
-			// FMOD 갱신 (매 프레임)
-			Sound::Update();
 		}
+
+		// FMOD 갱신 (매 프레임) - 모델 루프 밖에서 1회만 호출해야 한다.
+		Sound::Update();
 
 		// 섀도우 행렬은 씬 전체에 대해 한 번만 계산 (성능 최적화)
 		if (sceneModelCount > 0) {
@@ -2114,6 +2478,7 @@ void App::PassUI() {
 	RenderControlPannel();
 	RenderSceneCollection();
 	RenderModelPannel();
+	RenderAdvancedRigUI();
 	RenderConsolPannel();
 	m_->m_SystemInfo.RenderUI();
 	RenderSceneImageWindow();
@@ -3930,6 +4295,123 @@ void App::RenderConsolPannel() {
 			ImGui::End();
 		}
 	}
+}
+
+void App::RenderAdvancedRigUI() {
+	// Advanced Animation / Socket 패널
+	// - 지금 단계 목표: 캐릭터(앨리스) 소켓(WeaponPoint)을 ImGui에서 편집하고
+	//   그 소켓 월드 트랜스폼으로 라이플(총)을 안정적으로 장착한다.
+	auto& io = ImGui::GetIO();
+	ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - 660, 20), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(320, 330), ImGuiCond_FirstUseEver);
+	if (!ImGui::Begin("AdvancedRig (Socket/Anim)")) {
+		ImGui::End();
+		return;
+	}
+
+	ImGui::Checkbox("Enable AdvancedRig", &m_->m_UseAdvancedRig);
+	ImGui::Text("Rig Inited: %s", (m_->m_CharRigInited ? "true" : "false"));
+	ImGui::Separator();
+
+	ImGui::SeparatorText("Model Indices");
+	ImGui::DragInt("Character Model Index", &m_->m_CharModelIndex, 1, 0, (int)m_->m_Models.size() - 1);
+	ImGui::DragInt("Weapon Model Index", &m_->m_WeaponModelIndex, 1, 0, (int)m_->m_Models.size() - 1);
+	ImGui::Separator();
+
+	// 애니메이션 인덱스 선택 (Alice FBX 기준)
+	const int ci = m_->m_CharModelIndex;
+	if (ci >= 0 && ci < (int)m_->m_Models.size() && m_->m_Models[(size_t)ci] && m_->m_Models[(size_t)ci]->shared &&
+		m_->m_Models[(size_t)ci]->shared->fbx) {
+		const auto& names = m_->m_Models[(size_t)ci]->shared->fbx->GetAnimationNames();
+		if (!names.empty()) {
+			ImGui::SeparatorText("Animation Indices (Alice)");
+			ImGui::DragInt("Idle Idx", &m_->m_CharAnimIdxIdle, 1, 0, (int)names.size() - 1);
+			ImGui::DragInt("Walk Idx", &m_->m_CharAnimIdxWalk, 1, 0, (int)names.size() - 1);
+			ImGui::DragInt("Run Idx", &m_->m_CharAnimIdxRun, 1, 0, (int)names.size() - 1);
+			ImGui::DragInt("Shoot Idx", &m_->m_CharAnimIdxShoot, 1, 0, (int)names.size() - 1);
+			ImGui::DragInt("ShootStance Idx", &m_->m_CharAnimIdxShootStance, 1, 0, (int)names.size() - 1);
+			ImGui::DragInt("Reload Idx", &m_->m_CharAnimIdxReload, 1, 0, (int)names.size() - 1);
+			ImGui::Text("Idle: %s", (m_->m_CharAnimIdxIdle >= 0 && m_->m_CharAnimIdxIdle < (int)names.size()) ? names[(size_t)m_->m_CharAnimIdxIdle].c_str() : "<invalid>");
+			ImGui::Text("Walk: %s", (m_->m_CharAnimIdxWalk >= 0 && m_->m_CharAnimIdxWalk < (int)names.size()) ? names[(size_t)m_->m_CharAnimIdxWalk].c_str() : "<invalid>");
+			ImGui::Text("Run : %s", (m_->m_CharAnimIdxRun >= 0 && m_->m_CharAnimIdxRun < (int)names.size()) ? names[(size_t)m_->m_CharAnimIdxRun].c_str() : "<invalid>");
+			ImGui::Text("Shoot: %s", (m_->m_CharAnimIdxShoot >= 0 && m_->m_CharAnimIdxShoot < (int)names.size()) ? names[(size_t)m_->m_CharAnimIdxShoot].c_str() : "<invalid>");
+			ImGui::Text("Stance: %s", (m_->m_CharAnimIdxShootStance >= 0 && m_->m_CharAnimIdxShootStance < (int)names.size()) ? names[(size_t)m_->m_CharAnimIdxShootStance].c_str() : "<invalid>");
+			ImGui::Text("Reload: %s", (m_->m_CharAnimIdxReload >= 0 && m_->m_CharAnimIdxReload < (int)names.size()) ? names[(size_t)m_->m_CharAnimIdxReload].c_str() : "<invalid>");
+		}
+	}
+
+	ImGui::SeparatorText("Runtime State");
+	ImGui::Text("t=%.2f sec, blend(Idle->Run)=%.2f", m_->m_CharTimeSec, m_->m_CharBlend01);
+	ImGui::Text("FireHold(MouseL)= %s", m_->m_CharFireHold ? "true" : "false");
+	ImGui::Text("RecoilAlpha= %.3f", m_->m_RecoilAlpha);
+
+	ImGui::SeparatorText("Socket (Character)");
+	ImGui::InputText("Socket Name", &m_->m_CharWeaponSocketName);
+	ImGui::InputText("Parent Bone", &m_->m_CharWeaponParentBone);
+	ImGui::DragFloat3("Offset Pos", &m_->m_CharWeaponSocketPos.x, 0.01f);
+	ImGui::DragFloat3("Offset Rot(deg)", &m_->m_CharWeaponSocketRotDeg.x, 0.5f, -180.0f, 180.0f);
+	ImGui::DragFloat3("Offset Scale", &m_->m_CharWeaponSocketScale.x, 0.01f, 0.001f, 10.0f);
+
+	if (ImGui::Button("Apply Socket To Rig")) {
+		if (m_->m_CharRigInited) {
+			m_->m_CharRig.SetSocketSRT(
+				m_->m_CharWeaponSocketName,
+				m_->m_CharWeaponParentBone,
+				m_->m_CharWeaponSocketPos,
+				m_->m_CharWeaponSocketRotDeg,
+				m_->m_CharWeaponSocketScale);
+			m_->PushLog("[OK] AdvancedRig: Socket updated from UI");
+		}
+		else {
+			m_->PushLog("[WARN] AdvancedRig: Rig not initialized");
+		}
+	}
+
+	ImGui::SameLine();
+	if (ImGui::Button("Reinit Rig")) {
+		// OnInitialize와 동일한 로직을 UI에서도 재실행 (본 이름 수정 후 적용 등)
+		if (m_->m_Models.size() >= 1 && m_->m_Models[0] && m_->m_Models[0]->shared && m_->m_Models[0]->shared->fbx &&
+			m_->m_Models[0]->shared->fbx->HasSkeleton()) {
+			auto& alice = *m_->m_Models[0];
+			m_->m_CharRig.Initialize(
+				alice.shared->fbx->GetScenePtr(),
+				alice.shared->fbx->GetNodeIndexOfName(),
+				alice.shared->fbx->GetGlobalInverse(),
+				alice.shared->fbx->GetBoneNames(),
+				alice.shared->fbx->GetBoneOffsets());
+			m_->m_CharRig.SetSocketSRT(
+				m_->m_CharWeaponSocketName,
+				m_->m_CharWeaponParentBone,
+				m_->m_CharWeaponSocketPos,
+				m_->m_CharWeaponSocketRotDeg,
+				m_->m_CharWeaponSocketScale);
+			m_->m_CharRigInited = true;
+			m_->PushLog("[OK] AdvancedRig: Reinitialized");
+		}
+		else {
+			m_->m_CharRigInited = false;
+			m_->PushLog("[ERR] AdvancedRig: Reinit failed (no skeleton)");
+		}
+	}
+
+	ImGui::SeparatorText("Procedural Additive (Recoil)");
+	ImGui::Checkbox("Enable Recoil", &m_->m_RecoilEnabled);
+	ImGui::DragFloat("Kick", &m_->m_RecoilKick, 0.01f, 0.0f, 1.0f, "%.2f");
+	ImGui::DragFloat("Decay", &m_->m_RecoilDecay, 0.1f, 0.0f, 50.0f, "%.1f");
+	ImGui::DragScalar("Seed", ImGuiDataType_U32, &m_->m_RecoilSeed, 1.0f);
+
+	ImGui::SeparatorText("Reload IK (Hand -> Magazine)");
+	ImGui::Checkbox("Enable IK", &m_->m_ReloadIKEnabled);
+	ImGui::InputText("Tip Bone (e.g. Hand_L)", &m_->m_IKTipBone);
+	ImGui::DragInt("Chain Length", &m_->m_IKChainLength, 1, 1, 10);
+	ImGui::DragFloat("IK Weight", &m_->m_IKWeight, 0.01f, 0.0f, 1.0f, "%.2f");
+
+	ImGui::TextUnformatted("Weapon Magazine Socket (Weapon Local)");
+	ImGui::DragFloat3("Mag Pos", &m_->m_WeaponMagSocketPos.x, 0.01f);
+	ImGui::DragFloat3("Mag Rot(deg)", &m_->m_WeaponMagSocketRotDeg.x, 0.5f, -180.0f, 180.0f);
+	ImGui::DragFloat3("Mag Scale", &m_->m_WeaponMagSocketScale.x, 0.01f, 0.001f, 10.0f);
+
+	ImGui::End();
 }
 
 void App::RenderSceneImageWindow() {
