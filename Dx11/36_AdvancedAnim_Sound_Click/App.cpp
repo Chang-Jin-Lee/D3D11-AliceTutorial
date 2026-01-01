@@ -662,7 +662,15 @@ struct App::Impl {
 
 	// 간단 상태(우선은 Idle<->Run + ShootStance 상체 레이어만 연결)
 	float m_CharTimeSec = 0.0f;
-	float m_CharBlend01 = 0.0f; // 0..1 locomotion (0:Idle, 0.5:Walk, 1:Run)
+	// NOTE: 기존에는 m_CharBlend01(지수 스무딩)로 locomotion을 만들었지만,
+	//       지금은 "전환 시간 대비 누적 시간 비율"로 블렌딩이 되도록 별도 상태를 둔다.
+	int   m_CharBasePrevIdx = 0;
+	int   m_CharBaseTargetIdx = 0;
+	bool  m_CharBaseInTransition = false;
+	float m_CharBaseBlendTime = 0.0f;
+	float m_CharBaseBlendDuration = 0.25f; // 전환 블렌딩 시간(초)
+
+	float m_CharBlend01 = 0.0f; // (UI 표시용) 0..1 locomotion approx (0:Idle, 0.5:Walk, 1:Run)
 	bool  m_CharFireHold = false;
 	// 애니메이션 인덱스(앨리스 FBX 기준) - ImGui에서 교체 가능
 	int m_CharAnimIdxIdle = 0;
@@ -675,6 +683,7 @@ struct App::Impl {
 	// 상체 상태용 타이머(사격 1회 재생 등)
 	float m_ShootTimer = 0.0f;
 	float m_ShootDuration = 0.25f; // 초 (클립 길이 대신 간단히 고정)
+	float m_ShootTimeSec = 0.0f;   // Shoot(Additive/Upper) 재생용 누적
 
 	// Procedural recoil(Additive) 파라미터
 	bool  m_RecoilEnabled = true;
@@ -955,7 +964,6 @@ bool App::OnInitialize() {
 	// - Alice(0): 캐릭터
 	// - AmazingWonderland(1): 라이플
 	// - 캐릭터 본("Hand_R")에 WeaponPoint 소켓 생성 후, 매 프레임 라이플 트랜스폼 동기화
-	/*
 	if (m_->m_UseAdvancedRig && m_->m_Models.size() >= 2) {
 		const int ci = m_->m_CharModelIndex;
 		if (ci >= 0 && ci < (int)m_->m_Models.size()) {
@@ -976,14 +984,14 @@ bool App::OnInitialize() {
 					}
 					return -1;
 					};
-				int idxIdle = FindByContains("idle");
-				int idxWalk = FindByContains("walk");
-				int idxRun = FindByContains("run");
-				int idxShoot = FindByContains("shoot");
-				int idxShootStance = FindByContains("shootstance");
-				if (idxShootStance < 0) idxShootStance = FindByContains("shoot_stance");
-				if (idxShootStance < 0) idxShootStance = FindByContains("stance");
-				int idxReload = FindByContains("reload");
+				int idxIdle = FindByContains("Idle");
+				int idxWalk = FindByContains("Walk");
+				int idxRun = FindByContains("Run");
+				int idxShoot = FindByContains("Shoot");
+				int idxShootStance = FindByContains("Shoot_Stance");
+				if (idxShootStance < 0) idxShootStance = FindByContains("Shoot_Stance");
+				if (idxShootStance < 0) idxShootStance = FindByContains("IdleToShootStance");
+				int idxReload = FindByContains("Reload");
 				if (idxIdle >= 0) m_->m_CharAnimIdxIdle = idxIdle;
 				if (idxWalk >= 0) m_->m_CharAnimIdxWalk = idxWalk;
 				if (idxRun >= 0) m_->m_CharAnimIdxRun = idxRun;
@@ -1008,6 +1016,15 @@ bool App::OnInitialize() {
 				m_->m_CharWeaponSocketRotDeg,
 				m_->m_CharWeaponSocketScale);
 
+			// 전환 블렌딩 상태 초기화
+			m_->m_CharBasePrevIdx = m_->m_CharAnimIdxIdle;
+			m_->m_CharBaseTargetIdx = m_->m_CharAnimIdxIdle;
+			m_->m_CharBaseInTransition = false;
+			m_->m_CharBaseBlendTime = 0.0f;
+			m_->m_CharTimeSec = 0.0f;
+			m_->m_ShootTimer = 0.0f;
+			m_->m_ShootTimeSec = 0.0f;
+
 			m_->m_CharRigInited = true;
 			m_->PushLog("[OK] AdvancedRig: Character socket initialized (WeaponPoint @ Hand_R)");
 		}
@@ -1017,9 +1034,9 @@ bool App::OnInitialize() {
 		}
 		}
 	}
-	*/
-
-	// ====================================== 간단한 Idle 애니메이션 테스트 ======================================
+	// ====================================== (임시) Idle-only 테스트 ======================================
+	// AdvancedRig가 정상 동작하는 것이 확인되어, Idle-only 테스트는 비활성화한다.
+	/*
 	// - CharacterAnimator를 사용해서 Idle 애니메이션만 실행
 	if (m_->m_Models.size() > 0) {
 		const int ci = m_->m_CharModelIndex;
@@ -1063,6 +1080,7 @@ bool App::OnInitialize() {
 			}
 		}
 	}
+	*/
 
 	return true;
 }
@@ -1176,7 +1194,6 @@ void App::OnUpdate(const float& dt) {
 		// ===================== AdvancedRig: Alice 애니메이션 + 소켓으로 Rifle 장착 =====================
 		// - 이 블록은 "공유 데이터" 최적화와 별개로, 캐릭터(0)만 특별 처리한다.
 		// - 이후 일반 루프에서는 캐릭터(0)의 기본 FbxAnimation::UpdateAndUpload를 스킵한다.
-		/*
 		if (m_->m_UseAdvancedRig && m_->m_CharRigInited && m_->m_Models.size() >= 2) {
 			const int ci = m_->m_CharModelIndex;
 			const int wi = m_->m_WeaponModelIndex;
@@ -1205,20 +1222,47 @@ void App::OnUpdate(const float& dt) {
 				firePressed = (InputSystem::Instance->m_MouseStateTracker.leftButton == Mouse::ButtonStateTracker::PRESSED);
 			}
 
+			// 시간 누적
 			m_->m_CharTimeSec += dt;
-			// Locomotion: 0(Idle) - 0.5(Walk) - 1(Run)
-			const float targetBlend = (!move) ? 0.0f : (run ? 1.0f : 0.5f);
-			m_->m_CharBlend01 = m_->m_CharBlend01 + (targetBlend - m_->m_CharBlend01) * (dt * 5.0f);
-			if (m_->m_CharBlend01 < 0.0f) m_->m_CharBlend01 = 0.0f;
-			if (m_->m_CharBlend01 > 1.0f) m_->m_CharBlend01 = 1.0f;
 			m_->m_CharFireHold = fireHold;
+
+			// Locomotion 목표 클립 결정
+			const int desiredBaseIdx = (!move) ? m_->m_CharAnimIdxIdle : (run ? m_->m_CharAnimIdxRun : m_->m_CharAnimIdxWalk);
+
+			// (1) 전환 블렌딩: "전체 블렌딩 시간 대비 누적 시간 비율"로 alpha 계산
+			// - 목표 클립이 바뀌면 (prev -> target) 전환을 시작한다.
+			if (desiredBaseIdx != m_->m_CharBaseTargetIdx) {
+				m_->m_CharBasePrevIdx = m_->m_CharBaseTargetIdx;
+				m_->m_CharBaseTargetIdx = desiredBaseIdx;
+				m_->m_CharBaseBlendTime = 0.0f;
+				m_->m_CharBaseInTransition = true;
+			}
+
+			float baseBlend = 0.0f;
+			if (m_->m_CharBaseInTransition) {
+				m_->m_CharBaseBlendTime += dt;
+				const float dur = (m_->m_CharBaseBlendDuration <= 0.0f) ? 0.0001f : m_->m_CharBaseBlendDuration;
+				baseBlend = m_->m_CharBaseBlendTime / dur;
+				if (baseBlend >= 1.0f) {
+					baseBlend = 0.0f; // 전환 완료 후에는 같은 클립 2개로 평가
+					m_->m_CharBaseInTransition = false;
+					m_->m_CharBasePrevIdx = m_->m_CharBaseTargetIdx;
+				}
+				if (baseBlend < 0.0f) baseBlend = 0.0f;
+				if (baseBlend > 1.0f) baseBlend = 1.0f;
+			}
+
+			// UI 표시용(대략적인 locomotion 0..1)
+			m_->m_CharBlend01 = (!move) ? 0.0f : (run ? 1.0f : 0.5f);
 
 			// 사격 1회 트리거: firePressed 시 Shoot 타이머 시작
 			if (firePressed) {
 				m_->m_ShootTimer = m_->m_ShootDuration;
+				m_->m_ShootTimeSec = 0.0f;
 			}
 			if (m_->m_ShootTimer > 0.0f) {
 				m_->m_ShootTimer -= dt;
+				m_->m_ShootTimeSec += dt;
 				if (m_->m_ShootTimer < 0.0f) m_->m_ShootTimer = 0.0f;
 			}
 
@@ -1243,6 +1287,8 @@ void App::OnUpdate(const float& dt) {
 			const aiAnimation* animWalk = nullptr;
 			const aiAnimation* animRunA = nullptr;
 			const aiAnimation* animUpper = nullptr;
+			const aiAnimation* animShoot = nullptr;
+			const aiAnimation* animReload = nullptr;
 			if (sc && sc->mNumAnimations > 0) {
 				// 안전: 인덱스가 부족하면 nullptr로 남겨둔다.
 				const int iIdle = m_->m_CharAnimIdxIdle;
@@ -1254,35 +1300,33 @@ void App::OnUpdate(const float& dt) {
 				animIdle = (iIdle >= 0 && (unsigned)iIdle < sc->mNumAnimations) ? sc->mAnimations[iIdle] : nullptr;
 				animWalk = (iWalk >= 0 && (unsigned)iWalk < sc->mNumAnimations) ? sc->mAnimations[iWalk] : animIdle;
 				animRunA = (iRun >= 0 && (unsigned)iRun < sc->mNumAnimations) ? sc->mAnimations[iRun] : animIdle;
+				animShoot = (iShoot >= 0 && (unsigned)iShoot < sc->mNumAnimations) ? sc->mAnimations[iShoot] : nullptr;
+				animReload = (iReload >= 0 && (unsigned)iReload < sc->mNumAnimations) ? sc->mAnimations[iReload] : nullptr;
 
 				// Upper 결정 우선순위: Reload(키홀드) > Shoot(타이머) > ShootStance(홀드)
-				if (reloadHold && iReload >= 0 && (unsigned)iReload < sc->mNumAnimations) {
-					animUpper = sc->mAnimations[iReload];
+				if (reloadHold && animReload) {
+					animUpper = animReload;
 				}
-				else if (m_->m_ShootTimer > 0.0f && iShoot >= 0 && (unsigned)iShoot < sc->mNumAnimations) {
-					animUpper = sc->mAnimations[iShoot];
+				else if (m_->m_ShootTimer > 0.0f && animShoot) {
+					animUpper = animShoot;
 				}
 				else if (fireHold && iStance >= 0 && (unsigned)iStance < sc->mNumAnimations) {
 					animUpper = sc->mAnimations[iStance];
 				}
 			}
 
-			// Locomotion 3점 블렌딩을 2점 블렌딩으로 쪼갠다.
+			// baseA/baseB: 전환 블렌딩(prev -> target)
 			const aiAnimation* baseA = animIdle;
-			const aiAnimation* baseB = animWalk;
-			float baseBlend = 0.0f;
-			if (m_->m_CharBlend01 <= 0.5f) {
-				baseA = animIdle;
-				baseB = animWalk;
-				baseBlend = (m_->m_CharBlend01 / 0.5f);
+			const aiAnimation* baseB = animIdle;
+			if (sc && sc->mNumAnimations > 0) {
+				auto GetByIdx = [&](int idx) -> const aiAnimation* {
+					return (idx >= 0 && (unsigned)idx < sc->mNumAnimations) ? sc->mAnimations[idx] : nullptr;
+				};
+				const aiAnimation* prevA = GetByIdx(m_->m_CharBasePrevIdx);
+				const aiAnimation* tgtB = GetByIdx(m_->m_CharBaseTargetIdx);
+				baseA = prevA ? prevA : animIdle;
+				baseB = tgtB ? tgtB : animIdle;
 			}
-			else {
-				baseA = animWalk;
-				baseB = animRunA;
-				baseBlend = ((m_->m_CharBlend01 - 0.5f) / 0.5f);
-			}
-			if (baseBlend < 0.0f) baseBlend = 0.0f;
-			if (baseBlend > 1.0f) baseBlend = 1.0f;
 
 			// 캐릭터 포즈 평가 + 팔레트 업로드
 			// - base: Idle <-> Run
@@ -1292,7 +1336,16 @@ void App::OnUpdate(const float& dt) {
 			bool enableIK = false;
 			if (reloadHold && m_->m_ReloadIKEnabled) {
 				// 총(라이플)의 "탄창 소켓"을 월드 위치로 만든 뒤, 앨리스 모델 로컬로 변환
-				const XMMATRIX magLocal = CharacterAnimator::BuildOffsetMatrix_SRT(
+				auto BuildTRS = [](const XMFLOAT3& pos, const XMFLOAT3& rotDeg, const XMFLOAT3& scale) -> XMMATRIX {
+					const XMMATRIX mS = XMMatrixScaling(scale.x, scale.y, scale.z);
+					const XMMATRIX mR = XMMatrixRotationRollPitchYaw(
+						XMConvertToRadians(rotDeg.x),
+						XMConvertToRadians(rotDeg.y),
+						XMConvertToRadians(rotDeg.z));
+					const XMMATRIX mT = XMMatrixTranslation(pos.x, pos.y, pos.z);
+					return mT * mR * mS; // TRS
+				};
+				const XMMATRIX magLocal = BuildTRS(
 					m_->m_WeaponMagSocketPos,
 					m_->m_WeaponMagSocketRotDeg,
 					m_->m_WeaponMagSocketScale);
@@ -1307,13 +1360,19 @@ void App::OnUpdate(const float& dt) {
 				enableIK = true;
 			}
 
+			// (2) Additive 애니메이션: Idle 위에 Shoot을 Additive로 얹기(참조 포즈는 Idle t=0)
+			// - Shoot 타이머 동안만 적용
+			const aiAnimation* addAnim = (m_->m_ShootTimer > 0.0f) ? animShoot : nullptr;
+			const aiAnimation* refAnim = animIdle; // 기준 포즈
+			const float addTime = m_->m_ShootTimeSec;
+
 			m_->m_CharRig.UpdateAnimation(
 				dt,
 				baseA, m_->m_CharTimeSec,
 				baseB, m_->m_CharTimeSec,
 				baseBlend,
 				animUpper, m_->m_CharTimeSec,
-				nullptr, 0.0f, nullptr,
+				addAnim, addTime, refAnim,
 				// procedural additive
 				m_->m_RecoilAlpha, m_->m_RecoilSeed,
 				// IK
@@ -1352,10 +1411,11 @@ void App::OnUpdate(const float& dt) {
 			}
 			}
 		}
-		*/
 
 		// ===================== 간단한 Idle 애니메이션 테스트 =====================
 		// - CharacterAnimator를 사용해서 Idle 애니메이션만 실행
+		// AdvancedRig가 정상 동작하는 것이 확인되어, Idle-only 테스트는 비활성화한다.
+		/*
 		if (m_->m_CharRigInited && m_->m_Models.size() > 0) {
 			const int ci = m_->m_CharModelIndex;
 			if (ci >= 0 && ci < (int)m_->m_Models.size()) {
@@ -1395,6 +1455,7 @@ void App::OnUpdate(const float& dt) {
 				}
 			}
 		}
+		*/
 
 		for (auto& mdlPtr : m_->m_Models) {
 			auto& mdl = *mdlPtr;
