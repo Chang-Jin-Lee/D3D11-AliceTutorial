@@ -54,6 +54,7 @@
 #include <dxgi1_4.h> // swapchain3 ToneMapping을 위한 것
 #include <dxgi1_6.h> // swapchain3 ToneMapping을 위한 것
 #include "../Common/Animation/Animator.h"
+#include "../Common/Animation/CharacterAnimController.h"
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "d3dcompiler.lib")
@@ -645,71 +646,13 @@ struct App::Impl {
 	mmd::VmdCameraState m_VmdCamera;
 
 	// ===================== Advanced Character Rig (Socket/Blend/Layer/IK) =====================
-	// - Alice(캐릭터) 본에 소켓을 만들고, 그 소켓으로 Rifle(총)을 장착하는 데모
-	// - "트랜스폼이 깨지지 않게" 하기 위해: (Gi*G*Off) 팔레트 수식은 FbxAnimation과 동일하게 유지
+	// - CharacterAnimController가 모든 로직을 처리
 	bool m_UseAdvancedRig = true;
 	bool m_CharRigInited = false;
-	CharacterAnimator m_CharRig;
 	int m_CharModelIndex = 0;
 	int m_WeaponModelIndex = 1;
 
-	// 캐릭터 소켓(언리얼 WeaponPoint) 기본값/ImGui 편집용
-	std::string m_CharWeaponSocketName = "WeaponPoint";
-	std::string m_CharWeaponParentBone = "Hand_R";
-	XMFLOAT3 m_CharWeaponSocketPos = { 0.1f, 0.05f, 0.0f };
-	XMFLOAT3 m_CharWeaponSocketRotDeg = { 0.0f, 90.0f, 0.0f };
-	XMFLOAT3 m_CharWeaponSocketScale = { 1.0f, 1.0f, 1.0f };
-
-	// 간단 상태(우선은 Idle<->Run + ShootStance 상체 레이어만 연결)
-	float m_CharTimeSec = 0.0f;
-	// NOTE: 기존에는 m_CharBlend01(지수 스무딩)로 locomotion을 만들었지만,
-	//       지금은 "전환 시간 대비 누적 시간 비율"로 블렌딩이 되도록 별도 상태를 둔다.
-	int   m_CharBasePrevIdx = 0;
-	int   m_CharBaseTargetIdx = 0;
-	bool  m_CharBaseInTransition = false;
-	float m_CharBaseBlendTime = 0.0f;
-	float m_CharBaseBlendDuration = 0.0f; // 전환 블렌딩 시간(초)
-
-	// Exit Time + Entry Offset 크로스페이드 (유니티/언리얼 방식)
-	float m_CharBaseTimeSec = 0.0f;           // Base clip 로컬 시간(현재 state)
-	float m_CharBasePrevTimeSec = 0.0f;       // Transition 중 A 시간
-	float m_CharBaseTargetTimeSec = 0.0f;     // Transition 중 B 시간
-	bool  m_CharBaseUseExitTime = true;      // Exit time 사용 여부
-	float m_CharBaseExitNorm = 0.85f;        // A의 몇 %에서 transition 시작
-	float m_CharBaseEntryNorm = 0.0f;        // B를 몇 %에서 시작
-	bool  m_CharBaseWaitingExit = false;     // exit time 도달 대기
-
-	float m_CharBlend01 = 0.0f; // (UI 표시용) 0..1 locomotion approx (0:Idle, 0.5:Walk, 1:Run)
-	bool  m_CharFireHold = false;
-	// 애니메이션 인덱스(앨리스 FBX 기준) - ImGui에서 교체 가능
-	int m_CharAnimIdxIdle = 0;
-	int m_CharAnimIdxWalk = 1;
-	int m_CharAnimIdxRun = 1;
-	int m_CharAnimIdxShoot = 2;
-	int m_CharAnimIdxShootStance = 2;
-	int m_CharAnimIdxReload = 3;
-
-	// 상체 상태용 타이머(사격 1회 재생 등)
-	float m_ShootTimer = 0.0f;
-	float m_ShootDuration = 0.25f; // 초 (클립 길이 대신 간단히 고정)
-	float m_ShootTimeSec = 0.0f;   // Shoot(Additive/Upper) 재생용 누적
-
-	// Procedural recoil(Additive) 파라미터
-	bool  m_RecoilEnabled = true;
-	float m_RecoilAlpha = 0.0f;      // 0..1 (현재 프레임 강도)
-	float m_RecoilKick = 1.0f;       // 발사 시 즉시 추가되는 강도
-	float m_RecoilDecay = 10.0f;     // 감쇠 속도(클수록 빨리 사라짐)
-	uint32_t m_RecoilSeed = 1337u;   // 노이즈 시드(고정)
-
-	// Reload IK(왼손->탄창) 파라미터 (데모용: 타겟은 "총 로컬 소켓"으로 만든다)
-	bool m_ReloadIKEnabled = true;
-	std::string m_IKTipBone = "Hand_L";
-	int   m_IKChainLength = 3; // Hand_L, ForeArm_L, UpperArm_L 정도
-	float m_IKWeight = 1.0f;
-	// 총의 탄창 소켓(총 로컬 공간) - ImGui로 조절
-	XMFLOAT3 m_WeaponMagSocketPos = { 0.0f, 0.0f, 0.0f };
-	XMFLOAT3 m_WeaponMagSocketRotDeg = { 0.0f, 0.0f, 0.0f };
-	XMFLOAT3 m_WeaponMagSocketScale = { 1.0f, 1.0f, 1.0f };
+	CharacterAnimController m_CharCtrl;
 
 	// HDR 관련 변수
 	// Quad를 그려야함
@@ -969,84 +912,55 @@ bool App::OnInitialize() {
 	m_->m_OutlineThickness = 0.3f;
 	m_->m_OutlineColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 1);
 
-	// ====================================== Advanced Rig 초기화 (Socket) ======================================
-	// - Alice(0): 캐릭터
-	// - AmazingWonderland(1): 라이플
-	// - 캐릭터 본("Hand_R")에 WeaponPoint 소켓 생성 후, 매 프레임 라이플 트랜스폼 동기화
-	if (m_->m_UseAdvancedRig && m_->m_Models.size() >= 2) {
-		const int ci = m_->m_CharModelIndex;
-		if (ci >= 0 && ci < (int)m_->m_Models.size()) {
-			auto& alice = *m_->m_Models[(size_t)ci];
-		if (alice.shared && alice.shared->fbx && alice.shared->fbx->HasSkeleton()) {
-			// 애니메이션 이름 기반으로 기본 인덱스 매핑 (없으면 0/1/2 fallback)
-			{
-				auto ToLower = [](std::string s) {
-					for (char& c : s) c = (char)std::tolower((unsigned char)c);
-					return s;
-					};
-				auto FindByContains = [&](const std::string& key) -> int {
-					const auto& names = alice.shared->fbx->GetAnimationNames();
-					const std::string k = ToLower(key);
-					for (int i = 0; i < (int)names.size(); ++i) {
-						if (ToLower(names[(size_t)i]).find(k) != std::string::npos)
-							return i;
+		// ====================================== Advanced Rig 초기화 (CharacterAnimController) ======================================
+		// - Alice(0): 캐릭터
+		// - AmazingWonderland(1): 라이플
+		// - CharacterAnimController가 모든 애니메이션 로직을 처리
+		if (m_->m_UseAdvancedRig && m_->m_Models.size() >= 2) {
+			const int ci = m_->m_CharModelIndex;
+			if (ci >= 0 && ci < (int)m_->m_Models.size()) {
+				auto& alice = *m_->m_Models[(size_t)ci];
+				if (alice.shared && alice.shared->fbx && alice.shared->fbx->HasSkeleton()) {
+					// 컨트롤러 설정
+					m_->m_CharCtrl.config.weaponSocket.socketName = "WeaponPoint";
+					m_->m_CharCtrl.config.weaponSocket.parentBone = "Hand_R";
+					m_->m_CharCtrl.config.weaponSocket.pos = { 0.1f, 0.05f, 0.0f };
+					m_->m_CharCtrl.config.weaponSocket.rotDeg = { 0.0f, 90.0f, 0.0f };
+					m_->m_CharCtrl.config.weaponSocket.scale = { 1.0f, 1.0f, 1.0f };
+
+					// 전환 테이블(원하는 곳만 override) - Locomotion은 즉시 반응
+					m_->m_CharCtrl.config.baseTransitions["Idle"]["Run"] = { 0.18f, false, 0.0f, 0.0f, true };
+					m_->m_CharCtrl.config.baseTransitions["Run"]["Idle"] = { 0.12f, false, 0.0f, 0.0f, true };
+
+					// Upper도 전환 테이블로(예: AnyState->Reload 빠르게)
+					m_->m_CharCtrl.config.upperTransitions["*"]["Reload"] = { 0.10f, false, 0.0f, 0.0f, true };
+					m_->m_CharCtrl.config.upperTransitions["Reload"]["None"] = { 0.10f, false, 0.0f, 0.0f, true };
+
+					// 컨트롤러 초기화
+					if (m_->m_CharCtrl.InitializeRig(
+						m_->m_pDevice,
+						alice.shared->fbx->GetScenePtr(),
+						alice.shared->fbx->GetNodeIndexOfName(),
+						alice.shared->fbx->GetGlobalInverse(),
+						alice.shared->fbx->GetBoneNames(),
+						alice.shared->fbx->GetBoneOffsets(),
+						&alice.shared->fbx->GetAnimationNames()))
+					{
+						m_->m_CharRigInited = true;
+						m_->PushLog("[OK] CharacterAnimController: Initialized");
 					}
-					return -1;
-					};
-				int idxIdle = FindByContains("Idle");
-				int idxWalk = FindByContains("Walk");
-				int idxRun = FindByContains("Run");
-				int idxShoot = FindByContains("Shoot");
-				int idxShootStance = FindByContains("Shoot_Stance");
-				if (idxShootStance < 0) idxShootStance = FindByContains("IdleToShootStance");
-				if (idxShootStance < 0) idxShootStance = FindByContains("IdleToShootStance");
-				int idxReload = FindByContains("Reload");
-				if (idxIdle >= 0) m_->m_CharAnimIdxIdle = idxIdle;
-				if (idxWalk >= 0) m_->m_CharAnimIdxWalk = idxWalk;
-				if (idxRun >= 0) m_->m_CharAnimIdxRun = idxRun;
-				if (idxShoot >= 0) m_->m_CharAnimIdxShoot = idxShoot;
-				if (idxShootStance >= 0) m_->m_CharAnimIdxShootStance = idxShootStance;
-				if (idxReload >= 0) m_->m_CharAnimIdxReload = idxReload;
+					else
+					{
+						m_->m_CharRigInited = false;
+						m_->PushLog("[WARN] CharacterAnimController: Initialize failed");
+					}
+				}
+				else {
+					m_->m_CharRigInited = false;
+					m_->PushLog("[WARN] AdvancedRig: Alice model has no skeleton (socket disabled)");
+				}
 			}
-
-			m_->m_CharRig.Initialize(
-				m_->m_pDevice,
-				alice.shared->fbx->GetScenePtr(),
-				alice.shared->fbx->GetNodeIndexOfName(),
-				alice.shared->fbx->GetGlobalInverse(),
-				alice.shared->fbx->GetBoneNames(),
-				alice.shared->fbx->GetBoneOffsets());
-
-			// 언리얼 스타일: 이름/부모본/오프셋(SRT)을 "값"으로 저장해두고 언제든 수정 가능
-			m_->m_CharRig.SetSocketSRT(
-				m_->m_CharWeaponSocketName,
-				m_->m_CharWeaponParentBone,
-				m_->m_CharWeaponSocketPos,
-				m_->m_CharWeaponSocketRotDeg,
-				m_->m_CharWeaponSocketScale);
-
-			// 전환 블렌딩 상태 초기화
-			m_->m_CharBasePrevIdx = m_->m_CharAnimIdxIdle;
-			m_->m_CharBaseTargetIdx = m_->m_CharAnimIdxIdle;
-			m_->m_CharBaseInTransition = false;
-			m_->m_CharBaseBlendTime = 0.0f;
-			m_->m_CharTimeSec = 0.0f;
-			m_->m_CharBaseTimeSec = 0.0f;
-			m_->m_CharBasePrevTimeSec = 0.0f;
-			m_->m_CharBaseTargetTimeSec = 0.0f;
-			m_->m_CharBaseWaitingExit = false;
-			m_->m_ShootTimer = 0.0f;
-			m_->m_ShootTimeSec = 0.0f;
-
-			m_->m_CharRigInited = true;
-			m_->PushLog("[OK] AdvancedRig: Character socket initialized (WeaponPoint @ Hand_R)");
 		}
-		else {
-			m_->m_CharRigInited = false;
-			m_->PushLog("[WARN] AdvancedRig: Alice model has no skeleton (socket disabled)");
-		}
-		}
-	}
 	// ====================================== (임시) Idle-only 테스트 ======================================
 	// AdvancedRig가 정상 동작하는 것이 확인되어, Idle-only 테스트는 비활성화한다.
 	/*
@@ -1217,288 +1131,43 @@ void App::OnUpdate(const float& dt) {
 				auto& alice = *m_->m_Models[(size_t)ci];
 				auto& rifle = *m_->m_Models[(size_t)wi];
 
-			// 입력(간단): WASD 이동, Shift 달리기, 마우스 좌클릭 = 사격 자세(상체 레이어)
-			bool move = false;
-			bool run = false;
-			bool fireHold = false;
-			bool firePressed = false;
-			bool reloadHold = false;
-			if (InputSystem::Instance && !ImGui::GetIO().WantCaptureKeyboard) {
+			// 입력 수집
+			CharacterInputState input{};
+			if (InputSystem::Instance)
+			{
 				const auto& ks = InputSystem::Instance->m_KeyboardState;
-				move = ks.IsKeyDown(Keyboard::W) || ks.IsKeyDown(Keyboard::A) ||
-					ks.IsKeyDown(Keyboard::S) || ks.IsKeyDown(Keyboard::D);
-				run = move && (ks.IsKeyDown(Keyboard::LeftShift) || ks.IsKeyDown(Keyboard::RightShift));
-				reloadHold = ks.IsKeyDown(Keyboard::R);
-			}
-			if (InputSystem::Instance && !ImGui::GetIO().WantCaptureMouse) {
-				//fireHold = (InputSystem::Instance->m_MouseState.leftButton != 0);
-				//firePressed = (InputSystem::Instance->m_MouseStateTracker.leftButton == Mouse::ButtonStateTracker::PRESSED);
-				fireHold = InputSystem::Instance->m_KeyboardState.IsKeyDown(Keyboard::Z);
-				firePressed = InputSystem::Instance->m_KeyboardState.IsKeyDown(Keyboard::Z);
-			}
+				const auto& kt = InputSystem::Instance->m_KeyboardStateTracker;
+				const auto& mt = InputSystem::Instance->m_MouseStateTracker;
 
-			// 시간 누적
-			m_->m_CharTimeSec += dt;
-			m_->m_CharFireHold = fireHold;
+				const bool lockMove = m_->m_CharCtrl.IsMovementLocked();  // 이전 프레임 기준(충분히 자연스러움)
+				const bool inStance = m_->m_CharCtrl.IsInShootStance();
 
-			// Locomotion 목표 클립 결정
-			const int desiredBaseIdx = (!move) ? m_->m_CharAnimIdxIdle : (run ? m_->m_CharAnimIdxRun : m_->m_CharAnimIdxWalk);
+				if (!ImGui::GetIO().WantCaptureKeyboard)
+				{
+					bool rawMove = ks.IsKeyDown(Keyboard::W) || ks.IsKeyDown(Keyboard::A) ||
+						ks.IsKeyDown(Keyboard::S) || ks.IsKeyDown(Keyboard::D);
 
-			// =========================================================
-			// [Exit Time + Entry Offset 크로스페이드 (유니티/언리얼 방식)]
-			// =========================================================
-			const aiScene* sc = (alice.shared && alice.shared->fbx) ? alice.shared->fbx->GetScenePtr() : nullptr;
+					input.move = lockMove ? false : rawMove;
+					input.run  = (!lockMove) && rawMove &&
+						(ks.IsKeyDown(Keyboard::LeftShift) || ks.IsKeyDown(Keyboard::RightShift));
 
-			// 애니메이션 길이/정규화 헬퍼
-			auto AnimLengthSec = [](const aiAnimation* a) -> float {
-				if (!a) return 0.0f;
-				const double tps = (a->mTicksPerSecond != 0.0) ? a->mTicksPerSecond : 25.0;
-				const double durTicks = (a->mDuration > 0.0) ? a->mDuration : 0.0;
-				return (tps > 0.0) ? (float)(durTicks / tps) : 0.0f;
-			};
+					input.crouchTogglePressed =
+						kt.IsKeyPressed(Keyboard::LeftControl) || kt.IsKeyPressed(Keyboard::RightControl);
 
-			auto AnimNormTime01 = [&](const aiAnimation* a, float timeSec) -> float {
-				const float len = AnimLengthSec(a);
-				if (len <= 0.0f) return 0.0f;
-				float t = fmodf(timeSec, len);
-				if (t < 0.0f) t += len;
-				return t / len;
-			};
-
-			auto GetByIdx = [&](int idx) -> const aiAnimation* {
-				if (!sc || idx < 0 || (unsigned)idx >= sc->mNumAnimations) return nullptr;
-				return sc->mAnimations[idx];
-			};
-
-			// 현재 base 시간은 항상 증가(transition 중이면 A/B는 따로 증가)
-			m_->m_CharBaseTimeSec += dt;
-
-			// 전환 시작 함수
-			auto StartBaseTransitionNow = [&]() {
-				const aiAnimation* animFrom = GetByIdx(m_->m_CharBasePrevIdx);
-				const aiAnimation* animTo   = GetByIdx(m_->m_CharBaseTargetIdx);
-
-				// A는 현재 시간에서 시작
-				m_->m_CharBasePrevTimeSec = m_->m_CharBaseTimeSec;
-
-				// B는 entry offset에서 시작
-				const float lenTo = AnimLengthSec(animTo);
-				m_->m_CharBaseTargetTimeSec = (lenTo > 0.0f) ? (m_->m_CharBaseEntryNorm * lenTo) : 0.0f;
-
-				m_->m_CharBaseBlendTime = 0.0f;
-				m_->m_CharBaseInTransition = true;
-				m_->m_CharBaseWaitingExit = false;
-			};
-
-			// 1) 원하는 state가 바뀌었을 때: 즉시 시작 OR exit-time 대기
-			if (!m_->m_CharBaseInTransition && desiredBaseIdx != m_->m_CharBaseTargetIdx) {
-				// 현재를 from으로, desired를 to로 예약
-				m_->m_CharBasePrevIdx = m_->m_CharBaseTargetIdx;
-				m_->m_CharBaseTargetIdx = desiredBaseIdx;
-
-				if (m_->m_CharBaseBlendDuration <= 0.0f) {
-					// duration 0이면 즉시 스위치
-					m_->m_CharBasePrevIdx = m_->m_CharBaseTargetIdx;
-					m_->m_CharBaseInTransition = false;
-					m_->m_CharBaseWaitingExit = false;
+					// R은 Shoot_Stance에서만 의미
+					input.reloadPressed = inStance && kt.IsKeyPressed(Keyboard::R);
 				}
-				else if (m_->m_CharBaseUseExitTime) {
-					m_->m_CharBaseWaitingExit = true; // exitNorm까지 기다림
-				}
-				else {
-					StartBaseTransitionNow(); // 즉시 크로스페이드
+
+				if (!ImGui::GetIO().WantCaptureMouse)
+				{
+					// LMB는 Shoot_Stance에서만 "사격"으로 사용 (그 외에는 기존 picking 유지 가능)
+					input.firePressed = inStance &&
+						(mt.leftButton == Mouse::ButtonStateTracker::PRESSED);
 				}
 			}
 
-			// 2) exit-time 대기 중이면: A의 normalized time이 exitNorm 넘는 순간 시작
-			if (!m_->m_CharBaseInTransition && m_->m_CharBaseWaitingExit) {
-				const aiAnimation* animFrom = GetByIdx(m_->m_CharBasePrevIdx);
-				const float norm = AnimNormTime01(animFrom, m_->m_CharBaseTimeSec);
-
-				if (norm >= m_->m_CharBaseExitNorm) {
-					StartBaseTransitionNow();
-				}
-			}
-
-			// 3) transition 진행
-			float baseBlend = 0.0f;
-			if (m_->m_CharBaseInTransition) {
-				m_->m_CharBaseBlendTime += dt;
-
-				// A/B 시간은 각각 따로 진행
-				m_->m_CharBasePrevTimeSec   += dt;
-				m_->m_CharBaseTargetTimeSec += dt;
-
-				const float dur = (m_->m_CharBaseBlendDuration <= 0.0f) ? 0.0001f : m_->m_CharBaseBlendDuration;
-				baseBlend = std::clamp(m_->m_CharBaseBlendTime / dur, 0.0f, 1.0f);
-
-				// (선택) 언리얼/유니티 느낌으로 ease in/out
-				baseBlend = baseBlend * baseBlend * (3.0f - 2.0f * baseBlend); // smoothstep
-
-				if (baseBlend >= 1.0f - 1e-5f) {
-					// 전환 완료 → B만 남기기
-					m_->m_CharBaseInTransition = false;
-					m_->m_CharBasePrevIdx = m_->m_CharBaseTargetIdx;
-
-					// 현재 base time을 B의 시간으로 이어받음(=예: 0.3초)
-					m_->m_CharBaseTimeSec = m_->m_CharBaseTargetTimeSec;
-					baseBlend = 0.0f; // 이후엔 단일 애니로 평가
-				}
-			}
-
-			// UI 표시용(대략적인 locomotion 0..1)
-			m_->m_CharBlend01 = (!move) ? 0.0f : (run ? 1.0f : 0.5f);
-
-			// 사격 1회 트리거: firePressed 시 Shoot 타이머 시작
-			if (firePressed) {
-				m_->m_ShootTimer = m_->m_ShootDuration;
-				m_->m_ShootTimeSec = 0.0f;
-			}
-			if (m_->m_ShootTimer > 0.0f) {
-				m_->m_ShootTimer -= dt;
-				m_->m_ShootTimeSec += dt;
-				if (m_->m_ShootTimer < 0.0f) m_->m_ShootTimer = 0.0f;
-			}
-
-			// Procedural recoil(Additive) 업데이트
-			// - 눌렀을 때 킥을 더하고, 매 프레임 감쇠시킨다.
-			if (m_->m_RecoilEnabled) {
-				if (firePressed) {
-					m_->m_RecoilAlpha += m_->m_RecoilKick;
-					if (m_->m_RecoilAlpha > 1.0f) m_->m_RecoilAlpha = 1.0f;
-				}
-				const float decay = (m_->m_RecoilDecay < 0.0f) ? 0.0f : m_->m_RecoilDecay;
-				m_->m_RecoilAlpha *= std::exp(-decay * dt);
-				if (m_->m_RecoilAlpha < 0.0001f) m_->m_RecoilAlpha = 0.0f;
-			}
-			else {
-				m_->m_RecoilAlpha = 0.0f;
-			}
-
-			// 애니메이션 포인터 획득 (이름 매칭은 UI에서 개선할 예정)
-			const aiAnimation* animIdle = nullptr;
-			const aiAnimation* animWalk = nullptr;
-			const aiAnimation* animRunA = nullptr;
-			const aiAnimation* animUpper = nullptr;
-			const aiAnimation* animShoot = nullptr;
-			const aiAnimation* animReload = nullptr;
-			if (sc && sc->mNumAnimations > 0) {
-				// 안전: 인덱스가 부족하면 nullptr로 남겨둔다.
-				const int iIdle = m_->m_CharAnimIdxIdle;
-				const int iWalk = m_->m_CharAnimIdxWalk;
-				const int iRun = m_->m_CharAnimIdxRun;
-				const int iShoot = m_->m_CharAnimIdxShoot;
-				const int iStance = m_->m_CharAnimIdxShootStance;
-				const int iReload = m_->m_CharAnimIdxReload;
-				animIdle = (iIdle >= 0 && (unsigned)iIdle < sc->mNumAnimations) ? sc->mAnimations[iIdle] : nullptr;
-				animWalk = (iWalk >= 0 && (unsigned)iWalk < sc->mNumAnimations) ? sc->mAnimations[iWalk] : animIdle;
-				animRunA = (iRun >= 0 && (unsigned)iRun < sc->mNumAnimations) ? sc->mAnimations[iRun] : animIdle;
-				animShoot = (iShoot >= 0 && (unsigned)iShoot < sc->mNumAnimations) ? sc->mAnimations[iShoot] : nullptr;
-				animReload = (iReload >= 0 && (unsigned)iReload < sc->mNumAnimations) ? sc->mAnimations[iReload] : nullptr;
-
-				// Upper 결정 우선순위: Reload(키홀드) > Shoot(타이머) > ShootStance(홀드)
-				if (reloadHold && animReload) {
-					animUpper = animReload;
-				}
-				else if (m_->m_ShootTimer > 0.0f && animShoot) {
-					animUpper = animShoot;
-				}
-				else if (fireHold && iStance >= 0 && (unsigned)iStance < sc->mNumAnimations) {
-					animUpper = sc->mAnimations[iStance];
-				}
-			}
-
-			// baseA/baseB: 전환 블렌딩(prev -> target)
-			const aiAnimation* baseA = GetByIdx(m_->m_CharBasePrevIdx);
-			const aiAnimation* baseB = GetByIdx(m_->m_CharBaseTargetIdx);
-			if (!baseA) baseA = animIdle;
-			if (!baseB) baseB = animIdle;
-
-			// 캐릭터 포즈 평가 + 팔레트 업로드
-			// - base: Idle <-> Run
-			// - upper: fireHold일 때 ShootStance를 상체에 덮어쓰기(레이어)
-			// - IK: reloadHold일 때(임시) 왼손을 "탄창 소켓" 쪽으로 당겨본다.
-			XMVECTOR ikTargetMS = XMVectorZero();
-			bool enableIK = false;
-			if (reloadHold && m_->m_ReloadIKEnabled) {
-				// 총(라이플)의 "탄창 소켓"을 월드 위치로 만든 뒤, 앨리스 모델 로컬로 변환
-				auto BuildTRS = [](const XMFLOAT3& pos, const XMFLOAT3& rotDeg, const XMFLOAT3& scale) -> XMMATRIX {
-					const XMMATRIX mS = XMMatrixScaling(scale.x, scale.y, scale.z);
-					const XMMATRIX mR = XMMatrixRotationRollPitchYaw(
-						XMConvertToRadians(rotDeg.x),
-						XMConvertToRadians(rotDeg.y),
-						XMConvertToRadians(rotDeg.z));
-					const XMMATRIX mT = XMMatrixTranslation(pos.x, pos.y, pos.z);
-					return mT * mR * mS; // TRS
-				};
-				const XMMATRIX magLocal = BuildTRS(
-					m_->m_WeaponMagSocketPos,
-					m_->m_WeaponMagSocketRotDeg,
-					m_->m_WeaponMagSocketScale);
-				// rifleMat은 아래에서 계산하지만, IK는 애니 평가 시점에 필요하므로
-				// 일단 이전 프레임 기준으로도 동작 가능. 여기서는 현재 프레임에 계산할 rifleMat을 미리 구한다.
-				const XMMATRIX aliceWorld = alice.GetWorldMatrix();
-				const XMMATRIX rifleMatNow = m_->m_CharRig.GetSocketWorldMatrix(m_->m_CharWeaponSocketName, aliceWorld);
-				const XMMATRIX magWorld = magLocal * rifleMatNow;
-				const XMVECTOR magPosWS = XMVector3TransformCoord(XMVectorZero(), magWorld);
-				const XMMATRIX invAliceWorld = XMMatrixInverse(nullptr, aliceWorld);
-				ikTargetMS = XMVector3TransformCoord(magPosWS, invAliceWorld);
-				enableIK = true;
-			}
-
-			// (2) Additive 애니메이션: Idle 위에 Shoot을 Additive로 얹기(참조 포즈는 Idle t=0)
-			// - Shoot 타이머 동안만 적용
-			const aiAnimation* addAnim = (m_->m_ShootTimer > 0.0f) ? animShoot : nullptr;
-			const aiAnimation* refAnim = animIdle; // 기준 포즈
-			const float addTime = m_->m_ShootTimeSec;
-
-			// timeA/timeB: transition 중이면 분리된 시간, 아니면 같은 시간
-			float timeA = m_->m_CharBaseInTransition ? m_->m_CharBasePrevTimeSec   : m_->m_CharBaseTimeSec;
-			float timeB = m_->m_CharBaseInTransition ? m_->m_CharBaseTargetTimeSec : m_->m_CharBaseTimeSec;
-
-			m_->m_CharRig.UpdateAnimation(
-				dt,
-				baseA, timeA,
-				baseB, timeB,
-				baseBlend,
-				animUpper, m_->m_CharTimeSec,
-				addAnim, addTime, refAnim,
-				// procedural additive
-				m_->m_RecoilAlpha, m_->m_RecoilSeed,
-				// IK
-				enableIK,
-				m_->m_IKTipBone.c_str(),
-				m_->m_IKChainLength,
-				ikTargetMS,
-				m_->m_IKWeight);
-
-			// GPU 업로드는 기존 per-instance animator의 CB를 그대로 사용
-			alice.fbxBaseAnimator.EnsureBoneCB(m_->m_pDevice, 1023);
-			alice.fbxBaseAnimator.UploadPalette(m_->m_pDeviceContext, m_->m_CharRig.finalTransforms);
-
-			// 소켓 월드 행렬로 Rifle 트랜스폼 동기화
-			// - "WeaponPoint"는 캐릭터(앨리스) 본 공간의 오프셋 + 본 글로벌 + 앨리스 월드
-			// - 분해해서 Rifle(pos/rotDeg/scale)에 적용한다.
-			const XMMATRIX aliceWorld = alice.GetWorldMatrix();
-			const XMMATRIX rifleMat = m_->m_CharRig.GetSocketWorldMatrix(m_->m_CharWeaponSocketName, aliceWorld);
-
-			XMVECTOR S, R, T;
-			if (XMMatrixDecompose(&S, &R, &T, rifleMat)) {
-				XMStoreFloat3(&rifle.scale, S);
-				XMStoreFloat3(&rifle.pos, T);
-				// 회전은 Euler(deg)로 근사 변환 (향후: ModelEntry에 Quaternion 지원 시 교체 권장)
-				XMFLOAT4 rq{}; XMStoreFloat4(&rq, R);
-				// pitch(x), yaw(y), roll(z) 순서 가정
-				const float sinp = 2.0f * (rq.w * rq.x + rq.y * rq.z);
-				const float cosp = 1.0f - 2.0f * (rq.x * rq.x + rq.y * rq.y);
-				const float pitch = std::atan2(sinp, cosp);
-				const float siny = 2.0f * (rq.w * rq.y - rq.z * rq.x);
-				const float yaw = (std::fabs(siny) >= 1.0f) ? std::copysign(XM_PIDIV2, siny) : std::asin(siny);
-				const float sinr = 2.0f * (rq.w * rq.z + rq.x * rq.y);
-				const float cosr = 1.0f - 2.0f * (rq.y * rq.y + rq.z * rq.z);
-				const float roll = std::atan2(sinr, cosr);
-				rifle.rotDeg = XMFLOAT3(XMConvertToDegrees(pitch), XMConvertToDegrees(yaw), XMConvertToDegrees(roll));
-			}
+			// "완벽 목표": update + palette upload + weapon apply 까지 컨트롤러가 처리
+			m_->m_CharCtrl.TickAndApply(dt, input, alice, &rifle, m_->m_pDevice, m_->m_pDeviceContext);
 			}
 		}
 
@@ -1755,7 +1424,11 @@ void App::OnUpdate(const float& dt) {
 	}
 
 	// ====================================== 간단 마우스 피킹 (FBX/모델 위주) ======================================
-	if (InputSystem::Instance && !ImGui::GetIO().WantCaptureMouse) {
+	if (m_->m_UseAdvancedRig && m_->m_CharRigInited && m_->m_CharCtrl.IsMovementLocked())
+	{
+		// 앉아있는(혹은 앉기/서기/사격/리로드 중) LMB는 게임 입력으로 사용 => picking 스킵
+	}
+	else if (InputSystem::Instance && !ImGui::GetIO().WantCaptureMouse) {
 		auto& input = *InputSystem::Instance;
 		if (input.m_MouseStateTracker.leftButton ==
 			Mouse::ButtonStateTracker::PRESSED) {
@@ -4540,122 +4213,328 @@ void App::RenderConsolPannel() {
 	}
 }
 
-void App::RenderAdvancedRigUI() {
-	// Advanced Animation / Socket 패널
-	// - 지금 단계 목표: 캐릭터(앨리스) 소켓(WeaponPoint)을 ImGui에서 편집하고
-	//   그 소켓 월드 트랜스폼으로 라이플(총)을 안정적으로 장착한다.
-	auto& io = ImGui::GetIO();
-	ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - 660, 20), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(320, 330), ImGuiCond_FirstUseEver);
-	if (!ImGui::Begin("AdvancedRig (Socket/Anim)")) {
-		ImGui::End();
-		return;
-	}
+// ============================================================
+// UI 헬퍼 함수들
+// ============================================================
+static void DrawCrossFadeEditor(const char* label, CrossFadeParams& f)
+{
+    ImGui::PushID(&f);
+    ImGui::SeparatorText(label);
 
-	ImGui::Checkbox("Enable AdvancedRig", &m_->m_UseAdvancedRig);
-	ImGui::Text("Rig Inited: %s", (m_->m_CharRigInited ? "true" : "false"));
-	ImGui::Separator();
+    ImGui::DragFloat("Duration (sec)", &f.durationSec, 0.01f, 0.0f, 2.0f, "%.3f");
+    ImGui::Checkbox("Use Exit Time", &f.useExitTime);
+    if (f.useExitTime)
+        ImGui::SliderFloat("Exit Norm", &f.exitNorm, 0.0f, 1.0f, "%.3f");
 
-	ImGui::SeparatorText("Model Indices");
-	ImGui::DragInt("Character Model Index", &m_->m_CharModelIndex, 1, 0, (int)m_->m_Models.size() - 1);
-	ImGui::DragInt("Weapon Model Index", &m_->m_WeaponModelIndex, 1, 0, (int)m_->m_Models.size() - 1);
-	ImGui::Separator();
+    ImGui::SliderFloat("Entry Norm", &f.entryNorm, 0.0f, 1.0f, "%.3f");
+    ImGui::Checkbox("SmoothStep", &f.smoothStep);
 
-	// 애니메이션 인덱스 선택 (Alice FBX 기준)
-	const int ci = m_->m_CharModelIndex;
-	if (ci >= 0 && ci < (int)m_->m_Models.size() && m_->m_Models[(size_t)ci] && m_->m_Models[(size_t)ci]->shared &&
-		m_->m_Models[(size_t)ci]->shared->fbx) {
-		const auto& names = m_->m_Models[(size_t)ci]->shared->fbx->GetAnimationNames();
-		if (!names.empty()) {
-			ImGui::SeparatorText("Animation Indices (Alice)");
-			ImGui::DragInt("Idle Idx", &m_->m_CharAnimIdxIdle, 1, 0, (int)names.size() - 1);
-			ImGui::DragInt("Walk Idx", &m_->m_CharAnimIdxWalk, 1, 0, (int)names.size() - 1);
-			ImGui::DragInt("Run Idx", &m_->m_CharAnimIdxRun, 1, 0, (int)names.size() - 1);
-			ImGui::DragInt("Shoot Idx", &m_->m_CharAnimIdxShoot, 1, 0, (int)names.size() - 1);
-			ImGui::DragInt("ShootStance Idx", &m_->m_CharAnimIdxShootStance, 1, 0, (int)names.size() - 1);
-			ImGui::DragInt("Reload Idx", &m_->m_CharAnimIdxReload, 1, 0, (int)names.size() - 1);
-			ImGui::Text("Idle: %s", (m_->m_CharAnimIdxIdle >= 0 && m_->m_CharAnimIdxIdle < (int)names.size()) ? names[(size_t)m_->m_CharAnimIdxIdle].c_str() : "<invalid>");
-			ImGui::Text("Walk: %s", (m_->m_CharAnimIdxWalk >= 0 && m_->m_CharAnimIdxWalk < (int)names.size()) ? names[(size_t)m_->m_CharAnimIdxWalk].c_str() : "<invalid>");
-			ImGui::Text("Run : %s", (m_->m_CharAnimIdxRun >= 0 && m_->m_CharAnimIdxRun < (int)names.size()) ? names[(size_t)m_->m_CharAnimIdxRun].c_str() : "<invalid>");
-			ImGui::Text("Shoot: %s", (m_->m_CharAnimIdxShoot >= 0 && m_->m_CharAnimIdxShoot < (int)names.size()) ? names[(size_t)m_->m_CharAnimIdxShoot].c_str() : "<invalid>");
-			ImGui::Text("Stance: %s", (m_->m_CharAnimIdxShootStance >= 0 && m_->m_CharAnimIdxShootStance < (int)names.size()) ? names[(size_t)m_->m_CharAnimIdxShootStance].c_str() : "<invalid>");
-			ImGui::Text("Reload: %s", (m_->m_CharAnimIdxReload >= 0 && m_->m_CharAnimIdxReload < (int)names.size()) ? names[(size_t)m_->m_CharAnimIdxReload].c_str() : "<invalid>");
-		}
-	}
+    ImGui::PopID();
+}
 
-	ImGui::SeparatorText("Runtime State");
-	ImGui::Text("t=%.2f sec, blend(Idle->Run)=%.2f", m_->m_CharTimeSec, m_->m_CharBlend01);
-	ImGui::Text("FireHold(MouseL)= %s", m_->m_CharFireHold ? "true" : "false");
-	ImGui::Text("RecoilAlpha= %.3f", m_->m_RecoilAlpha);
+static void DrawBlendCurve(bool smoothStep, float blend01, ImVec2 size)
+{
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    ImVec2 p0 = ImGui::GetCursorScreenPos();
+    ImVec2 p1 = ImVec2(p0.x + size.x, p0.y + size.y);
 
-	ImGui::SeparatorText("Socket (Character)");
-	ImGui::InputText("Socket Name", &m_->m_CharWeaponSocketName);
-	ImGui::InputText("Parent Bone", &m_->m_CharWeaponParentBone);
-	ImGui::DragFloat3("Offset Pos", &m_->m_CharWeaponSocketPos.x, 0.01f);
-	ImGui::DragFloat3("Offset Rot(deg)", &m_->m_CharWeaponSocketRotDeg.x, 0.5f, -180.0f, 180.0f);
-	ImGui::DragFloat3("Offset Scale", &m_->m_CharWeaponSocketScale.x, 0.01f, 0.001f, 10.0f);
+    // 배경
+    dl->AddRectFilled(p0, p1, IM_COL32(30, 30, 30, 255), 4.0f);
+    dl->AddRect(p0, p1, IM_COL32(90, 90, 90, 255), 4.0f);
 
-	if (ImGui::Button("Apply Socket To Rig")) {
-		if (m_->m_CharRigInited) {
-			m_->m_CharRig.SetSocketSRT(
-				m_->m_CharWeaponSocketName,
-				m_->m_CharWeaponParentBone,
-				m_->m_CharWeaponSocketPos,
-				m_->m_CharWeaponSocketRotDeg,
-				m_->m_CharWeaponSocketScale);
-			m_->PushLog("[OK] AdvancedRig: Socket updated from UI");
-		}
-		else {
-			m_->PushLog("[WARN] AdvancedRig: Rig not initialized");
-		}
-	}
+    auto Eval = [&](float t)
+    {
+        t = std::clamp(t, 0.0f, 1.0f);
+        if (!smoothStep) return t;
+        return t * t * (3.0f - 2.0f * t);
+    };
 
-	ImGui::SameLine();
-	if (ImGui::Button("Reinit Rig")) {
-		// OnInitialize와 동일한 로직을 UI에서도 재실행 (본 이름 수정 후 적용 등)
-		if (m_->m_Models.size() >= 1 && m_->m_Models[0] && m_->m_Models[0]->shared && m_->m_Models[0]->shared->fbx &&
-			m_->m_Models[0]->shared->fbx->HasSkeleton()) {
-			auto& alice = *m_->m_Models[0];
-			m_->m_CharRig.Initialize(
-				m_->m_pDevice,
-				alice.shared->fbx->GetScenePtr(),
-				alice.shared->fbx->GetNodeIndexOfName(),
-				alice.shared->fbx->GetGlobalInverse(),
-				alice.shared->fbx->GetBoneNames(),
-				alice.shared->fbx->GetBoneOffsets());
-			m_->m_CharRig.SetSocketSRT(
-				m_->m_CharWeaponSocketName,
-				m_->m_CharWeaponParentBone,
-				m_->m_CharWeaponSocketPos,
-				m_->m_CharWeaponSocketRotDeg,
-				m_->m_CharWeaponSocketScale);
-			m_->m_CharRigInited = true;
-			m_->PushLog("[OK] AdvancedRig: Reinitialized");
-		}
-		else {
-			m_->m_CharRigInited = false;
-			m_->PushLog("[ERR] AdvancedRig: Reinit failed (no skeleton)");
-		}
-	}
+    // 곡선
+    const int N = 64;
+    ImVec2 prev{};
+    for (int i = 0; i <= N; ++i)
+    {
+        float x = (float)i / (float)N;
+        float y = Eval(x);
 
-	ImGui::SeparatorText("Procedural Additive (Recoil)");
-	ImGui::Checkbox("Enable Recoil", &m_->m_RecoilEnabled);
-	ImGui::DragFloat("Kick", &m_->m_RecoilKick, 0.01f, 0.0f, 1.0f, "%.2f");
-	ImGui::DragFloat("Decay", &m_->m_RecoilDecay, 0.1f, 0.0f, 50.0f, "%.1f");
-	ImGui::DragScalar("Seed", ImGuiDataType_U32, &m_->m_RecoilSeed, 1.0f);
+        ImVec2 p = ImVec2(
+            p0.x + x * size.x,
+            p1.y - y * size.y
+        );
 
-	ImGui::SeparatorText("Reload IK (Hand -> Magazine)");
-	ImGui::Checkbox("Enable IK", &m_->m_ReloadIKEnabled);
-	ImGui::InputText("Tip Bone (e.g. Hand_L)", &m_->m_IKTipBone);
-	ImGui::DragInt("Chain Length", &m_->m_IKChainLength, 1, 1, 10);
-	ImGui::DragFloat("IK Weight", &m_->m_IKWeight, 0.01f, 0.0f, 1.0f, "%.2f");
+        if (i > 0)
+            dl->AddLine(prev, p, IM_COL32(220, 220, 220, 255), 2.0f);
+        prev = p;
+    }
 
-	ImGui::TextUnformatted("Weapon Magazine Socket (Weapon Local)");
-	ImGui::DragFloat3("Mag Pos", &m_->m_WeaponMagSocketPos.x, 0.01f);
-	ImGui::DragFloat3("Mag Rot(deg)", &m_->m_WeaponMagSocketRotDeg.x, 0.5f, -180.0f, 180.0f);
-	ImGui::DragFloat3("Mag Scale", &m_->m_WeaponMagSocketScale.x, 0.01f, 0.001f, 10.0f);
+    // 현재 점(blend01)
+    float yb = Eval(blend01);
+    ImVec2 dot = ImVec2(p0.x + blend01 * size.x, p1.y - yb * size.y);
+    dl->AddCircleFilled(dot, 5.0f, IM_COL32(255, 200, 0, 255));
 
-	ImGui::End();
+    ImGui::Dummy(size);
+}
+
+static void DrawStateMachineGraph(const char* id, AnimStateMachine& sm)
+{
+    const auto& states = sm.GetStates();
+    const auto& trans  = sm.GetTransitions();
+
+    ImVec2 avail = ImGui::GetContentRegionAvail();
+    ImVec2 size = ImVec2(avail.x, 180.0f);
+    ImGui::BeginChild(id, size, true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    ImVec2 origin = ImGui::GetCursorScreenPos();
+
+    const float nodeW = 120.0f;
+    const float nodeH = 36.0f;
+    const float gapX  = 40.0f;
+    const float gapY  = 28.0f;
+
+    // 간단 배치(가로로 쭉)
+    std::vector<ImVec2> nodePos(states.size());
+    for (int i = 0; i < (int)states.size(); ++i)
+    {
+        nodePos[(size_t)i] = ImVec2(
+            origin.x + 20.0f + i * (nodeW + gapX),
+            origin.y + 40.0f
+        );
+    }
+
+    int cur = sm.GetCurrentStateIndex();
+    bool inTr = sm.IsInTransition();
+    int from = sm.GetFromStateIndex();
+    int to   = sm.GetToStateIndex();
+    float b01 = sm.GetBlend01();
+
+    // 링크 그리기
+    for (int ti = 0; ti < (int)trans.size(); ++ti)
+    {
+        const auto& t = trans[(size_t)ti];
+
+        int a = t.from;
+        int b = t.to;
+        if (b < 0 || b >= (int)states.size()) continue;
+
+        ImVec2 pA;
+        if (a >= 0 && a < (int)states.size())
+            pA = ImVec2(nodePos[(size_t)a].x + nodeW, nodePos[(size_t)a].y + nodeH * 0.5f);
+        else
+            pA = ImVec2(origin.x + 10.0f, origin.y + 40.0f + nodeH * 0.5f); // AnyState
+
+        ImVec2 pB = ImVec2(nodePos[(size_t)b].x, nodePos[(size_t)b].y + nodeH * 0.5f);
+
+        bool activeEdge = inTr && (a == from) && (b == to);
+        ImU32 col = activeEdge ? IM_COL32(255, 200, 0, 255) : IM_COL32(120, 120, 120, 255);
+        float thickness = activeEdge ? (2.0f + 4.0f * b01) : 2.0f;
+
+        dl->AddLine(pA, pB, col, thickness);
+
+        if (activeEdge)
+        {
+            ImVec2 mid = ImVec2((pA.x + pB.x) * 0.5f, (pA.y + pB.y) * 0.5f - 14.0f);
+            char buf[64];
+            snprintf(buf, 64, "blend=%.2f", b01);
+            dl->AddText(mid, IM_COL32(255, 220, 120, 255), buf);
+        }
+    }
+
+    // 노드 그리기 (+ 클릭 강제전환)
+    for (int i = 0; i < (int)states.size(); ++i)
+    {
+        ImVec2 p = nodePos[(size_t)i];
+        ImVec2 p2 = ImVec2(p.x + nodeW, p.y + nodeH);
+
+        bool activeNode = (i == cur);
+        bool fromNode = inTr && (i == from);
+        bool toNode   = inTr && (i == to);
+
+        ImU32 fill = IM_COL32(60, 60, 60, 255);
+        ImU32 border = IM_COL32(120, 120, 120, 255);
+
+        if (activeNode) border = IM_COL32(120, 255, 120, 255);
+        if (fromNode)   border = IM_COL32(255, 200, 0, 255);
+        if (toNode)     border = IM_COL32(255, 200, 0, 255);
+
+        dl->AddRectFilled(p, p2, fill, 6.0f);
+        dl->AddRect(p, p2, border, 6.0f, 0, activeNode ? 3.0f : 2.0f);
+
+        dl->AddText(ImVec2(p.x + 8, p.y + 8), IM_COL32(220, 220, 220, 255), states[(size_t)i].name.c_str());
+
+        // 클릭 히트박스
+        ImGui::SetCursorScreenPos(p);
+        ImGui::InvisibleButton((std::string("node##") + id + std::to_string(i)).c_str(), ImVec2(nodeW, nodeH));
+        if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
+            sm.ForceState(i);
+    }
+
+    // 상단 텍스트
+    ImGui::SetCursorScreenPos(ImVec2(origin.x + 10, origin.y + 8));
+    ImGui::Text("Current: %s  |  InTransition: %s", sm.CurrentStateName().c_str(), inTr ? "true" : "false");
+
+    ImGui::EndChild();
+}
+
+static void DrawTransitionsEditor(const char* layerName, AnimStateMachine& sm)
+{
+    ImGui::PushID(layerName); // ★ 충돌 제거 핵심
+
+    auto& trans = sm.GetTransitions();
+    const auto& states = sm.GetStates();
+
+    ImGui::SeparatorText(layerName);
+
+    for (int i = 0; i < (int)trans.size(); ++i)
+    {
+        ImGui::PushID(i);
+
+        auto& t = trans[(size_t)i];
+        auto NameOf = [&](int idx)->const char*
+        {
+            if (idx < 0) return "*";
+            if (idx >= 0 && idx < (int)states.size()) return states[(size_t)idx].name.c_str();
+            return "?";
+        };
+
+        std::string header = std::string(NameOf(t.from)) + " -> " + NameOf(t.to) +
+            "  (pri=" + std::to_string(t.priority) + ")";
+
+        if (ImGui::TreeNode("##trnode", "%s", header.c_str()))
+        {
+            ImGui::DragInt("Priority", &t.priority, 1, -1000, 1000);
+
+            DrawCrossFadeEditor("Fade", t.fade);
+
+            ImGui::SeparatorText("Conditions");
+            for (int ci = 0; ci < (int)t.conditions.size(); ++ci)
+            {
+                const auto& c = t.conditions[(size_t)ci];
+                ImGui::BulletText("cond[%d] type=%d param=%s (f=%.2f i=%d)",
+                    ci, (int)c.type, c.param.c_str(), c.f, c.i);
+            }
+
+            ImGui::TreePop();
+        }
+
+        ImGui::PopID();
+    }
+
+    ImGui::PopID();
+}
+
+void App::RenderAdvancedRigUI()
+{
+    if (!m_->m_CharRigInited) return;
+
+    auto& ctrl = m_->m_CharCtrl;
+
+    ImGui::Begin("AnimGraph / Blend Debug##AdvancedRig");
+
+    ImGui::Checkbox("Enable AdvancedRig", &m_->m_UseAdvancedRig);
+    ImGui::Text("Rig Inited: %s", m_->m_CharRigInited ? "true" : "false");
+    ImGui::Separator();
+
+    // ----- Base/Upper/Add Runtime -----
+    ImGui::SeparatorText("Runtime States");
+    ImGui::Text("Base : %s", ctrl.DebugBaseState().c_str());
+    ImGui::Text("Upper: %s", ctrl.DebugUpperState().c_str());
+    ImGui::Text("Add  : %s", ctrl.DebugAddState().c_str());
+
+    // 전환 진행률 + 커브
+    {
+        auto& b = ctrl.BaseSM();
+        ImGui::SeparatorText("Base Transition");
+        ImGui::Text("InTransition=%s  blend=%.3f  from=%d to=%d",
+            b.IsInTransition() ? "true" : "false",
+            b.GetBlend01(), b.GetFromStateIndex(), b.GetToStateIndex());
+        ImGui::ProgressBar(b.IsInTransition() ? b.GetBlend01() : 0.0f, ImVec2(-1, 0));
+        DrawBlendCurve(b.GetActiveFade().smoothStep, b.IsInTransition() ? b.GetBlend01() : 0.0f, ImVec2(ImGui::GetContentRegionAvail().x, 70));
+    }
+
+    {
+        auto& u = ctrl.UpperSM();
+        ImGui::SeparatorText("Upper Transition");
+        ImGui::Text("InTransition=%s  blend=%.3f", u.IsInTransition() ? "true" : "false", u.GetBlend01());
+        ImGui::ProgressBar(u.IsInTransition() ? u.GetBlend01() : 0.0f, ImVec2(-1, 0));
+        DrawBlendCurve(u.GetActiveFade().smoothStep, u.IsInTransition() ? u.GetBlend01() : 0.0f, ImVec2(ImGui::GetContentRegionAvail().x, 70));
+    }
+
+    {
+        auto& a = ctrl.AddSM();
+        ImGui::SeparatorText("Additive Transition");
+        ImGui::Text("InTransition=%s  blend=%.3f", a.IsInTransition() ? "true" : "false", a.GetBlend01());
+        ImGui::ProgressBar(a.IsInTransition() ? a.GetBlend01() : 0.0f, ImVec2(-1, 0));
+        DrawBlendCurve(a.GetActiveFade().smoothStep, a.IsInTransition() ? a.GetBlend01() : 0.0f, ImVec2(ImGui::GetContentRegionAvail().x, 70));
+    }
+
+    // ----- Graph View -----
+    ImGui::SeparatorText("Graph View (click node = Force State)");
+    DrawStateMachineGraph("BaseGraph",  ctrl.BaseSM());
+    DrawStateMachineGraph("UpperGraph", ctrl.UpperSM());
+    DrawStateMachineGraph("AddGraph",   ctrl.AddSM());
+
+    // ----- Transition Parameter Edit -----
+    ImGui::SeparatorText("Edit Transitions (live)");
+    DrawTransitionsEditor("Base Transitions",  ctrl.BaseSM());
+    DrawTransitionsEditor("Upper Transitions", ctrl.UpperSM());
+    DrawTransitionsEditor("Add Transitions",   ctrl.AddSM());
+
+    // ----- Slot(Key) -> Animation Index Mapping -----
+    ImGui::SeparatorText("Slot Mapping (key -> animation index)");
+    {
+        auto& map = ctrl.GetAnimIndexMap();
+        const auto& animNames = ctrl.GetAnimNames();
+
+        // 키 정렬해서 보여주기
+        std::vector<std::string> keys;
+        keys.reserve(map.size());
+        for (auto& kv : map) keys.push_back(kv.first);
+        std::sort(keys.begin(), keys.end());
+
+        for (auto& k : keys)
+        {
+            int& idx = map[k];
+            ImGui::PushID(k.c_str());
+
+            ImGui::Text("%s", k.c_str());
+            ImGui::SameLine(140);
+
+            // 콤보로 애니 선택
+            int cur = idx;
+            const char* preview = (cur >= 0 && cur < (int)animNames.size()) ? animNames[(size_t)cur].c_str() : "<none>";
+            if (ImGui::BeginCombo("##AnimCombo", preview))
+            {
+                // none
+                if (ImGui::Selectable("<none>", cur < 0)) idx = -1;
+
+                for (int i = 0; i < (int)animNames.size(); ++i)
+                {
+                    bool sel = (i == cur);
+                    if (ImGui::Selectable(animNames[(size_t)i].c_str(), sel))
+                        idx = i;
+                    if (sel) ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+
+            ImGui::PopID();
+        }
+
+        if (ImGui::Button("AutoBind (contains)"))
+            ctrl.AutoBindCommonSlotsByContains();
+
+        ImGui::SameLine();
+        if (ImGui::Button("Rebuild Default Graph"))
+        {
+            // 그래프를 다시 만들고 싶으면:
+            // - config나 slot mapping 바꾼 뒤 적용하려면 rebuild가 필요할 때가 있음
+            ctrl.BuildDefaultGraph();
+            ctrl.ResetRuntime();
+        }
+    }
+
+    ImGui::End();
 }
 
 void App::RenderSceneImageWindow() {
