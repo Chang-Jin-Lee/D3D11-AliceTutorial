@@ -668,7 +668,16 @@ struct App::Impl {
 	int   m_CharBaseTargetIdx = 0;
 	bool  m_CharBaseInTransition = false;
 	float m_CharBaseBlendTime = 0.0f;
-	float m_CharBaseBlendDuration = 0.25f; // 전환 블렌딩 시간(초)
+	float m_CharBaseBlendDuration = 0.0f; // 전환 블렌딩 시간(초)
+
+	// Exit Time + Entry Offset 크로스페이드 (유니티/언리얼 방식)
+	float m_CharBaseTimeSec = 0.0f;           // Base clip 로컬 시간(현재 state)
+	float m_CharBasePrevTimeSec = 0.0f;       // Transition 중 A 시간
+	float m_CharBaseTargetTimeSec = 0.0f;     // Transition 중 B 시간
+	bool  m_CharBaseUseExitTime = true;      // Exit time 사용 여부
+	float m_CharBaseExitNorm = 0.85f;        // A의 몇 %에서 transition 시작
+	float m_CharBaseEntryNorm = 0.0f;        // B를 몇 %에서 시작
+	bool  m_CharBaseWaitingExit = false;     // exit time 도달 대기
 
 	float m_CharBlend01 = 0.0f; // (UI 표시용) 0..1 locomotion approx (0:Idle, 0.5:Walk, 1:Run)
 	bool  m_CharFireHold = false;
@@ -989,7 +998,7 @@ bool App::OnInitialize() {
 				int idxRun = FindByContains("Run");
 				int idxShoot = FindByContains("Shoot");
 				int idxShootStance = FindByContains("Shoot_Stance");
-				if (idxShootStance < 0) idxShootStance = FindByContains("Shoot_Stance");
+				if (idxShootStance < 0) idxShootStance = FindByContains("IdleToShootStance");
 				if (idxShootStance < 0) idxShootStance = FindByContains("IdleToShootStance");
 				int idxReload = FindByContains("Reload");
 				if (idxIdle >= 0) m_->m_CharAnimIdxIdle = idxIdle;
@@ -1022,6 +1031,10 @@ bool App::OnInitialize() {
 			m_->m_CharBaseInTransition = false;
 			m_->m_CharBaseBlendTime = 0.0f;
 			m_->m_CharTimeSec = 0.0f;
+			m_->m_CharBaseTimeSec = 0.0f;
+			m_->m_CharBasePrevTimeSec = 0.0f;
+			m_->m_CharBaseTargetTimeSec = 0.0f;
+			m_->m_CharBaseWaitingExit = false;
 			m_->m_ShootTimer = 0.0f;
 			m_->m_ShootTimeSec = 0.0f;
 
@@ -1218,8 +1231,10 @@ void App::OnUpdate(const float& dt) {
 				reloadHold = ks.IsKeyDown(Keyboard::R);
 			}
 			if (InputSystem::Instance && !ImGui::GetIO().WantCaptureMouse) {
-				fireHold = (InputSystem::Instance->m_MouseState.leftButton != 0);
-				firePressed = (InputSystem::Instance->m_MouseStateTracker.leftButton == Mouse::ButtonStateTracker::PRESSED);
+				//fireHold = (InputSystem::Instance->m_MouseState.leftButton != 0);
+				//firePressed = (InputSystem::Instance->m_MouseStateTracker.leftButton == Mouse::ButtonStateTracker::PRESSED);
+				fireHold = InputSystem::Instance->m_KeyboardState.IsKeyDown(Keyboard::Z);
+				firePressed = InputSystem::Instance->m_KeyboardState.IsKeyDown(Keyboard::Z);
 			}
 
 			// 시간 누적
@@ -1229,27 +1244,106 @@ void App::OnUpdate(const float& dt) {
 			// Locomotion 목표 클립 결정
 			const int desiredBaseIdx = (!move) ? m_->m_CharAnimIdxIdle : (run ? m_->m_CharAnimIdxRun : m_->m_CharAnimIdxWalk);
 
-			// (1) 전환 블렌딩: "전체 블렌딩 시간 대비 누적 시간 비율"로 alpha 계산
-			// - 목표 클립이 바뀌면 (prev -> target) 전환을 시작한다.
-			if (desiredBaseIdx != m_->m_CharBaseTargetIdx) {
-				m_->m_CharBasePrevIdx = m_->m_CharBaseTargetIdx;
-				m_->m_CharBaseTargetIdx = desiredBaseIdx;
+			// =========================================================
+			// [Exit Time + Entry Offset 크로스페이드 (유니티/언리얼 방식)]
+			// =========================================================
+			const aiScene* sc = (alice.shared && alice.shared->fbx) ? alice.shared->fbx->GetScenePtr() : nullptr;
+
+			// 애니메이션 길이/정규화 헬퍼
+			auto AnimLengthSec = [](const aiAnimation* a) -> float {
+				if (!a) return 0.0f;
+				const double tps = (a->mTicksPerSecond != 0.0) ? a->mTicksPerSecond : 25.0;
+				const double durTicks = (a->mDuration > 0.0) ? a->mDuration : 0.0;
+				return (tps > 0.0) ? (float)(durTicks / tps) : 0.0f;
+			};
+
+			auto AnimNormTime01 = [&](const aiAnimation* a, float timeSec) -> float {
+				const float len = AnimLengthSec(a);
+				if (len <= 0.0f) return 0.0f;
+				float t = fmodf(timeSec, len);
+				if (t < 0.0f) t += len;
+				return t / len;
+			};
+
+			auto GetByIdx = [&](int idx) -> const aiAnimation* {
+				if (!sc || idx < 0 || (unsigned)idx >= sc->mNumAnimations) return nullptr;
+				return sc->mAnimations[idx];
+			};
+
+			// 현재 base 시간은 항상 증가(transition 중이면 A/B는 따로 증가)
+			m_->m_CharBaseTimeSec += dt;
+
+			// 전환 시작 함수
+			auto StartBaseTransitionNow = [&]() {
+				const aiAnimation* animFrom = GetByIdx(m_->m_CharBasePrevIdx);
+				const aiAnimation* animTo   = GetByIdx(m_->m_CharBaseTargetIdx);
+
+				// A는 현재 시간에서 시작
+				m_->m_CharBasePrevTimeSec = m_->m_CharBaseTimeSec;
+
+				// B는 entry offset에서 시작
+				const float lenTo = AnimLengthSec(animTo);
+				m_->m_CharBaseTargetTimeSec = (lenTo > 0.0f) ? (m_->m_CharBaseEntryNorm * lenTo) : 0.0f;
+
 				m_->m_CharBaseBlendTime = 0.0f;
 				m_->m_CharBaseInTransition = true;
+				m_->m_CharBaseWaitingExit = false;
+			};
+
+			// 1) 원하는 state가 바뀌었을 때: 즉시 시작 OR exit-time 대기
+			if (!m_->m_CharBaseInTransition && desiredBaseIdx != m_->m_CharBaseTargetIdx) {
+				// 현재를 from으로, desired를 to로 예약
+				m_->m_CharBasePrevIdx = m_->m_CharBaseTargetIdx;
+				m_->m_CharBaseTargetIdx = desiredBaseIdx;
+
+				if (m_->m_CharBaseBlendDuration <= 0.0f) {
+					// duration 0이면 즉시 스위치
+					m_->m_CharBasePrevIdx = m_->m_CharBaseTargetIdx;
+					m_->m_CharBaseInTransition = false;
+					m_->m_CharBaseWaitingExit = false;
+				}
+				else if (m_->m_CharBaseUseExitTime) {
+					m_->m_CharBaseWaitingExit = true; // exitNorm까지 기다림
+				}
+				else {
+					StartBaseTransitionNow(); // 즉시 크로스페이드
+				}
 			}
 
+			// 2) exit-time 대기 중이면: A의 normalized time이 exitNorm 넘는 순간 시작
+			if (!m_->m_CharBaseInTransition && m_->m_CharBaseWaitingExit) {
+				const aiAnimation* animFrom = GetByIdx(m_->m_CharBasePrevIdx);
+				const float norm = AnimNormTime01(animFrom, m_->m_CharBaseTimeSec);
+
+				if (norm >= m_->m_CharBaseExitNorm) {
+					StartBaseTransitionNow();
+				}
+			}
+
+			// 3) transition 진행
 			float baseBlend = 0.0f;
 			if (m_->m_CharBaseInTransition) {
 				m_->m_CharBaseBlendTime += dt;
+
+				// A/B 시간은 각각 따로 진행
+				m_->m_CharBasePrevTimeSec   += dt;
+				m_->m_CharBaseTargetTimeSec += dt;
+
 				const float dur = (m_->m_CharBaseBlendDuration <= 0.0f) ? 0.0001f : m_->m_CharBaseBlendDuration;
-				baseBlend = m_->m_CharBaseBlendTime / dur;
-				if (baseBlend >= 1.0f) {
-					baseBlend = 0.0f; // 전환 완료 후에는 같은 클립 2개로 평가
+				baseBlend = std::clamp(m_->m_CharBaseBlendTime / dur, 0.0f, 1.0f);
+
+				// (선택) 언리얼/유니티 느낌으로 ease in/out
+				baseBlend = baseBlend * baseBlend * (3.0f - 2.0f * baseBlend); // smoothstep
+
+				if (baseBlend >= 1.0f - 1e-5f) {
+					// 전환 완료 → B만 남기기
 					m_->m_CharBaseInTransition = false;
 					m_->m_CharBasePrevIdx = m_->m_CharBaseTargetIdx;
+
+					// 현재 base time을 B의 시간으로 이어받음(=예: 0.3초)
+					m_->m_CharBaseTimeSec = m_->m_CharBaseTargetTimeSec;
+					baseBlend = 0.0f; // 이후엔 단일 애니로 평가
 				}
-				if (baseBlend < 0.0f) baseBlend = 0.0f;
-				if (baseBlend > 1.0f) baseBlend = 1.0f;
 			}
 
 			// UI 표시용(대략적인 locomotion 0..1)
@@ -1282,7 +1376,6 @@ void App::OnUpdate(const float& dt) {
 			}
 
 			// 애니메이션 포인터 획득 (이름 매칭은 UI에서 개선할 예정)
-			const aiScene* sc = (alice.shared && alice.shared->fbx) ? alice.shared->fbx->GetScenePtr() : nullptr;
 			const aiAnimation* animIdle = nullptr;
 			const aiAnimation* animWalk = nullptr;
 			const aiAnimation* animRunA = nullptr;
@@ -1316,17 +1409,10 @@ void App::OnUpdate(const float& dt) {
 			}
 
 			// baseA/baseB: 전환 블렌딩(prev -> target)
-			const aiAnimation* baseA = animIdle;
-			const aiAnimation* baseB = animIdle;
-			if (sc && sc->mNumAnimations > 0) {
-				auto GetByIdx = [&](int idx) -> const aiAnimation* {
-					return (idx >= 0 && (unsigned)idx < sc->mNumAnimations) ? sc->mAnimations[idx] : nullptr;
-				};
-				const aiAnimation* prevA = GetByIdx(m_->m_CharBasePrevIdx);
-				const aiAnimation* tgtB = GetByIdx(m_->m_CharBaseTargetIdx);
-				baseA = prevA ? prevA : animIdle;
-				baseB = tgtB ? tgtB : animIdle;
-			}
+			const aiAnimation* baseA = GetByIdx(m_->m_CharBasePrevIdx);
+			const aiAnimation* baseB = GetByIdx(m_->m_CharBaseTargetIdx);
+			if (!baseA) baseA = animIdle;
+			if (!baseB) baseB = animIdle;
 
 			// 캐릭터 포즈 평가 + 팔레트 업로드
 			// - base: Idle <-> Run
@@ -1366,10 +1452,14 @@ void App::OnUpdate(const float& dt) {
 			const aiAnimation* refAnim = animIdle; // 기준 포즈
 			const float addTime = m_->m_ShootTimeSec;
 
+			// timeA/timeB: transition 중이면 분리된 시간, 아니면 같은 시간
+			float timeA = m_->m_CharBaseInTransition ? m_->m_CharBasePrevTimeSec   : m_->m_CharBaseTimeSec;
+			float timeB = m_->m_CharBaseInTransition ? m_->m_CharBaseTargetTimeSec : m_->m_CharBaseTimeSec;
+
 			m_->m_CharRig.UpdateAnimation(
 				dt,
-				baseA, m_->m_CharTimeSec,
-				baseB, m_->m_CharTimeSec,
+				baseA, timeA,
+				baseB, timeB,
 				baseBlend,
 				animUpper, m_->m_CharTimeSec,
 				addAnim, addTime, refAnim,

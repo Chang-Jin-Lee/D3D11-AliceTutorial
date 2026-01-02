@@ -316,73 +316,88 @@ public:
             }
         };
 
-        auto DecomposeSRT = [&](const XMMATRIX& m, XMVECTOR& outS, XMVECTOR& outR, XMVECTOR& outT) -> bool {
-            // XMMatrixDecompose: outS, outR(quat), outT
-            return XMMatrixDecompose(&outS, &outR, &outT, m) != 0;
+        // =========================================================
+        // [Column-Vector 관례용 행렬 분해/합성]
+        // - Assimp/FBX 행렬은 "translation이 마지막 column" 형태(column-vector 관례)
+        // - XMMatrixDecompose는 "translation이 마지막 row"를 기대하므로 transpose해서 분해
+        // =========================================================
+        auto DecomposeSRT_Col = [&](const XMMATRIX& mCol, XMVECTOR& outS, XMVECTOR& outR, XMVECTOR& outT) -> bool {
+            // Assimp/FBX에서 온 mCol은 "translation이 마지막 column" 형태일 가능성이 높다.
+            // XMMatrixDecompose는 "translation이 마지막 row"를 기대하므로 transpose해서 분해한다.
+            const XMMATRIX mRow = XMMatrixTranspose(mCol);
+            return XMMatrixDecompose(&outS, &outR, &outT, mRow) != 0;
         };
 
-        auto ComposeTRS = [&](XMVECTOR S, XMVECTOR R, XMVECTOR T) -> XMMATRIX {
-            // 기존 시스템과 동일: T * R * S
-            return XMMatrixTranslationFromVector(T) * XMMatrixRotationQuaternion(R) * XMMatrixScalingFromVector(S);
+        auto ComposeSRT_Col = [&](XMVECTOR S, XMVECTOR R, XMVECTOR T) -> XMMATRIX {
+            // row 관례로 합친 다음 다시 transpose해서 column 관례로 돌려준다.
+            const XMMATRIX mRow =
+                XMMatrixScalingFromVector(S) *
+                XMMatrixRotationQuaternion(R) *
+                XMMatrixTranslationFromVector(T);
+            return XMMatrixTranspose(mRow);
         };
 
-        auto BlendMatricesSRT = [&](const XMMATRIX& a, const XMMATRIX& b, float alpha) -> XMMATRIX {
+        auto GetTranslation_Col = [&](const XMMATRIX& mCol) -> XMVECTOR {
+            // column 관례 translation을 row로 바꿔서 row의 r[3]로 꺼내기
+            return XMMatrixTranspose(mCol).r[3];
+        };
+
+        auto BlendMatricesSRT = [&](const XMMATRIX& aCol, const XMMATRIX& bCol, float alpha) -> XMMATRIX {
             alpha = Clamp01(alpha);
             XMVECTOR Sa, Ra, Ta;
             XMVECTOR Sb, Rb, Tb;
-            if (!DecomposeSRT(a, Sa, Ra, Ta)) return (alpha < 0.5f) ? a : b;
-            if (!DecomposeSRT(b, Sb, Rb, Tb)) return (alpha < 0.5f) ? a : b;
+            if (!DecomposeSRT_Col(aCol, Sa, Ra, Ta)) return (alpha < 0.5f) ? aCol : bCol;
+            if (!DecomposeSRT_Col(bCol, Sb, Rb, Tb)) return (alpha < 0.5f) ? aCol : bCol;
             XMVECTOR S = XMVectorLerp(Sa, Sb, alpha);
             XMVECTOR T = XMVectorLerp(Ta, Tb, alpha);
             XMVECTOR R = XMQuaternionSlerp(Ra, Rb, alpha);
             R = XMQuaternionNormalize(R);
-            return ComposeTRS(S, R, T);
+            return ComposeSRT_Col(S, R, T);
         };
 
-        auto ApplyAdditiveSRT = [&](const XMMATRIX& baseM, const XMMATRIX& addM, const XMMATRIX& refM, float alpha) -> XMMATRIX {
+        auto ApplyAdditiveSRT = [&](const XMMATRIX& baseCol, const XMMATRIX& addCol, const XMMATRIX& refCol, float alpha) -> XMMATRIX {
             alpha = Clamp01(alpha);
+            if (alpha <= 0.0001f) return baseCol;
             XMVECTOR Sb, Rb, Tb;
             XMVECTOR Sa, Ra, Ta;
             XMVECTOR Sr, Rr, Tr;
-            if (!DecomposeSRT(baseM, Sb, Rb, Tb)) return baseM;
-            if (!DecomposeSRT(addM, Sa, Ra, Ta)) return baseM;
-            if (!DecomposeSRT(refM, Sr, Rr, Tr)) return baseM;
+            if (!DecomposeSRT_Col(baseCol, Sb, Rb, Tb)) return baseCol;
+            if (!DecomposeSRT_Col(addCol,  Sa, Ra, Ta)) return baseCol;
+            if (!DecomposeSRT_Col(refCol,  Sr, Rr, Tr)) return baseCol;
 
-            // deltaT = (add - ref), deltaS = (add - ref)
             XMVECTOR deltaT = XMVectorSubtract(Ta, Tr);
-            XMVECTOR deltaS = XMVectorSubtract(Sa, Sr);
+            XMVECTOR outT = XMVectorAdd(Tb, XMVectorScale(deltaT, alpha));
 
-            // deltaR = add * inverse(ref)
             XMVECTOR invRefR = XMQuaternionInverse(Rr);
             XMVECTOR deltaR = XMQuaternionMultiply(Ra, invRefR);
             deltaR = XMQuaternionNormalize(deltaR);
 
-            // 적용: base + alpha * delta
-            XMVECTOR outT = XMVectorAdd(Tb, XMVectorScale(deltaT, alpha));
-            XMVECTOR outS = XMVectorAdd(Sb, XMVectorScale(deltaS, alpha));
-
-            // rotation: baseR * slerp(I, deltaR, alpha)
             XMVECTOR deltaApplied = XMQuaternionSlerp(XMQuaternionIdentity(), deltaR, alpha);
             XMVECTOR outR = XMQuaternionMultiply(deltaApplied, Rb);
             outR = XMQuaternionNormalize(outR);
 
-            return ComposeTRS(outS, outR, outT);
+            // scale은 필요하면 같이(지금은 선택)
+            XMVECTOR outS = Sb;
+
+            return ComposeSRT_Col(outS, outR, outT);
         };
 
-        auto ApplyProceduralNoiseToMatrix = [&](const XMMATRIX& inM, int idx, float time, float strength, uint32_t seedV) -> XMMATRIX {
-            if (strength <= 0.0f) return inM;
+        auto ApplyProceduralNoiseToMatrix = [&](const XMMATRIX& inCol, int idx, float time, float strength, uint32_t seedV) -> XMMATRIX {
+            if (strength <= 0.0f) return inCol;
             XMVECTOR S, R, T;
-            if (!DecomposeSRT(inM, S, R, T)) return inM;
+            if (!DecomposeSRT_Col(inCol, S, R, T)) return inCol;
 
             auto Hash = [](uint32_t x) { x ^= x << 13; x ^= x >> 17; return (float)(x & 0xFFFF) / 65536.0f; };
             uint32_t h = (uint32_t)idx * 12345 + seedV;
             float rx = sinf(time * 10.0f + Hash(h) * 6.28f) * strength * 0.05f;
-            float ry = sinf(time * 7.0f + Hash(h + 1) * 6.28f) * strength * 0.05f;
+            float ry = sinf(time * 7.0f  + Hash(h + 1) * 6.28f) * strength * 0.05f;
             float rz = sinf(time * 13.0f + Hash(h + 2) * 6.28f) * strength * 0.05f;
+
             XMVECTOR deltaR = XMQuaternionRotationRollPitchYaw(rx, ry, rz);
             R = XMQuaternionMultiply(deltaR, R);
             R = XMQuaternionNormalize(R);
-            return ComposeTRS(S, R, T);
+
+            return ComposeSRT_Col(S, R, T);
         };
 
         auto ComputeGlobalsFromLocals = [&](const std::vector<XMMATRIX>& locals, std::vector<XMMATRIX>& outGlobals) {
@@ -437,19 +452,19 @@ public:
         }
 
         // --------- 3) 애디티브(예: Shoot 반동/상체 보정) ---------
-        if (animAdd && animRef) {
-            std::vector<XMMATRIX> localsAdd, localsRef;
-            std::vector<uint8_t> hasAdd, hasRef;
-            EvalLocals(animAdd, timeAdd, localsAdd, hasAdd);
-            EvalLocals(animRef, 0.0f, localsRef, hasRef);
+		if (animAdd && animRef) {
+			std::vector<XMMATRIX> localsAdd, localsRef;
+			std::vector<uint8_t> hasAdd, hasRef;
+			EvalLocals(animAdd, timeAdd, localsAdd, hasAdd);
+			EvalLocals(animRef, 0.0f, localsRef, hasRef);
 
-            for (size_t i = 0; i < nodeCount; ++i) {
-                // 보통 상체에만 적용 (필요하면 App.cpp에서 마스크/강도를 조절)
-                if (!IsUpperBody(m_NodeNames[i])) continue;
-                if (!hasAdd[i]) continue; // 애디티브 채널이 없는 노드는 스킵 (bind 보존)
-                localsFinal[i] = ApplyAdditiveSRT(localsFinal[i], localsAdd[i], localsRef[i], 1.0f);
-            }
-        }
+			for (size_t i = 0; i < nodeCount; ++i) {
+				// 보통 상체에만 적용 (필요하면 App.cpp에서 마스크/강도를 조절)
+				if (!IsUpperBody(m_NodeNames[i])) continue;
+				if (!hasAdd[i]) continue; // 애디티브 채널이 없는 노드는 스킵 (bind 보존)
+				localsFinal[i] = ApplyAdditiveSRT(localsFinal[i], localsAdd[i], localsRef[i], 1.0f);
+			}
+		}
 
         // --------- 4) 절차적 흔들림(노이즈) ---------
         if (proceduralRecoil > 0.0f) {
@@ -475,12 +490,12 @@ public:
                     std::vector<XMMATRIX> globals;
                     ComputeGlobalsFromLocals(localsFinal, globals);
 
-                    XMVECTOR effectorPos = globals[(size_t)tipIdx].r[3];
+                    XMVECTOR effectorPos = GetTranslation_Col(globals[(size_t)tipIdx]);
                     for (size_t ci = 1; ci < chain.size(); ++ci) {
                         const int jointIdx = chain[ci];
                         const int pIdx = (jointIdx >= 0) ? m_NodeParents[(size_t)jointIdx] : -1;
 
-                        XMVECTOR jointPos = globals[(size_t)jointIdx].r[3];
+                        XMVECTOR jointPos = GetTranslation_Col(globals[(size_t)jointIdx]);
                         XMVECTOR toEff = XMVector3Normalize(XMVectorSubtract(effectorPos, jointPos));
                         XMVECTOR toTar = XMVector3Normalize(XMVectorSubtract(ikTarget, jointPos));
 
@@ -502,15 +517,15 @@ public:
 
                         // joint local을 SRT로 분해 -> R만 갱신
                         XMVECTOR S, R, T;
-                        if (!DecomposeSRT(localsFinal[(size_t)jointIdx], S, R, T)) continue;
+                        if (!DecomposeSRT_Col(localsFinal[(size_t)jointIdx], S, R, T)) continue;
                         XMVECTOR qDelta = XMQuaternionRotationAxis(axisLS, angle);
                         R = XMQuaternionMultiply(qDelta, R);
                         R = XMQuaternionNormalize(R);
-                        localsFinal[(size_t)jointIdx] = ComposeTRS(S, R, T);
+                        localsFinal[(size_t)jointIdx] = ComposeSRT_Col(S, R, T);
 
                         // 업데이트된 상태에서 effector 재계산
                         ComputeGlobalsFromLocals(localsFinal, globals);
-                        effectorPos = globals[(size_t)tipIdx].r[3];
+                        effectorPos = GetTranslation_Col(globals[(size_t)tipIdx]);
                     }
                 };
 
@@ -598,10 +613,6 @@ public:
     ID3D11Buffer* GetBoneCB() const { return m_pBoneBuffer.Get(); }
 
 private:
-    // -----------------------------------------------------------------
-    // [내부 로직 함수들] - 람다 제거됨
-    // -----------------------------------------------------------------
-
     // aiMatrix4x4 -> XMMATRIX (분해/재조합 없이 원본 행렬을 그대로 사용)
     static XMMATRIX AiToXM(const aiMatrix4x4& m) {
         XMFLOAT4X4 fm;
@@ -844,7 +855,15 @@ private:
 
     // 마스크 (상체 판별)
     bool IsUpperBody(const std::string& name) {
-        const char* keys[] = { "Spine", "Neck", "Head", "Arm", "Hand", "Weapon" };
+        const char* keys[] = {
+            "Spine", "Neck", "Head", "Arm", "Hand", "Weapon",
+            "上半身", // Spine / Upper Body
+            "首",     // Neck
+            "頭",     // Head
+            "腕",     // Arm
+            "手",     // Hand
+            "武器"    // Weapon
+        };
         for (auto k : keys) if (name.find(k) != std::string::npos) return true;
         return false;
     }
