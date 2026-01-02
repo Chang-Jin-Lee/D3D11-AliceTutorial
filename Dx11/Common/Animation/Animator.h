@@ -7,7 +7,7 @@
 #include <cmath>
 #include <cstdint>
 #include <DirectXMath.h>
-#include <assimp/scene.h>
+#include <assimp/scene.h> 
 #include <d3d11.h>
 #include <wrl/client.h>
 
@@ -51,7 +51,7 @@ struct TransformSRT {
     // 2. 애디티브 연산: Current + (Add - Ref) * Alpha
     static TransformSRT Additive(const TransformSRT& current, const TransformSRT& add, const TransformSRT& ref, float alpha) {
         if (alpha <= 0.001f) return current;
-
+        
         TransformSRT res = current;
 
         // 위치: (Add - Ref) * Alpha 더하기
@@ -131,6 +131,59 @@ public:
     // 외부에서 접근 가능한 최종 행렬 (렌더링용)
     std::vector<XMMATRIX> finalTransforms;
 
+    // ======================= [NEW] UpdateDesc로 파라미터 구조화 =======================
+    struct LayerBlendDesc
+    {
+        bool enabled = false;
+
+        const aiAnimation* animA = nullptr;
+        float timeA = 0.0f;
+
+        const aiAnimation* animB = nullptr;
+        float timeB = 0.0f;
+
+        float blend01 = 0.0f;      // A->B 크로스페이드(0..1)
+        float layerAlpha = 1.0f;   // "base 위에 upper를 얼마나 덮을지" 같은 가중치(0..1)
+    };
+
+    struct AdditiveDesc
+    {
+        bool enabled = false;
+
+        const aiAnimation* anim = nullptr;
+        float time = 0.0f;
+
+        const aiAnimation* ref = nullptr; // 기준(보통 Idle t=0)
+        float alpha = 1.0f;               // additive 강도(0..1)
+    };
+
+    struct ProceduralDesc
+    {
+        float strength = 0.0f;
+        uint32_t seed = 0u;
+        float timeSec = 0.0f; // 노이즈 시간축(보통 누적시간)
+    };
+
+    struct IKDesc
+    {
+        bool enabled = false;
+        const char* tipBone = nullptr;
+        int chainLen = 0;
+        XMVECTOR targetMS = XMVectorZero();
+        float weight = 0.0f;
+    };
+
+    struct UpdateDesc
+    {
+        float dt = 0.0f;
+
+        LayerBlendDesc base;     // 필수에 가깝다
+        LayerBlendDesc upper;    // 선택(상체 레이어)
+        AdditiveDesc   additive; // 선택(애디티브)
+        ProceduralDesc procedural;
+        IKDesc         ik;
+    };
+
     // -----------------------------------------------------------------
     // [초기화]
     // -----------------------------------------------------------------
@@ -184,8 +237,9 @@ public:
     // -----------------------------------------------------------------
     // [메인 업데이트]
     // -----------------------------------------------------------------
+    // [기존 호환용 래퍼]
     void UpdateAnimation(
-        float dt,
+        float dt, 
         const aiAnimation* animA, float timeA,
         const aiAnimation* animB, float timeB,
         float blendFactor,
@@ -195,6 +249,42 @@ public:
         float proceduralRecoil = 0.0f, uint32_t seed = 0,              // 절차적 흔들림
         bool enableIK = false, const char* ikTipBone = nullptr, int chainLen = 0, XMVECTOR ikTarget = XMVectorZero(), float ikWeight = 0.0f
     ) {
+        // 기존 호환용 래퍼: UpdateDesc로 변환해서 Update 호출
+        UpdateDesc d{};
+        d.dt = dt;
+
+        d.base.enabled = true;
+        d.base.animA = animA; d.base.timeA = timeA;
+        d.base.animB = animB; d.base.timeB = timeB;
+        d.base.blend01 = blendFactor;
+        d.base.layerAlpha = 1.0f;
+
+        d.upper.enabled = (animUpper != nullptr);
+        d.upper.animA = animUpper; d.upper.timeA = timeUpper;
+        d.upper.animB = nullptr;   d.upper.timeB = 0.0f;
+        d.upper.blend01 = 0.0f;
+        d.upper.layerAlpha = 0.95f; // 기존 고정값 보존
+
+        d.additive.enabled = (animAdd && animRef);
+        d.additive.anim = animAdd; d.additive.time = timeAdd;
+        d.additive.ref = animRef;
+        d.additive.alpha = 1.0f;    // 기존 고정값 보존
+
+        d.procedural.strength = proceduralRecoil;
+        d.procedural.seed = seed;
+        d.procedural.timeSec = timeA;
+
+        d.ik.enabled = enableIK;
+        d.ik.tipBone = ikTipBone;
+        d.ik.chainLen = chainLen;
+        d.ik.targetMS = ikTarget;
+        d.ik.weight = ikWeight;
+
+        Update(d);
+    }
+
+    // [NEW] 진짜 본체 Update(UpdateDesc) 구현
+    void Update(const UpdateDesc& d) {
         if (m_NodePtrs.empty()) return;
 
         // =========================================================
@@ -207,15 +297,15 @@ public:
         //     final = Gi * global(node) * Off
         // =========================================================
         const bool isSimpleSingleAnim =
-            (animA == animB) &&
-            (blendFactor == 0.0f) &&
-            (animUpper == nullptr) &&
-            (animAdd == nullptr) &&
-            (animRef == nullptr) &&
-            (proceduralRecoil == 0.0f) &&
-            (!enableIK);
+            (d.base.enabled) &&
+            (d.base.animA == d.base.animB) &&
+            (d.base.blend01 == 0.0f) &&
+            (!d.upper.enabled) &&
+            (!d.additive.enabled) &&
+            (d.procedural.strength == 0.0f) &&
+            (!d.ik.enabled);
         if (isSimpleSingleAnim) {
-            EvaluateLikeFbxAnimation(animA, timeA);
+            EvaluateLikeFbxAnimation(d.base.animA, d.base.timeA);
 
             // 팔레트 계산
             XMMATRIX mGlobalInv = XMLoadFloat4x4(&m_GlobalInverse);
@@ -251,7 +341,7 @@ public:
 
         const size_t nodeCount = m_NodePtrs.size();
         auto Clamp01 = [](float x) { return std::clamp(x, 0.0f, 1.0f); };
-        const float baseBlend = Clamp01(blendFactor);
+        const float baseBlend = Clamp01(d.base.blend01);
 
         // --------- local 평가 (FbxAnimation과 동일 규칙) ---------
         auto BuildChannelMap = [&](const aiAnimation* anim, std::vector<const aiNodeAnim*>& outChOfNode) {
@@ -418,8 +508,15 @@ public:
         // --------- 1) 베이스(Idle/Walk/Run) 평가 + 전환 블렌딩 ---------
         std::vector<XMMATRIX> localsA, localsB;
         std::vector<uint8_t> hasA, hasB;
-        EvalLocals(animA, timeA, localsA, hasA);
-        EvalLocals(animB, timeB, localsB, hasB);
+        if (d.base.enabled) {
+            EvalLocals(d.base.animA, d.base.timeA, localsA, hasA);
+            EvalLocals(d.base.animB, d.base.timeB, localsB, hasB);
+        } else {
+            localsA.assign(nodeCount, XMMatrixIdentity());
+            localsB.assign(nodeCount, XMMatrixIdentity());
+            hasA.assign(nodeCount, 0);
+            hasB.assign(nodeCount, 0);
+        }
 
         std::vector<XMMATRIX> localsFinal(nodeCount, XMMatrixIdentity());
         for (size_t i = 0; i < nodeCount; ++i) {
@@ -438,50 +535,89 @@ public:
             }
         }
 
-        // --------- 2) 상체 레이어(마스크) ---------
-        if (animUpper) {
-            std::vector<XMMATRIX> localsU;
-            std::vector<uint8_t> hasU;
-            EvalLocals(animUpper, timeUpper, localsU, hasU);
+        // --------- 2) 상체 레이어(마스크) + Upper 크로스페이드 ---------
+        if (d.upper.enabled && (d.upper.animA || d.upper.animB) && d.upper.layerAlpha > 0.0001f)
+        {
+            // upper A 평가
+            std::vector<XMMATRIX> localsUA;
+            std::vector<uint8_t> hasUA;
+            if (d.upper.animA) {
+                EvalLocals(d.upper.animA, d.upper.timeA, localsUA, hasUA);
+            } else {
+                localsUA.assign(nodeCount, XMMatrixIdentity());
+                hasUA.assign(nodeCount, 0);
+            }
 
-            for (size_t i = 0; i < nodeCount; ++i) {
+            // upper B 평가(필요할 때만)
+            std::vector<XMMATRIX> localsUB;
+            std::vector<uint8_t> hasUB;
+            const bool upperHasB = (d.upper.animB != nullptr) && (d.upper.blend01 > 0.0001f);
+            if (upperHasB) {
+                EvalLocals(d.upper.animB, d.upper.timeB, localsUB, hasUB);
+            } else {
+                localsUB.assign(nodeCount, XMMatrixIdentity());
+                hasUB.assign(nodeCount, 0);
+            }
+
+            const float upperBlend = Clamp01(d.upper.blend01);
+            const float upperAlpha = Clamp01(d.upper.layerAlpha);
+
+            for (size_t i = 0; i < nodeCount; ++i)
+            {
                 if (!IsUpperBody(m_NodeNames[i])) continue;
-                if (!hasU[i]) continue; // 상체 애니메이션 채널이 없는 노드는 건드리지 않는다(=bind 유지)
-                localsFinal[i] = BlendMatricesSRT(localsFinal[i], localsU[i], 0.95f);
+
+                // upper에 채널이 없는 노드는 건드리지 않는다(bind 유지)
+                const bool aHas = (i < hasUA.size()) ? (hasUA[i] != 0) : false;
+                const bool bHas = upperHasB ? ((i < hasUB.size()) ? (hasUB[i] != 0) : false) : false;
+
+                if (!aHas && !bHas) continue;
+
+                XMMATRIX upperLocal = localsUA[i];
+                if (upperHasB)
+                {
+                    if (!aHas) upperLocal = localsUB[i];
+                    else if (!bHas) upperLocal = localsUA[i];
+                    else upperLocal = BlendMatricesSRT(localsUA[i], localsUB[i], upperBlend);
+                }
+
+                // base 위에 upper를 upperAlpha만큼 덮는다
+                localsFinal[i] = BlendMatricesSRT(localsFinal[i], upperLocal, upperAlpha);
             }
         }
 
         // --------- 3) 애디티브(예: Shoot 반동/상체 보정) ---------
-		if (animAdd && animRef) {
+		if (d.additive.enabled && d.additive.anim && d.additive.ref) {
 			std::vector<XMMATRIX> localsAdd, localsRef;
 			std::vector<uint8_t> hasAdd, hasRef;
-			EvalLocals(animAdd, timeAdd, localsAdd, hasAdd);
-			EvalLocals(animRef, 0.0f, localsRef, hasRef);
+			EvalLocals(d.additive.anim, d.additive.time, localsAdd, hasAdd);
+			EvalLocals(d.additive.ref, 0.0f, localsRef, hasRef);
+
+			const float addAlpha = Clamp01(d.additive.alpha);
 
 			for (size_t i = 0; i < nodeCount; ++i) {
 				// 보통 상체에만 적용 (필요하면 App.cpp에서 마스크/강도를 조절)
 				if (!IsUpperBody(m_NodeNames[i])) continue;
 				if (!hasAdd[i]) continue; // 애디티브 채널이 없는 노드는 스킵 (bind 보존)
-				localsFinal[i] = ApplyAdditiveSRT(localsFinal[i], localsAdd[i], localsRef[i], 1.0f);
+				localsFinal[i] = ApplyAdditiveSRT(localsFinal[i], localsAdd[i], localsRef[i], addAlpha);
 			}
 		}
 
         // --------- 4) 절차적 흔들림(노이즈) ---------
-        if (proceduralRecoil > 0.0f) {
+        if (d.procedural.strength > 0.0f) {
             for (size_t i = 0; i < nodeCount; ++i) {
                 if (!IsUpperBody(m_NodeNames[i])) continue;
-                localsFinal[i] = ApplyProceduralNoiseToMatrix(localsFinal[i], (int)i, timeA, proceduralRecoil, seed);
+                localsFinal[i] = ApplyProceduralNoiseToMatrix(localsFinal[i], (int)i, d.procedural.timeSec, d.procedural.strength, d.procedural.seed);
             }
         }
 
         // --------- 5) IK (간단 CCD: localsFinal을 직접 수정) ---------
-        if (enableIK && ikTipBone && m_NodeIndexMap && m_NodeIndexMap->count(ikTipBone)) {
-            const int tipIdx = m_NodeIndexMap->at(ikTipBone);
-            if (tipIdx >= 0 && (size_t)tipIdx < nodeCount && chainLen > 0 && ikWeight > 0.0f) {
+        if (d.ik.enabled && d.ik.tipBone && m_NodeIndexMap && m_NodeIndexMap->count(d.ik.tipBone)) {
+            const int tipIdx = m_NodeIndexMap->at(d.ik.tipBone);
+            if (tipIdx >= 0 && (size_t)tipIdx < nodeCount && d.ik.chainLen > 0 && d.ik.weight > 0.0f) {
                 // 체인 구성: tip -> parent ...
                 std::vector<int> chain;
                 int curr = tipIdx;
-                for (int i = 0; i <= chainLen && curr != -1; ++i) {
+                for (int i = 0; i <= d.ik.chainLen && curr != -1; ++i) {
                     chain.push_back(curr);
                     curr = m_NodeParents[(size_t)curr];
                 }
@@ -497,7 +633,7 @@ public:
 
                         XMVECTOR jointPos = GetTranslation_Col(globals[(size_t)jointIdx]);
                         XMVECTOR toEff = XMVector3Normalize(XMVectorSubtract(effectorPos, jointPos));
-                        XMVECTOR toTar = XMVector3Normalize(XMVectorSubtract(ikTarget, jointPos));
+                        XMVECTOR toTar = XMVector3Normalize(XMVectorSubtract(d.ik.targetMS, jointPos));
 
                         float dot = XMVectorGetX(XMVector3Dot(toEff, toTar));
                         if (dot > 0.999f) continue;
@@ -505,7 +641,7 @@ public:
 
                         XMVECTOR axisWS = XMVector3Cross(toEff, toTar);
                         axisWS = XMVector3Normalize(axisWS);
-                        float angle = acosf(dot) * ikWeight;
+                        float angle = acosf(dot) * d.ik.weight;
 
                         // World axis -> parent space axis (로컬 회전 갱신용)
                         XMVECTOR axisLS = axisWS;

@@ -120,6 +120,9 @@
     <ClInclude Include="Animation\Animator.h">
       <Filter>Animation</Filter>
     </ClInclude>
+    <ClInclude Include="Animation\CharacterAnimController.h">
+      <Filter>Animation</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Common.cpp">

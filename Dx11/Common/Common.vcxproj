@@ -138,6 +138,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="Animation\Animator.h" />
+    <ClInclude Include="Animation\CharacterAnimController.h" />
     <ClInclude Include="AssetManager.h" />
     <ClInclude Include="BaseObject.h" />
     <ClInclude Include="Camera.h" />
