@@ -165,6 +165,106 @@ struct SharedModelData {
 };
 
 // 여러 모델을 그리기 위한 구조체
+// SoundBox 구조체 (영역 기반 BGM 재생)
+struct SoundBox
+{
+	std::wstring bgmKey;      // 이 구역에서 틀어야 할 BGM 키
+
+	// Transform 정보
+	XMFLOAT3 position = { 0, 0, 0 };
+	XMFLOAT3 scale = { 1, 1, 1 };
+
+	// Local AABB (기본 크기)
+	XMFLOAT3 boundsMin = { -10.0f, -10.0f, -10.0f };
+	XMFLOAT3 boundsMax = { 10.0f, 10.0f, 10.0f };
+
+	// 플레이어가 내부에 있는지 확인하는 함수
+	bool Contains(const XMFLOAT3& playerPos) const
+	{
+		// 1. Local AABB -> World AABB 변환
+		XMFLOAT3 worldMin, worldMax;
+
+		float x0 = boundsMin.x * scale.x + position.x;
+		float x1 = boundsMax.x * scale.x + position.x;
+		worldMin.x = std::min(x0, x1);
+		worldMax.x = (std::max)(x0, x1);
+
+		float y0 = boundsMin.y * scale.y + position.y;
+		float y1 = boundsMax.y * scale.y + position.y;
+		worldMin.y = std::min(y0, y1);
+		worldMax.y = (std::max)(y0, y1);
+
+		float z0 = boundsMin.z * scale.z + position.z;
+		float z1 = boundsMax.z * scale.z + position.z;
+		worldMin.z = std::min(z0, z1);
+		worldMax.z = (std::max)(z0, z1);
+
+		// 2. Point(플레이어) vs AABB(박스) 충돌 검사
+		if (playerPos.x >= worldMin.x && playerPos.x <= worldMax.x &&
+			playerPos.y >= worldMin.y && playerPos.y <= worldMax.y &&
+			playerPos.z >= worldMin.z && playerPos.z <= worldMax.z)
+		{
+			return true;
+		}
+
+		return false;
+	}
+};
+
+// SoundBox 시스템
+class SoundBoxSystem
+{
+private:
+	std::vector<SoundBox> m_SoundBoxes;
+
+public:
+	void AddBox(const SoundBox& box)
+	{
+		m_SoundBoxes.push_back(box);
+	}
+
+	void Clear()
+	{
+		m_SoundBoxes.clear();
+	}
+
+	// 매 프레임 호출
+	void Update(const XMFLOAT3& playerPos)
+	{
+		std::wstring targetBGM = L"";
+		bool insideAnyBox = false;
+
+		// 모든 박스를 순회하며 플레이어가 내부에 있는지 확인
+		for (const auto& box : m_SoundBoxes)
+		{
+			if (box.Contains(playerPos))
+			{
+				targetBGM = box.bgmKey;
+				insideAnyBox = true;
+				// 가장 먼저 발견된 박스를 우선시
+				break;
+			}
+		}
+
+		// 박스 안에 들어왔고, 재생해야 할 BGM이 현재 BGM과 다르다면 교체
+		if (insideAnyBox && !targetBGM.empty())
+		{
+			if (Sound::GetCurrentBGMKey() != targetBGM)
+			{
+				Sound::PlayBGM(targetBGM);
+			}
+		}
+		else
+		{
+			// 박스 밖에 있으면 BGM을 유지 (또는 원하면 StopBGM 호출)
+			Sound::StopBGM();
+		}
+	}
+
+	const std::vector<SoundBox>& GetBoxes() const { return m_SoundBoxes; }
+	std::vector<SoundBox>& GetBoxes() { return m_SoundBoxes; }
+};
+
 struct ModelEntry {
 	std::wstring modelName{ L"" };
 	ModelSource source = ModelSource::Custom; // 공유 데이터 동일 경로 모델끼리
@@ -567,8 +667,11 @@ struct App::Impl {
 
 	// FMOD 오디오 데모용 상태 (전역 오디오 컨트롤)
 	std::wstring m_AudioPath;
-	std::wstring m_AudioKey; // 사운드 매니저에서 사용할 key
+	std::wstring m_AudioKey; // 사운드 매니저에서 사용할 key. mmd 스타일로 실행할 그 버튼
 	bool m_AudioLoaded = false;
+
+	// SoundBox 시스템
+	SoundBoxSystem m_SoundBoxSystem;
 
 	// 큐브 각 면 텍스처 Diffuse/Normal/Specular
 	ID3D11ShaderResourceView* m_pCubeTextureSRVs[6] = { nullptr, nullptr, nullptr,
@@ -900,8 +1003,7 @@ bool App::OnInitialize() {
 
 	AssetManager::Create();
 
-	// 데이터 로딩은 별도 스레드에서 시작
-	// 람다 대신 멤버 함수 포인터 사용 (&클래스명::함수명, 객체포인터)
+	// 데이터 로딩은 별도 스레드에서 시작 
 	m_loaderThread = std::jthread([this](std::stop_token st)
 	{
 		LoadDataAsync(st);
@@ -921,15 +1023,27 @@ void App::LoadDataAsync(std::stop_token stoken)
 	}
 	else {
 		m_->PushLog("[OK] FMOD initialized");
-		// SFX 로드(경로는 프로젝트에 맞게 조정)
+		// SFX 로드 
 		Sound::Load(L"Walk", L"..\\Resource\\Sound\\Walk.mp3", Sound::Type::SFX);
 		Sound::Load(L"RunVoice", L"..\\Resource\\Sound\\Run_voice.mp3", Sound::Type::SFX);
 		Sound::Load(L"Shoot", L"..\\Resource\\Sound\\Shoot.mp3", Sound::Type::SFX);
 		Sound::Load(L"ShootCharged", L"..\\Resource\\Sound\\ShootCharged.mp3", Sound::Type::SFX);
 		Sound::Load(L"Reload", L"..\\Resource\\Sound\\Reload.mp3", Sound::Type::SFX);
 		Sound::Load(L"LetItHappen", L"..\\Resource\\Sound\\LetItHappen.mp3", Sound::Type::BGM);
+		Sound::Load(L"test", L"..\\Resource\\Sound\\test.wav", Sound::Type::SFX);
 
+		// SoundBox 예제 추가 (테스트용)
+		// SoundBox는 영역에 들어가면 자동으로 BGM이 재생되므로 초기 PlayBGM은 제거
 		Sound::PlayBGM(L"LetItHappen");
+		
+		// 예제 SoundBox 생성 (원점 주변 10x10x10 영역)
+		SoundBox box1;
+		box1.bgmKey = L"LetItHappen";
+		box1.position = { 0.0f, 50.0f, 0.0f };
+		box1.scale = { 10.0f, 10.0f, 10.0f };
+		box1.boundsMin = { -10.0f, -10.0f, -10.0f };
+		box1.boundsMax = { 10.0f, 10.0f, 10.0f };
+		m_->m_SoundBoxSystem.AddBox(box1);
 	}
 	m_fLoadingProgress = 0.1f;
 
@@ -1243,6 +1357,43 @@ void App::OnUpdate(const float& dt) {
 		}
 		return;
 	}
+
+	// ====================================== 사운드 중첩 재생 테스트 (1, 2, 3 숫자 키) ======================================
+	if (InputSystem::Instance)
+	{
+		// 1 키: test.wav를 중첩 재생 (새로운 채널로 계속 추가)
+		if (InputSystem::Instance->m_KeyboardStateTracker.IsKeyPressed(Keyboard::Keys::D1))
+		{
+			Sound::PlaySFX(L"test");
+			m_->PushLog("[Sound] test.mp3 started (overlap play)");
+		}
+		// 2 키: 현재 재생 중인 모든 SFX 정지 (BGM은 계속 재생)
+		if (InputSystem::Instance->m_KeyboardStateTracker.IsKeyPressed(Keyboard::Keys::D2))
+		{
+			Sound::StopAllSFX();
+			m_->PushLog("[Sound] All SFX stopped");
+		}
+		// 3 키: BGM 정지
+		if (InputSystem::Instance->m_KeyboardStateTracker.IsKeyPressed(Keyboard::Keys::D3))
+		{
+			Sound::StopLastSFX();
+			m_->PushLog("[Sound] Last SFX stopped");
+		}
+	}
+
+	// ====================================== SoundBox 시스템 업데이트 ======================================
+	// 플레이어 캐릭터 위치를 가져와서 SoundBox 업데이트
+	if (!m_->m_Models.empty())
+	{
+		const int ci = 0; // 첫 번째 모델을 플레이어로 가정
+		if (ci >= 0 && ci < (int)m_->m_Models.size())
+		{
+			auto& alice = *m_->m_Models[(size_t)ci];
+			XMFLOAT3 playerPos = alice.pos;
+			m_->m_SoundBoxSystem.Update(playerPos);
+		}
+	}
+
 	// Shadow light view-projection (directional, orthographic, scene-anchored
 	// with texel snapping)
 	auto UpdateShadow = [this](XMFLOAT3& focusF) {
@@ -1433,7 +1584,7 @@ void App::OnUpdate(const float& dt) {
 
 				if (!ImGui::GetIO().WantCaptureMouse)
 				{
-					// 예전거 one-shot fire (keep commented)
+					// 예전거 라이플 one-shot fire (keep commented)
 					// input.firePressed = inStance &&
 					//     (mt.leftButton == Mouse::ButtonStateTracker::PRESSED);
 
@@ -1496,7 +1647,7 @@ void App::OnUpdate(const float& dt) {
 				{
 					// 발자국 루프 재생(이미 재생 중이면 유지)
 					float pitch = input.run ? m_->m_CharRunMul : 1.0f;
-					// loop=true: 이미 재생 중이면 재시작하지 않음 (루프 유지)
+					// loop=true: 이미 재생 중이면 재시작하지 않음 루프는 유지함
 					Sound::PlaySFX(L"Walk", 0.9f, pitch, true);
 
 					// 달리기 시작 순간 목소리 1회
@@ -1986,7 +2137,7 @@ void App::PassDebugDraw()
 	{
 		// AABB 계산 및 그리기
 
-		if (!mdlPtr->boundsValid && mdlPtr->shared && mdlPtr->shared->vb ) { 
+		if (!mdlPtr->boundsValid && mdlPtr->shared ) { 
 			// AABB 계산 로직 
 			XMFLOAT3 mn, mx;
 			if (ComputeLocalAABB(m_->m_pDevice, m_->m_pDeviceContext, mdlPtr->shared->vb, mdlPtr->shared->stride, mn, mx))
@@ -2139,6 +2290,86 @@ void App::PassDebugDraw()
 			// VS/IL/b1 복원
 			if (prevVS) { m_->m_pDeviceContext->VSSetShader(prevVS, nullptr, 0); prevVS->Release(); }
 			if (prevVSb1) { m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &prevVSb1); prevVSb1->Release(); }
+			if (prevIL) { m_->m_pDeviceContext->IASetInputLayout(prevIL); prevIL->Release(); }
+		}
+	}
+
+	// ====================================== SoundBox 디버그 드로우 ======================================
+	if (m_->m_LineRenderer && m_->m_pLineVS && m_->m_pLineInputLayout)
+	{
+		const auto& soundBoxes = m_->m_SoundBoxSystem.GetBoxes();
+		for (const auto& box : soundBoxes)
+		{
+			// SoundBox의 World AABB 계산
+			XMFLOAT3 worldMin, worldMax;
+
+			float x0 = box.boundsMin.x * box.scale.x + box.position.x;
+			float x1 = box.boundsMax.x * box.scale.x + box.position.x;
+			worldMin.x = std::min(x0, x1);
+			worldMax.x = (std::max)(x0, x1);
+
+			float y0 = box.boundsMin.y * box.scale.y + box.position.y;
+			float y1 = box.boundsMax.y * box.scale.y + box.position.y;
+			worldMin.y = std::min(y0, y1);
+			worldMax.y = (std::max)(y0, y1);
+
+			float z0 = box.boundsMin.z * box.scale.z + box.position.z;
+			float z1 = box.boundsMax.z * box.scale.z + box.position.z;
+			worldMin.z = std::min(z0, z1);
+			worldMax.z = (std::max)(z0, z1);
+
+			// World AABB의 8개 코너 계산
+			XMFLOAT3 corners[8] = {
+				{worldMin.x, worldMin.y, worldMin.z}, {worldMax.x, worldMin.y, worldMin.z},
+				{worldMax.x, worldMin.y, worldMax.z}, {worldMin.x, worldMin.y, worldMax.z},
+				{worldMin.x, worldMax.y, worldMin.z}, {worldMax.x, worldMax.y, worldMin.z},
+				{worldMax.x, worldMax.y, worldMax.z}, {worldMin.x, worldMax.y, worldMax.z}
+			};
+
+			// SoundBox는 빨간색으로 그리기 (모델 AABB와 구분)
+			XMFLOAT4 boxColor = XMFLOAT4(1, 0, 0, 1); // 빨간색
+
+			// 라인 VS/IL 바인딩 저장
+			ID3D11VertexShader* prevVS = nullptr;
+			m_->m_pDeviceContext->VSGetShader(&prevVS, nullptr, nullptr);
+			ID3D11InputLayout* prevIL = nullptr;
+			m_->m_pDeviceContext->IAGetInputLayout(&prevIL);
+
+			// 라인 렌더링용 셰이더 바인딩
+			m_->m_pDeviceContext->VSSetShader(m_->m_pLineVS, nullptr, 0);
+			m_->m_pDeviceContext->IASetInputLayout(m_->m_pLineInputLayout);
+
+			// SoundBox는 월드 공간이므로 단위 행렬 사용
+			ConstantBuffer lineCB = m_->m_ConstantBuffer;
+			XMMATRIX identity = XMMatrixIdentity();
+			lineCB.world = XMMatrixTranspose(identity);
+			lineCB.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, identity));
+			lineCB.view = m_->m_baseProjection.view;
+			lineCB.proj = m_->m_baseProjection.proj;
+			lineCB.pad = 3.0f; // 라인 마커용
+
+			D3D11_MAPPED_SUBRESOURCE mappedLine;
+			HR_T(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedLine));
+			memcpy_s(mappedLine.pData, sizeof(ConstantBuffer), &lineCB, sizeof(ConstantBuffer));
+			m_->m_pDeviceContext->Unmap(m_->m_pConstantBuffer, 0);
+			m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
+			m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
+
+			// 12개 엣지 그리기
+			auto DrawEdge = [&](const int& i, const int& j) {
+				m_->m_LineRenderer->DrawLine(m_->m_pDeviceContext, corners[i], corners[j], boxColor,
+					m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
+			};
+
+			// 밑면 4개 선
+			DrawEdge(0, 1); DrawEdge(1, 2); DrawEdge(2, 3); DrawEdge(3, 0);
+			// 윗면 4개 선
+			DrawEdge(4, 5); DrawEdge(5, 6); DrawEdge(6, 7); DrawEdge(7, 4);
+			// 세로 4개 선 (밑면과 윗면 연결)
+			DrawEdge(0, 4); DrawEdge(1, 5); DrawEdge(2, 6); DrawEdge(3, 7);
+
+			// VS/IL 복원
+			if (prevVS) { m_->m_pDeviceContext->VSSetShader(prevVS, nullptr, 0); prevVS->Release(); }
 			if (prevIL) { m_->m_pDeviceContext->IASetInputLayout(prevIL); prevIL->Release(); }
 		}
 	}
@@ -3357,7 +3588,7 @@ bool App::InitImGui() {
 		cfg.OversampleV = 2;
 		const ImWchar* rangeKR = io.Fonts->GetGlyphRangesKorean();
 		const ImWchar* rangeJP = io.Fonts->GetGlyphRangesJapanese();
-		// 한글: 맑은 고딕
+		// 한글: NotoSansKR-Regular
 		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\NotoSansKR-Regular.ttf", 17.0f, &cfg, rangeKR);
 		// 일본어: Meiryo
 		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\meiryo.ttc", 17.0f, &cfg, rangeJP);

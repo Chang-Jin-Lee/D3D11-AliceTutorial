@@ -302,6 +302,11 @@ float Sound::GetBGMLengthSeconds()
 	return static_cast<float>(lenMs) / 1000.0f;
 }
 
+std::wstring Sound::GetCurrentBGMKey()
+{
+	return g_CurrentBGMKey;
+}
+
 // ================= SFX =================
 
 bool Sound::PlaySFX(const std::wstring& key, float volume, float pitch, bool loop)

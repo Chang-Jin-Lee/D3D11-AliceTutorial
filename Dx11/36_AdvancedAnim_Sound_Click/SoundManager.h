@@ -58,6 +58,9 @@ namespace Sound
 	// @brief 현재 BGM 전체 길이 (초 단위)
 	float GetBGMLengthSeconds();
 
+	// @brief 현재 재생 중인 BGM key 반환 (재생 중이 아니면 빈 문자열)
+	std::wstring GetCurrentBGMKey();
+
 	// ================= SFX 제어 =================
 	// @brief 해당 key의 효과음 재생 (로드 안 되어 있으면 자동 로드 불가, 먼저 Load 호출 필요)
 	// @param key : 사운드 key
