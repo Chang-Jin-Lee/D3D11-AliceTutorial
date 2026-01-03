@@ -7,6 +7,9 @@
 // 필요 시 이 pragma 를 수정하거나 제거해도 된다.
 #pragma comment(lib, "fmod_vc.lib")
 
+#include <unordered_map>
+#include <algorithm>
+
 namespace
 {
 	FMOD::System*  g_System = nullptr;
@@ -18,6 +21,15 @@ namespace
 	{
 		return (r == FMOD_OK);
 	}
+
+	struct SfxEntry
+	{
+		FMOD::Sound*   sound   = nullptr;
+		FMOD::Channel* channel = nullptr;
+		bool loop = false;
+	};
+
+	std::unordered_map<std::string, SfxEntry> g_Sfx;
 }
 
 bool Sound::Initialize()
@@ -39,6 +51,7 @@ bool Sound::Initialize()
 
 void Sound::Shutdown()
 {
+	UnloadAllSfx();   // 추가
 	UnloadMusic();
 
 	if (g_System)
@@ -185,6 +198,139 @@ void Sound::Update()
 {
 	if (!g_System) return;
 	g_System->update();
+}
+
+// ===================== SFX =====================
+bool Sound::LoadSfx(const std::string& key, const std::wstring& pathW, bool loop)
+{
+	if (!g_System && !Initialize()) return false;
+
+	// 기존 있으면 해제
+	UnloadSfx(key);
+
+	std::string pathU8 = Utf8FromWString(pathW);
+
+	FMOD::Sound* s = nullptr;
+	FMOD_RESULT r = g_System->createSound(
+		pathU8.c_str(),
+		FMOD_DEFAULT,   // SFX는 보통 stream 필요 없음
+		nullptr,
+		&s);
+
+	if (!Check(r) || !s) return false;
+
+	// loop 설정
+	s->setMode(loop ? FMOD_LOOP_NORMAL : FMOD_LOOP_OFF);
+
+	SfxEntry e;
+	e.sound = s;
+	e.channel = nullptr;
+	e.loop = loop;
+	g_Sfx[key] = e;
+	return true;
+}
+
+void Sound::UnloadSfx(const std::string& key)
+{
+	auto it = g_Sfx.find(key);
+	if (it == g_Sfx.end()) return;
+
+	if (it->second.channel)
+	{
+		it->second.channel->stop();
+		it->second.channel = nullptr;
+	}
+	if (it->second.sound)
+	{
+		it->second.sound->release();
+		it->second.sound = nullptr;
+	}
+	g_Sfx.erase(it);
+}
+
+void Sound::UnloadAllSfx()
+{
+	for (auto& kv : g_Sfx)
+	{
+		if (kv.second.channel) kv.second.channel->stop();
+		if (kv.second.sound)   kv.second.sound->release();
+		kv.second.channel = nullptr;
+		kv.second.sound = nullptr;
+	}
+	g_Sfx.clear();
+}
+
+bool Sound::IsSfxPlaying(const std::string& key)
+{
+	auto it = g_Sfx.find(key);
+	if (it == g_Sfx.end() || !it->second.channel) return false;
+
+	bool playing = false;
+	if (!Check(it->second.channel->isPlaying(&playing))) return false;
+	return playing;
+}
+
+bool Sound::PlaySfx(const std::string& key, float volume, bool restart, float pitch)
+{
+	auto it = g_Sfx.find(key);
+	if (it == g_Sfx.end() || !g_System || !it->second.sound) return false;
+
+	// pitch clamp(너무 극단 방지)
+	pitch = std::clamp(pitch, 0.5f, 2.0f);
+	volume = std::clamp(volume, 0.0f, 1.0f);
+
+	// 이미 재생 중이고 restart=false면 재시작하지 않음
+	if (!restart && IsSfxPlaying(key))
+	{
+		it->second.channel->setVolume(volume);
+		it->second.channel->setPitch(pitch);
+		return true;
+	}
+
+	// restart면 기존 채널 정지
+	if (it->second.channel)
+	{
+		it->second.channel->stop();
+		it->second.channel = nullptr;
+	}
+
+	FMOD::Channel* ch = nullptr;
+	FMOD_RESULT r = g_System->playSound(it->second.sound, nullptr, false, &ch);
+	if (!Check(r) || !ch) return false;
+
+	ch->setVolume(volume);
+	ch->setPitch(pitch);
+
+	it->second.channel = ch;
+	return true;
+}
+
+void Sound::StopSfx(const std::string& key)
+{
+	auto it = g_Sfx.find(key);
+	if (it == g_Sfx.end()) return;
+
+	if (it->second.channel)
+	{
+		it->second.channel->stop();
+		it->second.channel = nullptr;
+	}
+}
+
+void Sound::SetSfxPitch(const std::string& key, float pitch)
+{
+	auto it = g_Sfx.find(key);
+	if (it == g_Sfx.end() || !it->second.channel) return;
+	pitch = std::clamp(pitch, 0.5f, 2.0f);
+	it->second.channel->setPitch(pitch);
+}
+
+void Sound::SetSfxVolume(const std::string& key, float volume)
+{
+	auto it = g_Sfx.find(key);
+	if (it == g_Sfx.end() || !it->second.channel) return;
+	volume = std::clamp(volume, 0.0f, 1.0f);
+	it->second.channel->setVolume(volume);
 }
 
 

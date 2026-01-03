@@ -705,6 +705,31 @@ struct App::Impl {
 	float m_AimMaxYawDeg   = 70.0f;         // 좌우 제한
 	float m_AimFarDist     = 2000.0f;       // 조준점 생성용 거리
 
+	// ===================== TPS Character Control =====================
+	float m_CharWalkSpeed = 180.0f;   // 걷기 속도 (units/sec) - UI에서 조절
+	float m_CharRunMul    = 1.7f;     // 달리기 배율 - UI에서 조절
+	float m_CharTurnSpeed = 12.0f;    // 회전 따라가기(라디안/초) - UI에서 조절
+	bool  m_CharRotateToMove = true; // 이동 방향으로 몸통 회전
+
+	// ===================== Recoil(UI) : 앉은 상태 클릭 흔들림 줄이기 =====================
+	float m_RecoilKickUi  = 0.25f;    // 기본값을 낮춰서 "덜 흔들리게" (UI에서 조절)
+	float m_RecoilDecayUi = 12.0f;    // 감쇠 속도 (UI에서 조절)
+
+	// ===================== Sniper Charge Shot =====================
+	bool  m_SniperEnabled = true;
+
+	bool  m_SniperCharging = false;
+	float m_SniperCharge01 = 0.0f;      // 0..1
+	float m_SniperChargeTimeSec = 1.2f; // 풀차지까지 시간 (UI에서 조절)
+
+	ImVec2 m_SniperAimPos = ImVec2(0, 0);
+	float  m_SniperAimRadius = 12.0f;
+	bool   m_SniperLastShotCharged = false;
+
+	// ===================== Movement SFX state =====================
+	bool m_LastMove = false;
+	bool m_LastRun  = false;
+
 	// HDR 관련 변수
 	// Quad를 그려야함
 	float m_MonitorMaxNits = 1000.0f; // HDR 모니터 기본값 (1000 nits)
@@ -878,6 +903,11 @@ bool App::OnInitialize() {
 	}
 	else {
 		m_->PushLog("[OK] FMOD initialized");
+		// SFX 로드(경로는 프로젝트에 맞게 조정)
+		Sound::LoadSfx("Walk",     L"..\\Resource\\Sound\\Walk.mp3", true);   // 루프 발자국
+		Sound::LoadSfx("RunVoice", L"..\\Resource\\Sound\\Run_voice.mp3", false);
+		Sound::LoadSfx("Shoot",    L"..\\Resource\\Sound\\Shoot.mp3", false);
+		Sound::LoadSfx("Reload",    L"..\\Resource\\Sound\\Reload.mp3", false);
 	}
 
 	// ====================================== 씬 이미지 초기 로드  ====================================== 
@@ -913,6 +943,7 @@ bool App::OnInitialize() {
 	m_->m_Models[3]->modelShading = ShadingMode::PBR;
 
 	m_->m_Models[0]->pos = XMFLOAT3(0, 0.0f, 0.0f);
+	m_->m_Models[0]->rotDeg = XMFLOAT3(0, 0.0f, 0.0f);
 	m_->m_Models[1]->pos = XMFLOAT3(-26, 66.5f, -29.3f);
 	m_->m_Models[1]->rotDeg = XMFLOAT3(13, 90.0f, 2.0f);
 	m_->m_Models[2]->pos = XMFLOAT3(-130, 50.0f, 0.0f);
@@ -1246,26 +1277,87 @@ void App::OnUpdate(const float& dt) {
 
 			// 입력 수집
 			CharacterInputState input{};
+
+			XMVECTOR moveDirWS = XMVectorZero();
+			bool wantMove = false;
+			bool wantRun  = false;
+
 			if (InputSystem::Instance)
 			{
 				const auto& ks = InputSystem::Instance->m_KeyboardState;
 				const auto& kt = InputSystem::Instance->m_KeyboardStateTracker;
+				const auto& ms = InputSystem::Instance->m_MouseState;
 				const auto& mt = InputSystem::Instance->m_MouseStateTracker;
 
-				const bool lockMove = m_->m_CharCtrl.IsMovementLocked();  // 이전 프레임 기준(충분히 자연스러움)
+				const bool lockMove = m_->m_CharCtrl.IsMovementLocked();
 				const bool inStance = m_->m_CharCtrl.IsInShootStance();
 
 				if (!ImGui::GetIO().WantCaptureKeyboard)
 				{
-					bool rawMove = ks.IsKeyDown(Keyboard::W) || ks.IsKeyDown(Keyboard::A) ||
-						ks.IsKeyDown(Keyboard::S) || ks.IsKeyDown(Keyboard::D);
+					input.crouchTogglePressed = kt.IsKeyPressed(Keyboard::LeftControl) || kt.IsKeyPressed(Keyboard::RightControl);
 
-					input.move = lockMove ? false : rawMove;
-					input.run  = (!lockMove) && rawMove &&
-						(ks.IsKeyDown(Keyboard::LeftShift) || ks.IsKeyDown(Keyboard::RightShift));
+					// TPS 카메라가 붙어 있을 때만 WASD로 캐릭터를 조작 (자유카메라와 충돌 방지)
+					if (m_->m_TpsCamAttached && !lockMove)
+					{
+						// 카메라 yaw 기준 이동(전형적인 TPS)
+						const float yaw = m_->m_TpsYawRad;
+						XMVECTOR fwd = XMVectorSet(std::sinf(yaw), 0.0f, std::cosf(yaw), 0.0f);
+						fwd = XMVector3Normalize(fwd);
+						XMVECTOR right = XMVector3Normalize(XMVector3Cross(XMVectorSet(0,1,0,0), fwd));
 
-					input.crouchTogglePressed =
-						kt.IsKeyPressed(Keyboard::LeftControl) || kt.IsKeyPressed(Keyboard::RightControl);
+						if (ks.IsKeyDown(Keyboard::W)) moveDirWS = XMVectorAdd(moveDirWS, fwd);
+						if (ks.IsKeyDown(Keyboard::S)) moveDirWS = XMVectorSubtract(moveDirWS, fwd);
+						if (ks.IsKeyDown(Keyboard::D)) moveDirWS = XMVectorAdd(moveDirWS, right);
+						if (ks.IsKeyDown(Keyboard::A)) moveDirWS = XMVectorSubtract(moveDirWS, right);
+
+						const float lenSq = XMVectorGetX(XMVector3LengthSq(moveDirWS));
+						wantMove = (lenSq > 1.0e-6f);
+						if (wantMove) moveDirWS = XMVector3Normalize(moveDirWS);
+
+						const bool shift = ks.IsKeyDown(Keyboard::LeftShift) || ks.IsKeyDown(Keyboard::RightShift);
+						wantRun = wantMove && shift;
+
+						input.move = wantMove;
+						input.run  = wantRun;
+
+						// ===== 실제 캐릭터 이동 적용 =====
+						float speed = m_->m_CharWalkSpeed * (wantRun ? m_->m_CharRunMul : 1.0f);
+
+						XMVECTOR delta = XMVectorScale(moveDirWS, speed * dt);
+						XMFLOAT3 d{}; XMStoreFloat3(&d, delta);
+
+						alice.pos.x += d.x;
+						alice.pos.z += d.z;
+
+						// ===== 이동 방향으로 캐릭터 회전(선택) =====
+						if (m_->m_CharRotateToMove)
+						{
+							auto WrapPi = [](float a)
+							{
+								while (a > XM_PI)  a -= XM_2PI;
+								while (a < -XM_PI) a += XM_2PI;
+								return a;
+							};
+
+							const float targetYaw = std::atan2(
+								XMVectorGetX(moveDirWS),
+								XMVectorGetZ(moveDirWS)) + XM_PI;
+
+							float curYaw = XMConvertToRadians(alice.rotDeg.y);
+							float diff = WrapPi(targetYaw - curYaw);
+
+							float k = 1.0f - std::exp(-m_->m_CharTurnSpeed * dt);
+							curYaw = curYaw + diff * k;
+
+							alice.rotDeg.y = XMConvertToDegrees(curYaw);
+						}
+					}
+					else
+					{
+						// TPS OFF 또는 lockMove면 캐릭터 locomotion 입력을 꺼서 "카메라 WASD"와 충돌 방지
+						input.move = false;
+						input.run  = false;
+					}
 
 					// R은 Shoot_Stance에서만 의미
 					input.reloadPressed = inStance && kt.IsKeyPressed(Keyboard::R);
@@ -1273,9 +1365,99 @@ void App::OnUpdate(const float& dt) {
 
 				if (!ImGui::GetIO().WantCaptureMouse)
 				{
-					// LMB는 Shoot_Stance에서만 "사격"으로 사용 (그 외에는 기존 picking 유지 가능)
-					input.firePressed = inStance &&
-						(mt.leftButton == Mouse::ButtonStateTracker::PRESSED);
+					// [OLD] one-shot fire (keep commented)
+					// input.firePressed = inStance &&
+					//     (mt.leftButton == Mouse::ButtonStateTracker::PRESSED);
+
+					// 스나이퍼 모드: 눌러서 차지, 떼면 발사
+					if (m_->m_SniperEnabled && inStance)
+					{
+						// 마우스 위치(absolute면 마우스 위치, relative면 화면 중앙)
+						ImVec2 curPos;
+						if (ms.positionMode == Mouse::MODE_RELATIVE)
+							curPos = ImVec2(m_ClientWidth * 0.5f, m_ClientHeight * 0.5f);
+						else
+							curPos = ImVec2((float)ms.x, (float)ms.y);
+
+						if (mt.leftButton == Mouse::ButtonStateTracker::PRESSED)
+						{
+							m_->m_SniperCharging = true;
+							m_->m_SniperCharge01 = 0.0f;
+							m_->m_SniperAimPos   = curPos;
+						}
+
+						if (m_->m_SniperCharging)
+						{
+							// 조준점은 현재 마우스 위치를 따라가게(원하면 press 순간 고정도 가능)
+							m_->m_SniperAimPos = curPos;
+
+							if (mt.leftButton == Mouse::ButtonStateTracker::HELD)
+							{
+								float t = (m_->m_SniperChargeTimeSec > 0.001f) ? (dt / m_->m_SniperChargeTimeSec) : 1.0f;
+								m_->m_SniperCharge01 = std::clamp(m_->m_SniperCharge01 + t, 0.0f, 1.0f);
+							}
+
+							if (mt.leftButton == Mouse::ButtonStateTracker::RELEASED)
+							{
+								m_->m_SniperLastShotCharged = (m_->m_SniperCharge01 >= 1.0f - 1e-4f);
+
+								// 떼는 순간 "발사 트리거"
+								input.firePressed = true;
+
+								// 차지 종료
+								m_->m_SniperCharging = false;
+								m_->m_SniperCharge01 = 0.0f;
+							}
+						}
+					}
+				}
+			}
+
+			// ===== 이동 SFX =====
+			if (m_->m_TpsCamAttached) // TPS 조작 중일 때만
+			{
+				if (input.move)
+				{
+					// 발자국 루프 재생(이미 재생 중이면 유지)
+					float pitch = input.run ? m_->m_CharRunMul : 1.0f;
+					Sound::PlaySfx("Walk", 0.9f, false, pitch);
+					Sound::SetSfxPitch("Walk", pitch);
+
+					// 달리기 시작 순간 목소리 1회
+					if (input.run && !m_->m_LastRun)
+					{
+						Sound::PlaySfx("RunVoice", 1.0f, true, 1.0f);
+					}
+				}
+				else
+				{
+					// 멈추면 발자국 정지
+					Sound::StopSfx("Walk");
+				}
+
+				m_->m_LastMove = input.move;
+				m_->m_LastRun  = input.run;
+			}
+
+			// ===== 리로드/사격 SFX =====
+			if (input.reloadPressed)
+			{
+				Sound::PlaySfx("Reload", 1.0f, true, 1.0f);
+			}
+
+			if (input.firePressed)
+			{
+				// 풀차지면 다른 소리:
+				// 1) 전용 파일이 있으면 그걸 재생
+				// 2) 없으면 Shoot.wav를 pitch로 차별화
+				if (m_->m_SniperLastShotCharged)
+				{
+					// if (!Sound::PlaySfx("ShootCharged", 1.0f, true, 1.0f)) // 파일 있을 때
+					Sound::PlaySfx("Shoot", 1.0f, true, 0.85f); // 파일 없으면 대체(저음/묵직)
+				}
+				else
+				{
+					Sound::PlaySfx("Shoot", 1.0f, true, 1.0f);
 				}
 			}
 
@@ -1312,16 +1494,21 @@ void App::OnUpdate(const float& dt) {
 				m_Camera.Update(0.0f); // world 재계산
 
 				// ---- AimYaw 계산(±70도 제한) ----
-				// 캐릭터 forward (월드)
-				XMVECTOR charForwardWS = XMVector3Normalize(charWorld.r[2]);
+				auto WrapPi = [](float a)
+				{
+					while (a > XM_PI)  a -= XM_2PI;
+					while (a < -XM_PI) a += XM_2PI;
+					return a;
+				};
 
-				// 카메라 정중앙이 향하는 멀리 앞 지점
-				XMVECTOR aimPointWS = XMVectorAdd(camPosWS, XMVectorScale(camForwardWS, m_->m_AimFarDist));
+				// 캐릭터 yaw(몸통 방향)
+				float charYaw = XMConvertToRadians(alice.rotDeg.y);
 
-				// 캐릭터에서 그 지점으로 향하는 방향
-				XMVECTOR toAimWS = XMVector3Normalize(XMVectorSubtract(aimPointWS, pivotWS));
+				// 카메라 yaw(조준 방향)
+				float camYaw  = m_->m_TpsYawRad;
 
-				float yaw = SignedYawXZ(charForwardWS, toAimWS);
+				// 차이 = 상체가 돌아야 할 yaw
+				float yaw = WrapPi(camYaw - charYaw);
 
 				const float maxYawRad = XMConvertToRadians(m_->m_AimMaxYawDeg);
 				yaw = std::clamp(yaw, -maxYawRad, +maxYawRad);
@@ -1340,6 +1527,10 @@ void App::OnUpdate(const float& dt) {
 				float a = 1.0f - std::exp(-m_->m_AimSmoothing * dt);
 				m_->m_AimYawSmoothed = m_->m_AimYawSmoothed + (0.0f - m_->m_AimYawSmoothed) * a;
 			}
+
+			// UI로 조절하는 리코일 파라미터를 컨트롤러에 반영
+			m_->m_CharCtrl.config.recoil.kick  = m_->m_RecoilKickUi;
+			m_->m_CharCtrl.config.recoil.decay = m_->m_RecoilDecayUi;
 
 			// "완벽 목표": update + palette upload + weapon apply 까지 컨트롤러가 처리
 			m_->m_CharCtrl.TickAndApply(dt, input, alice, &rifle, m_->m_pDevice, m_->m_pDeviceContext,
@@ -2578,6 +2769,29 @@ void App::PassUI() {
 	m_->m_SystemInfo.RenderUI();
 	RenderSceneImageWindow();
 	RenderDeferredUI();
+
+	// Sniper UI Overlay
+	if (m_->m_SniperEnabled && m_->m_SniperCharging)
+	{
+		ImDrawList* dl = ImGui::GetForegroundDrawList();
+		ImVec2 p = m_->m_SniperAimPos;
+
+		const float r = m_->m_SniperAimRadius;
+		dl->AddCircle(p, r, IM_COL32(255,255,255,220), 32, 2.0f);
+
+		// 게이지 바
+		ImVec2 barSize(80.0f, 7.0f);
+		ImVec2 barPos(p.x - barSize.x * 0.5f, p.y + r + 10.0f);
+
+		dl->AddRectFilled(barPos, ImVec2(barPos.x + barSize.x, barPos.y + barSize.y),
+		                  IM_COL32(0,0,0,160), 2.0f);
+
+		dl->AddRectFilled(barPos, ImVec2(barPos.x + barSize.x * m_->m_SniperCharge01, barPos.y + barSize.y),
+		                  IM_COL32(255,255,255,220), 2.0f);
+
+		dl->AddRect(barPos, ImVec2(barPos.x + barSize.x, barPos.y + barSize.y),
+		            IM_COL32(255,255,255,220), 2.0f);
+	}
 
 	ImGui::Render();
 	ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
@@ -4614,6 +4828,25 @@ void App::RenderAdvancedRigUI()
     ImGui::Text("Rig Inited: %s", m_->m_CharRigInited ? "true" : "false");
     ImGui::Separator();
 
+	// ----- Weapon Socket Transform -----
+	ImGui::SeparatorText("Weapon Socket Transform");
+	{
+		auto& sock = m_->m_CharCtrl.config.weaponSocket;
+		ImGui::TextColored(ImVec4(0.7f, 0.7f, 1.0f, 1.0f), "[%s] attached to [%s]", sock.socketName.c_str(), sock.parentBone.c_str());
+		bool changed = false;
+
+		// |= 연산자를 사용해 하나라도 변경되면 changed가 true가 됨
+		changed |= ImGui::DragFloat3("Socket Pos", &sock.pos.x, 1.00f, -500.0f,500.0f, "%.4f");
+		changed |= ImGui::DragFloat3("Socket Rot", &sock.rotDeg.x, 1.0f, -360.0f, 360.0f);
+		changed |= ImGui::DragFloat3("Socket Scale", &sock.scale.x, 0.01f, 0.1f, 10.0f);
+
+		// 변경 사항이 있을 때만 업데이트 함수 호출
+		if (changed)
+		{
+			m_->m_CharCtrl.AdjustSocket();
+		}
+	}
+
     // ----- Base/Upper/Add Runtime -----
     ImGui::SeparatorText("Runtime States");
     ImGui::Text("Base : %s", ctrl.DebugBaseState().c_str());
@@ -4712,6 +4945,26 @@ void App::RenderAdvancedRigUI()
             ctrl.ResetRuntime();
         }
     }
+
+    // ----- Recoil (Shake) -----
+    ImGui::SeparatorText("Recoil (Shake)");
+    ImGui::SliderFloat("Recoil Kick",  &m_->m_RecoilKickUi,  0.0f, 1.5f);
+    ImGui::SliderFloat("Recoil Decay", &m_->m_RecoilDecayUi, 0.0f, 30.0f);
+
+    // ----- Character Move (TPS) -----
+    ImGui::SeparatorText("Character Move (TPS)");
+    ImGui::Checkbox("Rotate to Move Dir", &m_->m_CharRotateToMove);
+    ImGui::SliderFloat("Walk Speed", &m_->m_CharWalkSpeed, 10.0f, 800.0f);
+    ImGui::SliderFloat("Run Mul",    &m_->m_CharRunMul,    1.0f,  3.0f);
+    ImGui::SliderFloat("Turn Speed", &m_->m_CharTurnSpeed, 1.0f, 25.0f);
+
+    // ----- Sniper -----
+    ImGui::SeparatorText("Sniper");
+    ImGui::Checkbox("Sniper Enabled", &m_->m_SniperEnabled);
+    ImGui::SliderFloat("Charge Time (sec)", &m_->m_SniperChargeTimeSec, 0.1f, 3.0f);
+    ImGui::SliderFloat("Aim Radius", &m_->m_SniperAimRadius, 4.0f, 30.0f);
+
+
 
     ImGui::End();
 }

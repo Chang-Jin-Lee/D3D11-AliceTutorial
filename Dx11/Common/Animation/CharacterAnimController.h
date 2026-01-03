@@ -729,6 +729,16 @@ public:
         return true;
     }
 
+    void AdjustSocket()
+    {
+		m_Rig.SetSocketSRT(
+			config.weaponSocket.socketName,
+			config.weaponSocket.parentBone,
+			config.weaponSocket.pos,
+			config.weaponSocket.rotDeg,
+			config.weaponSocket.scale);
+    }
+
     void ResetRuntime()
     {
         m_Params = AnimParams{};
@@ -1024,8 +1034,11 @@ public:
         d.aim.enabled = false;
         if (aimOrNull && aimOrNull->enabled)
         {
-            // "앉아있을 때만"
-            if (m_BaseSM.CurrentStateName() == "Shoot_Stance")
+            const std::string s = m_BaseSM.CurrentStateName();
+            const bool crouchLike =
+                (s == "IdleToShoot" || s == "Shoot_Stance" || s == "Shoot" || s == "Reload" || s == "IdleToShoot_Reverse");
+
+            if (crouchLike)
             {
                 d.aim.enabled = true;
                 d.aim.yawRad  = aimOrNull->yawRad;

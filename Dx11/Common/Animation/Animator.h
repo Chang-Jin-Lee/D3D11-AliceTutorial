@@ -93,7 +93,6 @@ struct Socket {
             XMConvertToRadians(offsetRot.y),
             XMConvertToRadians(offsetRot.z));
         XMMATRIX mT = XMMatrixTranslation(offsetPos.x, offsetPos.y, offsetPos.z);
-        // µø¿œ ±‘æ‡: local = T * R * S
         offsetMatrix = mT * mR * mS;
     }
 };
@@ -1033,29 +1032,28 @@ private:
         return k1.mValue + (k2.mValue - k1.mValue) * alpha;
     }
 
+    static std::string ToLower(std::string s)
+    {
+        for (char& c : s) c = (char)std::tolower((unsigned char)c);
+        return s;
+    }
+
+    static bool IContains(const std::string& hay, const char* needle)
+    {
+        return ToLower(hay).find(ToLower(needle)) != std::string::npos;
+    }
+
     // ∏∂Ω∫≈© (ªÛ√º ∆«∫∞)
     bool IsUpperBody(const std::string& name) {
-        const char* keys[] = {
-            "Spine", "Neck", "Head", "Arm", "Hand", "Weapon",
-            "ﬂæ⁄‚„Û", // Spine / Upper Body
-            "‚œ",     // Neck
-            "‘È",     // Head
-            "Ë”",     // Arm
-            "‚¢",     // Hand
-            "ŸÎ–Ô"    // Weapon
-        };
-        for (auto k : keys) if (name.find(k) != std::string::npos) return true;
+        const char* keys[] = { "spine","neck","head","arm","hand","weapon","ﬂæ⁄‚„Û","‚œ","‘È","Ë”","‚¢","ŸÎ–Ô" };
+        for (auto k : keys) if (IContains(name, k)) return true;
         return false;
     }
 
     bool IsAimSpineBone(const std::string& name)
     {
-        const char* keys[] = {
-            "Spine", "Chest", "UpperChest", "Torso",
-            "ﬂæ⁄‚„Û", "˝ÿ", "€ŒÕÈ", "Ù±ı–"
-        };
-        for (auto k : keys)
-            if (name.find(k) != std::string::npos) return true;
+        const char* keys[] = { "spine","chest","upperchest","torso","ﬂæ⁄‚„Û","˝ÿ","€ŒÕÈ","Ù±ı–" };
+        for (auto k : keys) if (IContains(name, k)) return true;
         return false;
     }
 

@@ -45,6 +45,20 @@ namespace Sound
 
 	// @brief 매 프레임 호출(FMOD::System::update)
 	void Update();
+
+	// ===================== SFX =====================
+	// SFX
+	bool LoadSfx(const std::string& key, const std::wstring& pathW, bool loop = false);
+	void UnloadSfx(const std::string& key);
+	void UnloadAllSfx();
+
+	// restart=false면 "이미 재생중이면 그대로 유지" (발자국 루프에 유용)
+	bool PlaySfx(const std::string& key, float volume = 1.0f, bool restart = true, float pitch = 1.0f);
+	void StopSfx(const std::string& key);
+
+	bool IsSfxPlaying(const std::string& key);
+	void SetSfxPitch(const std::string& key, float pitch);
+	void SetSfxVolume(const std::string& key, float volume);
 }
 
 
