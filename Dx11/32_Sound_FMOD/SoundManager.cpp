@@ -325,3 +325,34 @@ void Sound::SetSFXVolume(float volume)
 		}
 	}
 }
+
+// 특정 파일의 SFX만 찾아서 정지 (예: Loop되는 빗소리 끄기)
+void Sound::StopSFX(const std::wstring& path)
+{
+	// 1. 해당 경로의 Sound 객체 찾기
+	auto it = g_SoundBank.find(path);
+	if (it == g_SoundBank.end() || !it->second) return;
+
+	FMOD::Sound* targetSound = it->second;
+
+	// 2. 현재 재생 중인 모든 채널 검사
+	for (auto ch : g_ChannelsSFX)
+	{
+		if (!ch) continue;
+
+		bool isPlaying = false;
+		ch->isPlaying(&isPlaying);
+
+		if (isPlaying)
+		{
+			FMOD::Sound* currentSound = nullptr;
+			ch->getCurrentSound(&currentSound);
+
+			// 3. 채널이 재생 중인 소리가 내가 끄려는 그 소리인가?
+			if (currentSound == targetSound)
+			{
+				ch->stop();
+			}
+		}
+	}
+}

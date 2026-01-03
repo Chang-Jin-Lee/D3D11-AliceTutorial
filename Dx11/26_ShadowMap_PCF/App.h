@@ -3,8 +3,7 @@
 #include <memory>
 #include <string>
 
-class App :
-	public GameApp
+class App : public GameApp
 {
 public:
 	App();

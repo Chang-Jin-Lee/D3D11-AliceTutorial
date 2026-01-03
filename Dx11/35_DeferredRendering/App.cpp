@@ -806,7 +806,8 @@ bool App::OnInitialize() {
 
 	// ====================================== 3D 모델
 	// ======================================
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\char\\char.fbx"); // 0
+	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\char\\char.fbx"); // 0
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice3DGame\\Alice.fbx"); // 0
 	// LoadModelFromFile(L"..\\Resource\\fbx\\Alice_UmaUma.fbx"); // 0
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\sphere.fbx"); // 1
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\sphere.fbx"); // 2
