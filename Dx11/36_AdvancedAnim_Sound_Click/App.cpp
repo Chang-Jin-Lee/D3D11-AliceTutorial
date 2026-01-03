@@ -659,8 +659,7 @@ struct App::Impl {
 
 	// 씬 이미지 창 관련
 	std::wstring m_CurrentSceneImagePath = L"..\\Resource\\Image\\SceneA.png";
-	std::wstring m_OriginalSceneImagePath =
-		L"..\\Resource\\Image\\SceneA.png"; // 원본 이미지 경로
+	std::wstring m_OriginalSceneImagePath = L"..\\Resource\\Image\\SceneA.png"; // 원본 이미지 경로
 	std::wstring m_TempSceneImagePath;      // 임시 이미지 경로
 	ID3D11ShaderResourceView* m_pSceneImageSRV = nullptr;
 	ImVec2 m_SceneImageSize = ImVec2(0, 0);
@@ -901,6 +900,21 @@ bool App::OnInitialize() {
 
 	AssetManager::Create();
 
+	// 데이터 로딩은 별도 스레드에서 시작
+	// 람다 대신 멤버 함수 포인터 사용 (&클래스명::함수명, 객체포인터)
+	m_loaderThread = std::jthread([this](std::stop_token st)
+	{
+		LoadDataAsync(st);
+	});
+
+	return true;
+}
+
+void App::LoadDataAsync(std::stop_token stoken)
+{
+	m_fLoadingProgress = 0.05f;
+	m_sLoadingStr = L"FMOD 사운드를 초기화 합니다.";
+	if (stoken.stop_requested()) return;
 	// ====================================== FMOD 사운드 초기화 ======================================
 	if (!Sound::Initialize()) {
 		m_->PushLog("[ERR] FMOD initialize failed");
@@ -917,12 +931,16 @@ bool App::OnInitialize() {
 
 		Sound::PlayBGM(L"LetItHappen");
 	}
+	m_fLoadingProgress = 0.1f;
 
 	// ====================================== 씬 이미지 초기 로드  ====================================== 
 	// 원본 이미지 경로 초기화
 	m_->m_OriginalSceneImagePath = m_->m_CurrentSceneImagePath;
 	LoadSceneImage(m_->m_CurrentSceneImagePath);
 
+	m_fLoadingProgress = 0.2f;
+	m_sLoadingStr = L"IBL을 초기화 합니다.";
+	if (stoken.stop_requested()) return;
 	// ====================================== IBL 텍스처 로드 (Sample 세트) ======================================
 	//  - BakerSampleDiffuseHDR.dds  : Irradiance(난반사) 맵   → Diffuse IBL
 	//  - BakerSampleSpecularHDR.dds : Prefiltered Env 맵      → Specular IBL
@@ -930,16 +948,26 @@ bool App::OnInitialize() {
 	ChangeIBLSkyBox(L"..\\Resource\\Skybox\\Sample\\BakerSample");
 	m_->m_SkyBoxChoice = App::Impl::SkyBoxChoice::Baker;
 
+	m_fLoadingProgress = 0.3f;
+	m_sLoadingStr = L"3D 모델을 로드합니다. 시간이 오래 걸릴 수 있습니다";
+	if (stoken.stop_requested()) return;
 	// ====================================== 3D 모델 ======================================
 	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\char\\char.fbx"); // 0
 	// LoadModelFromFile(L"..\\Resource\\fbx\\Alice_UmaUma.fbx"); // 0
+
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice3DGame\\Alice.fbx"); // 0
+	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping_idle_walk_run.fbx"); // 0
+	m_fLoadingProgress = 0.8f;
+	if (stoken.stop_requested()) return;
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice3DGame\\AmazingWonderland.fbx"); // 1
+	m_fLoadingProgress = 0.9f;
+	if (stoken.stop_requested()) return;
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\sphere.fbx"); // 2
 	// LoadModelFromFile(L"..\\Resource\\fbx\\Neon.fbx"); // 3
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\sphere.fbx"); // 3
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Ground.fbx"); // 4
-
+	m_fLoadingProgress = 0.95f;
+	if (stoken.stop_requested()) return;
 	m_->m_Objects.clear();
 	for (int mi = 0; mi < (int)m_->m_Models.size(); ++mi) {
 		auto mo = std::make_unique<ModelObject>(m_->m_Models[mi]->modelName, mi);
@@ -1002,55 +1030,55 @@ bool App::OnInitialize() {
 	m_->m_OutlineThickness = 0.3f;
 	m_->m_OutlineColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 1);
 
-		// ====================================== Advanced Rig 초기화 (CharacterAnimController) ======================================
-		// - Alice(0): 캐릭터
-		// - AmazingWonderland(1): 라이플
-		// - CharacterAnimController가 모든 애니메이션 로직을 처리
-		if (m_->m_UseAdvancedRig && m_->m_Models.size() >= 2) {
-			const int ci = m_->m_CharModelIndex;
-			if (ci >= 0 && ci < (int)m_->m_Models.size()) {
-				auto& alice = *m_->m_Models[(size_t)ci];
-				if (alice.shared && alice.shared->fbx && alice.shared->fbx->HasSkeleton()) {
-					// 컨트롤러 설정
-					m_->m_CharCtrl.config.weaponSocket.socketName = "WeaponPoint";
-					m_->m_CharCtrl.config.weaponSocket.parentBone = "Hand_R";
-					m_->m_CharCtrl.config.weaponSocket.pos = { 0.1f, 0.05f, 0.0f };
-					m_->m_CharCtrl.config.weaponSocket.rotDeg = { 0.0f, 90.0f, 0.0f };
-					m_->m_CharCtrl.config.weaponSocket.scale = { 1.0f, 1.0f, 1.0f };
+	// ====================================== Advanced Rig 초기화 (CharacterAnimController) ======================================
+	// - Alice(0): 캐릭터
+	// - AmazingWonderland(1): 라이플
+	// - CharacterAnimController가 모든 애니메이션 로직을 처리
+	if (m_->m_UseAdvancedRig && m_->m_Models.size() >= 2) {
+		const int ci = m_->m_CharModelIndex;
+		if (ci >= 0 && ci < (int)m_->m_Models.size()) {
+			auto& alice = *m_->m_Models[(size_t)ci];
+			if (alice.shared && alice.shared->fbx && alice.shared->fbx->HasSkeleton()) {
+				// 컨트롤러 설정
+				m_->m_CharCtrl.config.weaponSocket.socketName = "WeaponPoint";
+				m_->m_CharCtrl.config.weaponSocket.parentBone = "Hand_R";
+				m_->m_CharCtrl.config.weaponSocket.pos = { 0.1f, 0.05f, 0.0f };
+				m_->m_CharCtrl.config.weaponSocket.rotDeg = { 0.0f, 90.0f, 0.0f };
+				m_->m_CharCtrl.config.weaponSocket.scale = { 1.0f, 1.0f, 1.0f };
 
-					// 전환 테이블(원하는 곳만 override) - Locomotion은 즉시 반응
-					m_->m_CharCtrl.config.baseTransitions["Idle"]["Run"] = { 0.18f, false, 0.0f, 0.0f, true };
-					m_->m_CharCtrl.config.baseTransitions["Run"]["Idle"] = { 0.12f, false, 0.0f, 0.0f, true };
+				// 전환 테이블(원하는 곳만 override) - Locomotion은 즉시 반응
+				m_->m_CharCtrl.config.baseTransitions["Idle"]["Run"] = { 0.18f, false, 0.0f, 0.0f, true };
+				m_->m_CharCtrl.config.baseTransitions["Run"]["Idle"] = { 0.12f, false, 0.0f, 0.0f, true };
 
-					// Upper도 전환 테이블로(예: AnyState->Reload 빠르게)
-					m_->m_CharCtrl.config.upperTransitions["*"]["Reload"] = { 0.10f, false, 0.0f, 0.0f, true };
-					m_->m_CharCtrl.config.upperTransitions["Reload"]["None"] = { 0.10f, false, 0.0f, 0.0f, true };
+				// Upper도 전환 테이블로(예: AnyState->Reload 빠르게)
+				m_->m_CharCtrl.config.upperTransitions["*"]["Reload"] = { 0.10f, false, 0.0f, 0.0f, true };
+				m_->m_CharCtrl.config.upperTransitions["Reload"]["None"] = { 0.10f, false, 0.0f, 0.0f, true };
 
-					// 컨트롤러 초기화
-					if (m_->m_CharCtrl.InitializeRig(
-						m_->m_pDevice,
-						alice.shared->fbx->GetScenePtr(),
-						alice.shared->fbx->GetNodeIndexOfName(),
-						alice.shared->fbx->GetGlobalInverse(),
-						alice.shared->fbx->GetBoneNames(),
-						alice.shared->fbx->GetBoneOffsets(),
-						&alice.shared->fbx->GetAnimationNames()))
-					{
-						m_->m_CharRigInited = true;
-						m_->PushLog("[OK] CharacterAnimController: Initialized");
-					}
-					else
-					{
-						m_->m_CharRigInited = false;
-						m_->PushLog("[WARN] CharacterAnimController: Initialize failed");
-					}
+				// 컨트롤러 초기화
+				if (m_->m_CharCtrl.InitializeRig(
+					m_->m_pDevice,
+					alice.shared->fbx->GetScenePtr(),
+					alice.shared->fbx->GetNodeIndexOfName(),
+					alice.shared->fbx->GetGlobalInverse(),
+					alice.shared->fbx->GetBoneNames(),
+					alice.shared->fbx->GetBoneOffsets(),
+					&alice.shared->fbx->GetAnimationNames()))
+				{
+					m_->m_CharRigInited = true;
+					m_->PushLog("[OK] CharacterAnimController: Initialized");
 				}
-				else {
+				else
+				{
 					m_->m_CharRigInited = false;
-					m_->PushLog("[WARN] AdvancedRig: Alice model has no skeleton (socket disabled)");
+					m_->PushLog("[WARN] CharacterAnimController: Initialize failed");
 				}
 			}
+			else {
+				m_->m_CharRigInited = false;
+				m_->PushLog("[WARN] AdvancedRig: Alice model has no skeleton (socket disabled)");
+			}
 		}
+	}
 	// ====================================== (임시) Idle-only 테스트 ======================================
 	// AdvancedRig가 정상 동작하는 것이 확인되어, Idle-only 테스트는 비활성화한다.
 	/*
@@ -1098,11 +1126,25 @@ bool App::OnInitialize() {
 		}
 	}
 	*/
-
-	return true;
+	m_fLoadingProgress = 1.0f;
+	// 스레드를 종료시킴 
+	m_bIsLoaded = true;
 }
 
 void App::OnUninitialize() {
+
+	// 1. 스레드에 멈춤 신호 보내기
+	m_loaderThread.request_stop();
+
+	// 2. 스레드가 하던 작업(예: 텍스처 로딩 함수)이 리턴할 때까지 대기
+	// 이걸 안 하면 B스레드가 살아있는데 아래에서 Device를 Release 해버려서 터짐
+	if (m_loaderThread.joinable())
+	{
+		m_loaderThread.join();
+	}
+	// 3. 안전하게 리소스 해제 (이제 B 스레드는 완전히 죽었으므로 안전함)
+	if (m_->m_pDeviceContext) m_->m_pDeviceContext->ClearState();
+
 	// FMOD 종료
 	Sound::Shutdown();
 
@@ -1183,6 +1225,24 @@ void App::OnInputProcess(const Keyboard::State& KeyState,
 }
 
 void App::OnUpdate(const float& dt) {
+	if (!m_bIsLoaded)
+	{
+		if (m_->m_ShowScenePopup) {
+			m_->m_ScenePopupTimer -= dt;
+			if (m_->m_ScenePopupTimer <= 0.0f) {
+				m_->m_ShowScenePopup = false;
+				m_->m_ScenePopupTimer = 0.0f;
+
+				// 임시 이미지 사용 중이었다면 원본 이미지로 복원
+				if (m_->m_IsUsingTempImage) {
+					m_->m_IsUsingTempImage = false;
+					LoadSceneImage(m_->m_OriginalSceneImagePath);
+					m_->m_CurrentSceneImagePath = m_->m_OriginalSceneImagePath;
+				}
+			}
+		}
+		return;
+	}
 	// Shadow light view-projection (directional, orthographic, scene-anchored
 	// with texel snapping)
 	auto UpdateShadow = [this](XMFLOAT3& focusF) {
@@ -1535,7 +1595,7 @@ void App::OnUpdate(const float& dt) {
 			m_->m_CharCtrl.config.recoil.kick  = m_->m_RecoilKickUi;
 			m_->m_CharCtrl.config.recoil.decay = m_->m_RecoilDecayUi;
 
-			// "완벽 목표": update + palette upload + weapon apply 까지 컨트롤러가 처리
+			// update + palette upload + weapon apply 까지 컨트롤러가 처리
 			m_->m_CharCtrl.TickAndApply(dt, input, alice, &rifle, m_->m_pDevice, m_->m_pDeviceContext,
 			                            m_->m_TpsCamAttached ? &aim : nullptr);
 			}
@@ -1874,16 +1934,38 @@ template <typename T> void App::UpdateCB(ID3D11Buffer* buffer, const T& data) {
 }
 
 void App::OnRender() {
-	// 1. 초기화 (HDR RT 및 Depth 클리어)
-	PassClear();
 
-	// 2. 렌더 패스 실행
-	PassShadow();      // 섀도우 맵 생성
-	PassMainScene();   // 3D 오브젝트, 스카이박스, 오버레이
-	PassPostProcess(); // 톤매핑 (HDR -> BackBuffer)
+	if (!m_bIsGameStarted)
+	{
+		// ============= 로딩 화면 ================
+		// 이미지를 띄우고 텍스트 출력
+		ImGui_ImplDX11_NewFrame();
+		ImGui_ImplWin32_NewFrame();
+		ImGui::NewFrame();
 
-	// 3. UI 및 Present
-	PassUI();
+		// 백버퍼(BackBuffer)를 검은색으로 클리어
+		float clearColor[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+		m_->m_pDeviceContext->ClearRenderTargetView(m_->m_pRenderTargetView, clearColor);
+		// 렌더 타겟을 '백버퍼'로 설정 Depth 버퍼는 2D UI에 필요 없으므로 nullptr
+		m_->m_pDeviceContext->OMSetRenderTargets(1, &m_->m_pRenderTargetView, nullptr);
+
+		RenderWaitingUI();
+
+		ImGui::Render();
+		ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+	}
+	else
+	{
+		// 1. 초기화 (HDR RT 및 Depth 클리어)
+		PassClear();
+		// 2. 렌더 패스 실행
+		PassShadow();      // 섀도우 맵 생성
+		PassMainScene();   // 3D 오브젝트, 스카이박스, 오버레이
+		PassPostProcess(); // 톤매핑 (HDR -> BackBuffer)
+		// 3. UI 및 Present
+		PassUI();
+	}
+
 	m_->m_pSwapChain->Present(0, 0);
 }
 
@@ -3273,14 +3355,13 @@ bool App::InitImGui() {
 		cfg.PixelSnapH = true;
 		cfg.OversampleH = 2;
 		cfg.OversampleV = 2;
-		// 한글: 맑은 고딕
 		const ImWchar* rangeKR = io.Fonts->GetGlyphRangesKorean();
-		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\NotoSansKR-Regular.ttf",
-			17.0f, &cfg, rangeKR);
-		// 일본어: Meiryo
 		const ImWchar* rangeJP = io.Fonts->GetGlyphRangesJapanese();
-		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\meiryo.ttc", 17.0f, &cfg,
-			rangeJP);
+		// 한글: 맑은 고딕
+		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\NotoSansKR-Regular.ttf", 17.0f, &cfg, rangeKR);
+		// 일본어: Meiryo
+		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\meiryo.ttc", 17.0f, &cfg, rangeJP);
+		m_pFontLarge = io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\NotoSansKR-Regular.ttf", 30.0f, NULL, rangeKR);
 	}
 
 	ImGui_ImplWin32_Init(m_hWnd);
@@ -3744,6 +3825,8 @@ bool App::LoadModelFromFile(const std::wstring& pathW) {
 		}
 	}
 
+	m_fLoadingProgress = 0.35f;
+
 	bool ok = false;
 	auto entry = std::make_unique<ModelEntry>();
 	entry->modelName = fileName;
@@ -3752,6 +3835,9 @@ bool App::LoadModelFromFile(const std::wstring& pathW) {
 	std::shared_ptr<SharedModelData> shared;
 	if (auto it = m_->m_ModelCache.find(pathW); it != m_->m_ModelCache.end())
 		shared = it->second.lock();
+
+	m_fLoadingProgress = 0.4f;
+	m_sLoadingStr = L"3D 모델에 대한 Geometry, Material, Animaion을 로드합니다.";
 
 	if (!shared) {
 		shared = std::make_shared<SharedModelData>();
@@ -3828,6 +3914,10 @@ bool App::LoadModelFromFile(const std::wstring& pathW) {
 		m_->PushLog("[OK] Reused cached model: " + Utf8FromWString(fileName));
 	}
 
+	m_fLoadingProgress = 0.5f;
+	m_sLoadingStr = L"3D 모델의 Skeletal, Bone을 로드합니다.";
+
+
 	if (ok && shared) {
 		entry->shared = shared;
 		entry->source = shared->source;
@@ -3861,7 +3951,7 @@ bool App::LoadModelFromFile(const std::wstring& pathW) {
 
 		m_->m_Models.push_back(std::move(entry));
 	}
-
+	m_fLoadingProgress = 0.7f;
 	return ok;
 }
 
@@ -4988,6 +5078,197 @@ void App::RenderAdvancedRigUI()
 
 
     ImGui::End();
+}
+
+void App::RenderWaitingUI()
+{
+	if (!m_->m_ShowSceneImageWindow) return;
+
+	ImGuiIO& io = ImGui::GetIO();
+	ImVec2 size(630.0f, 700.0f); // 프로그레스 바 공간만큼 높이 약간 증가
+
+	ImGui::SetNextWindowPos(
+		ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f),
+		ImGuiCond_Always,
+		ImVec2(0.5f, 0.5f)
+	);
+
+	//ImVec2 pos(io.DisplaySize.x - size.x - 20.0f, 20.0f);
+	//ImGui::SetNextWindowPos(pos, ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(size, ImGuiCond_FirstUseEver);
+
+	//if (ImGui::Begin("Loading...", &m_->m_ShowSceneImageWindow, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse))
+	if (ImGui::Begin("Loading...", &m_->m_ShowSceneImageWindow, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse))
+	{
+		if (m_bIsLoaded) // atomic 읽기
+		{
+			// "눌러보세요!" 펄스 효과 텍스트
+			float time = (float)ImGui::GetTime();
+			float pulse = (sinf(time * 5.0f) + 1.0f) * 0.5f;
+			ImGui::SetWindowFontScale(1.5f);
+			ImGui::Text("%s", Utf8FromWString(L"로딩이 완료되었습니다.").c_str());
+
+			ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.9f + pulse * 0.1f, 0.5f + pulse * 0.5f, 0.0f + pulse * 0.8f, 1.0f));
+			if (m_pFontLarge)ImGui::PushFont(m_pFontLarge);
+			ImGui::Text("%s", Utf8FromWString(L"마우스 좌클릭으로 시작하세요!").c_str());
+			ImGui::PopStyleColor();
+			ImGui::SetWindowFontScale(1.0f);
+			if (m_pFontLarge)ImGui::PopFont();
+
+			ImGui::Separator();
+			ImGui::Spacing();
+
+			if (m_->m_pSceneImageSRV)
+			{
+				ImVec2 avail = ImGui::GetContentRegionAvail();
+				float aspect = (m_->m_SceneImageSize.y > 0) ? (m_->m_SceneImageSize.x / m_->m_SceneImageSize.y) : 1.0f;
+				float w = avail.x;
+				float h = w / aspect;
+				if (h > avail.y) { h = avail.y; w = h * aspect; }
+
+				// 가로 중앙 정렬 계산함. (남은 공간 - 이미지 너비)의 절반만큼 커서를 이동함
+				if (avail.x > w)
+				{
+					ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (avail.x - w) * 0.5f);
+				}
+
+				ImVec2 imgPos = ImGui::GetCursorScreenPos(); // 커서 이동 후의 위치를 저장해야 함
+				ImVec2 imgSize(w, h);
+
+				m_->m_TempSceneImagePath = L"..\\Resource\\Image\\SceneA.png";
+				m_->m_ScenePopupMessage = Utf8FromWString(L"로딩이 끝났어요 토끼씨!");
+
+				LoadSceneImage(m_->m_TempSceneImagePath);
+				m_->m_CurrentSceneImagePath = m_->m_TempSceneImagePath;
+
+				// 실제 이미지 그리기 (저장해둔 중앙 위치 사용)
+				ImGui::SetItemAllowOverlap();
+				ImGui::SetCursorScreenPos(imgPos);
+				ImGui::Image((ImTextureID)m_->m_pSceneImageSRV, imgSize);
+
+				// 팝업 그리기 (이미지 위에 오버레이)
+				ImDrawList* dl = ImGui::GetWindowDrawList();
+				ImVec2 pSize(300.0f, 80.0f);
+				ImVec2 pPos(imgPos.x + (w - pSize.x) * 0.5f, imgPos.y + (h - pSize.y) * 0.5f);
+				// 반투명 배경 박스
+				dl->AddRectFilled(pPos, ImVec2(pPos.x + pSize.x, pPos.y + pSize.y), IM_COL32(0, 0, 0, 200), 10.0f);
+				dl->AddRect(pPos, ImVec2(pPos.x + pSize.x, pPos.y + pSize.y), IM_COL32(255, 255, 255, 255), 10.0f, 0, 2.0f);
+
+				// 텍스트 중앙 정렬
+				ImVec2 txtSz = ImGui::CalcTextSize(m_->m_ScenePopupMessage.c_str());
+				dl->AddText(ImVec2(pPos.x + (pSize.x - txtSz.x) * 0.5f, pPos.y + (pSize.y - txtSz.y) * 0.5f),
+					IM_COL32(255, 255, 255, 255), m_->m_ScenePopupMessage.c_str());
+			}
+
+			if (InputSystem::Instance->m_MouseState.leftButton)
+			{
+				m_bIsGameStarted = true;
+			}
+		}
+		else
+		{
+			// "눌러보세요!" 펄스 효과 텍스트
+			float time = (float)ImGui::GetTime();
+			float pulse = (sinf(time * 5.0f) + 1.0f) * 0.5f;
+			ImGui::SetWindowFontScale(1.5f);
+			ImGui::Text("%s", Utf8FromWString(L"로딩되는 동안 잠시만 기다려 주세요").c_str());
+
+			ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.9f + pulse * 0.1f, 0.5f + pulse * 0.5f, 0.0f + pulse * 0.8f, 1.0f));
+			if (m_pFontLarge)ImGui::PushFont(m_pFontLarge);
+
+			ImGui::Text("%s", Utf8FromWString(L"앨리스를 눌러보세요!").c_str());
+			ImGui::PopStyleColor();
+			ImGui::SetWindowFontScale(1.0f);
+
+			ImGui::Separator();
+			ImGui::Spacing();
+
+			if (m_pFontLarge)ImGui::PopFont();
+
+
+			ImGui::Spacing();
+
+			// 3. 로딩 프로그레스 바
+			// ImVec2(-1, 0)은 가로 폭을 꽉 채운다는 의미
+			char buf[32];
+			sprintf_s(buf, "Loading... %.0f%%", m_fLoadingProgress * 100.0f);
+			ImGui::ProgressBar(m_fLoadingProgress, ImVec2(-1.0f, 0.0f), buf);
+			ImGui::Spacing();
+			const wchar_t* currentPtr = m_sLoadingStr.load(); // UI 스레드에서 acquire 또는 relaxed로 로드
+			ImGui::Text("%s", Utf8FromWString(currentPtr).c_str());
+
+			ImGui::Spacing();
+
+			// 4. 이미지 및 인터랙션 (클릭 기능 복원)
+			if (m_->m_pSceneImageSRV)
+			{
+				ImVec2 avail = ImGui::GetContentRegionAvail();
+				float aspect = (m_->m_SceneImageSize.y > 0) ? (m_->m_SceneImageSize.x / m_->m_SceneImageSize.y) : 1.0f;
+				float w = avail.x;
+				float h = w / aspect;
+				if (h > avail.y) { h = avail.y; w = h * aspect; }
+
+				// 가로 중앙 정렬 계산함. (남은 공간 - 이미지 너비)의 절반만큼 커서를 이동함
+				if (avail.x > w)
+				{
+					ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (avail.x - w) * 0.5f);
+				}
+
+				ImVec2 imgPos = ImGui::GetCursorScreenPos(); // 커서 이동 후의 위치를 저장해야 함
+				ImVec2 imgSize(w, h);
+
+				// 투명 버튼을 이미지 위에 깔아서 클릭 감지
+				ImGui::PushID("ImgBtn");
+				if (ImGui::InvisibleButton("##ClickArea", imgSize))
+				{
+					// 클릭 시 동작 (기존 유지)
+					if (!m_->m_IsUsingTempImage && !m_->m_ShowScenePopup)
+					{
+						m_->m_OriginalSceneImagePath = m_->m_CurrentSceneImagePath;
+
+						bool isSceneA = (m_SceneIndex == 0);
+						m_->m_TempSceneImagePath = isSceneA ? L"..\\Resource\\Image\\SceneB.png" : L"..\\Resource\\Image\\SceneA.png";
+						m_->m_ScenePopupMessage = isSceneA ? Utf8FromWString(L"안녕하세요 토끼씨!") : Utf8FromWString(L"기뻐요 토끼씨!");
+
+						LoadSceneImage(m_->m_TempSceneImagePath);
+						m_->m_CurrentSceneImagePath = m_->m_TempSceneImagePath;
+						m_->m_IsUsingTempImage = true;
+						m_->m_ShowScenePopup = true;
+						m_->m_ScenePopupTimer = 2.0f;
+					}
+				}
+				ImGui::PopID();
+
+				// 실제 이미지 그리기 (저장해둔 중앙 위치 사용)
+				ImGui::SetItemAllowOverlap();
+				ImGui::SetCursorScreenPos(imgPos);
+				ImGui::Image((ImTextureID)m_->m_pSceneImageSRV, imgSize);
+
+				// 팝업 그리기 (이미지 위에 오버레이)
+				if (m_->m_ShowScenePopup)
+				{
+					ImDrawList* dl = ImGui::GetWindowDrawList();
+					ImVec2 pSize(300.0f, 80.0f);
+					ImVec2 pPos(imgPos.x + (w - pSize.x) * 0.5f, imgPos.y + (h - pSize.y) * 0.5f);
+
+					// 반투명 배경 박스
+					dl->AddRectFilled(pPos, ImVec2(pPos.x + pSize.x, pPos.y + pSize.y), IM_COL32(0, 0, 0, 200), 10.0f);
+					dl->AddRect(pPos, ImVec2(pPos.x + pSize.x, pPos.y + pSize.y), IM_COL32(255, 255, 255, 255), 10.0f, 0, 2.0f);
+
+					// 텍스트 중앙 정렬
+					ImVec2 txtSz = ImGui::CalcTextSize(m_->m_ScenePopupMessage.c_str());
+					dl->AddText(ImVec2(pPos.x + (pSize.x - txtSz.x) * 0.5f, pPos.y + (pSize.y - txtSz.y) * 0.5f),
+						IM_COL32(255, 255, 255, 255), m_->m_ScenePopupMessage.c_str());
+				}
+			}
+			else
+			{
+				ImGui::Text("Loading Image...");
+			}
+		}
+		
+	}
+	ImGui::End();
 }
 
 void App::RenderSceneImageWindow() {

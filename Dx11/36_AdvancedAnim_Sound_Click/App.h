@@ -4,6 +4,7 @@
 #include <string>
 #include "../Common/Scene.h"
 #include <dxgiformat.h>
+#include <thread>
 
 class ID3D11Buffer;
 
@@ -94,6 +95,21 @@ private:
     bool CreateGBuffer();
     void PassGBuffer();        // G-Buffer 패스 (지오메트리 정보를 G-Buffer에 렌더링)
     void PassDeferredLight();  // 디퍼드 라이트 패스 (G-Buffer를 읽어서 조명 계산)
+
+private:
+
+	// @brief : 멀티스레드로 로딩 화면 보여주기
+	// 스레드 객체가 파괴될 때 자동으로 실행 종료를 대기함
+	std::jthread m_loaderThread;
+	// 락(Lock) 없이 스레드 간 안전하게 bool 값 공유
+	std::atomic<const wchar_t*> m_sLoadingStr{L""};
+	std::atomic<float> m_fLoadingProgress{ 0.0f };
+	std::atomic<bool> m_bIsLoaded{ false };
+	bool m_bIsGameStarted = false;
+	// 별도 스레드에서 로딩함 fbx등 엄청 오래걸리니까 여기서 함
+	void LoadDataAsync(std::stop_token stoken); // 토큰으로 메인 스레드가 중지 됐는지 확인함.
+	void RenderWaitingUI(); // 별도 스레드에서 데이터 로드하는 동안 보여줄 UI
+	ImFont* m_pFontLarge = nullptr; // 큰 글씨용 폰트
 
 };
 
