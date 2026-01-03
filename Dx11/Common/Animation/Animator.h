@@ -173,6 +173,13 @@ public:
         float weight = 0.0f;
     };
 
+    struct AimDesc
+    {
+        bool  enabled = false;
+        float yawRad  = 0.0f;   // +: ¿À¸¥ÂÊ, -: ¿ÞÂÊ (¶óµð¾È)
+        float weight  = 1.0f;   // 0..1
+    };
+
     struct UpdateDesc
     {
         float dt = 0.0f;
@@ -182,6 +189,7 @@ public:
         AdditiveDesc   additive; // ¼±ÅÃ(¾ÖµðÆ¼ºê)
         ProceduralDesc procedural;
         IKDesc         ik;
+        AimDesc        aim;   // NEW
     };
 
     // -----------------------------------------------------------------
@@ -303,7 +311,8 @@ public:
             (!d.upper.enabled) &&
             (!d.additive.enabled) &&
             (d.procedural.strength == 0.0f) &&
-            (!d.ik.enabled);
+            (!d.ik.enabled) &&
+            (!d.aim.enabled); // NEW
         if (isSimpleSingleAnim) {
             EvaluateLikeFbxAnimation(d.base.animA, d.base.timeA);
 
@@ -492,17 +501,17 @@ public:
 
         auto ComputeGlobalsFromLocals = [&](const std::vector<XMMATRIX>& locals, std::vector<XMMATRIX>& outGlobals) {
             outGlobals.assign(nodeCount, XMMatrixIdentity());
-            std::vector<uint8_t> done(nodeCount, 0);
-            auto computeNode = [&](auto&& self, int idx) -> void {
-                if (idx < 0 || (size_t)idx >= nodeCount) return;
-                if (done[(size_t)idx]) return;
+        std::vector<uint8_t> done(nodeCount, 0);
+        auto computeNode = [&](auto&& self, int idx) -> void {
+            if (idx < 0 || (size_t)idx >= nodeCount) return;
+            if (done[(size_t)idx]) return;
                 const int pi = m_NodeParents[(size_t)idx];
-                if (pi >= 0) self(self, pi);
+            if (pi >= 0) self(self, pi);
                 const XMMATRIX parent = (pi >= 0 && (size_t)pi < nodeCount) ? outGlobals[(size_t)pi] : XMMatrixIdentity();
                 outGlobals[(size_t)idx] = parent * locals[(size_t)idx];
-                done[(size_t)idx] = 1;
-            };
-            for (int i = 0; i < (int)nodeCount; ++i) computeNode(computeNode, i);
+            done[(size_t)idx] = 1;
+        };
+        for (int i = 0; i < (int)nodeCount; ++i) computeNode(computeNode, i);
         };
 
         // --------- 1) º£ÀÌ½º(Idle/Walk/Run) Æò°¡ + ÀüÈ¯ ºí·»µù ---------
@@ -607,6 +616,41 @@ public:
             for (size_t i = 0; i < nodeCount; ++i) {
                 if (!IsUpperBody(m_NodeNames[i])) continue;
                 localsFinal[i] = ApplyProceduralNoiseToMatrix(localsFinal[i], (int)i, d.procedural.timeSec, d.procedural.strength, d.procedural.seed);
+            }
+        }
+
+        // --------- 4.5) Aim Yaw (Spine/Chest chain) ---------
+        auto ApplyYawToMatrix = [&](const XMMATRIX& inCol, float yawRad) -> XMMATRIX
+        {
+            XMVECTOR S, R, T;
+            if (!DecomposeSRT_Col(inCol, S, R, T)) return inCol;
+
+            XMVECTOR qYaw = XMQuaternionRotationAxis(XMVectorSet(0, 1, 0, 0), yawRad);
+            // Ãß°¡ È¸Àü(ºÎ¸ð°ø°£ ÂÊÀ¸·Î "¾ñ´Â" ´À³¦)
+            R = XMQuaternionMultiply(qYaw, R);
+            R = XMQuaternionNormalize(R);
+
+            return ComposeSRT_Col(S, R, T);
+        };
+
+        if (d.aim.enabled && std::fabs(d.aim.yawRad) > 1e-6f && d.aim.weight > 0.0001f)
+        {
+            const float w = std::clamp(d.aim.weight, 0.0f, 1.0f);
+
+            std::vector<size_t> aimNodes;
+            aimNodes.reserve(8);
+            for (size_t i = 0; i < nodeCount; ++i)
+            {
+                if (IsAimSpineBone(m_NodeNames[i]))
+                    aimNodes.push_back(i);
+            }
+
+            if (!aimNodes.empty())
+            {
+                // Ã¼ÀÎ ÀüÃ¼¿¡ ºÐ¹èÇØ¼­ "ÃÑ·® yaw"°¡ d.aim.yawRad°¡ µÇµµ·Ï
+                const float per = (d.aim.yawRad * w) / (float)aimNodes.size();
+                for (size_t idx : aimNodes)
+                    localsFinal[idx] = ApplyYawToMatrix(localsFinal[idx], per);
             }
         }
 
@@ -1001,6 +1045,17 @@ private:
             "ÙëÐï"    // Weapon
         };
         for (auto k : keys) if (name.find(k) != std::string::npos) return true;
+        return false;
+    }
+
+    bool IsAimSpineBone(const std::string& name)
+    {
+        const char* keys[] = {
+            "Spine", "Chest", "UpperChest", "Torso",
+            "ß¾Úâãó", "ýØ", "ÛÎÍé", "ô±õÐ"
+        };
+        for (auto k : keys)
+            if (name.find(k) != std::string::npos) return true;
         return false;
     }
 

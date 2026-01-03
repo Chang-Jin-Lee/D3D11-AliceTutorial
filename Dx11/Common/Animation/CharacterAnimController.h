@@ -29,6 +29,13 @@ struct CharacterInputState
     bool reloadPressed       = false; // R   (one-frame) in Shoot_Stance
 };
 
+struct AimInputState
+{
+    bool  enabled = false;
+    float yawRad  = 0.0f;
+    float weight  = 1.0f;
+};
+
 // ------------------------------------------------------------
 // 크로스페이드 파라미터(ExitTime + EntryOffset + SmoothStep)
 // ------------------------------------------------------------
@@ -930,7 +937,8 @@ public:
                       CharacterModelT& character,
                       WeaponModelT* weaponOrNull,
                       ID3D11Device* device,
-                      ID3D11DeviceContext* ctx)
+                      ID3D11DeviceContext* ctx,
+                      const AimInputState* aimOrNull = nullptr) // NEW (기본 nullptr)
     {
         // 1) 파라미터 업데이트
         m_TimeSec += dt;
@@ -1010,6 +1018,19 @@ public:
         else
         {
             d.ik.enabled = false;
+        }
+
+        // Aim 설정
+        d.aim.enabled = false;
+        if (aimOrNull && aimOrNull->enabled)
+        {
+            // "앉아있을 때만"
+            if (m_BaseSM.CurrentStateName() == "Shoot_Stance")
+            {
+                d.aim.enabled = true;
+                d.aim.yawRad  = aimOrNull->yawRad;
+                d.aim.weight  = aimOrNull->weight;
+            }
         }
 
         // 5) 리그 업데이트

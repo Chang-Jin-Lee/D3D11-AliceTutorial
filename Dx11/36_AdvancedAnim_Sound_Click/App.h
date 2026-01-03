@@ -18,6 +18,10 @@ public:
 	void OnUninitialize() override;
 	void OnUpdate(const float& dt) override;
 	void OnRender() override;
+	void OnInputProcess(const Keyboard::State& KeyState,
+	                    const Keyboard::KeyboardStateTracker& KeyTracker,
+	                    const Mouse::State& MouseState,
+	                    const Mouse::ButtonStateTracker& MouseTracker) override;
 
 	template<typename T>
 	void UpdateCB(ID3D11Buffer* buffer, const T& data);

@@ -247,6 +247,32 @@ struct CubeData {
 	ECubeType type;
 };
 
+// TPS 카메라 헬퍼
+static float SignedYawXZ(XMVECTOR fromDirWS, XMVECTOR toDirWS)
+{
+    // Y 제거하고 XZ에서만 각도
+    XMVECTOR a = XMVectorSet(XMVectorGetX(fromDirWS), 0.0f, XMVectorGetZ(fromDirWS), 0.0f);
+    XMVECTOR b = XMVectorSet(XMVectorGetX(toDirWS),   0.0f, XMVectorGetZ(toDirWS),   0.0f);
+
+    float la = XMVectorGetX(XMVector3Length(a));
+    float lb = XMVectorGetX(XMVector3Length(b));
+    if (la < 1e-6f || lb < 1e-6f) return 0.0f;
+
+    a = XMVector3Normalize(a);
+    b = XMVector3Normalize(b);
+
+    float dot = XMVectorGetX(XMVector3Dot(a, b));
+    dot = std::clamp(dot, -1.0f, 1.0f);
+
+    float ang = std::acos(dot);
+
+    // 부호: cross.y
+    float cy = XMVectorGetY(XMVector3Cross(a, b));
+    float sign = (cy >= 0.0f) ? 1.0f : -1.0f;
+
+    return ang * sign;
+}
+
 // 본 캐시/텍스트 일괄 구축 함수
 static void BuildBoneCacheStructure(ModelEntry& entry, const char* filter) {
 	entry.boneCache.clear();
@@ -654,6 +680,31 @@ struct App::Impl {
 
 	CharacterAnimController m_CharCtrl;
 
+	// ===================== TPS Camera Follow =====================
+	bool  m_TpsCamAttached = false;     // V키 토글
+	float m_TpsYawRad   = 0.0f;
+	float m_TpsPitchRad = XMConvertToRadians(15.0f);
+
+	float m_TpsDist     = 220.0f;
+	float m_TpsDistMin  = 80.0f;
+	float m_TpsDistMax  = 450.0f;
+	float m_TpsZoomStep = 12.0f;        // 휠 1칸 당 거리 변화
+
+	float m_TpsRotSpeed = 0.004f;       // 마우스 회전 민감도
+	float m_TpsPitchMin = XMConvertToRadians(-35.0f);
+	float m_TpsPitchMax = XMConvertToRadians(60.0f);
+
+	float m_TpsTargetHeightStand  = 95.0f;
+	float m_TpsTargetHeightCrouch = 70.0f;
+
+	int   m_TpsLastWheel = 0;
+
+	// Aim
+	float m_AimYawSmoothed = 0.0f;
+	float m_AimSmoothing   = 18.0f;         // 클수록 빨리 따라감
+	float m_AimMaxYawDeg   = 70.0f;         // 좌우 제한
+	float m_AimFarDist     = 2000.0f;       // 조준점 생성용 거리
+
 	// HDR 관련 변수
 	// Quad를 그려야함
 	float m_MonitorMaxNits = 1000.0f; // HDR 모니터 기본값 (1000 nits)
@@ -1030,6 +1081,68 @@ void App::OnUninitialize() {
 	AssetManager::Destroy();
 }
 
+void App::OnInputProcess(const Keyboard::State& KeyState,
+                         const Keyboard::KeyboardStateTracker& KeyTracker,
+                         const Mouse::State& MouseState,
+                         const Mouse::ButtonStateTracker& MouseTracker)
+{
+    // 1) V키 토글 (ImGui가 키보드 잡고 있으면 무시)
+    if (!ImGui::GetIO().WantCaptureKeyboard && KeyTracker.IsKeyPressed(Keyboard::V))
+    {
+        m_->m_TpsCamAttached = !m_->m_TpsCamAttached;
+
+        // 켤 때 현재 카메라 각도에서 이어서 시작
+        if (m_->m_TpsCamAttached)
+        {
+            XMFLOAT3 rotDeg = m_Camera.GetRotation();
+            m_->m_TpsYawRad   = XMConvertToRadians(rotDeg.y);
+            m_->m_TpsPitchRad = XMConvertToRadians(rotDeg.x);
+            m_->m_TpsLastWheel = MouseState.scrollWheelValue;
+        }
+    }
+
+    // 2) TPS 부착 모드면: 자유카메라 입력은 막고, TPS 입력만 처리
+    if (m_->m_TpsCamAttached)
+    {
+        // RMB 누르면 relative
+        if (InputSystem::Instance && InputSystem::Instance->m_Mouse)
+        {
+            InputSystem::Instance->m_Mouse->SetMode(MouseState.rightButton ? Mouse::MODE_RELATIVE : Mouse::MODE_ABSOLUTE);
+        }
+
+        // RMB 드래그로 yaw/pitch
+        if (!ImGui::GetIO().WantCaptureMouse && MouseState.positionMode == Mouse::MODE_RELATIVE)
+        {
+            m_->m_TpsYawRad   += float(MouseState.x) * m_->m_TpsRotSpeed;
+            m_->m_TpsPitchRad += float(MouseState.y) * m_->m_TpsRotSpeed;
+            m_->m_TpsPitchRad = std::clamp(m_->m_TpsPitchRad, m_->m_TpsPitchMin, m_->m_TpsPitchMax);
+        }
+
+        // 휠 줌
+        if (!ImGui::GetIO().WantCaptureMouse)
+        {
+            int wheel = MouseState.scrollWheelValue;
+            int delta = wheel - m_->m_TpsLastWheel;
+            m_->m_TpsLastWheel = wheel;
+
+            if (delta != 0)
+            {
+                // DirectXTK wheel: 보통 120 단위
+                float notches = float(delta) / 120.0f;
+                m_->m_TpsDist -= notches * m_->m_TpsZoomStep;
+                m_->m_TpsDist = std::clamp(m_->m_TpsDist, m_->m_TpsDistMin, m_->m_TpsDistMax);
+            }
+        }
+
+        // TPS 모드에서는 기본 카메라 입력 처리 X
+        (void)KeyState; (void)MouseTracker;
+        return;
+    }
+
+    // 3) TPS 꺼져 있으면 원래대로(자유 카메라)
+    GameApp::OnInputProcess(KeyState, KeyTracker, MouseState, MouseTracker);
+}
+
 void App::OnUpdate(const float& dt) {
 	// Shadow light view-projection (directional, orthographic, scene-anchored
 	// with texel snapping)
@@ -1166,8 +1279,71 @@ void App::OnUpdate(const float& dt) {
 				}
 			}
 
+			// === NEW: TPS 카메라 붙어있으면, 이번 프레임 카메라 pose + aim yaw 계산 ===
+			AimInputState aim{};
+			if (m_->m_TpsCamAttached)
+			{
+				const XMMATRIX charWorld = alice.GetWorldMatrix();
+				const XMVECTOR charPosWS = XMVector3TransformCoord(XMVectorZero(), charWorld);
+				const XMVECTOR upWS      = XMVectorSet(0, 1, 0, 0);
+
+				// 카메라가 바라볼 피벗(서있을 때/앉을 때 높이 다르게)
+				const bool crouchLike = m_->m_CharCtrl.IsInShootStance(); // 이전 프레임 기준이라도 충분히 자연스럽습니다.
+				const float pivotH = crouchLike ? m_->m_TpsTargetHeightCrouch : m_->m_TpsTargetHeightStand;
+				const XMVECTOR pivotWS = XMVectorAdd(charPosWS, XMVectorScale(upWS, pivotH));
+
+				// 카메라 방향(저장된 yaw/pitch로)
+				const XMMATRIX camR = XMMatrixRotationRollPitchYaw(m_->m_TpsPitchRad, m_->m_TpsYawRad, 0.0f);
+				const XMVECTOR camForwardWS = XMVector3Normalize(camR.r[2]);
+
+				// 카메라 위치: 피벗에서 뒤로 dist만큼
+				const XMVECTOR camPosWS = XMVectorSubtract(pivotWS, XMVectorScale(camForwardWS, m_->m_TpsDist));
+
+				// 카메라 실제 적용
+				XMFLOAT3 cp{}; XMStoreFloat3(&cp, camPosWS);
+				m_Camera.SetPosition(cp);
+
+				XMFLOAT3 rotDeg{
+					XMConvertToDegrees(m_->m_TpsPitchRad),
+					XMConvertToDegrees(m_->m_TpsYawRad),
+					0.0f
+				};
+				m_Camera.SetRotation(rotDeg);
+				m_Camera.Update(0.0f); // world 재계산
+
+				// ---- AimYaw 계산(±70도 제한) ----
+				// 캐릭터 forward (월드)
+				XMVECTOR charForwardWS = XMVector3Normalize(charWorld.r[2]);
+
+				// 카메라 정중앙이 향하는 멀리 앞 지점
+				XMVECTOR aimPointWS = XMVectorAdd(camPosWS, XMVectorScale(camForwardWS, m_->m_AimFarDist));
+
+				// 캐릭터에서 그 지점으로 향하는 방향
+				XMVECTOR toAimWS = XMVector3Normalize(XMVectorSubtract(aimPointWS, pivotWS));
+
+				float yaw = SignedYawXZ(charForwardWS, toAimWS);
+
+				const float maxYawRad = XMConvertToRadians(m_->m_AimMaxYawDeg);
+				yaw = std::clamp(yaw, -maxYawRad, +maxYawRad);
+
+				// 스무딩(튀는 것 방지)
+				float a = 1.0f - std::exp(-m_->m_AimSmoothing * dt);
+				m_->m_AimYawSmoothed = m_->m_AimYawSmoothed + (yaw - m_->m_AimYawSmoothed) * a;
+
+				aim.enabled = true;
+				aim.yawRad  = m_->m_AimYawSmoothed;
+				aim.weight  = 1.0f;
+			}
+			else
+			{
+				// TPS 끄면 aim도 0으로 복귀
+				float a = 1.0f - std::exp(-m_->m_AimSmoothing * dt);
+				m_->m_AimYawSmoothed = m_->m_AimYawSmoothed + (0.0f - m_->m_AimYawSmoothed) * a;
+			}
+
 			// "완벽 목표": update + palette upload + weapon apply 까지 컨트롤러가 처리
-			m_->m_CharCtrl.TickAndApply(dt, input, alice, &rifle, m_->m_pDevice, m_->m_pDeviceContext);
+			m_->m_CharCtrl.TickAndApply(dt, input, alice, &rifle, m_->m_pDevice, m_->m_pDeviceContext,
+			                            m_->m_TpsCamAttached ? &aim : nullptr);
 			}
 		}
 
@@ -1378,6 +1554,9 @@ void App::OnUpdate(const float& dt) {
 	bool useVmdCam = mmd::EvaluateVmdCamera(
 		m_->m_VmdCamera, m_Camera.GetFovYRad(), AspectRatio(),
 		m_Camera.GetNearZ(), m_Camera.GetFarZ(), view, proj, eye);
+
+	if (m_->m_TpsCamAttached)
+		useVmdCam = false;
 
 	if (useVmdCam) {
 		m_->m_baseProjection.view = XMMatrixTranspose(view);
