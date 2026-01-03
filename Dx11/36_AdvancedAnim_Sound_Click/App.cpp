@@ -189,6 +189,8 @@ struct ModelEntry {
 	float animUpdateAccum = 0.0f;
 	Material instanceMaterial{{1, 1, 1, 1}, {1, 1, 1, 1}, {1, 1, 1, 32}, {0, 0, 0, 0} };
 	bool useInstanceMaterial = false;
+	bool useNormalMap = false;
+	bool useSpecularMap = false;
 	PBRMaterialCPU instancePbrMaterial{};
 	bool useInstancePbrMaterial = false;
 
@@ -229,6 +231,7 @@ struct ModelEntry {
 
 	// PMX 애니메이션과 동기화할 사운드 경로 및 상태
 	std::wstring audioPath;
+	std::wstring audioKey; // 사운드 매니저에서 사용할 key
 	bool audioLoaded = false;
 
 	XMMATRIX GetWorldMatrix() const {
@@ -564,6 +567,7 @@ struct App::Impl {
 
 	// FMOD 오디오 데모용 상태 (전역 오디오 컨트롤)
 	std::wstring m_AudioPath;
+	std::wstring m_AudioKey; // 사운드 매니저에서 사용할 key
 	bool m_AudioLoaded = false;
 
 	// 큐브 각 면 텍스처 Diffuse/Normal/Specular
@@ -904,10 +908,14 @@ bool App::OnInitialize() {
 	else {
 		m_->PushLog("[OK] FMOD initialized");
 		// SFX 로드(경로는 프로젝트에 맞게 조정)
-		Sound::LoadSfx("Walk",     L"..\\Resource\\Sound\\Walk.mp3", true);   // 루프 발자국
-		Sound::LoadSfx("RunVoice", L"..\\Resource\\Sound\\Run_voice.mp3", false);
-		Sound::LoadSfx("Shoot",    L"..\\Resource\\Sound\\Shoot.mp3", false);
-		Sound::LoadSfx("Reload",    L"..\\Resource\\Sound\\Reload.mp3", false);
+		Sound::Load(L"Walk", L"..\\Resource\\Sound\\Walk.mp3", Sound::Type::SFX);
+		Sound::Load(L"RunVoice", L"..\\Resource\\Sound\\Run_voice.mp3", Sound::Type::SFX);
+		Sound::Load(L"Shoot", L"..\\Resource\\Sound\\Shoot.mp3", Sound::Type::SFX);
+		Sound::Load(L"ShootCharged", L"..\\Resource\\Sound\\ShootCharged.mp3", Sound::Type::SFX);
+		Sound::Load(L"Reload", L"..\\Resource\\Sound\\Reload.mp3", Sound::Type::SFX);
+		Sound::Load(L"LetItHappen", L"..\\Resource\\Sound\\LetItHappen.mp3", Sound::Type::BGM);
+
+		Sound::PlayBGM(L"LetItHappen");
 	}
 
 	// ====================================== 씬 이미지 초기 로드  ====================================== 
@@ -1365,7 +1373,7 @@ void App::OnUpdate(const float& dt) {
 
 				if (!ImGui::GetIO().WantCaptureMouse)
 				{
-					// [OLD] one-shot fire (keep commented)
+					// 예전거 one-shot fire (keep commented)
 					// input.firePressed = inStance &&
 					//     (mt.leftButton == Mouse::ButtonStateTracker::PRESSED);
 
@@ -1384,6 +1392,10 @@ void App::OnUpdate(const float& dt) {
 							m_->m_SniperCharging = true;
 							m_->m_SniperCharge01 = 0.0f;
 							m_->m_SniperAimPos   = curPos;
+
+							// 마우스를 누르기 시작하는 순간: ShootCharged 루프 시작
+							if (!Sound::IsSfxPlaying(L"ShootCharged"))
+								Sound::PlaySFX(L"ShootCharged", 1.0f, 0.85f, true);
 						}
 
 						if (m_->m_SniperCharging)
@@ -1400,6 +1412,10 @@ void App::OnUpdate(const float& dt) {
 							if (mt.leftButton == Mouse::ButtonStateTracker::RELEASED)
 							{
 								m_->m_SniperLastShotCharged = (m_->m_SniperCharge01 >= 1.0f - 1e-4f);
+
+								// 떼는 순간: ShootCharged 정지하고 Shoot 재생
+								Sound::StopSfx(L"ShootCharged");
+								Sound::PlaySFX(L"Shoot", 1.0f, 1.0f, false);
 
 								// 떼는 순간 "발사 트리거"
 								input.firePressed = true;
@@ -1420,19 +1436,19 @@ void App::OnUpdate(const float& dt) {
 				{
 					// 발자국 루프 재생(이미 재생 중이면 유지)
 					float pitch = input.run ? m_->m_CharRunMul : 1.0f;
-					Sound::PlaySfx("Walk", 0.9f, false, pitch);
-					Sound::SetSfxPitch("Walk", pitch);
+					// loop=true: 이미 재생 중이면 재시작하지 않음 (루프 유지)
+					Sound::PlaySFX(L"Walk", 0.9f, pitch, true);
 
 					// 달리기 시작 순간 목소리 1회
 					if (input.run && !m_->m_LastRun)
 					{
-						Sound::PlaySfx("RunVoice", 1.0f, true, 1.0f);
+						Sound::PlaySFX(L"RunVoice", 1.0f, 1.0f, false);
 					}
 				}
 				else
 				{
 					// 멈추면 발자국 정지
-					Sound::StopSfx("Walk");
+					Sound::StopSfx(L"Walk");
 				}
 
 				m_->m_LastMove = input.move;
@@ -1442,24 +1458,11 @@ void App::OnUpdate(const float& dt) {
 			// ===== 리로드/사격 SFX =====
 			if (input.reloadPressed)
 			{
-				Sound::PlaySfx("Reload", 1.0f, true, 1.0f);
+				Sound::PlaySFX(L"Reload", 1.0f, 1.0f, false);
 			}
 
-			if (input.firePressed)
-			{
-				// 풀차지면 다른 소리:
-				// 1) 전용 파일이 있으면 그걸 재생
-				// 2) 없으면 Shoot.wav를 pitch로 차별화
-				if (m_->m_SniperLastShotCharged)
-				{
-					// if (!Sound::PlaySfx("ShootCharged", 1.0f, true, 1.0f)) // 파일 있을 때
-					Sound::PlaySfx("Shoot", 1.0f, true, 0.85f); // 파일 없으면 대체(저음/묵직)
-				}
-				else
-				{
-					Sound::PlaySfx("Shoot", 1.0f, true, 1.0f);
-				}
-			}
+			// firePressed는 마우스를 떼는 순간에만 true가 되고,
+			// 그때 이미 Shoot 사운드가 재생되므로 여기서는 처리하지 않음
 
 			// === NEW: TPS 카메라 붙어있으면, 이번 프레임 카메라 pose + aim yaw 계산 ===
 			AimInputState aim{};
@@ -2380,8 +2383,16 @@ void App::PassMainScene() {
 				XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(W)));
 			cb.material = (mdlPtr->useInstanceMaterial ? mdlPtr->instanceMaterial : m_->m_Material);
 			cb.shadingMode = (int)mdlPtr->modelShading;
-			cb.enableNormalMap = m_->m_EnableNormalMapForCube;
-			cb.useSpecularMap = m_->m_UseSpecularMapForCube;
+			if (!mdlPtr->useInstancePbrMaterial)
+			{
+				cb.enableNormalMap = m_->m_EnableNormalMapForCube;
+				cb.useSpecularMap = m_->m_EnableNormalMapForCube;
+			}
+			else
+			{
+				cb.enableNormalMap = mdlPtr->useNormalMap;
+				cb.useSpecularMap = mdlPtr->useSpecularMap;
+			}
 
 			const PBRMaterialCPU& activePbr = mdlPtr->useInstancePbrMaterial? mdlPtr->instancePbrMaterial : m_->m_DefaultPbrMaterial;
 			cb.pbrBaseColor = activePbr.baseColor;
@@ -2399,12 +2410,10 @@ void App::PassMainScene() {
 					srvDiffuse = m_->m_pFallbackWhite;
 
 				ID3D11ShaderResourceView* srvNormal = nullptr;
-				if (m_->m_EnableNormalMapForCube != 0) {
-					if (mdlPtr->shared && sub.materialIndex < mdlPtr->shared->normalSRVs.size())
-						srvNormal = mdlPtr->shared->normalSRVs[sub.materialIndex];
-					if (!srvNormal)
-						srvNormal = m_->m_pFallbackNormal;
-				}
+				if (mdlPtr->shared && sub.materialIndex < mdlPtr->shared->normalSRVs.size())
+					srvNormal = mdlPtr->shared->normalSRVs[sub.materialIndex];
+				if (!srvNormal)
+					srvNormal = m_->m_pFallbackNormal;
 				ID3D11ShaderResourceView* srvSpec = (m_->m_UseSpecularMapForCube != 0) ? m_->m_pFallbackWhite : nullptr;
 
 				// 개별로 바인딩함
@@ -3883,12 +3892,7 @@ void App::RenderControlPannel() {
 		// 텍스처 색 사용 여부 (PBR 전용)
 		ImGui::Checkbox("Use Texture Color (PBR)", (bool*)&m_->m_UseTextureColor);
 		// 노말맵 사용 여부 (PBR / 모델 공통)
-		{
-			bool useNormalMap = (m_->m_EnableNormalMapForCube != 0);
-			if (ImGui::Checkbox("Use Normal Map (PBR)", &useNormalMap)) {
-				m_->m_EnableNormalMapForCube = useNormalMap ? 1 : 0;
-			}
-		}
+		ImGui::Checkbox("Use Normal Map (PBR)", (bool*)&m_->m_EnableNormalMapForCube);
 
 		ImGui::ColorEdit3("Base Color##PBR", &m_->m_DefaultPbrMaterial.baseColor.x);
 		ImGui::SliderFloat("Metalness##PBR", &m_->m_DefaultPbrMaterial.metalness,
@@ -4175,8 +4179,22 @@ void App::RenderModelPannel() {
 								ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
 								if (GetOpenFileNameW(&ofn)) {
 									mdl.audioPath = file;
-									mdl.audioLoaded = Sound::LoadMusic(mdl.audioPath);
+									// 파일명 추출 (확장자 제외)
+									std::wstring audioKey;
+									size_t sep = mdl.audioPath.find_last_of(L"\\/");
+									size_t dot = mdl.audioPath.find_last_of(L'.');
+									if (sep != std::wstring::npos && dot != std::wstring::npos && dot > sep) {
+										audioKey = mdl.audioPath.substr(sep + 1, dot - sep - 1);
+									}
+									else if (dot != std::wstring::npos) {
+										audioKey = mdl.audioPath.substr(0, dot);
+									}
+									else {
+										audioKey = mdl.audioPath;
+									}
+									mdl.audioLoaded = Sound::Load(audioKey, mdl.audioPath, Sound::Type::BGM);
 									if (mdl.audioLoaded) {
+										mdl.audioKey = audioKey; // key 저장
 										m_->PushLog("[OK] Audio loaded (FMOD)");
 									}
 									else {
@@ -4191,12 +4209,12 @@ void App::RenderModelPannel() {
 								mdl.uiAnimPlaying = playFBX;
 
 								// 애니메이션 재생 상태에 맞춰 사운드도 같이 제어
-								if (mdl.audioLoaded) {
+								if (mdl.audioLoaded && !mdl.audioKey.empty()) {
 									if (playFBX) {
-										Sound::Play();
+										Sound::PlayBGM(mdl.audioKey);
 									}
 									else {
-										Sound::Pause(true);
+										Sound::PauseBGM(true);
 									}
 								}
 							}
@@ -4211,7 +4229,7 @@ void App::RenderModelPannel() {
 								if (ImGui::SliderFloat("Time (s)", &curF, 0.0f, durF)) {
 									mdl.fbxBaseAnimator.SetTimeSec((double)curF);
 									if (mdl.audioLoaded) {
-										Sound::SetTimeSeconds(curF);
+										Sound::SetBGMTimeSeconds(curF);
 									}
 								}
 							}
@@ -4222,11 +4240,11 @@ void App::RenderModelPannel() {
 								if (ImGui::Button("Stop (Anim + Audio)##FBX")) {
 									mdl.fbxBaseAnimator.SetPlaying(false);
 									mdl.fbxBaseAnimator.SetTimeSec(0.0);
-									Sound::Stop();
-									Sound::SetTimeSeconds(0.0f);
+									Sound::StopBGM();
+									Sound::SetBGMTimeSeconds(0.0f);
 								}
-								float curAudio = Sound::GetTimeSeconds();
-								float lenAudio = Sound::GetLengthSeconds();
+								float curAudio = Sound::GetBGMTimeSeconds();
+								float lenAudio = Sound::GetBGMLengthSeconds();
 								ImGui::Text("Audio Time: %.2f / %.2f sec", curAudio, lenAudio);
 							}
 						}
@@ -4286,39 +4304,26 @@ void App::RenderModelPannel() {
 					// 인스턴스 머티리얼
 					ImGui::Checkbox("Use Instance Material", &mdl.useInstanceMaterial);
 					if (mdl.useInstanceMaterial) {
-						ImGui::ColorEdit4("Ambient (ka)##inst",
-							&mdl.instanceMaterial.ambient.x);
-						ImGui::ColorEdit4("Diffuse (kd)##inst",
-							&mdl.instanceMaterial.diffuse.x);
-						ImGui::ColorEdit4("Specular (ks)##inst",
-							&mdl.instanceMaterial.specular.x);
-						ImGui::DragFloat("Shininess (alpha)##inst",
-							&mdl.instanceMaterial.specular.w, 0.05f, 1.0f,
-							256.0f);
-						ImGui::ColorEdit4("Reflect (kr,a)##inst",
-							&mdl.instanceMaterial.reflect.x);
+						ImGui::ColorEdit4("Ambient (ka)##inst", &mdl.instanceMaterial.ambient.x);
+						ImGui::ColorEdit4("Diffuse (kd)##inst", &mdl.instanceMaterial.diffuse.x);
+						ImGui::ColorEdit4("Specular (ks)##inst", &mdl.instanceMaterial.specular.x);
+						ImGui::DragFloat("Shininess (alpha)##inst", &mdl.instanceMaterial.specular.w, 0.05f, 1.0f, 256.0f);
+						ImGui::ColorEdit4("Reflect (kr,a)##inst", &mdl.instanceMaterial.reflect.x);
 					}
 
 					ImGui::SeparatorText("PBR Material");
-					ImGui::Checkbox("Use Instance PBR Material",
-						&mdl.useInstancePbrMaterial);
+					ImGui::Checkbox("Use Instance PBR Material", &mdl.useInstancePbrMaterial);
 					if (mdl.useInstancePbrMaterial) {
-						ImGui::ColorEdit3("Base Color##instPBR",
-							&mdl.instancePbrMaterial.baseColor.x);
-						ImGui::SliderFloat("Metalness##instPBR",
-							&mdl.instancePbrMaterial.metalness, 0.0f, 1.0f,
-							"%.2f");
-						ImGui::SliderFloat("Roughness##instPBR",
-							&mdl.instancePbrMaterial.roughness, 0.04f, 1.0f,
-							"%.2f");
-						ImGui::SliderFloat("Ambient Occlusion##instPBR",
-							&mdl.instancePbrMaterial.ambientOcclusion, 0.0f,
-							1.0f, "%.2f");
+						ImGui::ColorEdit3("Base Color##instPBR", &mdl.instancePbrMaterial.baseColor.x);
+						ImGui::SliderFloat("Metalness##instPBR", &mdl.instancePbrMaterial.metalness, 0.0f, 1.0f, "%.2f");
+						ImGui::SliderFloat("Roughness##instPBR", &mdl.instancePbrMaterial.roughness, 0.04f, 1.0f, "%.2f");
+						ImGui::SliderFloat("Ambient Occlusion##instPBR", &mdl.instancePbrMaterial.ambientOcclusion, 0.0f, 1.0f, "%.2f");
+						ImGui::Checkbox("Use NormalMap", &mdl.useNormalMap);
+						ImGui::Checkbox("Use SpecularMap", &mdl.useSpecularMap);
 					}
 					else {
 						const auto& defPbr = m_->m_DefaultPbrMaterial;
-						ImGui::Text("Base Color: (%.2f, %.2f, %.2f)", defPbr.baseColor.x,
-							defPbr.baseColor.y, defPbr.baseColor.z);
+						ImGui::Text("Base Color: (%.2f, %.2f, %.2f)", defPbr.baseColor.x, defPbr.baseColor.y, defPbr.baseColor.z);
 						ImGui::Text("Metalness: %.2f", defPbr.metalness);
 						ImGui::Text("Roughness: %.2f", defPbr.roughness);
 						ImGui::Text("AO: %.2f", defPbr.ambientOcclusion);
@@ -4430,8 +4435,22 @@ void App::RenderSceneCollection() {
 			ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
 			if (GetOpenFileNameW(&ofn)) {
 				m_->m_AudioPath = file;
-				m_->m_AudioLoaded = Sound::LoadMusic(m_->m_AudioPath);
+				// 파일명 추출 (확장자 제외)
+				std::wstring audioKey;
+				size_t sep = m_->m_AudioPath.find_last_of(L"\\/");
+				size_t dot = m_->m_AudioPath.find_last_of(L'.');
+				if (sep != std::wstring::npos && dot != std::wstring::npos && dot > sep) {
+					audioKey = m_->m_AudioPath.substr(sep + 1, dot - sep - 1);
+				}
+				else if (dot != std::wstring::npos) {
+					audioKey = m_->m_AudioPath.substr(0, dot);
+				}
+				else {
+					audioKey = m_->m_AudioPath;
+				}
+				m_->m_AudioLoaded = Sound::Load(audioKey, m_->m_AudioPath, Sound::Type::BGM);
 				if (m_->m_AudioLoaded) {
+					m_->m_AudioKey = audioKey; // key 저장
 					m_->PushLog("[OK] Audio loaded (FMOD) : " +
 						Utf8FromWString(m_->m_AudioPath));
 				}
@@ -4445,26 +4464,28 @@ void App::RenderSceneCollection() {
 		bool audioLoaded = m_->m_AudioLoaded;
 		ImGui::BeginDisabled(!audioLoaded);
 		if (ImGui::Button("Play##GlobalAudio")) {
-			Sound::Play();
+			if (!m_->m_AudioKey.empty()) {
+				Sound::PlayBGM(m_->m_AudioKey);
+			}
 		}
 		ImGui::SameLine();
 		if (ImGui::Button("Pause##GlobalAudio")) {
-			Sound::Pause(true);
+			Sound::PauseBGM(true);
 		}
 		ImGui::SameLine();
 		if (ImGui::Button("Stop##GlobalAudio")) {
-			Sound::Stop();
-			Sound::SetTimeSeconds(0.0f);
+			Sound::StopBGM();
+			Sound::SetBGMTimeSeconds(0.0f);
 		}
 		ImGui::EndDisabled();
 
 		if (audioLoaded) {
-			float cur = Sound::GetTimeSeconds();
-			float len = Sound::GetLengthSeconds();
+			float cur = Sound::GetBGMTimeSeconds();
+			float len = Sound::GetBGMLengthSeconds();
 			ImGui::Text("Time: %.2f / %.2f sec", cur, len);
 			if (len > 0.0f) {
 				if (ImGui::SliderFloat("Time (s)##GlobalAudio", &cur, 0.0f, len)) {
-					Sound::SetTimeSeconds(cur);
+					Sound::SetBGMTimeSeconds(cur);
 				}
 			}
 		}
