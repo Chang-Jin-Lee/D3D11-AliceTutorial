@@ -22,6 +22,7 @@
 #include "SceneB.h"
 #include "SoundManager.h"
 #include <algorithm>
+#include <format>
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
@@ -178,6 +179,10 @@ struct SoundBox
 	XMFLOAT3 boundsMin = { -10.0f, -10.0f, -10.0f };
 	XMFLOAT3 boundsMax = { 10.0f, 10.0f, 10.0f };
 
+	// 콜백 함수
+	std::function<void()> onEnter;  // 박스에 들어왔을 때 호출
+	std::function<void()> onExit;   // 박스에서 나갔을 때 호출
+
 	// 플레이어가 내부에 있는지 확인하는 함수
 	bool Contains(const XMFLOAT3& playerPos) const
 	{
@@ -216,16 +221,19 @@ class SoundBoxSystem
 {
 private:
 	std::vector<SoundBox> m_SoundBoxes;
+	std::vector<bool> m_WasInside;  // 이전 프레임에 박스 안에 있었는지 추적
 
 public:
 	void AddBox(const SoundBox& box)
 	{
 		m_SoundBoxes.push_back(box);
+		m_WasInside.push_back(false);  // 초기값: 박스 밖
 	}
 
 	void Clear()
 	{
 		m_SoundBoxes.clear();
+		m_WasInside.clear();
 	}
 
 	// 매 프레임 호출
@@ -233,16 +241,40 @@ public:
 	{
 		std::wstring targetBGM = L"";
 		bool insideAnyBox = false;
+		size_t foundBoxIndex = SIZE_MAX;
 
 		// 모든 박스를 순회하며 플레이어가 내부에 있는지 확인
-		for (const auto& box : m_SoundBoxes)
+		for (size_t i = 0; i < m_SoundBoxes.size(); ++i)
 		{
-			if (box.Contains(playerPos))
+			const auto& box = m_SoundBoxes[i];
+			bool isInside = box.Contains(playerPos);
+			
+			// 진입 감지: 이전 프레임에는 밖에 있었고, 지금은 안에 있음
+			if (isInside && !m_WasInside[i])
+			{
+				if (box.onEnter)
+				{
+					box.onEnter();
+				}
+			}
+			// 이탈 감지: 이전 프레임에는 안에 있었고, 지금은 밖에 있음
+			else if (!isInside && m_WasInside[i])
+			{
+				if (box.onExit)
+				{
+					box.onExit();
+				}
+			}
+			
+			// 상태 업데이트
+			m_WasInside[i] = isInside;
+			
+			// 가장 먼저 발견된 박스의 BGM을 사용
+			if (isInside && !insideAnyBox)
 			{
 				targetBGM = box.bgmKey;
 				insideAnyBox = true;
-				// 가장 먼저 발견된 박스를 우선시
-				break;
+				foundBoxIndex = i;
 			}
 		}
 
@@ -430,7 +462,26 @@ static void BuildBoneCacheStructure(ModelEntry& entry, const char* filter) {
 	entry.boneDisplayText += std::to_string((unsigned)cache.size());
 	entry.boneDisplayText += "\n\n";
 
-	std::function<bool(int)> subtreeContainsFilter = [&](int idx) -> bool {
+	 std::vector<int8_t> memo(cache.size(), -1);
+
+    auto subtreeContainsFilter = [&](auto&& self, int idx) -> bool {
+        if (!useFilter) return true;
+        if (idx < 0 || idx >= (int)cache.size()) return false;
+
+        int8_t& m = memo[(size_t)idx];
+        if (m != -1) return m != 0;
+
+        bool ok = (cache[idx].nameU8.find(f) != std::string::npos);
+        if (!ok) {
+            for (int ch : cache[idx].children) {
+                if (self(self, ch)) { ok = true; break; }
+            }
+        }
+        m = ok ? 1 : 0;
+        return ok;
+    };
+
+	/*std::function<bool(int)> subtreeContainsFilter = [&](int idx) -> bool {
 		if (!useFilter)
 			return true;
 		if (idx < 0 || idx >= (int)cache.size())
@@ -441,12 +492,13 @@ static void BuildBoneCacheStructure(ModelEntry& entry, const char* filter) {
 			if (subtreeContainsFilter(ch))
 				return true;
 		return false;
-		};
+		};*/
 
 	std::function<void(int, int)> dfs = [&](int idx, int depth) {
 		if (idx < 0 || idx >= (int)cache.size())
 			return;
-		if (useFilter && !subtreeContainsFilter(idx))
+		//if (useFilter && !subtreeContainsFilter(idx))
+		if (useFilter && !subtreeContainsFilter(subtreeContainsFilter, idx))
 			return;
 		const auto& n = cache[idx];
 		entry.boneDisplayText.append((size_t)depth * 2u, ' ');
@@ -774,6 +826,10 @@ struct App::Impl {
 	float m_ScenePopupTimer = 0.0f;
 	std::string m_ScenePopupMessage;
 
+	// 만화 뷰어 관련
+	int m_MangaIndex = 0;  // 0 = AliceDagwa, 1-53 = Manga/1.png ~ Manga/53.png
+	bool m_LoadingDoneSoundPlayed = false;  // 로딩 완료 사운드 재생 여부
+
 	// VMD 카메라 상태 (공용)
 	mmd::VmdCameraState m_VmdCamera;
 
@@ -1003,6 +1059,12 @@ bool App::OnInitialize() {
 
 	AssetManager::Create();
 
+	// 로비에서 나올 음성
+	Sound::Load(L"Waitforsecond3", L"..\\Resource\\Sound\\Dagwa.mp3", Sound::Type::SFX);
+	Sound::Load(L"Waitforsecond2", L"..\\Resource\\Sound\\Waitforsecond2.mp3", Sound::Type::SFX);
+	Sound::Load(L"Waitforsecond", L"..\\Resource\\Sound\\Waitforsecond.mp3", Sound::Type::SFX);
+	Sound::Load(L"LoadingDone", L"..\\Resource\\Sound\\LoadingDone.mp3", Sound::Type::SFX);
+
 	// 데이터 로딩은 별도 스레드에서 시작 
 	m_loaderThread = std::jthread([this](std::stop_token st)
 	{
@@ -1032,8 +1094,15 @@ void App::LoadDataAsync(std::stop_token stoken)
 		Sound::Load(L"LetItHappen", L"..\\Resource\\Sound\\LetItHappen.mp3", Sound::Type::BGM);
 		Sound::Load(L"test", L"..\\Resource\\Sound\\test.wav", Sound::Type::SFX);
 
+		Sound::Load(L"CaliforniaGirls", L"..\\Resource\\Sound\\CaliforniaGirls.wav", Sound::Type::BGM);
+		Sound::Load(L"CaramellDansen", L"..\\Resource\\Sound\\CaramellDansen.wav", Sound::Type::BGM);
+		Sound::Load(L"menisyuki", L"..\\Resource\\Sound\\MeniShukiRushshu.mp3", Sound::Type::BGM);
+		Sound::Load(L"RabbitHole", L"..\\Resource\\Sound\\RabbitHole.mp3", Sound::Type::BGM);
+		Sound::Load(L"Specialist", L"..\\Resource\\Sound\\Specialist.mp3", Sound::Type::BGM);
+
 		// SoundBox 예제 추가 (테스트용)
 		// SoundBox는 영역에 들어가면 자동으로 BGM이 재생되므로 초기 PlayBGM은 제거
+		Sound::SetBGMVolume(0.6f);
 		Sound::PlayBGM(L"LetItHappen");
 		
 		// 예제 SoundBox 생성 (원점 주변 10x10x10 영역)
@@ -1044,11 +1113,14 @@ void App::LoadDataAsync(std::stop_token stoken)
 		box1.boundsMin = { -10.0f, -10.0f, -10.0f };
 		box1.boundsMax = { 10.0f, 10.0f, 10.0f };
 		m_->m_SoundBoxSystem.AddBox(box1);
+
 	}
 	m_fLoadingProgress = 0.1f;
 
 	// ====================================== 씬 이미지 초기 로드  ====================================== 
-	// 원본 이미지 경로 초기화
+	// 만화 뷰어 초기화: 처음에는 AliceDagwa.png 표시
+	m_->m_MangaIndex = 0;
+	m_->m_CurrentSceneImagePath = L"..\\Resource\\Image\\AliceDagwa.png";
 	m_->m_OriginalSceneImagePath = m_->m_CurrentSceneImagePath;
 	LoadSceneImage(m_->m_CurrentSceneImagePath);
 
@@ -1069,7 +1141,8 @@ void App::LoadDataAsync(std::stop_token stoken)
 	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\char\\char.fbx"); // 0
 	// LoadModelFromFile(L"..\\Resource\\fbx\\Alice_UmaUma.fbx"); // 0
 
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice3DGame\\Alice.fbx"); // 0
+	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice3DGame\\Alice.fbx"); // 0
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice3DGame\\Alice_.fbx"); // 0
 	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping_idle_walk_run.fbx"); // 0
 	m_fLoadingProgress = 0.8f;
 	if (stoken.stop_requested()) return;
@@ -1080,6 +1153,13 @@ void App::LoadDataAsync(std::stop_token stoken)
 	// LoadModelFromFile(L"..\\Resource\\fbx\\Neon.fbx"); // 3
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\sphere.fbx"); // 3
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Ground.fbx"); // 4
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice3DGame\\Alice_.fbx"); // 5
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice3DGame\\Alice_.fbx"); // 6
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice3DGame\\Alice_.fbx"); // 7
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice3DGame\\Alice_.fbx"); // 8
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice3DGame\\Alice_.fbx"); // 9
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice3DGame\\Alice_.fbx"); // 10
+
 	m_fLoadingProgress = 0.95f;
 	if (stoken.stop_requested()) return;
 	m_->m_Objects.clear();
@@ -1087,36 +1167,181 @@ void App::LoadDataAsync(std::stop_token stoken)
 		auto mo = std::make_unique<ModelObject>(m_->m_Models[mi]->modelName, mi);
 		m_->m_Objects.push_back(std::move(mo));
 	}
+	m_->m_Models[0]->boundsBoneIndex = 1;
+	m_->m_Models[5]->boundsBoneIndex = 1;
+	m_->m_Models[6]->boundsBoneIndex = 1;
+	m_->m_Models[7]->boundsBoneIndex = 1;
+	m_->m_Models[8]->boundsBoneIndex = 1;
+	m_->m_Models[9]->boundsBoneIndex = 1;
+	m_->m_Models[10]->boundsBoneIndex = 1;
+
 	m_->m_Models[0]->modelShading = ShadingMode::PBR;
 	m_->m_Models[1]->modelShading = ShadingMode::PBR;
 	m_->m_Models[2]->modelShading = ShadingMode::PBR;
 	m_->m_Models[3]->modelShading = ShadingMode::PBR;
+	m_->m_Models[5]->modelShading = ShadingMode::PBR;
+	m_->m_Models[6]->modelShading = ShadingMode::PBR;
+	m_->m_Models[7]->modelShading = ShadingMode::PBR;
 
 	m_->m_Models[0]->pos = XMFLOAT3(0, 0.0f, 0.0f);
-	m_->m_Models[0]->rotDeg = XMFLOAT3(0, 0.0f, 0.0f);
 	m_->m_Models[1]->pos = XMFLOAT3(-26, 66.5f, -29.3f);
+	m_->m_Models[2]->pos = XMFLOAT3(-220, 90.0f, -80.0f);
+	m_->m_Models[3]->pos = XMFLOAT3(170, 90.0f, 70.0f);
+	m_->m_Models[4]->pos = XMFLOAT3(0.0f, -2.0f, 0.0f);
+	m_->m_Models[5]->pos = XMFLOAT3(-350.0f, 0.0f, 230.0f);
+	m_->m_Models[6]->pos = XMFLOAT3(0.0f, 0.0f, 300.0f);
+	m_->m_Models[7]->pos = XMFLOAT3(350.0f, 0.0f, 230.0f);
+	m_->m_Models[8]->pos = XMFLOAT3(-350.0f, 0.0f, -260.0f);
+	m_->m_Models[9]->pos = XMFLOAT3(350.0f, 0.0f, -260.0f);
+	m_->m_Models[10]->pos = XMFLOAT3(0.0f, 0.0f, -300.0f);
+
+	m_->m_Models[0]->rotDeg = XMFLOAT3(0, 0.0f, 0.0f);
 	m_->m_Models[1]->rotDeg = XMFLOAT3(13, 90.0f, 2.0f);
-	m_->m_Models[2]->pos = XMFLOAT3(-130, 50.0f, 0.0f);
-	m_->m_Models[3]->pos = XMFLOAT3(90, 0.0f, 70.0f);
+	m_->m_Models[5]->rotDeg = XMFLOAT3(0.0f, -60.0f, 0.0f);
+	m_->m_Models[7]->rotDeg = XMFLOAT3(0.0f, 60.0f, 0.0f);
+	m_->m_Models[8]->rotDeg = XMFLOAT3(0.0f, -120.0f, 0.0f);
+	m_->m_Models[9]->rotDeg = XMFLOAT3(0.0f, -240.0f, 0.0f);
+	m_->m_Models[10]->rotDeg = XMFLOAT3(0.0f, 180.0f, 0.0f);
+
 	m_->m_Models[3]->scale = XMFLOAT3(0.5f, 0.5f, 0.5f);
+	m_->m_Models[4]->scale = XMFLOAT3(2.0f, 1.0f, 8.0f);
 
 	m_->m_Models[2]->useInstancePbrMaterial = true;
+	m_->m_Models[3]->useInstancePbrMaterial = true;
+	m_->m_Models[4]->useInstancePbrMaterial = true;
+
 	m_->m_Models[2]->instancePbrMaterial.metalness = 1.0f;
 	m_->m_Models[2]->instancePbrMaterial.roughness = 0.01f;
 	m_->m_Models[2]->instancePbrMaterial.ambientOcclusion = 1.0f;
 
-	m_->m_Models[3]->useInstancePbrMaterial = true;
 	m_->m_Models[3]->instancePbrMaterial.metalness = 1.0f;
 	m_->m_Models[3]->instancePbrMaterial.roughness = 0.01f;
 	m_->m_Models[3]->instancePbrMaterial.ambientOcclusion = 1.0f;
 
-	m_->m_Models[4]->scale = XMFLOAT3(2.0f, 1.0f, 8.0f);
-	m_->m_Models[4]->pos = XMFLOAT3(0.0f, -2.0f, 0.0f);
-	m_->m_Models[4]->useInstancePbrMaterial = true;
 	m_->m_Models[4]->instancePbrMaterial.baseColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f);
 	m_->m_Models[4]->instancePbrMaterial.metalness = 0.01f;
 	m_->m_Models[4]->instancePbrMaterial.roughness = 1.0f;
 	m_->m_Models[4]->instancePbrMaterial.ambientOcclusion = 1.0f;
+
+	m_->m_Models[5]->uiAnimPlaying = false;
+	m_->m_Models[6]->uiAnimPlaying = false;
+	m_->m_Models[7]->uiAnimPlaying = false;
+	m_->m_Models[8]->uiAnimPlaying = false;
+	m_->m_Models[9]->uiAnimPlaying = false;
+	m_->m_Models[10]->uiAnimPlaying = false;
+	m_->m_Models[5]->fbxBaseAnimator.SetCurrentIndex(1);    // Idle
+	m_->m_Models[6]->fbxBaseAnimator.SetCurrentIndex(1);    // Idle
+	m_->m_Models[7]->fbxBaseAnimator.SetCurrentIndex(1);    // Idle
+	m_->m_Models[8]->fbxBaseAnimator.SetCurrentIndex(1);    // Idle
+	m_->m_Models[9]->fbxBaseAnimator.SetCurrentIndex(1);    // Idle
+	m_->m_Models[10]->fbxBaseAnimator.SetCurrentIndex(1);   // Idle
+
+	// ====================================== SoundBox 생성 및 애니메이션 바인딩 ======================================
+	// 각 SoundBox에 해당하는 모델의 애니메이션을 설정하는 콜백 함수를 바인딩합니다.
+	// 박스에 들어가면 BGM 재생 + 해당 모델의 애니메이션이 자동으로 실행됩니다.
+	
+	// Model 5: CaramellDansen
+	SoundBox boxCaramellDansen;
+	boxCaramellDansen.bgmKey = L"CaramellDansen";
+	boxCaramellDansen.position = m_->m_Models[5]->pos;
+	boxCaramellDansen.scale = { 15.0f, 15.0f, 15.0f };
+	boxCaramellDansen.boundsMin = { -10.0f, -10.0f, -10.0f };
+	boxCaramellDansen.boundsMax = { 10.0f, 10.0f, 10.0f };
+	boxCaramellDansen.onEnter = [this]() {
+		if (m_->m_Models.size() > 5) {
+			m_->m_Models[5]->uiAnimPlaying = true;
+			m_->m_Models[5]->fbxBaseAnimator.SetCurrentIndex(1);  // CaramellaDansen
+		}
+	};
+	boxCaramellDansen.onExit = [this]() {
+		if (m_->m_Models.size() > 5) {
+			m_->m_Models[5]->uiAnimPlaying = false;
+		}
+	};
+	m_->m_SoundBoxSystem.AddBox(boxCaramellDansen);
+
+	// Model 6: menisyukiLeft
+	SoundBox boxMenisyukiLeft;
+	boxMenisyukiLeft.bgmKey = L"menisyuki";
+	boxMenisyukiLeft.position = m_->m_Models[6]->pos;
+	boxMenisyukiLeft.scale = { 15.0f, 15.0f, 15.0f };
+	boxMenisyukiLeft.boundsMin = { -10.0f, -10.0f, -10.0f };
+	boxMenisyukiLeft.boundsMax = { 10.0f, 10.0f, 10.0f };
+	boxMenisyukiLeft.onEnter = [this]() {
+		m_->m_Models[6]->uiAnimPlaying = true;
+		m_->m_Models[6]->fbxBaseAnimator.SetCurrentIndex(3);  // menisyuikiLeft
+	};
+	boxMenisyukiLeft.onExit = [this]() {
+		m_->m_Models[6]->uiAnimPlaying = false;
+		Sound::StopBGM();
+	};
+	m_->m_SoundBoxSystem.AddBox(boxMenisyukiLeft);
+
+	// Model 7: menisyukiRight
+	SoundBox boxMenisyukiRight;
+	boxMenisyukiRight.bgmKey = L"menisyuki";
+	boxMenisyukiRight.position = m_->m_Models[7]->pos;
+	boxMenisyukiRight.scale = { 15.0f, 15.0f, 15.0f };
+	boxMenisyukiRight.boundsMin = { -10.0f, -10.0f, -10.0f };
+	boxMenisyukiRight.boundsMax = { 10.0f, 10.0f, 10.0f };
+	boxMenisyukiRight.onEnter = [this]() {
+		m_->m_Models[7]->uiAnimPlaying = true;
+		m_->m_Models[7]->fbxBaseAnimator.SetCurrentIndex(4);  // menisyukiRight
+	};
+	boxMenisyukiRight.onExit = [this]() {
+		m_->m_Models[7]->uiAnimPlaying = false;
+		Sound::StopBGM();
+	};
+	m_->m_SoundBoxSystem.AddBox(boxMenisyukiRight);
+
+	// Model 8: RabbitHole
+	SoundBox boxRabbitHole;
+	boxRabbitHole.bgmKey = L"RabbitHole";
+	boxRabbitHole.position = m_->m_Models[8]->pos;
+	boxRabbitHole.scale = { 15.0f, 15.0f, 15.0f };
+	boxRabbitHole.boundsMin = { -10.0f, -10.0f, -10.0f };
+	boxRabbitHole.boundsMax = { 10.0f, 10.0f, 10.0f };
+	boxRabbitHole.onEnter = [this]() {
+		m_->m_Models[8]->uiAnimPlaying = true;
+		m_->m_Models[8]->fbxBaseAnimator.SetCurrentIndex(5);  // RabbitHole
+	};
+	boxRabbitHole.onExit = [this]() {
+		m_->m_Models[8]->uiAnimPlaying = false;
+	};
+	m_->m_SoundBoxSystem.AddBox(boxRabbitHole);
+
+	// Model 9: Specialist
+	SoundBox boxSpecialist;
+	boxSpecialist.bgmKey = L"Specialist";
+	boxSpecialist.position = m_->m_Models[9]->pos;
+	boxSpecialist.scale = { 15.0f, 15.0f, 15.0f };
+	boxSpecialist.boundsMin = { -10.0f, -10.0f, -10.0f };
+	boxSpecialist.boundsMax = { 10.0f, 10.0f, 10.0f };
+	boxSpecialist.onEnter = [this]() {
+		m_->m_Models[9]->uiAnimPlaying = true;
+		m_->m_Models[9]->fbxBaseAnimator.SetCurrentIndex(10);  // Specialist
+	};
+	boxSpecialist.onExit = [this]() {
+		m_->m_Models[9]->uiAnimPlaying = false;
+	};
+	m_->m_SoundBoxSystem.AddBox(boxSpecialist);
+
+	// Model 10: CaliforniaGirls
+	SoundBox boxCaliforniaGirls;
+	boxCaliforniaGirls.bgmKey = L"CaliforniaGirls";
+	boxCaliforniaGirls.position = m_->m_Models[10]->pos;
+	boxCaliforniaGirls.scale = { 15.0f, 15.0f, 15.0f };
+	boxCaliforniaGirls.boundsMin = { -10.0f, -10.0f, -10.0f };
+	boxCaliforniaGirls.boundsMax = { 10.0f, 10.0f, 10.0f };
+	boxCaliforniaGirls.onEnter = [this]() {
+		m_->m_Models[10]->uiAnimPlaying = true;
+		m_->m_Models[10]->fbxBaseAnimator.SetCurrentIndex(0);  // CaliforniaGirls
+	};
+	boxCaliforniaGirls.onExit = [this]() {
+		m_->m_Models[10]->uiAnimPlaying = false;
+	};
+	m_->m_SoundBoxSystem.AddBox(boxCaliforniaGirls);
+
 
 	// ====================================== 큐브  ======================================
 	auto co = std::make_unique<CubeObject>(
@@ -1155,9 +1380,10 @@ void App::LoadDataAsync(std::stop_token stoken)
 			if (alice.shared && alice.shared->fbx && alice.shared->fbx->HasSkeleton()) {
 				// 컨트롤러 설정
 				m_->m_CharCtrl.config.weaponSocket.socketName = "WeaponPoint";
-				m_->m_CharCtrl.config.weaponSocket.parentBone = "Hand_R";
-				m_->m_CharCtrl.config.weaponSocket.pos = { 0.1f, 0.05f, 0.0f };
-				m_->m_CharCtrl.config.weaponSocket.rotDeg = { 0.0f, 90.0f, 0.0f };
+				//m_->m_CharCtrl.config.weaponSocket.parentBone = "Hand_R";
+				m_->m_CharCtrl.config.weaponSocket.parentBone = "手首.R";
+				m_->m_CharCtrl.config.weaponSocket.pos = { 0.0f, 0.0f, 0.0f };
+				m_->m_CharCtrl.config.weaponSocket.rotDeg = { 0.0f, 0.0f, 0.0f };
 				m_->m_CharCtrl.config.weaponSocket.scale = { 1.0f, 1.0f, 1.0f };
 
 				// 전환 테이블(원하는 곳만 override) - Locomotion은 즉시 반응
@@ -1675,7 +1901,7 @@ void App::OnUpdate(const float& dt) {
 			// firePressed는 마우스를 떼는 순간에만 true가 되고,
 			// 그때 이미 Shoot 사운드가 재생되므로 여기서는 처리하지 않음
 
-			// === NEW: TPS 카메라 붙어있으면, 이번 프레임 카메라 pose + aim yaw 계산 ===
+			// ===  TPS 카메라 붙어있으면, 이번 프레임 카메라 pose + aim yaw 계산 ===
 			AimInputState aim{};
 			if (m_->m_TpsCamAttached)
 			{
@@ -1797,6 +2023,7 @@ void App::OnUpdate(const float& dt) {
 		}
 		*/
 
+		size_t i = 0;
 		for (auto& mdlPtr : m_->m_Models) {
 			auto& mdl = *mdlPtr;
 			if (mdl.autoRotate) {
@@ -1815,12 +2042,13 @@ void App::OnUpdate(const float& dt) {
 			sceneModelCount++;
 
 			// AdvancedRig 대상 캐릭터는 여기서 기본 업데이트를 하지 않는다.
-			const bool isRigCharacter = (m_->m_CharModelIndex >= 0 &&
+			const bool isRigCharacter = (m_->m_CharModelIndex >= i &&
 				m_->m_CharModelIndex < (int)m_->m_Models.size() &&
 				mdlPtr.get() == m_->m_Models[(size_t)m_->m_CharModelIndex].get());
 			if (isRigCharacter && m_->m_UseAdvancedRig && m_->m_CharRigInited) {
 				// shared 중복 업데이트 방지 마킹은 유지
-				updated.insert(mdl.shared.get());
+				//updated.insert(mdl.shared.get());
+				++i;
 				continue;
 			}
 
@@ -1928,6 +2156,7 @@ void App::OnUpdate(const float& dt) {
 					}
 				}
 			}
+			++i;
 
 		}
 
@@ -2241,7 +2470,7 @@ void App::PassDebugDraw()
 			int useBoneIdx = -1;
 			if (cbBones != nullptr)
 			{
-				useBoneIdx = (mdlPtr->boundsBoneIndex >= 0) ? mdlPtr->boundsBoneIndex : 0;
+				useBoneIdx = (mdlPtr->boundsBoneIndex >= 0) ? mdlPtr->boundsBoneIndex : -1;
 			}
 			lineCB.boundsBoneIndex = useBoneIdx;
 			D3D11_MAPPED_SUBRESOURCE mappedLine;
@@ -4006,185 +4235,185 @@ bool App::CreateGBuffer() {
 	return true;
 }
 
-// ------------------------- Model Loader (FBX/OBJ/PMX via Assimp) -------------------------
-bool App::LoadModelFromFile(const std::wstring& pathW) {
-	// 새 모델델 추가
+	// ------------------------- Model Loader (FBX/OBJ/PMX via Assimp) -------------------------
+	bool App::LoadModelFromFile(const std::wstring& pathW) {
+		// 새 모델델 추가
 
-	// 폴백 텍스처(화이트/블랙/노멀) 생성: 각각 최초 1회만 생성
-	auto createFallbackIfNull = [&](ID3D11ShaderResourceView** targetSRV,
-		UINT rgba) {
-			if (*targetSRV)
-				return;
-			D3D11_TEXTURE2D_DESC td{};
-			td.Width = 1;
-			td.Height = 1;
-			td.MipLevels = 1;
-			td.ArraySize = 1;
-			td.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-			td.SampleDesc.Count = 1;
-			td.Usage = D3D11_USAGE_IMMUTABLE;
-			td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-			D3D11_SUBRESOURCE_DATA sd{};
-			sd.pSysMem = &rgba;
-			sd.SysMemPitch = sizeof(UINT);
-			Microsoft::WRL::ComPtr<ID3D11Texture2D> tex;
-			HR_T(m_->m_pDevice->CreateTexture2D(&td, &sd, tex.GetAddressOf()));
-			D3D11_SHADER_RESOURCE_VIEW_DESC srvd{};
-			srvd.Format = td.Format;
-			srvd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-			srvd.Texture2D.MipLevels = 1;
-			srvd.Texture2D.MostDetailedMip = 0;
-			HR_T(m_->m_pDevice->CreateShaderResourceView(tex.Get(), &srvd, targetSRV));
-		};
-	createFallbackIfNull(&m_->m_pFallbackWhite, 0xFFFFFFFF);
-	createFallbackIfNull(&m_->m_pFallbackBlack, 0x000000FF); // a=1
-	createFallbackIfNull(&m_->m_pFallbackNormal,
-		0x8080FFFF); // (0.5,0.5,1,1) in RGBA8
+		// 폴백 텍스처(화이트/블랙/노멀) 생성: 각각 최초 1회만 생성
+		auto createFallbackIfNull = [&](ID3D11ShaderResourceView** targetSRV,
+			UINT rgba) {
+				if (*targetSRV)
+					return;
+				D3D11_TEXTURE2D_DESC td{};
+				td.Width = 1;
+				td.Height = 1;
+				td.MipLevels = 1;
+				td.ArraySize = 1;
+				td.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+				td.SampleDesc.Count = 1;
+				td.Usage = D3D11_USAGE_IMMUTABLE;
+				td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+				D3D11_SUBRESOURCE_DATA sd{};
+				sd.pSysMem = &rgba;
+				sd.SysMemPitch = sizeof(UINT);
+				Microsoft::WRL::ComPtr<ID3D11Texture2D> tex;
+				HR_T(m_->m_pDevice->CreateTexture2D(&td, &sd, tex.GetAddressOf()));
+				D3D11_SHADER_RESOURCE_VIEW_DESC srvd{};
+				srvd.Format = td.Format;
+				srvd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+				srvd.Texture2D.MipLevels = 1;
+				srvd.Texture2D.MostDetailedMip = 0;
+				HR_T(m_->m_pDevice->CreateShaderResourceView(tex.Get(), &srvd, targetSRV));
+			};
+		createFallbackIfNull(&m_->m_pFallbackWhite, 0xFFFFFFFF);
+		createFallbackIfNull(&m_->m_pFallbackBlack, 0x000000FF); // a=1
+		createFallbackIfNull(&m_->m_pFallbackNormal,
+			0x8080FFFF); // (0.5,0.5,1,1) in RGBA8
 
-	// 받은 경로에서 이름, 확장자 추출
-	std::wstring ext{ L"" }, fileName{ L"" };
-	if (!pathW.empty()) {
-		size_t dot = pathW.find_last_of(L'.');
-		if (dot != std::wstring::npos) {
-			ext = pathW.substr(dot);
-			std::transform(ext.begin(), ext.end(), ext.begin(), ::towlower);
-			size_t sep = pathW.find_last_of(L"\\/");
-			if (sep != std::wstring::npos)
-				fileName = pathW.substr(sep + 1, dot - sep - 1);
-			else
-				fileName = pathW.substr(0, dot);
+		// 받은 경로에서 이름, 확장자 추출
+		std::wstring ext{ L"" }, fileName{ L"" };
+		if (!pathW.empty()) {
+			size_t dot = pathW.find_last_of(L'.');
+			if (dot != std::wstring::npos) {
+				ext = pathW.substr(dot);
+				std::transform(ext.begin(), ext.end(), ext.begin(), ::towlower);
+				size_t sep = pathW.find_last_of(L"\\/");
+				if (sep != std::wstring::npos)
+					fileName = pathW.substr(sep + 1, dot - sep - 1);
+				else
+					fileName = pathW.substr(0, dot);
+			}
 		}
+
+		m_fLoadingProgress = 0.35f;
+
+		bool ok = false;
+		auto entry = std::make_unique<ModelEntry>();
+		entry->modelName = fileName;
+
+		// 캐시 확인
+		std::shared_ptr<SharedModelData> shared;
+		if (auto it = m_->m_ModelCache.find(pathW); it != m_->m_ModelCache.end())
+			shared = it->second.lock();
+
+		m_fLoadingProgress = 0.4f;
+		m_sLoadingStr = L"3D 모델에 대한 Geometry, Material을 로드합니다.";
+
+		if (!shared) {
+			shared = std::make_shared<SharedModelData>();
+			shared->pathW = pathW;
+			// 로드 경로에 따라 매니저 준비
+			if (ext == L".fbx") {
+				shared->source = ModelSource::FBX;
+				// 공용 AssetManager를 통해 FBX 모델 공유/캐시
+				shared->fbx = AssetManager::GetInstance().GetFbxModel(m_->m_pDevice, pathW);
+				if (ok = (shared->fbx != nullptr)) {
+					m_->PushLog("[OK] Loaded FBX(shared): " + Utf8FromWString(fileName));
+					shared->stride = shared->fbx->GetVertexStride();
+					shared->vb = shared->fbx->GetVertexBuffer();
+					shared->ib = shared->fbx->GetIndexBuffer();
+					shared->indexCount = shared->fbx->GetIndexCount();
+					shared->subsets.clear();
+					for (auto& s : shared->fbx->GetSubsets())
+						shared->subsets.push_back(
+							{ s.startIndex, s.indexCount, s.materialIndex });
+					shared->materialSRVs = shared->fbx->GetMaterialSRVs();
+					shared->normalSRVs = shared->fbx->GetNormalSRVs();
+				}
+				else {
+					m_->PushLog("[ERR] Failed FBX: " + Utf8FromWString(fileName));
+				}
+			}
+			else if (ext == L".obj") {
+				shared->source = ModelSource::OBJ;
+				shared->obj = std::make_shared<ObjManager>();
+				if (ok = shared->obj->Load(m_->m_pDevice, pathW)) {
+					m_->PushLog("[OK] Loaded OBJ(shared): " + Utf8FromWString(fileName));
+					shared->stride = shared->obj->GetVertexStride();
+					shared->vb = shared->obj->GetVertexBuffer();
+					shared->ib = shared->obj->GetIndexBuffer();
+					shared->indexCount = shared->obj->GetIndexCount();
+					shared->subsets.clear();
+					const auto& subs = shared->obj->GetSubsets();
+					for (auto& s : subs)
+						shared->subsets.push_back(
+							{ s.startIndex, s.indexCount, s.materialIndex });
+					shared->materialSRVs = shared->obj->GetMaterialSRVs();
+				}
+				else {
+					m_->PushLog("[ERR] Failed OBJ: " + Utf8FromWString(fileName));
+				}
+			}
+			else if (ext == L".pmx") {
+				shared->source = ModelSource::PMX;
+				shared->pmx = std::make_shared<PmxManager>();
+				if (ok = shared->pmx->Load(m_->m_pDevice, pathW)) {
+					m_->PushLog("[OK] Loaded PMX(shared): " + Utf8FromWString(fileName));
+					shared->stride = shared->pmx->GetVertexStride();
+					shared->vb = shared->pmx->GetVertexBuffer();
+					shared->ib = shared->pmx->GetIndexBuffer();
+					shared->indexCount = shared->pmx->GetIndexCount();
+					shared->subsets.clear();
+					const auto& subs = shared->pmx->GetSubsets();
+					for (auto& s : subs)
+						shared->subsets.push_back(
+							{ s.startIndex, s.indexCount, s.materialIndex });
+					shared->materialSRVs = shared->pmx->GetMaterialSRVs();
+				}
+				else {
+					m_->PushLog("[ERR] Failed PMX: " + Utf8FromWString(fileName));
+				}
+			}
+
+			if (ok) {
+				m_->m_ModelCache[pathW] = shared; // 캐시 등록
+			}
+		}
+		else {
+			ok = true;
+			m_->PushLog("[OK] Reused cached model: " + Utf8FromWString(fileName));
+		}
+
+		m_fLoadingProgress = 0.5f;
+		m_sLoadingStr = L"3D 모델의 Skeletal, Bone, Animation을 로드합니다.";
+
+
+		if (ok && shared) {
+			entry->shared = shared;
+			entry->source = shared->source;
+			// 본 캐시/출력텍스트 일괄 구축
+			BuildBoneCacheStructure(*entry, nullptr);
+			// 메시 통계는 UI에서 필요할 때 계산
+			entry->meshStatsValid = false;
+			entry->meshStats = MeshStats{};
+			// 모델별 셰이딩 초기값 = 현재 글로벌 셰이딩, 아웃라인 기본은 Toon일 때만 ON
+			entry->modelShading = m_->m_ShadingMode;
+			entry->outlineEnabled = (entry->modelShading == ShadingMode::ToonShading);
+			entry->instancePbrMaterial = m_->m_DefaultPbrMaterial;
+
+			// FBX 인스턴스 애니메이터를 로드 시점에 1회 초기화
+			if (entry->source == ModelSource::FBX && entry->shared &&
+				entry->shared->fbx) {
+				entry->fbxBaseAnimator.InitMetadata(entry->shared->fbx->GetScenePtr());
+				entry->fbxBaseAnimator.SetSharedContext(entry->shared->fbx->GetScenePtr(),
+					entry->shared->fbx->GetNodeIndexOfName(),
+					&entry->shared->fbx->GetBoneNames(),
+					&entry->shared->fbx->GetBoneOffsets(),
+					&entry->shared->fbx->GetGlobalInverse());
+				auto t = entry->shared->fbx->GetCurrentAnimationType();
+				entry->fbxBaseAnimator.SetType(t == FbxModel::AnimationType::Rigid
+					? FbxAnimation::AnimType::Rigid
+					: (t == FbxModel::AnimationType::Skinned
+						? FbxAnimation::AnimType::Skinned
+						: FbxAnimation::AnimType::None));
+				entry->animatorInited = true;
+			}
+
+			m_->m_Models.push_back(std::move(entry));
+		}
+		m_fLoadingProgress = 0.7f;
+		return ok;
 	}
-
-	m_fLoadingProgress = 0.35f;
-
-	bool ok = false;
-	auto entry = std::make_unique<ModelEntry>();
-	entry->modelName = fileName;
-
-	// 캐시 확인
-	std::shared_ptr<SharedModelData> shared;
-	if (auto it = m_->m_ModelCache.find(pathW); it != m_->m_ModelCache.end())
-		shared = it->second.lock();
-
-	m_fLoadingProgress = 0.4f;
-	m_sLoadingStr = L"3D 모델에 대한 Geometry, Material, Animaion을 로드합니다.";
-
-	if (!shared) {
-		shared = std::make_shared<SharedModelData>();
-		shared->pathW = pathW;
-		// 로드 경로에 따라 매니저 준비
-		if (ext == L".fbx") {
-			shared->source = ModelSource::FBX;
-			// 공용 AssetManager를 통해 FBX 모델 공유/캐시
-			shared->fbx = AssetManager::GetInstance().GetFbxModel(m_->m_pDevice, pathW);
-			if (ok = (shared->fbx != nullptr)) {
-				m_->PushLog("[OK] Loaded FBX(shared): " + Utf8FromWString(fileName));
-				shared->stride = shared->fbx->GetVertexStride();
-				shared->vb = shared->fbx->GetVertexBuffer();
-				shared->ib = shared->fbx->GetIndexBuffer();
-				shared->indexCount = shared->fbx->GetIndexCount();
-				shared->subsets.clear();
-				for (auto& s : shared->fbx->GetSubsets())
-					shared->subsets.push_back(
-						{ s.startIndex, s.indexCount, s.materialIndex });
-				shared->materialSRVs = shared->fbx->GetMaterialSRVs();
-				shared->normalSRVs = shared->fbx->GetNormalSRVs();
-			}
-			else {
-				m_->PushLog("[ERR] Failed FBX: " + Utf8FromWString(fileName));
-			}
-		}
-		else if (ext == L".obj") {
-			shared->source = ModelSource::OBJ;
-			shared->obj = std::make_shared<ObjManager>();
-			if (ok = shared->obj->Load(m_->m_pDevice, pathW)) {
-				m_->PushLog("[OK] Loaded OBJ(shared): " + Utf8FromWString(fileName));
-				shared->stride = shared->obj->GetVertexStride();
-				shared->vb = shared->obj->GetVertexBuffer();
-				shared->ib = shared->obj->GetIndexBuffer();
-				shared->indexCount = shared->obj->GetIndexCount();
-				shared->subsets.clear();
-				const auto& subs = shared->obj->GetSubsets();
-				for (auto& s : subs)
-					shared->subsets.push_back(
-						{ s.startIndex, s.indexCount, s.materialIndex });
-				shared->materialSRVs = shared->obj->GetMaterialSRVs();
-			}
-			else {
-				m_->PushLog("[ERR] Failed OBJ: " + Utf8FromWString(fileName));
-			}
-		}
-		else if (ext == L".pmx") {
-			shared->source = ModelSource::PMX;
-			shared->pmx = std::make_shared<PmxManager>();
-			if (ok = shared->pmx->Load(m_->m_pDevice, pathW)) {
-				m_->PushLog("[OK] Loaded PMX(shared): " + Utf8FromWString(fileName));
-				shared->stride = shared->pmx->GetVertexStride();
-				shared->vb = shared->pmx->GetVertexBuffer();
-				shared->ib = shared->pmx->GetIndexBuffer();
-				shared->indexCount = shared->pmx->GetIndexCount();
-				shared->subsets.clear();
-				const auto& subs = shared->pmx->GetSubsets();
-				for (auto& s : subs)
-					shared->subsets.push_back(
-						{ s.startIndex, s.indexCount, s.materialIndex });
-				shared->materialSRVs = shared->pmx->GetMaterialSRVs();
-			}
-			else {
-				m_->PushLog("[ERR] Failed PMX: " + Utf8FromWString(fileName));
-			}
-		}
-
-		if (ok) {
-			m_->m_ModelCache[pathW] = shared; // 캐시 등록
-		}
-	}
-	else {
-		ok = true;
-		m_->PushLog("[OK] Reused cached model: " + Utf8FromWString(fileName));
-	}
-
-	m_fLoadingProgress = 0.5f;
-	m_sLoadingStr = L"3D 모델의 Skeletal, Bone을 로드합니다.";
-
-
-	if (ok && shared) {
-		entry->shared = shared;
-		entry->source = shared->source;
-		// 본 캐시/출력텍스트 일괄 구축
-		BuildBoneCacheStructure(*entry, nullptr);
-		// 메시 통계는 UI에서 필요할 때 계산
-		entry->meshStatsValid = false;
-		entry->meshStats = MeshStats{};
-		// 모델별 셰이딩 초기값 = 현재 글로벌 셰이딩, 아웃라인 기본은 Toon일 때만 ON
-		entry->modelShading = m_->m_ShadingMode;
-		entry->outlineEnabled = (entry->modelShading == ShadingMode::ToonShading);
-		entry->instancePbrMaterial = m_->m_DefaultPbrMaterial;
-
-		// FBX 인스턴스 애니메이터를 로드 시점에 1회 초기화
-		if (entry->source == ModelSource::FBX && entry->shared &&
-			entry->shared->fbx) {
-			entry->fbxBaseAnimator.InitMetadata(entry->shared->fbx->GetScenePtr());
-			entry->fbxBaseAnimator.SetSharedContext(entry->shared->fbx->GetScenePtr(),
-				entry->shared->fbx->GetNodeIndexOfName(),
-				&entry->shared->fbx->GetBoneNames(),
-				&entry->shared->fbx->GetBoneOffsets(),
-				&entry->shared->fbx->GetGlobalInverse());
-			auto t = entry->shared->fbx->GetCurrentAnimationType();
-			entry->fbxBaseAnimator.SetType(t == FbxModel::AnimationType::Rigid
-				? FbxAnimation::AnimType::Rigid
-				: (t == FbxModel::AnimationType::Skinned
-					? FbxAnimation::AnimType::Skinned
-					: FbxAnimation::AnimType::None));
-			entry->animatorInited = true;
-		}
-
-		m_->m_Models.push_back(std::move(entry));
-	}
-	m_fLoadingProgress = 0.7f;
-	return ok;
-}
 
 void App::UnloadModel() {
 	m_->m_Models.clear();
@@ -5075,7 +5304,8 @@ static void DrawStateMachineGraph(const char* id, AnimStateMachine& sm)
         }
     }
 
-    // 노드 그리기 (+ 클릭 강제전환)
+    // 노드 그리기 클릭 강제전환도 가능하게 하고자 함
+	// 그래야 바로바로 변하는거 볼 수 있음
     for (int i = 0; i < (int)states.size(); ++i)
     {
         ImVec2 p = nodePos[(size_t)i];
@@ -5316,7 +5546,7 @@ void App::RenderWaitingUI()
 	if (!m_->m_ShowSceneImageWindow) return;
 
 	ImGuiIO& io = ImGui::GetIO();
-	ImVec2 size(630.0f, 700.0f); // 프로그레스 바 공간만큼 높이 약간 증가
+	ImVec2 size(740.0f, 900.0f); // 프로그레스 바 공간만큼 높이 약간 증가
 
 	ImGui::SetNextWindowPos(
 		ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f),
@@ -5333,6 +5563,16 @@ void App::RenderWaitingUI()
 	{
 		if (m_bIsLoaded) // atomic 읽기
 		{
+			// 로딩 완료 사운드 재생 (한 번만)
+			if (!m_->m_LoadingDoneSoundPlayed)
+			{
+				Sound::PlaySFX(L"LoadingDone", 1.0f, 1.0f, false);
+				m_->m_LoadingDoneSoundPlayed = true;
+				// 로딩 완료 시 AliceDagwaDone.png 표시
+				m_->m_CurrentSceneImagePath = L"..\\Resource\\Image\\AliceDagwaDone.png";
+				LoadSceneImage(m_->m_CurrentSceneImagePath);
+			}
+
 			// "눌러보세요!" 펄스 효과 텍스트
 			float time = (float)ImGui::GetTime();
 			float pulse = (sinf(time * 5.0f) + 1.0f) * 0.5f;
@@ -5349,6 +5589,7 @@ void App::RenderWaitingUI()
 			ImGui::Separator();
 			ImGui::Spacing();
 
+			// 로딩 완료 시 AliceDagwaDone.png 표시 및 클릭으로 게임 시작
 			if (m_->m_pSceneImageSRV)
 			{
 				ImVec2 avail = ImGui::GetContentRegionAvail();
@@ -5366,29 +5607,19 @@ void App::RenderWaitingUI()
 				ImVec2 imgPos = ImGui::GetCursorScreenPos(); // 커서 이동 후의 위치를 저장해야 함
 				ImVec2 imgSize(w, h);
 
-				m_->m_TempSceneImagePath = L"..\\Resource\\Image\\SceneA.png";
-				m_->m_ScenePopupMessage = Utf8FromWString(L"로딩이 끝났어요 토끼씨!");
-
-				LoadSceneImage(m_->m_TempSceneImagePath);
-				m_->m_CurrentSceneImagePath = m_->m_TempSceneImagePath;
+				// 투명 버튼을 이미지 위에 깔아서 클릭 감지
+				ImGui::PushID("DoneClickArea");
+				if (ImGui::InvisibleButton("##ClickArea", imgSize))
+				{
+					// 클릭 시 게임 시작
+					m_bIsGameStarted = true;
+				}
+				ImGui::PopID();
 
 				// 실제 이미지 그리기 (저장해둔 중앙 위치 사용)
 				ImGui::SetItemAllowOverlap();
 				ImGui::SetCursorScreenPos(imgPos);
 				ImGui::Image((ImTextureID)m_->m_pSceneImageSRV, imgSize);
-
-				// 팝업 그리기 (이미지 위에 오버레이)
-				ImDrawList* dl = ImGui::GetWindowDrawList();
-				ImVec2 pSize(300.0f, 80.0f);
-				ImVec2 pPos(imgPos.x + (w - pSize.x) * 0.5f, imgPos.y + (h - pSize.y) * 0.5f);
-				// 반투명 배경 박스
-				dl->AddRectFilled(pPos, ImVec2(pPos.x + pSize.x, pPos.y + pSize.y), IM_COL32(0, 0, 0, 200), 10.0f);
-				dl->AddRect(pPos, ImVec2(pPos.x + pSize.x, pPos.y + pSize.y), IM_COL32(255, 255, 255, 255), 10.0f, 0, 2.0f);
-
-				// 텍스트 중앙 정렬
-				ImVec2 txtSz = ImGui::CalcTextSize(m_->m_ScenePopupMessage.c_str());
-				dl->AddText(ImVec2(pPos.x + (pSize.x - txtSz.x) * 0.5f, pPos.y + (pSize.y - txtSz.y) * 0.5f),
-					IM_COL32(255, 255, 255, 255), m_->m_ScenePopupMessage.c_str());
 			}
 
 			if (InputSystem::Instance->m_MouseState.leftButton)
@@ -5401,9 +5632,6 @@ void App::RenderWaitingUI()
 			// "눌러보세요!" 펄스 효과 텍스트
 			float time = (float)ImGui::GetTime();
 			float pulse = (sinf(time * 5.0f) + 1.0f) * 0.5f;
-			ImGui::SetWindowFontScale(1.5f);
-			ImGui::Text("%s", Utf8FromWString(L"로딩되는 동안 잠시만 기다려 주세요").c_str());
-
 			ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.9f + pulse * 0.1f, 0.5f + pulse * 0.5f, 0.0f + pulse * 0.8f, 1.0f));
 			if (m_pFontLarge)ImGui::PushFont(m_pFontLarge);
 
@@ -5421,16 +5649,24 @@ void App::RenderWaitingUI()
 
 			// 3. 로딩 프로그레스 바
 			// ImVec2(-1, 0)은 가로 폭을 꽉 채운다는 의미
-			char buf[32];
-			sprintf_s(buf, "Loading... %.0f%%", m_fLoadingProgress * 100.0f);
-			ImGui::ProgressBar(m_fLoadingProgress, ImVec2(-1.0f, 0.0f), buf);
+			ImGui::ProgressBar(m_fLoadingProgress, ImVec2(-1.0f, 0.0f), 
+			std::format("Loading... {:.0f}%", m_fLoadingProgress * 100.0f).c_str());
 			ImGui::Spacing();
 			const wchar_t* currentPtr = m_sLoadingStr.load(); // UI 스레드에서 acquire 또는 relaxed로 로드
 			ImGui::Text("%s", Utf8FromWString(currentPtr).c_str());
 
 			ImGui::Spacing();
 
-			// 4. 이미지 및 인터랙션 (클릭 기능 복원)
+			// 4. 이미지 및 인터랙션 - 만화 뷰어 (로딩 중에만 표시)
+			// "앨리스 보기" 버튼
+			if (ImGui::Button(Utf8FromWString(L"앨리스 보기").c_str()))
+			{
+				m_->m_MangaIndex = 0;
+				m_->m_CurrentSceneImagePath = L"..\\Resource\\Image\\AliceDagwa.png";
+				LoadSceneImage(m_->m_CurrentSceneImagePath);
+			}
+			ImGui::Spacing();
+			/*
 			if (m_->m_pSceneImageSRV)
 			{
 				ImVec2 avail = ImGui::GetContentRegionAvail();
@@ -5491,6 +5727,66 @@ void App::RenderWaitingUI()
 					dl->AddText(ImVec2(pPos.x + (pSize.x - txtSz.x) * 0.5f, pPos.y + (pSize.y - txtSz.y) * 0.5f),
 						IM_COL32(255, 255, 255, 255), m_->m_ScenePopupMessage.c_str());
 				}
+			}
+			*/
+			
+			// 만화 뷰어: 로딩 중에는 AliceDagwa.png 표시
+			if (m_->m_pSceneImageSRV)
+			{
+				ImVec2 avail = ImGui::GetContentRegionAvail();
+				float aspect = (m_->m_SceneImageSize.y > 0) ? (m_->m_SceneImageSize.x / m_->m_SceneImageSize.y) : 1.0f;
+				float w = avail.x;
+				float h = w / aspect;
+				if (h > avail.y) { h = avail.y; w = h * aspect; }
+
+				// 가로 중앙 정렬 계산함. (남은 공간 - 이미지 너비)의 절반만큼 커서를 이동함
+				if (avail.x > w)
+				{
+					ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (avail.x - w) * 0.5f);
+				}
+
+				ImVec2 imgPos = ImGui::GetCursorScreenPos(); // 커서 이동 후의 위치를 저장해야 함
+				ImVec2 imgSize(w, h);
+
+				// 투명 버튼을 이미지 위에 깔아서 클릭 감지
+				ImGui::PushID("MangaClickArea");
+				if (ImGui::InvisibleButton("##ClickArea", imgSize))
+				{
+					// 클릭 시 다음 만화로 이동
+					if (m_->m_MangaIndex == 0)
+					{
+						// AliceDagwa -> Manga/01.png
+						m_->m_MangaIndex = 1;
+						m_->m_CurrentSceneImagePath = std::format(L"..\\Resource\\Image\\Manga\\{:02d}.png", m_->m_MangaIndex);
+						LoadSceneImage(m_->m_CurrentSceneImagePath);
+						Sound::PlaySFX(L"Waitforsecond3", 1.0f, 1.0f, false);
+					}
+					else if (m_->m_MangaIndex < 53)
+					{
+						// Manga 페이지들 사이에서 이동
+						m_->m_MangaIndex++;
+						m_->m_CurrentSceneImagePath = std::format(L"..\\Resource\\Image\\Manga\\{:02d}.png", m_->m_MangaIndex);
+						LoadSceneImage(m_->m_CurrentSceneImagePath);
+						
+						// 랜덤 사운드 재생
+						int soundChoice = (rand() % 2) + 1;  // 1 또는 2
+						if (soundChoice == 1)
+						{
+							Sound::PlaySFX(L"Waitforsecond2", 1.0f, 1.0f, false);
+						}
+						else
+						{
+							Sound::PlaySFX(L"Waitforsecond", 1.0f, 1.0f, false);
+						}
+					}
+					// 53번째 페이지 이후에는 더 이상 진행하지 않음
+				}
+				ImGui::PopID();
+
+				// 실제 이미지 그리기 (저장해둔 중앙 위치 사용)
+				ImGui::SetItemAllowOverlap();
+				ImGui::SetCursorScreenPos(imgPos);
+				ImGui::Image((ImTextureID)m_->m_pSceneImageSRV, imgSize);
 			}
 			else
 			{

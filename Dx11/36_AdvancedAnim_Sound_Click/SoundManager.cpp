@@ -48,15 +48,15 @@ namespace
 		// 원샷 SFX 채널 청소
 		if (!g_ChannelsSFX.empty())
 		{
-			auto it = std::remove_if(g_ChannelsSFX.begin(), g_ChannelsSFX.end(),
-				[](FMOD::Channel* c) {
-				if (!c) return true;
-				bool playing = false;
+		auto it = std::remove_if(g_ChannelsSFX.begin(), g_ChannelsSFX.end(),
+			[](FMOD::Channel* c) {
+			if (!c) return true;
+			bool playing = false;
 				FMOD_RESULT r = c->isPlaying(&playing);
 				return (r != FMOD_OK) || !playing;
-			});
+		});
 
-			g_ChannelsSFX.erase(it, g_ChannelsSFX.end());
+		g_ChannelsSFX.erase(it, g_ChannelsSFX.end());
 		}
 
 		// 루프 SFX 채널 청소 (재생 끝난 것 제거)
@@ -367,7 +367,7 @@ bool Sound::PlaySFX(const std::wstring& key, float volume, float pitch, bool loo
 			// 기존 채널 정지
 			sfxIt->second.channel->stop();
 			sfxIt->second.channel = nullptr;
-		}
+	}
 
 		FMOD::Channel* channel = nullptr;
 		FMOD_RESULT r = g_System->playSound(sound, nullptr, false, &channel);
@@ -398,15 +398,15 @@ bool Sound::PlaySFX(const std::wstring& key, float volume, float pitch, bool loo
 	else
 	{
 		// 원샷 SFX: Fire and Forget 방식 (중첩 재생 가능)
-		FMOD::Channel* channel = nullptr;
-		FMOD_RESULT r = g_System->playSound(sound, nullptr, false, &channel);
+	FMOD::Channel* channel = nullptr;
+	FMOD_RESULT r = g_System->playSound(sound, nullptr, false, &channel);
 
-		if (Check(r) && channel)
-		{
+	if (Check(r) && channel)
+	{
 			float finalVolume = volume * g_VolSFX;
 			channel->setVolume(finalVolume);
 			channel->setPitch(pitch);
-			g_ChannelsSFX.push_back(channel);
+		g_ChannelsSFX.push_back(channel);
 			return true;
 		}
 		return false;
