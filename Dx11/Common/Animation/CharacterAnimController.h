@@ -17,7 +17,8 @@
 using namespace DirectX;
 
 // ------------------------------------------------------------
-// App.cpp가 넘겨주는 입력
+// App.cpp쪽에서 넘겨주는 입력
+// 어떤거 눌렀는지 등에 대한 정보
 // ------------------------------------------------------------
 struct CharacterInputState
 {
@@ -37,7 +38,7 @@ struct AimInputState
 };
 
 // ------------------------------------------------------------
-// 크로스페이드 파라미터(ExitTime + EntryOffset + SmoothStep)
+// 크로스페이드 파라미터 (ExitTime + EntryOffset + SmoothStep)
 // ------------------------------------------------------------
 struct CrossFadeParams
 {
@@ -52,6 +53,7 @@ struct CrossFadeParams
 
 // ------------------------------------------------------------
 // 리코일/사격/IK/소켓
+// 리코일은 몸 떨림인데 일단은 안씀
 // ------------------------------------------------------------
 struct RecoilParams
 {
@@ -63,7 +65,7 @@ struct RecoilParams
 
 struct ShootParams
 {
-    float oneShotDurationSec = 0.25f; // Shoot(원샷) 재생 길이(clip 길이를 쓰고 싶으면 0으로 두고 clip length 사용)
+    float oneShotDurationSec = 0.25f; // Shoot(원샷) 재생 길이임 (clip 길이를 쓰고 싶으면 0으로 두고 clip length 사용함)
 };
 
 struct IKParams
@@ -99,7 +101,7 @@ struct WeaponTransformOut
 };
 
 // ============================================================
-// 파라미터 저장소(UE/Unity Animator Parameters 비슷)
+// Animation에 대한 파라미터를 저장해두는 구조체
 // ============================================================
 class AnimParams
 {
@@ -142,7 +144,7 @@ private:
 };
 
 // ============================================================
-// 전환 조건(간단하지만 충분히 강력)
+// 전환 조건임
 // ============================================================
 struct AnimCondition
 {
@@ -178,6 +180,7 @@ struct AnimCondition
 
 // ============================================================
 // 상태 정의
+// 스테이트 머신이라고 보면 됨
 // ============================================================
 struct AnimStateDef
 {
@@ -201,7 +204,7 @@ struct AnimStateDef
     // (Upper Layer 용) 이 상태가 base 위에 덮이는 강도
     float layerAlpha = 1.0f;
 
-    // NEW: 역재생(서기)용 - time이 0에 도달하면 자동 전환
+    // 역재생(서기)용 - time이 0에 도달하면 자동 전환
     bool autoExitOnStart = false;
 };
 
@@ -415,7 +418,7 @@ public:
                         }
                     }
 
-                    // NEW: reverse one-shot (reach start)
+                    //  reverse one-shot (reach start)
                     if (s.autoExitOnStart)
                     {
                         if (m_TimeCurrent <= 1e-4f)
@@ -480,7 +483,7 @@ public:
         }
     }
 
-    // 레이어 평가 출력(현재/전환 상태를 A/B로 뽑아줌)
+    // 레이어 평가 출력함 (현재/전환 상태를 A/B로 뽑아줌)
     void EvaluateLayerBlend(const AnimLibrary& lib,
                             const std::unordered_map<std::string, int>& clipIndexMap,
                             CharacterAnimator::LayerBlendDesc& out) const
@@ -535,7 +538,6 @@ public:
         return m_States[(size_t)m_Current].name;
     }
 
-    // getters (추가)
     float GetCurrentTimeSec() const { return m_TimeCurrent; }
     bool  IsInTransition() const { return m_InTransition; }
     float GetFromTimeSec() const { return m_TimeFrom; }
@@ -556,7 +558,7 @@ public:
 
     const CrossFadeParams& GetActiveFade() const { return m_ActiveFade; }
 
-    // 클릭해서 강제 상태 전환(디버그용)
+    // 클릭해서 강제 상태 전환할때 나올 디버그용임
     void ForceState(int idx)
     {
         if (idx < 0 || idx >= (int)m_States.size()) return;
@@ -759,7 +761,7 @@ public:
     }
 
     // ------------------------------------------------------------
-    // "완벽하게": base/upper/add 모두 상태머신 + 룰로 구성된 기본 그래프
+    // base/upper/add 모두 상태머신 + 룰로 구성된 기본 그래프
     // ------------------------------------------------------------
     void BuildDefaultGraph()
     {
@@ -866,7 +868,7 @@ public:
 
         m_BaseSM.SetInitialState("Idle");
 
-        // ---------------- Upper/Add SM (최소 유지: UI용) ----------------
+        // ---------------- Upper/Add SM UI용 ----------------
         m_UpperSM.Clear();
         m_UpperSM.AddState(AnimStateDef{ "None", "", true, 1.0f, 0.0f, false, "", {}, 0.0f });
         m_UpperSM.SetInitialState("None");
@@ -938,8 +940,9 @@ public:
     }
 
     // ------------------------------------------------------------
-    // 매 프레임 업데이트(포즈+업로드+무기적용까지)
-    // ※ 아래 TickAndApply는 템플릿으로 작성: 네 프로젝트의 ModelEntry/FbxAnimator 타입에 맞게 그대로 컴파일된다.
+    // 매 프레임 업데이트 포즈+업로드+무기적용
+    // 아래 TickAndApply는 템플릿으로 작성해뒀음
+    // ModelEntry/FbxAnimator 타입에 맞게 그대로 컴파일함
     // ------------------------------------------------------------
     template<typename CharacterModelT, typename WeaponModelT>
     void TickAndApply(float dt,
@@ -1115,7 +1118,7 @@ public:
         TryBindSlotSmart(config.keyWalk, { "walk" });
         TryBindSlotSmart(config.keyRun,  { "run" });
 
-        // NEW: crouch enter/exit clip
+        // crouch enter/exit clip
         TryBindSlotSmart(config.keyIdleToShoot, { "idle_to_shoot", "idletoshoot", "idle2shoot" });
 
         // stance / shoot / reload
@@ -1162,7 +1165,7 @@ private:
         return -1;
     }
 
-    // NEW: exact match (ignore case)
+    //  exact match (ignore case)
     int FindAnimIndexExactICase(const std::string& exact) const
     {
         const std::string ex = ToLower(exact);
@@ -1174,7 +1177,7 @@ private:
         return -1;
     }
 
-    // NEW: include/exclude 스코어링(최소 1개 include는 매치되어야 함)
+    // include/exclude 스코어링(최소 1개 include는 매치되어야 함)
     int FindAnimIndexBestMatch(std::initializer_list<std::string> includes,
                                std::initializer_list<std::string> excludes) const
     {
@@ -1206,7 +1209,7 @@ private:
                 }
             }
 
-            // 짧은 이름 약간 선호(동점 정리)
+            // 짧은 이름을 더 좋게 봄
             score -= (int)n.size();
 
             if (score > bestScore)
@@ -1218,7 +1221,7 @@ private:
         return best;
     }
 
-    // NEW: smart bind
+    //  smart bind
     void TryBindSlotSmart(const std::string& slotKey,
                           std::initializer_list<std::string> includes,
                           std::initializer_list<std::string> excludes = {})

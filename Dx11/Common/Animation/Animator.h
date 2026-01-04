@@ -15,13 +15,16 @@ using namespace DirectX;
 using Microsoft::WRL::ComPtr;
 
 // =========================================================
-// [상수 정의]
+// 상수 
+// 최대 본 개수 
 // =========================================================
 static constexpr int MAX_BONES = 1023;
 
 // =========================================================
-// [TransformSRT] 
+// TransformSRT
 // 행렬을 Scale, Rotation, Translation 성분으로 분리하여 관리
+// 애니메이션을 위한 새로운 트랜스폼을 정의해둠
+// 엔진에 넣을때는 엔진에서 사용하는 트랜스폼에 맞춰야함 일단은 이렇게 함
 // =========================================================
 struct TransformSRT {
     XMVECTOR S{ 1.0f, 1.0f, 1.0f, 0.0f };
@@ -29,17 +32,16 @@ struct TransformSRT {
     XMVECTOR T{ 0.0f, 0.0f, 0.0f, 1.0f };
 
     // TRS -> Matrix 변환
-    // IMPORTANT:
-    // - 이 프로젝트의 기존 스키닝 경로(`FbxAnimation.cpp`)는
-    //   local = (T * R * S), global = (parent * local) 규약을 사용한다.
-    // - CharacterAnimator도 반드시 동일한 규약을 따라야 팔레트가 깨지지 않는다.
+    // 이 프로젝트의 기존 스키닝 경로(`FbxAnimation.cpp`)에서 
+    // local = (T * R * S), global = (parent * local) 방식을 사용 하고 있음
+    // CharacterAnimator도 반드시 동일한 규칙을 따라야 팔레트가 깨지지 않음
     XMMATRIX ToMatrix() const {
         return XMMatrixTranslationFromVector(T) *
             XMMatrixRotationQuaternion(R) *
             XMMatrixScalingFromVector(S);
     }
 
-    // 1. 키프레임 보간 & 전환 블렌딩 (A-B 사이 보간)
+    // 키프레임 보간 & 전환 블렌딩 두 애니메이션 A-B 사이 보간함
     static TransformSRT Lerp(const TransformSRT& a, const TransformSRT& b, float t) {
         TransformSRT res;
         res.S = XMVectorLerp(a.S, b.S, t);           // Scale: 선형 보간
@@ -71,7 +73,7 @@ struct TransformSRT {
 };
 
 // =========================================================
-// [Socket] 무기 등을 부착할 위치
+// Socket 무기 등을 부착할 위치
 // =========================================================
 struct Socket {
     std::string name;
@@ -82,7 +84,7 @@ struct Socket {
     XMFLOAT3 offsetRot = { 0,0,0 }; // Degree
     XMFLOAT3 offsetScale = { 1,1,1 };
 
-    // NOTE: 미초기화 경고/버그 방지를 위해 기본값을 Identity로 둔다.
+    // 미초기화 경고/버그 방지를 위해 기본값을 Identity로 둬야함.
     XMMATRIX offsetMatrix = XMMatrixIdentity();     // 로컬 오프셋
     XMMATRIX finalWorldMatrix = XMMatrixIdentity(); // 최종 월드 행렬
 
@@ -98,12 +100,12 @@ struct Socket {
 };
 
 // =========================================================
-// [CharacterAnimator]
-// 핵심 기능: 블렌딩, 애디티브, 레이어드, IK, 소켓
+// CharacterAnimator
+// 블렌딩, 애디티브, 레이어드, IK, 소켓
 // =========================================================
 class CharacterAnimator {
 private:
-    // 참조 데이터 (소유권 없음)
+    // 참조 데이터
     const aiScene* m_Scene = nullptr;
     const std::unordered_map<std::string, int>* m_NodeIndexMap = nullptr;
     XMFLOAT4X4 m_GlobalInverse = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
@@ -113,24 +115,24 @@ private:
     std::vector<XMMATRIX> m_BoneOffsets;     // Inverse Bind Pose
     std::vector<int> m_BoneNodeIndices;      // Bone Name -> Node Index
 
-    // 노드 캐시 (빠른 접근용)
+    // 노드 캐시 속도 빠르게 하고자 함
     std::vector<const aiNode*> m_NodePtrs;
     std::vector<int> m_NodeParents;
     std::vector<std::string> m_NodeNames;
 
     // 매 프레임 계산되는 데이터
-    std::vector<TransformSRT> m_LocalSRTs;   // 로컬 변환 (애니메이션 적용)
-    std::vector<XMMATRIX> m_GlobalMatrices;  // 글로벌 변환 (계층 구조 반영)
+    std::vector<TransformSRT> m_LocalSRTs;   // 로컬 변환 애니메이션 적용
+    std::vector<XMMATRIX> m_GlobalMatrices;  // 글로벌 변환 계층 구조 반영
 
     // 소켓 및 GPU 버퍼
     std::vector<Socket> m_Sockets;
     ComPtr<ID3D11Buffer> m_pBoneBuffer;
 
 public:
-    // 외부에서 접근 가능한 최종 행렬 (렌더링용)
+    // 외부에서 접근 가능한 최종 행렬 
     std::vector<XMMATRIX> finalTransforms;
 
-    // ======================= [NEW] UpdateDesc로 파라미터 구조화 =======================
+    // ======================= UpdateDesc 파라미터=======================
     struct LayerBlendDesc
     {
         bool enabled = false;
@@ -142,7 +144,7 @@ public:
         float timeB = 0.0f;
 
         float blend01 = 0.0f;      // A->B 크로스페이드(0..1)
-        float layerAlpha = 1.0f;   // "base 위에 upper를 얼마나 덮을지" 같은 가중치(0..1)
+        float layerAlpha = 1.0f;   // base 위에 upper를 얼마나 덮을지 같은 가중치(0..1)
     };
 
     struct AdditiveDesc
@@ -152,7 +154,7 @@ public:
         const aiAnimation* anim = nullptr;
         float time = 0.0f;
 
-        const aiAnimation* ref = nullptr; // 기준(보통 Idle t=0)
+        const aiAnimation* ref = nullptr; // 기준 (보통 Idle t=0)
         float alpha = 1.0f;               // additive 강도(0..1)
     };
 
@@ -160,7 +162,7 @@ public:
     {
         float strength = 0.0f;
         uint32_t seed = 0u;
-        float timeSec = 0.0f; // 노이즈 시간축(보통 누적시간)
+        float timeSec = 0.0f; // 노이즈 시간축 (보통은 누적시간)
     };
 
     struct IKDesc
@@ -183,16 +185,16 @@ public:
     {
         float dt = 0.0f;
 
-        LayerBlendDesc base;     // 필수에 가깝다
+        LayerBlendDesc base;     // 기본이 되는 베이스. 필수임
         LayerBlendDesc upper;    // 선택(상체 레이어)
         AdditiveDesc   additive; // 선택(애디티브)
         ProceduralDesc procedural;
         IKDesc         ik;
-        AimDesc        aim;   // NEW
+        AimDesc        aim;
     };
 
     // -----------------------------------------------------------------
-    // [초기화]
+    // 초기화
     // -----------------------------------------------------------------
     void Initialize(ID3D11Device* device, const aiScene* scene,
         const std::unordered_map<std::string, int>& nodeMap,
@@ -210,7 +212,7 @@ public:
         m_BoneNodeIndices.assign(boneCount, -1);
         finalTransforms.assign(boneCount, XMMatrixIdentity());
 
-        // 1. 본 오프셋 및 인덱스 매핑
+        // 본 오프셋 및 인덱스 매핑
         for (size_t i = 0; i < boneCount; ++i) {
             m_BoneOffsets[i] = XMLoadFloat4x4(&boneOffsets[i]);
             if (nodeMap.count(boneNames[i])) {
@@ -218,7 +220,7 @@ public:
             }
         }
 
-        // 2. 전체 노드 계층 구조 캐싱 (재귀 없이 순회하기 위해)
+        // 전체 노드 계층 구조 캐싱 (재귀 없이 순회하기 위해)
         size_t nodeCount = nodeMap.size();
         m_NodePtrs.resize(nodeCount, nullptr);
         m_NodeParents.resize(nodeCount, -1);
@@ -230,7 +232,7 @@ public:
             BuildNodeHierarchy(m_Scene->mRootNode, -1);
         }
 
-        // 3. GPU 버퍼 생성 (최대 크기 1023으로 고정)
+        // GPU 버퍼 생성 (최대 크기 1023으로 고정)
         if (device) {
             D3D11_BUFFER_DESC desc = {};
             desc.Usage = D3D11_USAGE_DYNAMIC;
@@ -242,9 +244,9 @@ public:
     }
 
     // -----------------------------------------------------------------
-    // [메인 업데이트]
+    // 메인 업데이트
+    // 기존에 쓰던건데 문제생기면 이거로 바꾸자
     // -----------------------------------------------------------------
-    // [기존 호환용 래퍼]
     void UpdateAnimation(
         float dt, 
         const aiAnimation* animA, float timeA,
@@ -253,10 +255,11 @@ public:
         const aiAnimation* animUpper = nullptr, float timeUpper = 0.f, // 상체 레이어
         const aiAnimation* animAdd = nullptr, float timeAdd = 0.f,     // 애디티브
         const aiAnimation* animRef = nullptr,                          // 애디티브 기준
-        float proceduralRecoil = 0.0f, uint32_t seed = 0,              // 절차적 흔들림
+        float proceduralRecoil = 0.0f, uint32_t seed = 0,              // 엉덩이 흔들림인데, 일단은 뺌. 너무 흔들림
         bool enableIK = false, const char* ikTipBone = nullptr, int chainLen = 0, XMVECTOR ikTarget = XMVectorZero(), float ikWeight = 0.0f
     ) {
-        // 기존 호환용 래퍼: UpdateDesc로 변환해서 Update 호출
+        // 기존 호환용 코드임
+        // UpdateDesc로 변환해서 Update 호출함
         UpdateDesc d{};
         d.dt = dt;
 
@@ -290,18 +293,19 @@ public:
         Update(d);
     }
 
-    // [NEW] 진짜 본체 Update(UpdateDesc) 구현
+    //Update(UpdateDesc)
     void Update(const UpdateDesc& d) {
         if (m_NodePtrs.empty()) return;
 
         // =========================================================
-        // [Idle 검증용 패스트패스]
-        // - 지금 단계의 목표: FbxAnimation과 "완전히 같은" 결과로 Idle이 정상 스키닝되는지 확인.
-        // - 아래 조건(단일 애니메이션, 블렌드/레이어/애디티브/IK/노이즈 없음)에서는
-        //   FbxAnimation.cpp와 동일한 평가식을 사용한다:
-        //     local = (채널 있으면 T*R*S, 없으면 node->mTransformation 원본)
-        //     global = parent * local
-        //     final = Gi * global(node) * Off
+        // Idle 애니메이션을 검증해야함
+        // FbxAnimation의 Idle 스키닝
+        // 아래 조건 (단일 애니메이션, 블렌드/레이어/애디티브/IK/노이즈 없음)에서는
+        // FbxAnimation.cpp와 동일한 평가식을 사용해야함
+        // local = (채널 있으면 T*R*S, 없으면 node->mTransformation 원본)
+        // global = parent * local
+        // final = Gi * global(node) * Off
+        // 상태머신 만들어야함
         // =========================================================
         const bool isSimpleSingleAnim =
             (d.base.enabled) &&
@@ -311,7 +315,7 @@ public:
             (!d.additive.enabled) &&
             (d.procedural.strength == 0.0f) &&
             (!d.ik.enabled) &&
-            (!d.aim.enabled); // NEW
+            (!d.aim.enabled);
         if (isSimpleSingleAnim) {
             EvaluateLikeFbxAnimation(d.base.animA, d.base.timeA);
 
@@ -340,18 +344,17 @@ public:
         }
 
         // =========================================================
-        // [고급 경로 (블렌드/레이어/애디티브/IK/노이즈)]
-        // 핵심 원칙:
-        // - "채널이 없는 노드"는 bind pose의 원본 로컬 행렬(aiNode::mTransformation)을 그대로 유지한다.
-        //   (SRT로 분해/재조합하면 FBX의 pivot/프리로테이션 등의 정보가 깨져서 원점 뭉개짐이 재발함)
-        // - 수정이 필요한 노드(블렌드/레이어/애디티브/노이즈/IK)는 XMMatrixDecompose 기반으로 SRT를 다룬다.
+        // 블렌드/레이어/애디티브/IK/노이즈
+        // 채널이 없는 노드는 bind pose의 원본 로컬 행렬(aiNode::mTransformation)을 그대로 유지함
+        // SRT로 분해/재조합하면 FBX의 pivot/프리로테이션 등의 정보가 깨져서 원점 뭉개짐이 재발함
+        // 수정이 필요한 노드(블렌드/레이어/애디티브/노이즈/IK)는 XMMatrixDecompose 기반으로 SRT를 다룸
         // =========================================================
 
         const size_t nodeCount = m_NodePtrs.size();
         auto Clamp01 = [](float x) { return std::clamp(x, 0.0f, 1.0f); };
         const float baseBlend = Clamp01(d.base.blend01);
 
-        // --------- local 평가 (FbxAnimation과 동일 규칙) ---------
+        // --------- local에 대한 평가 계산인데 FbxAnimation과 동일한 규칙을 사용함 ---------
         auto BuildChannelMap = [&](const aiAnimation* anim, std::vector<const aiNodeAnim*>& outChOfNode) {
             outChOfNode.assign(nodeCount, nullptr);
             if (!anim || !m_NodeIndexMap) return;
@@ -403,7 +406,7 @@ public:
                     aiMatrix4x4 mS; mS.Scaling(S, mS);
                     aiMatrix4x4 mR = aiMatrix4x4(R.GetMatrix());
                     aiMatrix4x4 mT; mT.Translation(T, mT);
-                    const aiMatrix4x4 mLocal = mT * mR * mS; // TRS (FbxAnimation과 동일)
+                    const aiMatrix4x4 mLocal = mT * mR * mS; // TRS FbxAnimation과 동일
                     outLocals[i] = AiToXM(mLocal);
                     outHasChannel[i] = 1;
                 }
@@ -415,19 +418,20 @@ public:
         };
 
         // =========================================================
-        // [Column-Vector 관례용 행렬 분해/합성]
-        // - Assimp/FBX 행렬은 "translation이 마지막 column" 형태(column-vector 관례)
-        // - XMMatrixDecompose는 "translation이 마지막 row"를 기대하므로 transpose해서 분해
+        // Column-Vector 행렬 분해/합성
+        // Assimp/FBX 행렬은 translation이 마지막 column 형태(column-vector 관례)
+        // XMMatrixDecompose는 translation이 마지막 row를 기대하므로 transpose해서 분해
         // =========================================================
         auto DecomposeSRT_Col = [&](const XMMATRIX& mCol, XMVECTOR& outS, XMVECTOR& outR, XMVECTOR& outT) -> bool {
-            // Assimp/FBX에서 온 mCol은 "translation이 마지막 column" 형태일 가능성이 높다.
-            // XMMatrixDecompose는 "translation이 마지막 row"를 기대하므로 transpose해서 분해한다.
+            // Assimp/FBX에서 온 mCol은 translation이 마지막 column 형태임.
+            // XMMatrixDecompose는 translation이 마지막 row를 기대하므로 transpose해서 분해해서 사용함
+            // 안전하게 부숴서 해보자는 이야기
             const XMMATRIX mRow = XMMatrixTranspose(mCol);
             return XMMatrixDecompose(&outS, &outR, &outT, mRow) != 0;
         };
 
         auto ComposeSRT_Col = [&](XMVECTOR S, XMVECTOR R, XMVECTOR T) -> XMMATRIX {
-            // row 관례로 합친 다음 다시 transpose해서 column 관례로 돌려준다.
+            // row로 합친 다음 다시 transpose해서 column 관례로 돌려준다
             const XMMATRIX mRow =
                 XMMatrixScalingFromVector(S) *
                 XMMatrixRotationQuaternion(R) *
@@ -436,7 +440,7 @@ public:
         };
 
         auto GetTranslation_Col = [&](const XMMATRIX& mCol) -> XMVECTOR {
-            // column 관례 translation을 row로 바꿔서 row의 r[3]로 꺼내기
+            // column이니까 translation을 row로 바꿔서 row의 r[3]로 꺼내기
             return XMMatrixTranspose(mCol).r[3];
         };
 
@@ -474,7 +478,7 @@ public:
             XMVECTOR outR = XMQuaternionMultiply(deltaApplied, Rb);
             outR = XMQuaternionNormalize(outR);
 
-            // scale은 필요하면 같이(지금은 선택)
+            // scale은 필요하면 같이함
             XMVECTOR outS = Sb;
 
             return ComposeSRT_Col(outS, outR, outT);
@@ -513,7 +517,7 @@ public:
         for (int i = 0; i < (int)nodeCount; ++i) computeNode(computeNode, i);
         };
 
-        // --------- 1) 베이스(Idle/Walk/Run) 평가 + 전환 블렌딩 ---------
+        // --------- 베이스(Idle/Walk/Run) 평가 + 전환 블렌딩 ---------
         std::vector<XMMATRIX> localsA, localsB;
         std::vector<uint8_t> hasA, hasB;
         if (d.base.enabled) {
@@ -556,7 +560,7 @@ public:
                 hasUA.assign(nodeCount, 0);
             }
 
-            // upper B 평가(필요할 때만)
+            // upper B 평가인데 필요할 때만 함
             std::vector<XMMATRIX> localsUB;
             std::vector<uint8_t> hasUB;
             const bool upperHasB = (d.upper.animB != nullptr) && (d.upper.blend01 > 0.0001f);
@@ -574,7 +578,7 @@ public:
             {
                 if (!IsUpperBody(m_NodeNames[i])) continue;
 
-                // upper에 채널이 없는 노드는 건드리지 않는다(bind 유지)
+                // upper에 채널이 없는 노드는 건드리지 않음. bind는 유지
                 const bool aHas = (i < hasUA.size()) ? (hasUA[i] != 0) : false;
                 const bool bHas = upperHasB ? ((i < hasUB.size()) ? (hasUB[i] != 0) : false) : false;
 
@@ -593,7 +597,7 @@ public:
             }
         }
 
-        // --------- 3) 애디티브(예: Shoot 반동/상체 보정) ---------
+        // --------- 애디티브(예: Shoot 반동/상체 보정) ---------
 		if (d.additive.enabled && d.additive.anim && d.additive.ref) {
 			std::vector<XMMATRIX> localsAdd, localsRef;
 			std::vector<uint8_t> hasAdd, hasRef;
@@ -603,14 +607,14 @@ public:
 			const float addAlpha = Clamp01(d.additive.alpha);
 
 			for (size_t i = 0; i < nodeCount; ++i) {
-				// 보통 상체에만 적용 (필요하면 App.cpp에서 마스크/강도를 조절)
+				// 보통 상체에만 적용 필요하면 App.cpp에서 마스크/강도를 조절함
 				if (!IsUpperBody(m_NodeNames[i])) continue;
-				if (!hasAdd[i]) continue; // 애디티브 채널이 없는 노드는 스킵 (bind 보존)
+				if (!hasAdd[i]) continue; // 애디티브 채널이 없는 노드는 스킵 (bind는 그대로 보존함)
 				localsFinal[i] = ApplyAdditiveSRT(localsFinal[i], localsAdd[i], localsRef[i], addAlpha);
 			}
 		}
 
-        // --------- 4) 절차적 흔들림(노이즈) ---------
+        // --------- 4) 엉덩이 흔들림(노이즈) 일단은 안하는걸로 생각함---------
         if (d.procedural.strength > 0.0f) {
             for (size_t i = 0; i < nodeCount; ++i) {
                 if (!IsUpperBody(m_NodeNames[i])) continue;
@@ -625,7 +629,7 @@ public:
             if (!DecomposeSRT_Col(inCol, S, R, T)) return inCol;
 
             XMVECTOR qYaw = XMQuaternionRotationAxis(XMVectorSet(0, 1, 0, 0), yawRad);
-            // 추가 회전(부모공간 쪽으로 "얹는" 느낌)
+            // 추가 회전 부모공간 쪽으로 얹어두는 느낌임
             R = XMQuaternionMultiply(qYaw, R);
             R = XMQuaternionNormalize(R);
 
@@ -646,14 +650,14 @@ public:
 
             if (!aimNodes.empty())
             {
-                // 체인 전체에 분배해서 "총량 yaw"가 d.aim.yawRad가 되도록
+                // 체인 전체에 분배해서 총량인 yaw가 d.aim.yawRad가 되도록
                 const float per = (d.aim.yawRad * w) / (float)aimNodes.size();
                 for (size_t idx : aimNodes)
                     localsFinal[idx] = ApplyYawToMatrix(localsFinal[idx], per);
             }
         }
 
-        // --------- 5) IK (간단 CCD: localsFinal을 직접 수정) ---------
+        // --------- 5) IK 간단하게 CCD를 만듬. localsFinal을 직접 수정함 ---------
         if (d.ik.enabled && d.ik.tipBone && m_NodeIndexMap && m_NodeIndexMap->count(d.ik.tipBone)) {
             const int tipIdx = m_NodeIndexMap->at(d.ik.tipBone);
             if (tipIdx >= 0 && (size_t)tipIdx < nodeCount && d.ik.chainLen > 0 && d.ik.weight > 0.0f) {
@@ -686,7 +690,7 @@ public:
                         axisWS = XMVector3Normalize(axisWS);
                         float angle = acosf(dot) * d.ik.weight;
 
-                        // World axis -> parent space axis (로컬 회전 갱신용)
+                        // World axis -> parent space axis 로컬 회전 갱신용임
                         XMVECTOR axisLS = axisWS;
                         if (pIdx >= 0 && (size_t)pIdx < nodeCount) {
                             XMMATRIX invP = XMMatrixInverse(nullptr, globals[(size_t)pIdx]);
@@ -740,14 +744,14 @@ public:
     }
 
     // -----------------------------------------------------------------
-    // [GPU 업로드]
+    // GPU 업로드
     // -----------------------------------------------------------------
     void UploadPalette(ID3D11DeviceContext* ctx, const std::vector<XMMATRIX>& pal) {
         if (!ctx || !m_pBoneBuffer) return;
 
         D3D11_MAPPED_SUBRESOURCE mapped;
         if (SUCCEEDED(ctx->Map(m_pBoneBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
-            // 구조체 정의 없이 포인터로 직접 접근 (충돌 방지)
+            // 구조체 정의 없이 포인터로 직접 접근함 충돌 방지용임
             XMFLOAT4X4* pDest = reinterpret_cast<XMFLOAT4X4*>(mapped.pData);
 
             size_t count = std::min(pal.size(), (size_t)MAX_BONES);
@@ -755,7 +759,7 @@ public:
                 XMStoreFloat4x4(&pDest[i], XMMatrixTranspose(pal[i]));
             }
 
-            // 본 개수 정보 기록 (버퍼 끝부분)
+            // 본 개수 정보를 기록함 버퍼 끝부분에
             uint8_t* pByteDest = reinterpret_cast<uint8_t*>(mapped.pData);
             unsigned int* pCount = reinterpret_cast<unsigned int*>(pByteDest + sizeof(XMFLOAT4X4) * MAX_BONES);
             *pCount = (unsigned int)count;
@@ -765,7 +769,7 @@ public:
     }
 
     // -----------------------------------------------------------------
-    // [소켓 관련]
+    // 소켓 관련
     // -----------------------------------------------------------------
     void SetSocketSRT(const std::string& name, const std::string& parentBone, XMFLOAT3 pos, XMFLOAT3 rot, XMFLOAT3 scale) {
         // 기존 소켓 찾기
@@ -792,7 +796,7 @@ public:
     ID3D11Buffer* GetBoneCB() const { return m_pBoneBuffer.Get(); }
 
 private:
-    // aiMatrix4x4 -> XMMATRIX (분해/재조합 없이 원본 행렬을 그대로 사용)
+    // aiMatrix4x4 -> XMMATRIX 분해/재조합 없이 원본 행렬을 그대로 사용함
     static XMMATRIX AiToXM(const aiMatrix4x4& m) {
         XMFLOAT4X4 fm;
         fm._11 = (float)m.a1; fm._12 = (float)m.a2; fm._13 = (float)m.a3; fm._14 = (float)m.a4;
@@ -802,7 +806,7 @@ private:
         return XMLoadFloat4x4(&fm);
     }
 
-    // FbxAnimation.cpp의 보간 로직과 동일한 형태(클램프 기반)
+    // FbxAnimation.cpp의 보간 로직과 동일한 형태 (클램프 기반임)
     static aiVector3D InterpVecFbx(const aiVectorKey* keys, unsigned count, double tTicks, const aiVector3D& fallback) {
         if (!keys || count == 0) return fallback;
         if (count == 1) return keys[0].mValue;
@@ -939,7 +943,7 @@ private:
 
     // 애니메이션에서 노드의 SRT 추출 (키프레임 보간 포함)
     TransformSRT GetNodeSRT(const aiAnimation* anim, int nodeIndex, float time) {
-        // 1. 애니메이션이 없거나 채널이 없으면? -> Bind Pose(기본 자세) 반환 [중요!]
+        // 1. 애니메이션이 없거나 채널이 없으면? -> Bind Pose(기본 자세) 반환함
         // (이게 없으면 캐릭터가 원점으로 뭉개짐)
         if (!anim) return GetBindPoseSRT(nodeIndex);
 
