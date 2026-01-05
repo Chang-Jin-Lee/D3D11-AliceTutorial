@@ -1059,6 +1059,13 @@ bool App::OnInitialize() {
 
 	AssetManager::Create();
 
+	// ====================================== 씬 이미지 초기 로드  ====================================== 
+	// 만화 뷰어 초기화: 처음에는 AliceDagwa.png 표시
+	m_->m_MangaIndex = 0;
+	m_->m_CurrentSceneImagePath = L"..\\Resource\\Image\\AliceDagwa.png";
+	m_->m_OriginalSceneImagePath = m_->m_CurrentSceneImagePath;
+	LoadSceneImage(m_->m_CurrentSceneImagePath);
+
 	// 로비에서 나올 음성
 	Sound::Load(L"Waitforsecond3", L"..\\Resource\\Sound\\Dagwa.mp3", Sound::Type::SFX);
 	Sound::Load(L"Waitforsecond2", L"..\\Resource\\Sound\\Waitforsecond2.mp3", Sound::Type::SFX);
@@ -1117,13 +1124,6 @@ void App::LoadDataAsync(std::stop_token stoken)
 	}
 	m_fLoadingProgress = 0.1f;
 
-	// ====================================== 씬 이미지 초기 로드  ====================================== 
-	// 만화 뷰어 초기화: 처음에는 AliceDagwa.png 표시
-	m_->m_MangaIndex = 0;
-	m_->m_CurrentSceneImagePath = L"..\\Resource\\Image\\AliceDagwa.png";
-	m_->m_OriginalSceneImagePath = m_->m_CurrentSceneImagePath;
-	LoadSceneImage(m_->m_CurrentSceneImagePath);
-
 	m_fLoadingProgress = 0.2f;
 	m_sLoadingStr = L"IBL을 초기화 합니다.";
 	if (stoken.stop_requested()) return;
@@ -1167,13 +1167,13 @@ void App::LoadDataAsync(std::stop_token stoken)
 		auto mo = std::make_unique<ModelObject>(m_->m_Models[mi]->modelName, mi);
 		m_->m_Objects.push_back(std::move(mo));
 	}
-	m_->m_Models[0]->boundsBoneIndex = 1;
-	m_->m_Models[5]->boundsBoneIndex = 1;
-	m_->m_Models[6]->boundsBoneIndex = 1;
-	m_->m_Models[7]->boundsBoneIndex = 1;
-	m_->m_Models[8]->boundsBoneIndex = 1;
-	m_->m_Models[9]->boundsBoneIndex = 1;
-	m_->m_Models[10]->boundsBoneIndex = 1;
+	m_->m_Models[0]->boundsBoneIndex = 2;
+	m_->m_Models[5]->boundsBoneIndex = 2;
+	m_->m_Models[6]->boundsBoneIndex = 2;
+	m_->m_Models[7]->boundsBoneIndex = 2;
+	m_->m_Models[8]->boundsBoneIndex = 2;
+	m_->m_Models[9]->boundsBoneIndex = 2;
+	m_->m_Models[10]->boundsBoneIndex = 2;
 
 	m_->m_Models[0]->modelShading = ShadingMode::PBR;
 	m_->m_Models[1]->modelShading = ShadingMode::PBR;
@@ -1182,6 +1182,9 @@ void App::LoadDataAsync(std::stop_token stoken)
 	m_->m_Models[5]->modelShading = ShadingMode::PBR;
 	m_->m_Models[6]->modelShading = ShadingMode::PBR;
 	m_->m_Models[7]->modelShading = ShadingMode::PBR;
+	m_->m_Models[8]->modelShading = ShadingMode::PBR;
+	m_->m_Models[9]->modelShading = ShadingMode::PBR;
+	m_->m_Models[10]->modelShading = ShadingMode::PBR;
 
 	m_->m_Models[0]->pos = XMFLOAT3(0, 0.0f, 0.0f);
 	m_->m_Models[1]->pos = XMFLOAT3(-26, 66.5f, -29.3f);
@@ -1209,7 +1212,13 @@ void App::LoadDataAsync(std::stop_token stoken)
 	m_->m_Models[2]->useInstancePbrMaterial = true;
 	m_->m_Models[3]->useInstancePbrMaterial = true;
 	m_->m_Models[4]->useInstancePbrMaterial = true;
-
+	m_->m_Models[5]->useInstancePbrMaterial = true;
+	m_->m_Models[6]->useInstancePbrMaterial = true;
+	m_->m_Models[7]->useInstancePbrMaterial = true;
+	m_->m_Models[8]->useInstancePbrMaterial = true;
+	m_->m_Models[9]->useInstancePbrMaterial = true;
+	m_->m_Models[10]->useInstancePbrMaterial = true;
+	
 	m_->m_Models[2]->instancePbrMaterial.metalness = 1.0f;
 	m_->m_Models[2]->instancePbrMaterial.roughness = 0.01f;
 	m_->m_Models[2]->instancePbrMaterial.ambientOcclusion = 1.0f;
@@ -1222,6 +1231,38 @@ void App::LoadDataAsync(std::stop_token stoken)
 	m_->m_Models[4]->instancePbrMaterial.metalness = 0.01f;
 	m_->m_Models[4]->instancePbrMaterial.roughness = 1.0f;
 	m_->m_Models[4]->instancePbrMaterial.ambientOcclusion = 1.0f;
+
+	
+
+	m_->m_Models[5]->instancePbrMaterial.baseColor = XMFLOAT4(0.96f, 0.96f, 0.96f, 1.0f);
+	m_->m_Models[5]->instancePbrMaterial.metalness = 0.1f;
+	m_->m_Models[5]->instancePbrMaterial.roughness = 0.43f;
+	m_->m_Models[5]->instancePbrMaterial.ambientOcclusion = 1.0f;
+
+	m_->m_Models[6]->instancePbrMaterial.baseColor = XMFLOAT4(0.96f, 0.96f, 0.96f, 1.0f);
+	m_->m_Models[6]->instancePbrMaterial.metalness = 0.1f;
+	m_->m_Models[6]->instancePbrMaterial.roughness = 0.43f;
+	m_->m_Models[6]->instancePbrMaterial.ambientOcclusion = 1.0f;
+
+	m_->m_Models[7]->instancePbrMaterial.baseColor = XMFLOAT4(0.96f, 0.96f, 0.96f, 1.0f);
+	m_->m_Models[7]->instancePbrMaterial.metalness = 0.1f;
+	m_->m_Models[7]->instancePbrMaterial.roughness = 0.43f;
+	m_->m_Models[7]->instancePbrMaterial.ambientOcclusion = 1.0f;
+
+	m_->m_Models[8]->instancePbrMaterial.baseColor = XMFLOAT4(0.96f, 0.96f, 0.96f, 1.0f);
+	m_->m_Models[8]->instancePbrMaterial.metalness = 0.1f;
+	m_->m_Models[8]->instancePbrMaterial.roughness = 0.43f;
+	m_->m_Models[8]->instancePbrMaterial.ambientOcclusion = 1.0f;
+
+	m_->m_Models[9]->instancePbrMaterial.baseColor = XMFLOAT4(0.96f, 0.96f, 0.96f, 1.0f);
+	m_->m_Models[9]->instancePbrMaterial.metalness = 0.1f;
+	m_->m_Models[9]->instancePbrMaterial.roughness = 0.43f;
+	m_->m_Models[9]->instancePbrMaterial.ambientOcclusion = 1.0f;
+
+	m_->m_Models[10]->instancePbrMaterial.baseColor = XMFLOAT4(0.96f, 0.96f, 0.96f, 1.0f);
+	m_->m_Models[10]->instancePbrMaterial.metalness = 0.1f;
+	m_->m_Models[10]->instancePbrMaterial.roughness = 0.43f;
+	m_->m_Models[10]->instancePbrMaterial.ambientOcclusion = 1.0f;
 
 	m_->m_Models[5]->uiAnimPlaying = false;
 	m_->m_Models[6]->uiAnimPlaying = false;
@@ -5559,7 +5600,8 @@ void App::RenderWaitingUI()
 	ImGui::SetNextWindowSize(size, ImGuiCond_FirstUseEver);
 
 	//if (ImGui::Begin("Loading...", &m_->m_ShowSceneImageWindow, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse))
-	if (ImGui::Begin("Loading...", &m_->m_ShowSceneImageWindow, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse))
+	//if (ImGui::Begin("Loading...", &m_->m_ShowSceneImageWindow, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse))
+	if (ImGui::Begin("Loading...", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse))
 	{
 		if (m_bIsLoaded) // atomic 읽기
 		{
