@@ -963,7 +963,8 @@ public:
         if (input.firePressed)         m_Params.FireTrigger("FirePressed");
         if (input.reloadPressed)       m_Params.FireTrigger("ReloadPressed");
 
-        // Base만 tick (Upper/Add는 최소 유지 상태라 tick해도 무해)
+        // Base tick 
+        // Upper/Add는 여기선 최소한으로 유지된 상태라 tick해도 됨
         m_BaseSM.Tick(dt, m_Params, m_Lib);
         m_UpperSM.Tick(dt, m_Params, m_Lib);
         m_AddSM.Tick(dt, m_Params, m_Lib);
