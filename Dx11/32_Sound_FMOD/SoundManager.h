@@ -69,4 +69,7 @@ namespace Sound
 
 	// @brief SFX 볼륨 설정 (0.0 ~ 1.0)
 	void SetSFXVolume(float volume);
+
+	// @brief 경로로 SFX 중지 
+	void StopSFX(const std::wstring& path);
 }

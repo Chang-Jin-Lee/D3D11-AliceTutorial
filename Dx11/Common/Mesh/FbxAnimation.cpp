@@ -4,6 +4,7 @@
 
 #include <assimp/scene.h>
 #include <d3d11.h>
+#include <wrl/client.h>
 
 using namespace DirectX;
 
@@ -164,22 +165,49 @@ void FbxAnimation::EnsureBoneCB(ID3D11Device* device, int maxBones)
 	HR_T(device->CreateBuffer(&bd, nullptr, &m_pBoneCB));
 }
 
+// 바이너리 서치로 키 찾기 (O(logN))
 static aiVector3D InterpVec(const aiVectorKey* keys, unsigned count, double t)
 {
 	if (count == 0) return aiVector3D(0, 0, 0);
 	if (count == 1) return keys[0].mValue;
-	unsigned i = 0; while (i + 1 < count && t >= keys[i + 1].mTime) ++i; unsigned j = (i + 1 < count) ? i + 1 : i;
-	double dt = keys[j].mTime - keys[i].mTime; double a = (dt > 0.0) ? (t - keys[i].mTime) / dt : 0.0;
-	aiVector3D v0 = keys[i].mValue, v1 = keys[j].mValue; return v0 + (float)a * (v1 - v0);
+	
+	// upper_bound로 바이너리 서치
+	const aiVectorKey* first = keys;
+	const aiVectorKey* last = keys + count;
+	const aiVectorKey* it = std::upper_bound(first, last, t, [](double val, const aiVectorKey& key) { return val < key.mTime; });
+	
+	unsigned i = 0, j = 0;
+	if (it == first) { i = 0; j = 0; }
+	else if (it == last) { i = count - 1; j = count - 1; }
+	else { i = (unsigned)(it - keys - 1); j = (unsigned)(it - keys); }
+	
+	double dt = keys[j].mTime - keys[i].mTime;
+	double a = (dt > 0.0) ? (t - keys[i].mTime) / dt : 0.0;
+	aiVector3D v0 = keys[i].mValue, v1 = keys[j].mValue;
+	return v0 + (float)a * (v1 - v0);
 }
 
 static aiQuaternion InterpQuat(const aiQuatKey* keys, unsigned count, double t)
 {
 	if (count == 0) return aiQuaternion();
 	if (count == 1) return keys[0].mValue;
-	unsigned i = 0; while (i + 1 < count && t >= keys[i + 1].mTime) ++i; unsigned j = (i + 1 < count) ? i + 1 : i;
-	double dt = keys[j].mTime - keys[i].mTime; double a = (dt > 0.0) ? (t - keys[i].mTime) / dt : 0.0;
-	aiQuaternion q; aiQuaternion::Interpolate(q, keys[i].mValue, keys[j].mValue, (float)a); q.Normalize(); return q;
+	
+	// upper_bound로 바이너리 서치
+	const aiQuatKey* first = keys;
+	const aiQuatKey* last = keys + count;
+	const aiQuatKey* it = std::upper_bound(first, last, t, [](double val, const aiQuatKey& key) { return val < key.mTime; });
+	
+	unsigned i = 0, j = 0;
+	if (it == first) { i = 0; j = 0; }
+	else if (it == last) { i = count - 1; j = count - 1; }
+	else { i = (unsigned)(it - keys - 1); j = (unsigned)(it - keys); }
+	
+	double dt = keys[j].mTime - keys[i].mTime;
+	double a = (dt > 0.0) ? (t - keys[i].mTime) / dt : 0.0;
+	aiQuaternion q;
+	aiQuaternion::Interpolate(q, keys[i].mValue, keys[j].mValue, (float)a);
+	q.Normalize();
+	return q;
 }
 
 void FbxAnimation::EvaluateGlobals(
@@ -187,16 +215,31 @@ void FbxAnimation::EvaluateGlobals(
     const std::unordered_map<std::string,int>& nodeIndexOfName,
     std::vector<XMFLOAT4X4>& outGlobal) const
 {
-	outGlobal.clear(); if (!scene) return;
-	outGlobal.resize(nodeIndexOfName.size());
+	if (!scene) return;
+	
+	const size_t N = nodeIndexOfName.size();
+	if (outGlobal.size() != N) outGlobal.resize(N); // clear 하지 말고 resize만
+
+	// done 스탬프 (스레드별 재사용)
+	static thread_local std::vector<uint32_t> doneStamp;
+	static thread_local uint32_t stamp = 1;
+	if (doneStamp.size() != N) doneStamp.assign(N, 0);
+	
+	++stamp;
+	if (stamp == 0) { // overflow 보호
+		std::fill(doneStamp.begin(), doneStamp.end(), 0);
+		stamp = 1;
+	}
+
+	// tTicks도 노드마다 계산하지 말고 1회만
+	const double tTicks = m_TimeSec * ((m_Current >= 0 && (size_t)m_Current < m_TicksPerSec.size()) ? m_TicksPerSec[m_Current] : 25.0);
 
 	// Optimized path: compute only nodes needed by bones using parent indices
 	if (!m_ParentIndexByIndex.empty() && !m_BoneNodeIndices.empty() && m_NodePtrByIndex.size() == nodeIndexOfName.size())
 	{
-		std::vector<uint8_t> done; done.assign(nodeIndexOfName.size(), 0);
 		auto computeNode = [&](auto&& self, int idx) -> void {
 			if (idx < 0 || (size_t)idx >= m_NodePtrByIndex.size()) return;
-			if (done[(size_t)idx]) return;
+			if (doneStamp[(size_t)idx] == stamp) return; // ? stamp로 방문 체크
 			int pi = (idx < (int)m_ParentIndexByIndex.size()) ? m_ParentIndexByIndex[(size_t)idx] : -1;
 			if (pi >= 0) self(self, pi);
 			const aiNode* node = m_NodePtrByIndex[(size_t)idx];
@@ -206,7 +249,6 @@ void FbxAnimation::EvaluateGlobals(
 				const aiNodeAnim* ch = m_ChannelOfNode[(size_t)idx];
 				if (ch)
 				{
-					double tTicks = m_TimeSec * ((m_Current >= 0 && (size_t)m_Current < m_TicksPerSec.size()) ? m_TicksPerSec[m_Current] : 25.0);
 					aiVector3D S = (ch->mNumScalingKeys   > 0) ? InterpVec(ch->mScalingKeys,   ch->mNumScalingKeys,   tTicks) : aiVector3D(1,1,1);
 					aiVector3D T = (ch->mNumPositionKeys  > 0) ? InterpVec(ch->mPositionKeys,  ch->mNumPositionKeys,  tTicks) : aiVector3D(0,0,0);
 					aiQuaternion R = (ch->mNumRotationKeys  > 0) ? InterpQuat(ch->mRotationKeys, ch->mNumRotationKeys,  tTicks) : aiQuaternion();
@@ -223,7 +265,7 @@ void FbxAnimation::EvaluateGlobals(
 			if (pi >= 0) parent = XMLoadFloat4x4(&outGlobal[(size_t)pi]);
 			XMMATRIX G = XMMatrixMultiply(parent, L);
 			XMStoreFloat4x4(&outGlobal[(size_t)idx], G);
-			done[(size_t)idx] = 1;
+			doneStamp[(size_t)idx] = stamp; //stamp로 마킹
 		};
 		for (int bn : m_BoneNodeIndices) if (bn >= 0) computeNode(computeNode, bn);
 		return;
@@ -239,7 +281,6 @@ void FbxAnimation::EvaluateGlobals(
                 const aiNodeAnim* ch = m_ChannelOfNode[(size_t)nodeIdx];
                 if (ch)
                 {
-                    double tTicks = m_TimeSec * ((m_Current >= 0 && (size_t)m_Current < m_TicksPerSec.size()) ? m_TicksPerSec[m_Current] : 25.0);
                     S = (ch->mNumScalingKeys   > 0) ? InterpVec(ch->mScalingKeys,   ch->mNumScalingKeys,   tTicks) : aiVector3D(1,1,1);
                     T = (ch->mNumPositionKeys  > 0) ? InterpVec(ch->mPositionKeys,  ch->mNumPositionKeys,  tTicks) : aiVector3D(0,0,0);
                     R = (ch->mNumRotationKeys  > 0) ? InterpQuat(ch->mRotationKeys, ch->mNumRotationKeys,  tTicks) : aiQuaternion();
@@ -303,28 +344,54 @@ void FbxAnimation::PrecomputeAll(
 		pc.palettes.resize((size_t)numSamples);
 		XMMATRIX Gi = XMLoadFloat4x4(&globalInverse);
 
+		//  1) global 벡터를 샘플 루프 밖으로 빼서 재사용
+		std::vector<XMFLOAT4X4> global;
+		global.resize(nodeIndexOfName.size()); // 한번만 resize
+
+		//  2) boneName -> nodeIdx 해시탐색을 샘플 루프 밖에서 1회만
+		const size_t boneCount = boneNames.size();
+		std::vector<int> boneNodeIdx(boneCount, -1);
+		for (size_t bi = 0; bi < boneCount; ++bi)
+		{
+			auto it = nodeIndexOfName.find(boneNames[bi]);
+			boneNodeIdx[bi] = (it != nodeIndexOfName.end()) ? it->second : -1;
+		}
+
+		//  offsets도 XMMATRIX로 1회 로드(샘플마다 XMLoad 하지 않게)
+		std::vector<XMMATRIX> offMats;
+		offMats.reserve(boneCount);
+		for (size_t bi = 0; bi < boneCount; ++bi)
+			offMats.push_back(XMLoadFloat4x4(&boneOffsets[bi]));
+
 		for (int si = 0; si < numSamples; ++si)
 		{
 			double tSec = si * pc.sampleDt; if (tSec > pc.durationSec) tSec = pc.durationSec;
 			pc.times[(size_t)si] = tSec;
 			// Evaluate globals at tSec (using internal EvaluateGlobals which reads m_TimeSec/m_Current/m_ChannelOfNode)
 			m_TimeSec = tSec;
-			std::vector<XMFLOAT4X4> global;
-			EvaluateGlobals(scene, nodeIndexOfName, global);
-			pc.palettes[(size_t)si].resize(boneNames.size(), XMMatrixIdentity());
-			for (size_t bi = 0; bi < boneNames.size(); ++bi)
+			EvaluateGlobals(scene, nodeIndexOfName, global); // ? 재사용된 global 벡터 사용
+			
+			// ? identity로 채우지 말고 그냥 resize
+			auto& pal = pc.palettes[(size_t)si];
+			pal.resize(boneCount);
+			
+			for (size_t bi = 0; bi < boneCount; ++bi)
 			{
-				auto itN = nodeIndexOfName.find(boneNames[bi]); if (itN == nodeIndexOfName.end()) continue;
-				int nodeIdx = itN->second; if (nodeIdx < 0 || nodeIdx >= (int)global.size()) continue;
+				int nodeIdx = boneNodeIdx[bi];
+				if (nodeIdx < 0 || nodeIdx >= (int)global.size())
+				{
+					pal[bi] = XMMatrixIdentity();
+					continue;
+				}
+				
 				XMMATRIX G = XMLoadFloat4x4(&global[(size_t)nodeIdx]);
 				if (pc.rigid)
 				{
-					pc.palettes[(size_t)si][bi] = XMMatrixMultiply(Gi, G);
+					pal[bi] = XMMatrixMultiply(Gi, G);
 				}
 				else
 				{
-					XMMATRIX Off = XMLoadFloat4x4(&boneOffsets[bi]);
-					pc.palettes[(size_t)si][bi] = XMMatrixMultiply(XMMatrixMultiply(Gi, G), Off);
+					pal[bi] = XMMatrixMultiply(XMMatrixMultiply(Gi, G), offMats[bi]); // ? 미리 로드된 offMats 사용
 				}
 			}
 		}
@@ -335,6 +402,180 @@ void FbxAnimation::PrecomputeAll(
 	// Restore playback state
 	m_Current = oldClip; m_TimeSec = oldTime; m_Playing = oldPlaying;
 }
+
+
+// 원래 비 효율적으로 모든 노드를 선형 탐색하는 로직인데, 위 방법이 오류가 생긴다면 이걸로 돌릴것
+// static aiVector3D InterpVec(const aiVectorKey* keys, unsigned count, double t)
+// {
+// 	if (count == 0) return aiVector3D(0, 0, 0);
+// 	if (count == 1) return keys[0].mValue;
+// 	unsigned i = 0; while (i + 1 < count && t >= keys[i + 1].mTime) ++i; unsigned j = (i + 1 < count) ? i + 1 : i;
+// 	double dt = keys[j].mTime - keys[i].mTime; double a = (dt > 0.0) ? (t - keys[i].mTime) / dt : 0.0;
+// 	aiVector3D v0 = keys[i].mValue, v1 = keys[j].mValue; return v0 + (float)a * (v1 - v0);
+// }
+
+// static aiQuaternion InterpQuat(const aiQuatKey* keys, unsigned count, double t)
+// {
+// 	if (count == 0) return aiQuaternion();
+// 	if (count == 1) return keys[0].mValue;
+// 	unsigned i = 0; while (i + 1 < count && t >= keys[i + 1].mTime) ++i; unsigned j = (i + 1 < count) ? i + 1 : i;
+// 	double dt = keys[j].mTime - keys[i].mTime; double a = (dt > 0.0) ? (t - keys[i].mTime) / dt : 0.0;
+// 	aiQuaternion q; aiQuaternion::Interpolate(q, keys[i].mValue, keys[j].mValue, (float)a); q.Normalize(); return q;
+// }
+
+// void FbxAnimation::EvaluateGlobals(
+//     const aiScene* scene,
+//     const std::unordered_map<std::string,int>& nodeIndexOfName,
+//     std::vector<XMFLOAT4X4>& outGlobal) const
+// {
+// 	outGlobal.clear(); if (!scene) return;
+// 	outGlobal.resize(nodeIndexOfName.size());
+
+// 	// Optimized path: compute only nodes needed by bones using parent indices
+// 	if (!m_ParentIndexByIndex.empty() && !m_BoneNodeIndices.empty() && m_NodePtrByIndex.size() == nodeIndexOfName.size())
+// 	{
+// 		std::vector<uint8_t> done; done.assign(nodeIndexOfName.size(), 0);
+// 		auto computeNode = [&](auto&& self, int idx) -> void {
+// 			if (idx < 0 || (size_t)idx >= m_NodePtrByIndex.size()) return;
+// 			if (done[(size_t)idx]) return;
+// 			int pi = (idx < (int)m_ParentIndexByIndex.size()) ? m_ParentIndexByIndex[(size_t)idx] : -1;
+// 			if (pi >= 0) self(self, pi);
+// 			const aiNode* node = m_NodePtrByIndex[(size_t)idx];
+// 			aiMatrix4x4 mLocal = node ? node->mTransformation : aiMatrix4x4();
+// 			if ((size_t)idx < m_ChannelOfNode.size())
+// 			{
+// 				const aiNodeAnim* ch = m_ChannelOfNode[(size_t)idx];
+// 				if (ch)
+// 				{
+// 					double tTicks = m_TimeSec * ((m_Current >= 0 && (size_t)m_Current < m_TicksPerSec.size()) ? m_TicksPerSec[m_Current] : 25.0);
+// 					aiVector3D S = (ch->mNumScalingKeys   > 0) ? InterpVec(ch->mScalingKeys,   ch->mNumScalingKeys,   tTicks) : aiVector3D(1,1,1);
+// 					aiVector3D T = (ch->mNumPositionKeys  > 0) ? InterpVec(ch->mPositionKeys,  ch->mNumPositionKeys,  tTicks) : aiVector3D(0,0,0);
+// 					aiQuaternion R = (ch->mNumRotationKeys  > 0) ? InterpQuat(ch->mRotationKeys, ch->mNumRotationKeys,  tTicks) : aiQuaternion();
+// 					aiMatrix4x4 mS; mS.Scaling(S, mS); aiMatrix4x4 mR = aiMatrix4x4(R.GetMatrix()); aiMatrix4x4 mT; mT.Translation(T, mT);
+// 					mLocal = mT * mR * mS;
+// 				}
+// 			}
+// 			XMFLOAT4X4 lm; lm._11 = (float)mLocal.a1; lm._12 = (float)mLocal.a2; lm._13 = (float)mLocal.a3; lm._14 = (float)mLocal.a4;
+// 			lm._21 = (float)mLocal.b1; lm._22 = (float)mLocal.b2; lm._23 = (float)mLocal.b3; lm._24 = (float)mLocal.b4;
+// 			lm._31 = (float)mLocal.c1; lm._32 = (float)mLocal.c2; lm._33 = (float)mLocal.c3; lm._34 = (float)mLocal.c4;
+// 			lm._41 = (float)mLocal.d1; lm._42 = (float)mLocal.d2; lm._43 = (float)mLocal.d3; lm._44 = (float)mLocal.d4;
+// 			XMMATRIX L = XMLoadFloat4x4(&lm);
+// 			XMMATRIX parent = XMMatrixIdentity();
+// 			if (pi >= 0) parent = XMLoadFloat4x4(&outGlobal[(size_t)pi]);
+// 			XMMATRIX G = XMMatrixMultiply(parent, L);
+// 			XMStoreFloat4x4(&outGlobal[(size_t)idx], G);
+// 			done[(size_t)idx] = 1;
+// 		};
+// 		for (int bn : m_BoneNodeIndices) if (bn >= 0) computeNode(computeNode, bn);
+// 		return;
+// 	}
+// 	std::function<void(const aiNode*, int, const XMMATRIX&)> eval = [&](const aiNode* node, int idx, const XMMATRIX& parent){
+// 		aiVector3D S(1,1,1), T(0,0,0); aiQuaternion R; aiMatrix4x4 mLocal = node->mTransformation;
+//         auto itIndex = nodeIndexOfName.find(node->mName.C_Str());
+//         if (itIndex != nodeIndexOfName.end())
+// 		{
+//             int nodeIdx = itIndex->second;
+//             if (nodeIdx >= 0 && (size_t)nodeIdx < m_ChannelOfNode.size())
+//             {
+//                 const aiNodeAnim* ch = m_ChannelOfNode[(size_t)nodeIdx];
+//                 if (ch)
+//                 {
+//                     double tTicks = m_TimeSec * ((m_Current >= 0 && (size_t)m_Current < m_TicksPerSec.size()) ? m_TicksPerSec[m_Current] : 25.0);
+//                     S = (ch->mNumScalingKeys   > 0) ? InterpVec(ch->mScalingKeys,   ch->mNumScalingKeys,   tTicks) : aiVector3D(1,1,1);
+//                     T = (ch->mNumPositionKeys  > 0) ? InterpVec(ch->mPositionKeys,  ch->mNumPositionKeys,  tTicks) : aiVector3D(0,0,0);
+//                     R = (ch->mNumRotationKeys  > 0) ? InterpQuat(ch->mRotationKeys, ch->mNumRotationKeys,  tTicks) : aiQuaternion();
+//                     aiMatrix4x4 mS; mS.Scaling(S, mS); aiMatrix4x4 mR = aiMatrix4x4(R.GetMatrix()); aiMatrix4x4 mT; mT.Translation(T, mT);
+//                     mLocal = mT * mR * mS;
+//                 }
+//             }
+// 		}
+// 		XMFLOAT4X4 lm; lm._11 = (float)mLocal.a1; lm._12 = (float)mLocal.a2; lm._13 = (float)mLocal.a3; lm._14 = (float)mLocal.a4;
+// 		lm._21 = (float)mLocal.b1; lm._22 = (float)mLocal.b2; lm._23 = (float)mLocal.b3; lm._24 = (float)mLocal.b4;
+// 		lm._31 = (float)mLocal.c1; lm._32 = (float)mLocal.c2; lm._33 = (float)mLocal.c3; lm._34 = (float)mLocal.c4;
+// 		lm._41 = (float)mLocal.d1; lm._42 = (float)mLocal.d2; lm._43 = (float)mLocal.d3; lm._44 = (float)mLocal.d4;
+// 		XMMATRIX L = XMLoadFloat4x4(&lm);
+// 		XMMATRIX G = XMMatrixMultiply(parent, L);
+// 		if ((size_t)idx < outGlobal.size()) XMStoreFloat4x4(&outGlobal[(size_t)idx], G);
+// 		for (unsigned ci = 0; ci < node->mNumChildren; ++ci)
+// 		{
+// 			auto it = nodeIndexOfName.find(node->mChildren[ci]->mName.C_Str());
+// 			int childIdx = (it != nodeIndexOfName.end()) ? it->second : -1;
+// 			if (childIdx >= 0) eval(node->mChildren[ci], childIdx, G);
+// 		}
+// 	};
+// 	int rootIdx = -1; // find root by nodeIndexOfName of root node
+// 	if (scene->mRootNode) { auto it = nodeIndexOfName.find(scene->mRootNode->mName.C_Str()); if (it != nodeIndexOfName.end()) rootIdx = it->second; }
+// 	if (rootIdx >= 0) eval(scene->mRootNode, rootIdx, XMMatrixIdentity());
+// }
+
+// void FbxAnimation::PrecomputeAll(
+// 	const aiScene* scene,
+// 	const std::unordered_map<std::string,int>& nodeIndexOfName,
+// 	const std::vector<std::string>& boneNames,
+// 	const std::vector<XMFLOAT4X4>& boneOffsets,
+// 	const XMFLOAT4X4& globalInverse,
+// 	int samplesPerSecond)
+// {
+// 	if (!scene || boneNames.empty() || samplesPerSecond <= 0) { m_Precomputed.clear(); return; }
+// 	m_Precomputed.clear();
+// 	m_Precomputed.resize(m_Names.size());
+
+// 	// Preserve current playback state while precomputing
+// 	int oldClip = m_Current; double oldTime = m_TimeSec; bool oldPlaying = m_Playing;
+// 	m_Playing = false;
+
+// 	for (size_t clipIdx = 0; clipIdx < m_Names.size(); ++clipIdx)
+// 	{
+// 		PrecomputedClip pc{};
+// 		pc.ticksPerSec = (clipIdx < m_TicksPerSec.size()) ? m_TicksPerSec[clipIdx] : 25.0;
+// 		pc.durationSec = (clipIdx < m_DurationSec.size()) ? m_DurationSec[clipIdx] : 0.0;
+// 		pc.sampleDt = (samplesPerSecond > 0) ? (1.0 / (double)samplesPerSecond) : 0.0;
+// 		pc.rigid = (m_Type == AnimType::Rigid);
+// 		if (pc.durationSec <= 0.0 || pc.sampleDt <= 0.0) { m_Precomputed[clipIdx] = pc; continue; }
+
+// 		// Build channel map for this clip
+// 		m_Current = (int)clipIdx;
+// 		m_ChannelOfNode.assign(nodeIndexOfName.size(), nullptr);
+// 		RebuildChannelMapIfNeeded(scene, m_Current, nodeIndexOfName, m_ChannelOfNode);
+
+// 		int numSamples = (int)std::ceil(pc.durationSec * samplesPerSecond);
+// 		if (numSamples < 1) numSamples = 1;
+// 		pc.times.resize((size_t)numSamples);
+// 		pc.palettes.resize((size_t)numSamples);
+// 		XMMATRIX Gi = XMLoadFloat4x4(&globalInverse);
+
+// 		for (int si = 0; si < numSamples; ++si)
+// 		{
+// 			double tSec = si * pc.sampleDt; if (tSec > pc.durationSec) tSec = pc.durationSec;
+// 			pc.times[(size_t)si] = tSec;
+// 			// Evaluate globals at tSec (using internal EvaluateGlobals which reads m_TimeSec/m_Current/m_ChannelOfNode)
+// 			m_TimeSec = tSec;
+// 			std::vector<XMFLOAT4X4> global;
+// 			EvaluateGlobals(scene, nodeIndexOfName, global);
+// 			pc.palettes[(size_t)si].resize(boneNames.size(), XMMatrixIdentity());
+// 			for (size_t bi = 0; bi < boneNames.size(); ++bi)
+// 			{
+// 				auto itN = nodeIndexOfName.find(boneNames[bi]); if (itN == nodeIndexOfName.end()) continue;
+// 				int nodeIdx = itN->second; if (nodeIdx < 0 || nodeIdx >= (int)global.size()) continue;
+// 				XMMATRIX G = XMLoadFloat4x4(&global[(size_t)nodeIdx]);
+// 				if (pc.rigid)
+// 				{
+// 					pc.palettes[(size_t)si][bi] = XMMatrixMultiply(Gi, G);
+// 				}
+// 				else
+// 				{
+// 					XMMATRIX Off = XMLoadFloat4x4(&boneOffsets[bi]);
+// 					pc.palettes[(size_t)si][bi] = XMMatrixMultiply(XMMatrixMultiply(Gi, G), Off);
+// 				}
+// 			}
+// 		}
+// 		pc.valid = true;
+// 		m_Precomputed[clipIdx] = std::move(pc);
+// 	}
+
+// 	// Restore playback state
+// 	m_Current = oldClip; m_TimeSec = oldTime; m_Playing = oldPlaying;
+// }
 
 void FbxAnimation::UploadPalette(ID3D11DeviceContext* ctx, const std::vector<XMMATRIX>& pal)
 {

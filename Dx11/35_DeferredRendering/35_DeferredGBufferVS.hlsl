@@ -23,10 +23,8 @@ VertexOut main(VertexIn vIn)
     vOut.bitanW = normalize(mul(vIn.bitanL, (float3x3)g_World));
     
     vOut.tex = vIn.tex;
-    
-    // G-Buffer 패스에서는 사용하지 않지만 초기화 필요 (경고 방지)
     vOut.color = vIn.color;
-    vOut.posShadowH = float4(0, 0, 0, 1);  // G-Buffer 패스에서는 섀도우 사용 안 함
+    vOut.posShadowH = mul(posW, g_LightViewProj);
     
     return vOut;
 }

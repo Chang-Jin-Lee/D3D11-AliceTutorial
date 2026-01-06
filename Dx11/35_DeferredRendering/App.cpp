@@ -187,6 +187,8 @@ struct ModelEntry {
 	Material instanceMaterial{
 		{1, 1, 1, 1}, {1, 1, 1, 1}, {1, 1, 1, 32}, {0, 0, 0, 0} };
 	bool useInstanceMaterial = false;
+	bool useNormalMap = false;
+	bool useSpecularMap = false;
 	PBRMaterialCPU instancePbrMaterial{};
 	bool useInstancePbrMaterial = false;
 
@@ -804,7 +806,8 @@ bool App::OnInitialize() {
 
 	// ====================================== 3D 모델
 	// ======================================
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\char\\char.fbx"); // 0
+	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\char\\char.fbx"); // 0
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice3DGame\\Alice.fbx"); // 0
 	// LoadModelFromFile(L"..\\Resource\\fbx\\Alice_UmaUma.fbx"); // 0
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\sphere.fbx"); // 1
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\sphere.fbx"); // 2
@@ -830,9 +833,11 @@ bool App::OnInitialize() {
 
 	m_->m_Models[4]->scale = XMFLOAT3(2.0f, 1.0f, 8.0f);
 	m_->m_Models[4]->pos = XMFLOAT3(0.0f, -2.0f, 0.0f);
+	m_->m_Models[1]->useInstancePbrMaterial = true;
+	m_->m_Models[2]->useInstancePbrMaterial = true;
+	m_->m_Models[3]->useInstancePbrMaterial = true;
 	m_->m_Models[4]->useInstancePbrMaterial = true;
-	m_->m_Models[4]->instancePbrMaterial.baseColor =
-		XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f);
+	m_->m_Models[4]->instancePbrMaterial.baseColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f);
 	m_->m_Models[4]->instancePbrMaterial.metalness = 0.01f;
 	m_->m_Models[4]->instancePbrMaterial.roughness = 1.0f;
 	m_->m_Models[4]->instancePbrMaterial.ambientOcclusion = 1.0f;
@@ -1227,6 +1232,14 @@ void App::PassShadow() {
 	if (!m_->m_ShadowEnabled || m_->m_Models.empty() || !m_->m_pShadowDSV)
 		return;
 
+	// 4번 슬롯에 묶인 섀도우 맵 SRV를 제거해주고 시작함.
+	// 이전 프레임의 PassMainScene 단계에서 섀도우 맵 텍스처가
+	// Pixel Shader의 4번 슬롯(Input)에 바인딩 되어 있음.
+	// 다음 프레임의 PassShadow 단계가 시작될 때, 이 텍스처를 Depth Stencil로 output으로 설정하려고 하니
+	// DirectX가 읽고 있는 중인 자원에 쓸 수 없다며 경고를 띄움. 이를 해결하기 위해 여기서 4번 슬롯을 해제하는걸로 함.
+	ID3D11ShaderResourceView* const nullSRV[1] = { nullptr };
+	m_->m_pDeviceContext->PSSetShaderResources(4, 1, nullSRV);
+
 	// 1. 섀도우 맵 깊이 타겟 설정 (Color Target은 불필요하므로 nullptr)
 	ID3D11RenderTargetView* nullRTV = nullptr;
 	m_->m_pDeviceContext->OMSetRenderTargets(0, &nullRTV, m_->m_pShadowDSV);
@@ -1424,8 +1437,7 @@ void App::PassMainScene() {
 	UINT stride = m_->m_VertextBufferStride;
 	UINT offset = m_->m_VertextBufferOffset;
 	for (auto& objPtr : m_->m_Objects) {
-		if (!objPtr || objPtr->kind != ObjectKind::Cube)
-			continue;
+		if (!objPtr || objPtr->kind != ObjectKind::Cube) continue;
 		auto* cubeObj = static_cast<CubeObject*>(objPtr.get());
 		const Transform& mc = cubeObj->cubeTransform;
 
@@ -1502,8 +1514,7 @@ void App::PassMainScene() {
 				continue;
 			UINT s = mdlPtr->shared->stride;
 			UINT o = 0;
-			m_->m_pDeviceContext->IASetVertexBuffers(0, 1, &mdlPtr->shared->vb, &s,
-				&o);
+			m_->m_pDeviceContext->IASetVertexBuffers(0, 1, &mdlPtr->shared->vb, &s,&o);
 
 			// 스켈레톤/쉐이더 선택
 			ID3D11Buffer* cbBones = nullptr;
@@ -1525,8 +1536,7 @@ void App::PassMainScene() {
 				m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShaderSkinned, nullptr,
 					0);
 				if (cbBones) {
-					if (mdlPtr->source == ModelSource::PMX && mdlPtr->shared->pmx &&
-						!mdlPtr->shared->pmx->HasAnimations())
+					if (mdlPtr->source == ModelSource::PMX && mdlPtr->shared->pmx && !mdlPtr->shared->pmx->HasAnimations())
 						mdlPtr->shared->pmx->UploadIdentityPalette(m_->m_pDeviceContext);
 					m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &cbBones);
 				}
@@ -1540,29 +1550,31 @@ void App::PassMainScene() {
 			m_->m_pDeviceContext->IASetIndexBuffer(mdlPtr->shared->ib,
 				DXGI_FORMAT_R32_UINT, 0);
 
-			XMMATRIX S =
-				XMMatrixScaling(mdlPtr->scale.x, mdlPtr->scale.y, mdlPtr->scale.z);
+			XMMATRIX S = XMMatrixScaling(mdlPtr->scale.x, mdlPtr->scale.y, mdlPtr->scale.z);
 			XMMATRIX R = XMMatrixRotationQuaternion(XMQuaternionRotationRollPitchYaw(
 				XMConvertToRadians(mdlPtr->rotDeg.x),
 				XMConvertToRadians(mdlPtr->rotDeg.y),
 				XMConvertToRadians(mdlPtr->rotDeg.z)));
-			XMMATRIX T =
-				XMMatrixTranslation(mdlPtr->pos.x, mdlPtr->pos.y, mdlPtr->pos.z);
+			XMMATRIX T = XMMatrixTranslation(mdlPtr->pos.x, mdlPtr->pos.y, mdlPtr->pos.z);
 			XMMATRIX W = S * R * T;
 
 			ConstantBuffer cb = m_->m_ConstantBuffer;
 			cb.world = XMMatrixTranspose(W);
-			cb.worldInvTranspose =
-				XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(W)));
-			cb.material = (mdlPtr->useInstanceMaterial ? mdlPtr->instanceMaterial
-				: m_->m_Material);
+			cb.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(W)));
+			cb.material = (mdlPtr->useInstanceMaterial ? mdlPtr->instanceMaterial : m_->m_Material);
 			cb.shadingMode = (int)mdlPtr->modelShading;
-			cb.enableNormalMap = m_->m_EnableNormalMapForCube;
-			cb.useSpecularMap = m_->m_UseSpecularMapForCube;
+			if (!mdlPtr->useInstancePbrMaterial)
+			{
+				cb.enableNormalMap = m_->m_EnableNormalMapForCube;
+				cb.useSpecularMap = m_->m_EnableNormalMapForCube;
+			}
+			else
+			{
+				cb.enableNormalMap = mdlPtr->useNormalMap;
+				cb.useSpecularMap = mdlPtr->useSpecularMap;
+			}
 
-			const PBRMaterialCPU& activePbr = mdlPtr->useInstancePbrMaterial
-				? mdlPtr->instancePbrMaterial
-				: m_->m_DefaultPbrMaterial;
+			const PBRMaterialCPU& activePbr = mdlPtr->useInstancePbrMaterial ? mdlPtr->instancePbrMaterial : m_->m_DefaultPbrMaterial;
 			cb.pbrBaseColor = activePbr.baseColor;
 			cb.pbrMetalness = activePbr.metalness;
 			cb.pbrRoughness = activePbr.roughness;
@@ -1579,13 +1591,13 @@ void App::PassMainScene() {
 					srvDiffuse = m_->m_pFallbackWhite;
 
 				ID3D11ShaderResourceView* srvNormal = nullptr;
-				if (m_->m_EnableNormalMapForCube != 0) {
-					if (mdlPtr->shared &&
-						sub.materialIndex < mdlPtr->shared->normalSRVs.size())
+				//if (m_->m_EnableNormalMapForCube != 0) {
+				//if (mdlPtr->useNormalMap != 0) {
+					if (mdlPtr->shared && sub.materialIndex < mdlPtr->shared->normalSRVs.size())
 						srvNormal = mdlPtr->shared->normalSRVs[sub.materialIndex];
 					if (!srvNormal)
 						srvNormal = m_->m_pFallbackNormal;
-				}
+				//}
 				ID3D11ShaderResourceView* srvSpec =
 					(m_->m_UseSpecularMapForCube != 0) ? m_->m_pFallbackWhite : nullptr;
 
@@ -1795,8 +1807,7 @@ void App::PassGBuffer() {
 			cbM.pbrBaseColor = activePbr.baseColor;
 			cbM.pbrMetalness = activePbr.metalness;
 			cbM.pbrRoughness = activePbr.roughness;
-			cbM.enableNormalMap =
-				m_->m_EnableNormalMapForCube; // 모델별 설정 확인 필요
+			cbM.enableNormalMap = mdlPtr->useNormalMap; // 모델별 설정 확인 필요
 
 			UpdateCB(m_->m_pConstantBuffer, cbM);
 
@@ -3084,12 +3095,7 @@ void App::RenderControlPannel() {
 		// 텍스처 색 사용 여부 (PBR 전용)
 		ImGui::Checkbox("Use Texture Color (PBR)", (bool*)&m_->m_UseTextureColor);
 		// 노말맵 사용 여부 (PBR / 모델 공통)
-		{
-			bool useNormalMap = (m_->m_EnableNormalMapForCube != 0);
-			if (ImGui::Checkbox("Use Normal Map (PBR)", &useNormalMap)) {
-				m_->m_EnableNormalMapForCube = useNormalMap ? 1 : 0;
-			}
-		}
+		ImGui::Checkbox("Use Normal Map (PBR)", (bool*)&m_->m_EnableNormalMapForCube);
 
 		ImGui::ColorEdit3("Base Color##PBR", &m_->m_DefaultPbrMaterial.baseColor.x);
 		ImGui::SliderFloat("Metalness##PBR", &m_->m_DefaultPbrMaterial.metalness,
@@ -3487,34 +3493,22 @@ void App::RenderModelPannel() {
 					// 인스턴스 머티리얼
 					ImGui::Checkbox("Use Instance Material", &mdl.useInstanceMaterial);
 					if (mdl.useInstanceMaterial) {
-						ImGui::ColorEdit4("Ambient (ka)##inst",
-							&mdl.instanceMaterial.ambient.x);
-						ImGui::ColorEdit4("Diffuse (kd)##inst",
-							&mdl.instanceMaterial.diffuse.x);
-						ImGui::ColorEdit4("Specular (ks)##inst",
-							&mdl.instanceMaterial.specular.x);
-						ImGui::DragFloat("Shininess (alpha)##inst",
-							&mdl.instanceMaterial.specular.w, 0.05f, 1.0f,
-							256.0f);
-						ImGui::ColorEdit4("Reflect (kr,a)##inst",
-							&mdl.instanceMaterial.reflect.x);
+						ImGui::ColorEdit4("Ambient (ka)##inst", &mdl.instanceMaterial.ambient.x);
+						ImGui::ColorEdit4("Diffuse (kd)##inst", &mdl.instanceMaterial.diffuse.x);
+						ImGui::ColorEdit4("Specular (ks)##inst", &mdl.instanceMaterial.specular.x);
+						ImGui::DragFloat("Shininess (alpha)##inst", &mdl.instanceMaterial.specular.w, 0.05f, 1.0f, 256.0f);
+						ImGui::ColorEdit4("Reflect (kr,a)##inst", &mdl.instanceMaterial.reflect.x);
 					}
 
 					ImGui::SeparatorText("PBR Material");
-					ImGui::Checkbox("Use Instance PBR Material",
-						&mdl.useInstancePbrMaterial);
+					ImGui::Checkbox("Use Instance PBR Material",&mdl.useInstancePbrMaterial);
 					if (mdl.useInstancePbrMaterial) {
-						ImGui::ColorEdit3("Base Color##instPBR",
-							&mdl.instancePbrMaterial.baseColor.x);
-						ImGui::SliderFloat("Metalness##instPBR",
-							&mdl.instancePbrMaterial.metalness, 0.0f, 1.0f,
-							"%.2f");
-						ImGui::SliderFloat("Roughness##instPBR",
-							&mdl.instancePbrMaterial.roughness, 0.04f, 1.0f,
-							"%.2f");
-						ImGui::SliderFloat("Ambient Occlusion##instPBR",
-							&mdl.instancePbrMaterial.ambientOcclusion, 0.0f,
-							1.0f, "%.2f");
+						ImGui::ColorEdit3("Base Color##instPBR", &mdl.instancePbrMaterial.baseColor.x);
+						ImGui::SliderFloat("Metalness##instPBR", &mdl.instancePbrMaterial.metalness, 0.0f, 1.0f, "%.2f");
+						ImGui::SliderFloat("Roughness##instPBR", &mdl.instancePbrMaterial.roughness, 0.04f, 1.0f, "%.2f");
+						ImGui::SliderFloat("Ambient Occlusion##instPBR", &mdl.instancePbrMaterial.ambientOcclusion, 0.0f, 1.0f, "%.2f");
+						ImGui::Checkbox("Use NormalMap", &mdl.useNormalMap);
+						ImGui::Checkbox("Use SpecularMap", &mdl.useSpecularMap);
 					}
 					else {
 						const auto& defPbr = m_->m_DefaultPbrMaterial;

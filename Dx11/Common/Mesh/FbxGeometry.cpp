@@ -33,9 +33,9 @@ FbxGeometryBuilder::~FbxGeometryBuilder() { Clear(); delete m_; }
 void FbxGeometryBuilder::Clear()
 {
 	SAFE_RELEASE(m_->vb);
-    m_->vb = nullptr;
+	m_->vb = nullptr;
 	SAFE_RELEASE(m_->ib);
-    m_->ib = nullptr;
+	m_->ib = nullptr;
 	m_->indexCount = 0;
 	m_->subsets.clear();
 	m_->bindVertices.clear();
@@ -62,7 +62,7 @@ bool FbxGeometryBuilder::Build(ID3D11Device* device, const aiScene* scene)
 	};
 
 	std::vector<MeshEntry> entries;
-	std::vector<std::pair<size_t,size_t>> levelRanges; // {start, count}
+	std::vector<std::pair<size_t, size_t>> levelRanges; // {start, count}
 	std::queue<const aiNode*> q;
 	q.push(scene->mRootNode);
 	size_t totalVertices = 0;
@@ -123,14 +123,14 @@ bool FbxGeometryBuilder::Build(ID3D11Device* device, const aiScene* scene)
 		for (unsigned i = 0; i < mesh->mNumVertices; ++i)
 		{
 			aiVector3D p = mesh->mVertices[i];
-			aiVector3D n = mesh->HasNormals() ? mesh->mNormals[i] : aiVector3D(0,1,0);
-			aiVector3D uv = mesh->HasTextureCoords(0) ? mesh->mTextureCoords[0][i] : aiVector3D(0,0,0);
-			aiVector3D tg = mesh->HasTangentsAndBitangents() ? mesh->mTangents[i]   : aiVector3D(1,0,0);
-			aiVector3D bt = mesh->HasTangentsAndBitangents() ? mesh->mBitangents[i] : aiVector3D(0,1,0);
+			aiVector3D n = mesh->HasNormals() ? mesh->mNormals[i] : aiVector3D(0, 1, 0);
+			aiVector3D uv = mesh->HasTextureCoords(0) ? mesh->mTextureCoords[0][i] : aiVector3D(0, 0, 0);
+			aiVector3D tg = mesh->HasTangentsAndBitangents() ? mesh->mTangents[i] : aiVector3D(1, 0, 0);
+			aiVector3D bt = mesh->HasTangentsAndBitangents() ? mesh->mBitangents[i] : aiVector3D(0, 1, 0);
 			VertexSkinnedTBN v{};
-			v.pos = {p.x,p.y,p.z}; v.n = {n.x,n.y,n.z}; v.t = {tg.x,tg.y,tg.z}; v.b = {bt.x,bt.y,bt.z};
-			v.color = {1,1,1,1}; v.uv = {uv.x,uv.y};
-			v.boneIdx[0]=v.boneIdx[1]=v.boneIdx[2]=v.boneIdx[3]=0; v.boneWeight = {0,0,0,0};
+			v.pos = { p.x,p.y,p.z }; v.n = { n.x,n.y,n.z }; v.t = { tg.x,tg.y,tg.z }; v.b = { bt.x,bt.y,bt.z };
+			v.color = { 1,1,1,1 }; v.uv = { uv.x,uv.y };
+			v.boneIdx[0] = v.boneIdx[1] = v.boneIdx[2] = v.boneIdx[3] = 0; v.boneWeight = { 0,0,0,0 };
 			m_->bindVertices[vBase + i] = v;
 			m_->owningNode[vBase + i] = e.node->mName.C_Str();
 		}

@@ -106,8 +106,9 @@ void SystemInfomation::RenderUI()
 		ImVec2 pos(io.DisplaySize.x / 2 - size.x / 2, 10.0f);
 		ImGui::SetNextWindowPos(pos, ImGuiCond_FirstUseEver);
 		ImGui::SetNextWindowSize(size, ImGuiCond_FirstUseEver);
-		ImGuiWindowFlags flags = ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse;
-		if (ImGui::Begin("System Info", nullptr, flags))
+		//ImGuiWindowFlags flags = ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse;
+		//if (ImGui::Begin("System Info", nullptr, flags))
+		if (ImGui::Begin("System Info", nullptr))
 		{
 			ImGui::Text("FPS : %.1f", m_LastFps);
 			ImGui::Separator();

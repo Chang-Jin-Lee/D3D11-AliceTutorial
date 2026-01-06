@@ -84,6 +84,8 @@ bool FbxModel::Load(ID3D11Device* device, const std::wstring& pathW)
 	bool hasBones = m_->skeleton.HasBones();
 	if (!hasBones && m_->scene->mNumAnimations > 0)
 	{
+		m_->animType = AnimationType::Rigid;
+
 		m_->skeleton.BuildRigidBones();
 		// Build rigid weights from per-vertex owning nodes so GPU skinning path can be reused
 		{
@@ -123,7 +125,6 @@ bool FbxModel::Load(ID3D11Device* device, const std::wstring& pathW)
 				m_->geometry.RebuildVBFromCPU(device);
 			}
 		}
-		m_->animType = AnimationType::Rigid;
 	}
 	else if (hasBones)
 	{

@@ -193,7 +193,7 @@ void Camera::OnInputProcess(const Keyboard::State& KeyState, const Keyboard::Key
 	XMFLOAT3 fwd = GetForward();
 	XMFLOAT3 right = GetRight();
 
-	if (KeyTracker.IsKeyPressed(Keyboard::Keys::R))
+	if (KeyTracker.IsKeyPressed(Keyboard::Keys::T))
 	{
 		Reset();
 	}
