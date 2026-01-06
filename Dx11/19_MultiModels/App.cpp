@@ -1,8 +1,8 @@
 /*
-* @brief : fbx, pmx, obj 3D ëª¨ë¸ì„ ì—°ì†ìœ¼ë¡œ ì—¬ëŸ¬ ê°œë¥¼ ê·¸ë¦¬ëŠ” ì˜ˆì œì…ë‹ˆë‹¤.
+* @brief : fbx, pmx, obj 3D ëª¨ë¸?„ ?—°?†?œ¼ë¡? ?—¬?Ÿ¬ ê°œë?? ê·¸ë¦¬?Š” ?˜ˆ? œ?…?‹ˆ?‹¤.
 * @details :
-*		- ë…¸ë§ë§µì´ ì ìš©ë˜ì–´ ìˆëŠ” ê²½ìš° ë…¸ë§ë§µì„ ë°˜ì˜í•´ì„œ ê·¸ë¦½ë‹ˆë‹¤
-*		- ì—†ëŠ” ê²½ìš°ëŠ” ë°˜ì˜í•˜ì§€ ì•ŠìŠµë‹ˆë‹¤ 
+*		- ?…¸ë§ë§µ?´ ? ?š©?˜?–´ ?ˆ?Š” ê²½ìš° ?…¸ë§ë§µ?„ ë°˜ì˜?•´?„œ ê·¸ë¦½?‹ˆ?‹¤
+*		- ?—†?Š” ê²½ìš°?Š” ë°˜ì˜?•˜ì§? ?•Š?Šµ?‹ˆ?‹¤ 
 */
 
 #include "App.h"
@@ -42,7 +42,7 @@
 using namespace DirectX;
 using namespace DirectX::SimpleMath;
 
-// ë‚´ë¶€ ì „ìš© íƒ€ì…ë“¤
+// ?‚´ë¶? ? „?š© ????…?“¤
 struct DirectionalLight { XMFLOAT4 ambient; XMFLOAT4 diffuse; XMFLOAT4 specular; XMFLOAT3 direction; float pad; };
 struct Material { XMFLOAT4 ambient; XMFLOAT4 diffuse; XMFLOAT4 specular; XMFLOAT4 reflect; };
 struct ConstantBuffer {
@@ -55,51 +55,51 @@ enum class RenderMode { None = 0, Cube = 1, Model = 2 };
 enum class ModelSource { FBX, OBJ, PMX, Custom };
 struct ModelSubset { uint32_t start; uint32_t count; uint32_t materialIndex; };
 
-// ì—¬ëŸ¬ ëª¨ë¸ì„ ê·¸ë¦¬ê¸° ìœ„í•œ êµ¬ì¡°ì²´
+// ?—¬?Ÿ¬ ëª¨ë¸?„ ê·¸ë¦¬ê¸? ?œ„?•œ êµ¬ì¡°ì²?
 struct ModelEntry
 {
 	std::wstring modelName{ L"" };
 	ModelSource source = ModelSource::Custom;
-	// ë¡œë” ë§¤ë‹ˆì € (FBX/OBJ/PMX ì¤‘ ì„ íƒí•´ ì‚¬ìš©)
+	// ë¡œë” ë§¤ë‹ˆ??? (FBX/OBJ/PMX ì¤? ?„ ?ƒ?•´ ?‚¬?š©)
 	FbxManager fbx;
 	ObjManager obj;
 	PmxManager pmx;
 
-	// GPUì—ì„œ ì‚¬ìš©ë  ê²ƒë“¤ 
+	// GPU?—?„œ ?‚¬?š©?  ê²ƒë“¤ 
 	ID3D11Buffer* vb = nullptr;
 	ID3D11Buffer* ib = nullptr;
 	int           indexCount = 0;
 	UINT          stride = 0;
 	std::vector<ModelSubset> subsets;
-	std::vector<ID3D11ShaderResourceView*> materialSRVs; // AddRefë¨
+	std::vector<ID3D11ShaderResourceView*> materialSRVs; // AddRef?¨
 
-	// íŠ¸ëœìŠ¤í¼
+	// ?Š¸?œ?Š¤?¼
 	XMFLOAT3 pos = {0,0,0};
 	XMFLOAT3 scale = {1,1,1};
 	XMFLOAT3 rotDeg = {0,0,0}; // yaw=pitch=roll(deg)
 	bool     autoRotate = false;
 
-	// FBX ì „ìš© ì• ë‹ˆë©”ì´ì…˜ UI ìƒíƒœ
-	// ImGuiì—ì„œ ë³´ì—¬ì£¼ê¸° ìœ„í•¨
+	// FBX ? „?š© ?• ?‹ˆë©”ì´?…˜ UI ?ƒ?ƒœ
+	// ImGui?—?„œ ë³´ì—¬ì£¼ê¸° ?œ„?•¨
 	int  uiSelectedAnim = -1;
 	bool uiAnimPlaying = false;
 };
 
-// pImpl ì •ì˜
+// pImpl ? •?˜
 struct App::Impl {
-    // D3D í•µì‹¬ ê°ì²´
+    // D3D ?•µ?‹¬ ê°ì²´
     ID3D11Device*                 m_pDevice = nullptr;
     ID3D11DeviceContext*          m_pDeviceContext = nullptr;
     IDXGISwapChain*               m_pSwapChain = nullptr;
     ID3D11RenderTargetView*       m_pRenderTargetView = nullptr;
 
-    // íŒŒì´í”„ë¼ì¸ ì…°ì´ë”/ì…ë ¥ ë ˆì´ì•„ì›ƒ. ê¸°ë³¸/PMX/ìŠ¤ì¹´ì´ë°•ìŠ¤/ë¼ì¸
+    // ?ŒŒ?´?”„?¼?¸ ?…°?´?”/?…? ¥ ? ˆ?´?•„?›ƒ. ê¸°ë³¸/PMX/?Š¤ì¹´ì´ë°•ìŠ¤/?¼?¸
     ID3D11VertexShader*           m_pVertexShader = nullptr;
     ID3D11PixelShader*            m_pPixelShader = nullptr;
-    ID3D11PixelShader*            m_pPixelShaderSolid = nullptr;     // ë§ˆì»¤ìš© í°ìƒ‰ ì¶œë ¥
-    ID3D11VertexShader*           m_pVertexShaderNoTBN = nullptr;    // PMX ì „ìš© VS
-    ID3D11InputLayout*            m_pInputLayoutNoTBN = nullptr;     // PMX ì „ìš© IL
-    // FBX GPU ìŠ¤í‚¤ë‹ìš© VS/IL
+    ID3D11PixelShader*            m_pPixelShaderSolid = nullptr;     // ë§ˆì»¤?š© ?°?ƒ‰ ì¶œë ¥
+    ID3D11VertexShader*           m_pVertexShaderNoTBN = nullptr;    // PMX ? „?š© VS
+    ID3D11InputLayout*            m_pInputLayoutNoTBN = nullptr;     // PMX ? „?š© IL
+    // FBX GPU ?Š¤?‚¤?‹?š© VS/IL
     ID3D11VertexShader*           m_pVertexShaderSkinned = nullptr;
     ID3D11InputLayout*            m_pInputLayoutSkinned = nullptr;
     ID3D11VertexShader*           m_pSkyBoxVertexShader = nullptr;
@@ -108,21 +108,21 @@ struct App::Impl {
     ID3D11VertexShader*           m_pLineVS = nullptr;
     ID3D11InputLayout*            m_pLineInputLayout = nullptr;
 
-    // ìƒ˜í”ŒëŸ¬/ë¸”ë Œë“œ ìƒíƒœ
+    // ?ƒ˜?”Œ?Ÿ¬/ë¸”ë Œ?“œ ?ƒ?ƒœ
     ID3D11SamplerState*           m_pSamplerState = nullptr;
     ID3D11BlendState*             m_pAlphaBlendState = nullptr;
 
-    // Skybox/íë¸Œë§µ ìì› ë° ì˜µì…˜
+    // Skybox/?ë¸Œë§µ ??› ë°? ?˜µ?…˜
     enum class SkyBoxChoice { Off = 0, Hanako = 1, CubeMap = 2 };
     SkyBoxChoice                  m_SkyBoxChoice = SkyBoxChoice::Off;
     ID3D11ShaderResourceView*     m_pSkyHanakoSRV = nullptr;
     ID3D11ShaderResourceView*     m_pSkyCubeMapSRV = nullptr;
-    ID3D11ShaderResourceView*     m_pTextureSRV = nullptr;           // í˜„ì¬ ìŠ¤ì¹´ì´ë°•ìŠ¤ SRV
+    ID3D11ShaderResourceView*     m_pTextureSRV = nullptr;           // ?˜„?¬ ?Š¤ì¹´ì´ë°•ìŠ¤ SRV
     ID3D11ShaderResourceView*     m_pSkyFaceSRV[6] = {};
     ImVec2                        m_SkyFaceSize = ImVec2(0, 0);
     wchar_t                       m_CurrentSkyboxPath[260] = L"..\\Resource\\Skybox\\cubemap.dds";
 
-    // ê¸°ë³¸ ë©”ì‹œ ë²„í¼/ì…ë ¥ ë ˆì´ì•„ì›ƒ
+    // ê¸°ë³¸ ë©”ì‹œ ë²„í¼/?…? ¥ ? ˆ?´?•„?›ƒ
     ID3D11InputLayout*            m_pInputLayout = nullptr;
     ID3D11Buffer*                 m_pVertexBuffer = nullptr;
     UINT                          m_VertextBufferStride = 0;
@@ -130,76 +130,76 @@ struct App::Impl {
     ID3D11Buffer*                 m_pIndexBuffer = nullptr;
     int                           m_nIndices = 0;
 
-    // ê³µìš© ìƒìˆ˜ ë²„í¼ (b0)
+    // ê³µìš© ?ƒ?ˆ˜ ë²„í¼ (b0)
     ID3D11Buffer*                 m_pConstantBuffer = nullptr;
     ConstantBuffer                m_ConstantBuffer{};                // CPU ìºì‹œ
 
-    // ìœ í‹¸ ë Œë”ëŸ¬/ë””ë²„ê·¸ ë°•ìŠ¤
+    // ?œ ?‹¸ ? Œ?”?Ÿ¬/?””ë²„ê·¸ ë°•ìŠ¤
     class LineRenderer*           m_LineRenderer = nullptr;
     class Skybox*                 m_Skybox = nullptr;
     ID3D11Buffer*                 m_pDebugBoxVB = nullptr;
     ID3D11Buffer*                 m_pDebugBoxIB = nullptr;
     int                           m_DebugBoxIndexCount = 0;
 
-    // ê¹Šì´/ë˜ìŠ¤í„°ë¼ì´ì € ìƒíƒœ
+    // ê¹Šì´/?˜?Š¤?„°?¼?´??? ?ƒ?ƒœ
     ID3D11DepthStencilView*       m_pDepthStencilView = nullptr;
     ID3D11DepthStencilState*      m_pDepthStencilState = nullptr;
     ID3D11RasterizerState*        RSNoCull = nullptr;
     ID3D11RasterizerState*        RSCullClockWise = nullptr;
 
-    // ë°ëª¨/ë””ë²„ê·¸ìš© í…ìŠ¤ì²˜ ë° UI í‘œì‹œ í¬ê¸°
+    // ?°ëª?/?””ë²„ê·¸?š© ?…?Š¤ì²? ë°? UI ?‘œ?‹œ ?¬ê¸?
     ID3D11ShaderResourceView*     m_TexHanakoSRV = nullptr;
     bool                          m_ShowHanako = false;
     ImVec2                        m_HanakoDrawSize = ImVec2(128, 128);
     ImVec2                        m_TexHanakoSize = ImVec2(0, 0);
 
-    // íë¸Œ ê° ë©´ í…ìŠ¤ì²˜ Diffuse/Normal/Specular
+    // ?ë¸? ê°? ë©? ?…?Š¤ì²? Diffuse/Normal/Specular
     ID3D11ShaderResourceView*     m_pCubeTextureSRVs[6] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
     ID3D11ShaderResourceView*     m_pNormalSRVs[6]      = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
     ID3D11ShaderResourceView*     m_pSpecularSRVs[6]    = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
 
-    // ì‹œìŠ¤í…œ ì •ë³´
+    // ?‹œ?Š¤?…œ ? •ë³?
     SystemInfomation              m_SystemInfo;
 
-    // íë¸Œ íŠ¸ëœìŠ¤í¼
+    // ?ë¸? ?Š¸?œ?Š¤?¼
     XMFLOAT3                      m_cubePos = { 0.0f, 0.0f, 0.0f };
     XMFLOAT3                      m_cubeScale = { 1.0f, 1.0f, 1.0f };
     XMFLOAT3                      m_cubeRotation = { 0.0f, 0.0f, 0.0f };
     bool                          m_RotateModel = false;
 
-    // ë¯¸ëŸ¬ íë¸Œ íŠ¸ëœìŠ¤í¼
+    // ë¯¸ëŸ¬ ?ë¸? ?Š¸?œ?Š¤?¼
     XMFLOAT3                      m_mirrorCubePos = { 4.5f, 0.0f, 0.0f };
     XMFLOAT3                      m_mirrorCubeRotation = { 0.0f, 0.0f, 0.0f };
     float                         m_MirrorCubeScale = 2.0f;
 
-    // ì¡°ëª…/ì¬ì§ˆ
+    // ì¡°ëª…/?¬ì§?
     DirectionalLight              m_DirLight = { {0,0,0,1}, {1,1,1,1}, {1,1,1,1}, {0,0,1}, 0.0f };
     Material                      m_Material = { {1,1,1,1}, {1,1,1,1}, {1,1,1,32}, {0,0,0,0} };
     Material                      m_mirrorCubeMaterial = { {0,0,0,1}, {0,0,0,1}, {0,0,0,32}, {1,1,1,0.02f} };
 
-    // ë¼ì´íŠ¸ ë§ˆì»¤ ìœ„ì¹˜ / ì¹´ë©”ë¼ ê¸°ë°˜ ê¸°ë³¸ í–‰ë ¬
+    // ?¼?´?Š¸ ë§ˆì»¤ ?œ„ì¹? / ì¹´ë©”?¼ ê¸°ë°˜ ê¸°ë³¸ ?–‰? ¬
     XMFLOAT3                      m_LightPosition = { 4.0f, 4.0f, 0.0f };
     ConstantBuffer                m_baseProjection{};
 
-    // ì…°ì´ë”© ì˜µì…˜ / í´ë¦¬ì–´ ì»¬ëŸ¬
+    // ?…°?´?”© ?˜µ?…˜ / ?´ë¦¬ì–´ ì»¬ëŸ¬
     ShadingMode                   m_ShadingMode = ShadingMode::Phong;
     int                           m_EnableNormalMapForCube = 1;
     int                           m_UseSpecularMapForCube = 0;
     int                           m_LegacyShading = 1;
     XMFLOAT4                      m_ClearColor = { 0.125f, 0.125f, 0.125f, 1.0f };
-    // ì•ŒíŒŒ ê°€ë¦¼(DepthWrite) ë²„ê·¸ ì¬í˜„ í† ê¸€
+    // ?•Œ?ŒŒ ê°?ë¦?(DepthWrite) ë²„ê·¸ ?¬?˜„ ?† ê¸?
     bool                          m_ReproAlphaOcclusion = false;
 
-    // ëª¨ë¸ ë¡œë”© ë° ë Œë”ë§ FBX/OBJ/PMX
+    // ëª¨ë¸ ë¡œë”© ë°? ? Œ?”ë§? FBX/OBJ/PMX
     RenderMode                    m_RenderMode = RenderMode::None;
-    std::vector<std::unique_ptr<ModelEntry>> m_Models;            // ëª¨ë¸ë“¤
+    std::vector<std::unique_ptr<ModelEntry>> m_Models;            // ëª¨ë¸?“¤
     ID3D11ShaderResourceView*     m_pFallbackWhite = nullptr;
     ID3D11ShaderResourceView*     m_pFallbackNormal = nullptr;
     ID3D11ShaderResourceView*     m_pFallbackBlack = nullptr;
     std::string                   m_ModelPathInputUTF8;
 };
 
-// ë©¤ë²„ ë§¤í•‘ ë§¤í¬ë¡œ ì œê±°ë¨: ì§ì ‘ m_-> ë©¤ë²„ ì ‘ê·¼ì„ ì‚¬ìš©í•©ë‹ˆë‹¤.
+// ë©¤ë²„ ë§¤í•‘ ë§¤í¬ë¡? ? œê±°ë¨: ì§ì ‘ m_-> ë©¤ë²„ ? ‘ê·¼ì„ ?‚¬?š©?•©?‹ˆ?‹¤.
 
 // ctor/dtor
 App::App() : m_(new Impl) {}
@@ -225,7 +225,7 @@ static bool LoadTextureSRVAndSize(ID3D11Device* device, const std::wstring& path
 	return true;
 }
 
-// ëª¨ë¸ìš© íŒŒì¼ ì„ íƒ ëŒ€í™”ìƒì (fbx/obj/pmx)
+// ëª¨ë¸?š© ?ŒŒ?¼ ?„ ?ƒ ????™”?ƒ? (fbx/obj/pmx)
 static bool OpenFileDialogModel(std::wstring& outPath)
 {
     wchar_t file[MAX_PATH] = {0};
@@ -242,7 +242,7 @@ static bool OpenFileDialogModel(std::wstring& outPath)
 
 void App::PrepareSkyFaceSRVs()
 {
-	// ë‹¤ë¥¸ ìŠ¤ì¹´ì´ë°•ìŠ¤ë¡œ ë°”ê¿€ ìˆ˜ë„ ìˆìœ¼ë‹ˆ í•´ì œí•˜ê³  ë‹¤ì‹œ ë¡œë“œ
+	// ?‹¤ë¥? ?Š¤ì¹´ì´ë°•ìŠ¤ë¡? ë°”ê?? ?ˆ˜?„ ?ˆ?œ¼?‹ˆ ?•´? œ?•˜ê³? ?‹¤?‹œ ë¡œë“œ
 	for (int i = 0; i < 6; ++i) SAFE_RELEASE(m_->m_pSkyFaceSRV[i]);
 	    m_->m_SkyFaceSize = ImVec2(0, 0);
 	    if (!m_->m_pTextureSRV) return;
@@ -251,16 +251,16 @@ void App::PrepareSkyFaceSRVs()
 	m_->m_pTextureSRV->GetResource(res.GetAddressOf());
     if (!res) return;
 
-	// íŒŒê´´ëëŠ”ì§€ ì•ˆëëŠ”ì§€ íŒë‹¨ì„ ìœ„í•´ Comptrì´ í•„ìš”í•˜ë‹¤
+	// ?ŒŒê´´ë?Š”ì§? ?•ˆ??Š”ì§? ?Œ?‹¨?„ ?œ„?•´ Comptr?´ ?•„?š”?•˜?‹¤
 	Microsoft::WRL::ComPtr<ID3D11Texture2D> tex2D;
 	HR_T(res.As(&tex2D));
 
     D3D11_TEXTURE2D_DESC desc{};
     tex2D->GetDesc(&desc);
-	// íë¸Œë§µì€ 6ê°œì˜ array sliceë¥¼ ê°€ì§. (ì—¬ëŸ¬ íë¸Œë©´ 6ì˜ ë°°ìˆ˜)
+	// ?ë¸Œë§µ??? 6ê°œì˜ array sliceë¥? ê°?ì§?. (?—¬?Ÿ¬ ?ë¸Œë©´ 6?˜ ë°°ìˆ˜)
     if ((desc.ArraySize < 6)) return;
 
-	// í¬ê¸° ê¸°ë¡ (mip0 ê¸°ì¤€)
+	// ?¬ê¸? ê¸°ë¡ (mip0 ê¸°ì??)
 	m_->m_SkyFaceSize = ImVec2((float)desc.Width, (float)desc.Height);
 
     for (UINT face = 0; face < 6; ++face)
@@ -306,7 +306,7 @@ bool App::OnInitialize()
 
     if (!InitTexture()) return false;
 
-    // ê°’ íƒ€ì… ë§¤ë‹ˆì € ì‚¬ìš©(ë™ì  í• ë‹¹ ì—†ìŒ)
+    // ê°? ????… ë§¤ë‹ˆ??? ?‚¬?š©(?™?  ?• ?‹¹ ?—†?Œ)
 
 	if (!m_->m_SystemInfo.InitSysInfomation(m_->m_pDevice)) return false;
 
@@ -320,14 +320,14 @@ void App::OnUninitialize()
 	ImGui_ImplWin32_Shutdown();
 	ImGui::DestroyContext();
 
-	// ì”¬ ë¦¬ì†ŒìŠ¤ ë¨¼ì € ì •ë¦¬ 
+	// ?”¬ ë¦¬ì†Œ?Š¤ ë¨¼ì?? ? •ë¦? 
 	UninitScene();
 	UninitD3D();
 }
 
 void App::OnUpdate(const float& dt)
 {
-    // ìë™ íšŒì „ì€ ëª¨ë¸ ë‚´ë¶€ì˜ autoRotate ë³€ìˆ˜ë¥¼ ì‚¬ìš©í•¨
+    // ??™ ?šŒ? „??? ëª¨ë¸ ?‚´ë¶??˜ autoRotate ë³??ˆ˜ë¥? ?‚¬?š©?•¨
     for (auto& mdlPtr : m_->m_Models)
     {
         auto& mdl = *mdlPtr;
@@ -338,14 +338,14 @@ void App::OnUpdate(const float& dt)
         }
         if (mdl.source == ModelSource::FBX)
         {
-            // FBX ì• ë‹ˆë©”ì´ì…˜ (íŒ”ë ˆíŠ¸ ì—…ë°ì´íŠ¸ë§Œ ìˆ˜í–‰)
+            // FBX ?• ?‹ˆë©”ì´?…˜ (?Œ”? ˆ?Š¸ ?—…?°?´?Š¸ë§? ?ˆ˜?–‰)
             mdl.fbx.UpdateAnimation(m_->m_pDeviceContext, dt);
         }
     }
 
-    // ============================== ì¹´ë©”ë¼ í–‰ë ¬ ì—…ë°ì´íŠ¸ ==============================
-    // ì¹´ë©”ë¼ ì…ë ¥/ì—…ë°ì´íŠ¸ëŠ” GameApp::m_Cameraì—ì„œ ì²˜ë¦¬í•˜ë¯€ë¡œ,
-    // ì—¬ê¸°ì„œëŠ” world/view/projë§Œ ì±„ì›Œì„œ ìƒìˆ˜ ë²„í¼ë¡œ ë„˜ê¹ë‹ˆë‹¤.
+    // ============================== ì¹´ë©”?¼ ?–‰? ¬ ?—…?°?´?Š¸ ==============================
+    // ì¹´ë©”?¼ ?…? ¥/?—…?°?´?Š¸?Š” GameApp::m_Camera?—?„œ ì²˜ë¦¬?•˜ë¯?ë¡?,
+    // ?—¬ê¸°ì„œ?Š” world/view/projë§? ì±„ì›Œ?„œ ?ƒ?ˆ˜ ë²„í¼ë¡? ?„˜ê¹ë‹ˆ?‹¤.
     XMMATRIX world0 = XMMatrixIdentity();
     m_->m_baseProjection.world = XMMatrixTranspose(world0);
     m_->m_baseProjection.view  = XMMatrixTranspose(m_Camera.GetViewMatrixXM());
@@ -356,7 +356,7 @@ void App::OnUpdate(const float& dt)
 		XMFLOAT3 dir = m_->m_DirLight.direction;
 		XMVECTOR v = XMVector3Normalize(XMLoadFloat3(&dir));
 		XMStoreFloat3(&dir, v);
-		// DirectionalLight ì •ê·œí™”ëœ ë°©í–¥ìœ¼ë¡œ ëŒ€ì… 
+		// DirectionalLight ? •ê·œí™”?œ ë°©í–¥?œ¼ë¡? ????… 
 		m_->m_baseProjection.dirLight = m_->m_DirLight;
 		m_->m_baseProjection.dirLight.direction = dir;
 		m_->m_baseProjection.dirLight.pad = 0.0f;
@@ -364,7 +364,7 @@ void App::OnUpdate(const float& dt)
 	m_->m_baseProjection.eyePos = m_Camera.GetPosition();
 	m_->m_baseProjection.pad = 0.0f;
 
-	// ë¨¸í‹°ë¦¬ì–¼ì„ ê¸°ë³¸ ìºì‹œì— ë°˜ì˜í•´ ë‘”ë‹¤
+	// ë¨¸í‹°ë¦¬ì–¼?„ ê¸°ë³¸ ìºì‹œ?— ë°˜ì˜?•´ ?‘”?‹¤
 	m_->m_baseProjection.material = m_->m_Material;
 
 	m_->m_SystemInfo.Tick(dt);
@@ -379,29 +379,29 @@ inline ImVec2 operator-(const ImVec2& lhs, const ImVec2& rhs)
 	return ImVec2(lhs.x - rhs.x, lhs.y - rhs.y);
 }
 
-// Render() í•¨ìˆ˜ì— ì¤‘ìš”í•œ ë¶€ë¶„ì´ ë‹¤ ë“¤ì–´ìˆìŠµë‹ˆë‹¤. ì—¬ê¸°ë¥¼ ë³´ë©´ ë©ë‹ˆë‹¤
+// Render() ?•¨?ˆ˜?— ì¤‘ìš”?•œ ë¶?ë¶„ì´ ?‹¤ ?“¤?–´?ˆ?Šµ?‹ˆ?‹¤. ?—¬ê¸°ë?? ë³´ë©´ ?©?‹ˆ?‹¤
 void App::OnRender()
 {
-	// ============================== D3D11 ë°±ë²„í¼/ê¹Šì´ ë²„í¼ í´ë¦¬ì–´ ==============================
+	// ============================== D3D11 ë°±ë²„?¼/ê¹Šì´ ë²„í¼ ?´ë¦¬ì–´ ==============================
 	float color[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
-	UINT stride = m_->m_VertextBufferStride;	// ë°”ì´íŠ¸ ìˆ˜
+	UINT stride = m_->m_VertextBufferStride;	// ë°”ì´?Š¸ ?ˆ˜
 	UINT offset = m_->m_VertextBufferOffset;
 
 	m_->m_pDeviceContext->ClearRenderTargetView(m_->m_pRenderTargetView, color);
 	m_->m_pDeviceContext->ClearDepthStencilView(m_->m_pDepthStencilView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
 
-	// ============================== ê¸°ë³¸ íë¸Œ/ëª¨ë¸ ë Œë” ìƒíƒœ ì„¤ì •(IA/ì…°ì´ë”) ==============================
+	// ============================== ê¸°ë³¸ ?ë¸?/ëª¨ë¸ ? Œ?” ?ƒ?ƒœ ?„¤? •(IA/?…°?´?”) ==============================
 	m_->m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    // ë Œë” ëª¨ë“œì— ë”°ë¼ VB/IB ë°”ì¸ë”© ê²°ì •
+    // ? Œ?” ëª¨ë“œ?— ?”°?¼ VB/IB ë°”ì¸?”© ê²°ì •
 	if (!(m_->m_RenderMode == RenderMode::Model && !m_->m_Models.empty()))
 	{
-		// ê¸°ë³¸ íë¸Œ
+		// ê¸°ë³¸ ?ë¸?
 		m_->m_pDeviceContext->IASetVertexBuffers(0, 1, &m_->m_pVertexBuffer, &stride, &offset);
 		m_->m_pDeviceContext->IASetInputLayout(m_->m_pInputLayout);
 		m_->m_pDeviceContext->IASetIndexBuffer(m_->m_pIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
 	}
 
-	// ì»¬ëŸ¬ í´ë¦¬ì–´ ë° ìŠ¤ì¹´ì´ë°•ìŠ¤/ë°°ê²½ ì„ íƒ
+	// ì»¬ëŸ¬ ?´ë¦¬ì–´ ë°? ?Š¤ì¹´ì´ë°•ìŠ¤/ë°°ê²½ ?„ ?ƒ
 	if (m_->m_SkyBoxChoice == App::Impl::SkyBoxChoice::Off)
 	{
 		float clr[4] = { m_->m_ClearColor.x, m_->m_ClearColor.y, m_->m_ClearColor.z, m_->m_ClearColor.w };
@@ -415,17 +415,17 @@ void App::OnRender()
 	m_->m_ConstantBuffer.view  = m_->m_baseProjection.view;
 	m_->m_ConstantBuffer.proj  = m_->m_baseProjection.proj;
 	{
-		// ë¹„ê· ë“± ìŠ¤ì¼€ì¼ì„ í•´ê²°í•œ ì½”ë“œ. ì—­ì „ì¹˜ ê³±í•˜ê¸°
+		// ë¹„ê· ?“± ?Š¤ì¼??¼?„ ?•´ê²°í•œ ì½”ë“œ. ?—­? „ì¹? ê³±í•˜ê¸?
 		auto invWorlNormal = XMMatrixInverse(nullptr, m_->m_baseProjection.world);
 		m_->m_ConstantBuffer.worldInvTranspose = XMMatrixTranspose(invWorlNormal);
 	}
 
-	// ê¸°ë³¸ ê´‘ì›/ì¹´ë©”ë¼ UI ë°˜ì˜
+	// ê¸°ë³¸ ê´‘ì›/ì¹´ë©”?¼ UI ë°˜ì˜
 	{
 		XMFLOAT3 lightDir = m_->m_DirLight.direction;
 		XMVECTOR v = XMVector3Normalize(XMLoadFloat3(&lightDir));
 		XMStoreFloat3(&lightDir, v);
-		// DirectionalLight í•„ë“œ ëŒ€ì… ì •ê·œí™”ëœ ë°©í–¥
+		// DirectionalLight ?•„?“œ ????… ? •ê·œí™”?œ ë°©í–¥
 		m_->m_ConstantBuffer.dirLight = m_->m_DirLight;
 		m_->m_ConstantBuffer.dirLight.direction = lightDir;
 		m_->m_ConstantBuffer.dirLight.pad = 0.0f;
@@ -433,14 +433,14 @@ void App::OnRender()
 
 	m_->m_ConstantBuffer.eyePos = m_Camera.GetPosition();
 	m_->m_ConstantBuffer.pad = 0.0f;
-	// ì…°ì´ë”© ëª¨ë“œ ì „ë‹¬
+	// ?…°?´?”© ëª¨ë“œ ? „?‹¬
 	m_->m_ConstantBuffer.shadingMode = (int)m_->m_ShadingMode;
 	m_->m_ConstantBuffer.pad2 = XMFLOAT3(0,0,0);
 	m_->m_ConstantBuffer.enableNormalMap = m_->m_EnableNormalMapForCube;
 	m_->m_ConstantBuffer.pad3 = XMFLOAT3(0,0,0);
 	m_->m_ConstantBuffer.useSpecularMap = m_->m_UseSpecularMapForCube;
 	m_->m_ConstantBuffer.pad4 = XMFLOAT3(0,0,0);
-	// ë¨¸í‹°ë¦¬ì–¼ ì±„ìš°ê¸°
+	// ë¨¸í‹°ë¦¬ì–¼ ì±„ìš°ê¸?
 	m_->m_ConstantBuffer.material = m_->m_Material;
 
 	D3D11_MAPPED_SUBRESOURCE mappedData;
@@ -451,20 +451,20 @@ void App::OnRender()
 	m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
 	m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
 	m_->m_pDeviceContext->PSSetSamplers(0, 1, &m_->m_pSamplerState);
-    // íë¸Œë§µì„ t1 ìŠ¬ë¡¯ì— ë°”ì¸ë”© (í”½ì…€ ì…°ì´ë”ì—ì„œ g_TexCube : t1)
+    // ?ë¸Œë§µ?„ t1 ?Š¬ë¡??— ë°”ì¸?”© (?”½??? ?…°?´?”?—?„œ g_TexCube : t1)
     m_->m_pDeviceContext->PSSetShaderResources(1, 1, &m_->m_pTextureSRV);
 
 	
     if (m_->m_RenderMode == RenderMode::Model && !m_->m_Models.empty())
     {
-        // ëª¨ë“  ëª¨ë¸ ë Œë”
+        // ëª¨ë“  ëª¨ë¸ ? Œ?”
 		for (auto& mdlPtr : m_->m_Models)
 		{
-			// IA ë°”ì¸ë”©
+			// IA ë°”ì¸?”©
 			UINT s = mdlPtr->stride; UINT o = 0;
 			if (!mdlPtr->vb || !mdlPtr->ib) continue;
 			m_->m_pDeviceContext->IASetVertexBuffers(0, 1, &mdlPtr->vb, &s, &o);
-            // FBX ìŠ¤ì¼ˆë ˆí†¤ì´ ìˆìœ¼ë©´ ìŠ¤í‚¤ë‹ VS/ILë¡œ êµì²´, ì•„ë‹ˆë©´ ê¸°ë³¸
+            // FBX ?Š¤ì¼ˆë ˆ?†¤?´ ?ˆ?œ¼ë©? ?Š¤?‚¤?‹ VS/ILë¡? êµì²´, ?•„?‹ˆë©? ê¸°ë³¸
             ID3D11Buffer* cbBones = nullptr;
             if (mdlPtr->source == ModelSource::FBX)
                 cbBones = mdlPtr->fbx.GetBoneConstantBuffer();
@@ -478,19 +478,19 @@ void App::OnRender()
             {
                 m_->m_pDeviceContext->IASetInputLayout(m_->m_pInputLayoutSkinned);
                 m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShaderSkinned, nullptr, 0);
-                // ë¼ˆ íŒ”ë ˆíŠ¸ ìƒìˆ˜ë²„í¼(b1)
+                // ë¼? ?Œ”? ˆ?Š¸ ?ƒ?ˆ˜ë²„í¼(b1)
                 if (cbBones) m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &cbBones);
             }
             else
             {
                 m_->m_pDeviceContext->IASetInputLayout(m_->m_pInputLayout);
                 m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShader, nullptr, 0);
-                // ìŠ¤í‚¤ë‹ ë¯¸ì‚¬ìš© ì‹œ VS b1 í•´ì œ(ì•ˆì „)
+                // ?Š¤?‚¤?‹ ë¯¸ì‚¬?š© ?‹œ VS b1 ?•´? œ(?•ˆ? „)
                 ID3D11Buffer* nullCB = nullptr; m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &nullCB);
             }
             m_->m_pDeviceContext->IASetIndexBuffer(mdlPtr->ib, DXGI_FORMAT_R32_UINT, 0);
 
-			// ì›”ë“œ í–‰ë ¬ (per-model)
+			// ?›”?“œ ?–‰? ¬ (per-model)
 			XMMATRIX rotYaw = XMMatrixRotationY(XMConvertToRadians(mdlPtr->rotDeg.y));
 			XMMATRIX rotPitch = XMMatrixRotationX(XMConvertToRadians(mdlPtr->rotDeg.x));
 			XMMATRIX rotRoll = XMMatrixRotationZ(XMConvertToRadians(mdlPtr->rotDeg.z));
@@ -513,7 +513,7 @@ void App::OnRender()
 			m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
 			m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
 
-			// ì„œë¸Œì…‹ í…ìŠ¤ì²˜ ë° ë“œë¡œìš°
+			// ?„œë¸Œì…‹ ?…?Š¤ì²? ë°? ?“œë¡œìš°
             for (const auto& sub : mdlPtr->subsets)
 			{
 				ID3D11ShaderResourceView* srvDiffuse = nullptr;
@@ -527,7 +527,7 @@ void App::OnRender()
 
 				m_->m_pDeviceContext->DrawIndexed(sub.count, sub.start, 0);
 			}
-            // ëª¨ë¸ë³„ ë£¨í”„ ëì—ì„œ VS/IL ë³µì›ì€ ë‹¤ìŒ ëª¨ë¸ì—ì„œ ë‹¤ì‹œ ì„¤ì •ë˜ë¯€ë¡œ ë³„ë„ ë³µì› ë¶ˆí•„ìš”
+            // ëª¨ë¸ë³? ë£¨í”„ ??—?„œ VS/IL ë³µì›??? ?‹¤?Œ ëª¨ë¸?—?„œ ?‹¤?‹œ ?„¤? •?˜ë¯?ë¡? ë³„ë„ ë³µì› ë¶ˆí•„?š”
 		}
     }
 	else if (m_->m_RenderMode == RenderMode::Cube)
@@ -545,11 +545,11 @@ void App::OnRender()
 	}
 	
 
-    // Mirror Cube: ëª¨ë¸ ëª¨ë“œì¼ ë•ŒëŠ” ìƒëµí•˜ê³ , íë¸Œ ëª¨ë“œì—ì„œë§Œ ê±°ìš¸ íë¸Œ í‘œì‹œ
+    // Mirror Cube: ëª¨ë¸ ëª¨ë“œ?¼ ?•Œ?Š” ?ƒ?µ?•˜ê³?, ?ë¸? ëª¨ë“œ?—?„œë§? ê±°ìš¸ ?ë¸? ?‘œ?‹œ
 	if (m_->m_RenderMode == RenderMode::Cube)
 	{
 		ConstantBuffer mirrorCB = m_->m_ConstantBuffer;
-		// ì›”ë“œ: í—¤ë” ê³µê°œëœ mirrorCube íŠ¸ëœìŠ¤í¼ ì‚¬ìš©(ìŠ¤ì¼€ì¼*íšŒì „*ì´ë™)
+		// ?›”?“œ: ?—¤?” ê³µê°œ?œ mirrorCube ?Š¸?œ?Š¤?¼ ?‚¬?š©(?Š¤ì¼??¼*?šŒ? „*?´?™)
 		XMMATRIX rotYaw = XMMatrixRotationY(XMConvertToRadians(m_->m_mirrorCubeRotation.y));
 		XMMATRIX rotPitch = XMMatrixRotationX(XMConvertToRadians(m_->m_mirrorCubeRotation.x));
 		XMMATRIX rotRoll = XMMatrixRotationZ(XMConvertToRadians(m_->m_mirrorCubeRotation.z));
@@ -558,9 +558,9 @@ void App::OnRender()
 		Tm = Sm * rotPitch * rotYaw * rotRoll * Tm;
 		mirrorCB.world = XMMatrixTranspose(Tm);
 		mirrorCB.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(Tm)));
-		// ì¬ì§ˆ: í—¤ë”ì— ê³µê°œí•œ m_mirrorCubeMaterial ì‚¬ìš©
+		// ?¬ì§?: ?—¤?”?— ê³µê°œ?•œ m_mirrorCubeMaterial ?‚¬?š©
 		mirrorCB.material = m_->m_mirrorCubeMaterial;
-		// pad=4.0f : PSì—ì„œ ë°˜ì‚¬ ê²Œì´íŒ… override
+		// pad=4.0f : PS?—?„œ ë°˜ì‚¬ ê²Œì´?Œ… override
 		mirrorCB.pad = 4.0f;
 		mirrorCB.shadingMode = (int)m_->m_ShadingMode;
 		mirrorCB.pad2 = XMFLOAT3(0, 0, 0);
@@ -572,28 +572,28 @@ void App::OnRender()
 		m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
 		m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
 
-		// ë¸”ë Œë”© ONìœ¼ë¡œ ë°˜ì‚¬ì—ë„ ë¶€ë“œëŸ¬ìš´ ì—ì§€ í—ˆìš©
+		// ë¸”ë Œ?”© ON?œ¼ë¡? ë°˜ì‚¬?—?„ ë¶??“œ?Ÿ¬?š´ ?—ì§? ?—ˆ?š©
 		FLOAT blendFactor2[4] = { 0,0,0,0 };
 		m_->m_pDeviceContext->OMSetBlendState(m_->m_pAlphaBlendState, blendFactor2, 0xFFFFFFFF);
 
-		// t0ì— ì„ì˜ì˜ ë¶ˆíˆ¬ëª… í…ìŠ¤ì²˜ë¥¼ ë°”ì¸ë”©(ì»·ì•„ì›ƒ í†µê³¼ìš©). ì—¬ê¸°ì„œëŠ” face0 ì¬ì‚¬ìš©
+		// t0?— ?„?˜?˜ ë¶ˆíˆ¬ëª? ?…?Š¤ì²˜ë?? ë°”ì¸?”©(ì»·ì•„?›ƒ ?†µê³¼ìš©). ?—¬ê¸°ì„œ?Š” face0 ?¬?‚¬?š©
 		ID3D11ShaderResourceView* srvFace0 = m_->m_pCubeTextureSRVs[0];
 		m_->m_pDeviceContext->PSSetShaderResources(0, 1, &srvFace0);
-		// ë“œë¡œìš°: ë™ì¼ ì¸ë±ìŠ¤ ë²”ìœ„ë¥¼ 6ë©´ ë°˜ë³µ
+		// ?“œë¡œìš°: ?™?¼ ?¸?±?Š¤ ë²”ìœ„ë¥? 6ë©? ë°˜ë³µ
 		for (int face = 0; face < 6; ++face) m_->m_pDeviceContext->DrawIndexed(6, face * 6, 0);
 		m_->m_pDeviceContext->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
 		// pad ë³µì›
 		m_->m_ConstantBuffer.pad = 0.0f;
 	}
 
-    // ë¼ì´íŠ¸ ìœ„ì¹˜ ë§ˆì»¤ íë¸Œ ê·¸ë¦¬ê¸° (ì‘ì€ ìŠ¤ì¼€ì¼, í°ìƒ‰) - í•­ìƒ
+    // ?¼?´?Š¸ ?œ„ì¹? ë§ˆì»¤ ?ë¸? ê·¸ë¦¬ê¸? (?‘??? ?Š¤ì¼??¼, ?°?ƒ‰) - ?•­?ƒ
 	{
 		ConstantBuffer marker = m_->m_ConstantBuffer;
 		XMMATRIX S = XMMatrixScaling(1.0f, 1.0f, 1.0f);
 		XMMATRIX T = XMMatrixTranslation(m_->m_LightPosition.x, m_->m_LightPosition.y, m_->m_LightPosition.z);
 		marker.world = XMMatrixTranspose(S * T);
 		marker.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(S * T)));
-		marker.pad = 2.0f; // PSì—ì„œ í°ìƒ‰ ì¶œë ¥ í† ê¸€
+		marker.pad = 2.0f; // PS?—?„œ ?°?ƒ‰ ì¶œë ¥ ?† ê¸?
 		marker.shadingMode = (int)m_->m_ShadingMode;
 		marker.pad2 = XMFLOAT3(0, 0, 0);
 
@@ -613,9 +613,9 @@ void App::OnRender()
 		m_->m_pDeviceContext->DrawIndexed(m_->m_DebugBoxIndexCount, 0, 0);
 	}
 
-	// ë¼ì´íŠ¸ ë°©í–¥ í‘œì‹œ ë¼ì¸ ê·¸ë¦¬ê¸°(ë¹¨ê°„ìƒ‰)
+	// ?¼?´?Š¸ ë°©í–¥ ?‘œ?‹œ ?¼?¸ ê·¸ë¦¬ê¸?(ë¹¨ê°„?ƒ‰)
 	{
-		// pad=3.0ì€ ë¼ì¸ ë””ë²„ê·¸ì— ì´ìš©.
+		// pad=3.0??? ?¼?¸ ?””ë²„ê·¸?— ?´?š©.
 		ConstantBuffer lineCB = m_->m_ConstantBuffer;
 		lineCB.world = XMMatrixTranspose(XMMatrixIdentity());
 		lineCB.view = m_->m_baseProjection.view;
@@ -631,7 +631,7 @@ void App::OnRender()
 		m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
 		m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
 
-		// ë¼ì¸ ì „ìš© VS/InputLayoutë¡œ ì»¬ëŸ¬ ë³´ì¡´
+		// ?¼?¸ ? „?š© VS/InputLayoutë¡? ì»¬ëŸ¬ ë³´ì¡´
 		ID3D11VertexShader* prevVS = m_->m_pVertexShader;
 		ID3D11InputLayout* prevIL = m_->m_pInputLayout;
 		m_->m_pDeviceContext->VSSetShader(m_->m_pLineVS, nullptr, 0);
@@ -647,7 +647,7 @@ void App::OnRender()
 		m_->m_pDeviceContext->IASetInputLayout(prevIL);
 	}
 
-    // SkyBox ë Œë”ë§ (ìƒíƒœ ë³´ì¡´/ë³µêµ¬)
+    // SkyBox ? Œ?”ë§? (?ƒ?ƒœ ë³´ì¡´/ë³µêµ¬)
 	if (m_->m_SkyBoxChoice != App::Impl::SkyBoxChoice::Off)
 	{
 		UINT stride = m_->m_VertextBufferStride;
@@ -655,9 +655,9 @@ void App::OnRender()
 		m_->m_Skybox->Render(m_->m_pDeviceContext, m_->m_pVertexBuffer, m_->m_pIndexBuffer, m_->m_nIndices, stride, offset, m_->m_baseProjection.view, m_->m_baseProjection.proj);
 	}
 
-	// í™”ë©´ ì˜¤ë²„ë ˆì´ ì¶•(NDC)ì— ì‘ê²Œ í‘œì‹œ
+	// ?™”ë©? ?˜¤ë²„ë ˆ?´ ì¶?(NDC)?— ?‘ê²? ?‘œ?‹œ
 	{
-		// pad=3 ì„¤ì • ì •ì ìƒ‰ìœ¼ë¡œ ì¶œë ¥ë˜ë„ë¡
+		// pad=3 ?„¤? • ? •? ?ƒ‰?œ¼ë¡? ì¶œë ¥?˜?„ë¡?
 		ConstantBuffer overlayCB = m_->m_ConstantBuffer;
 		overlayCB.world = XMMatrixTranspose(XMMatrixIdentity());
 		overlayCB.view = XMMatrixTranspose(XMMatrixIdentity());
@@ -673,18 +673,18 @@ void App::OnRender()
 		m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
 		m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
 
-		// ì¢Œìƒë‹¨ ì‘ì€ ì¶• í‘œì‹œ
+		// ì¢Œìƒ?‹¨ ?‘??? ì¶? ?‘œ?‹œ
 		m_->m_LineRenderer->DrawAxesOverlay(m_->m_pDeviceContext, XMMatrixTranspose(m_->m_baseProjection.view), DirectX::XMFLOAT2(-0.9f, 0.85f), 0.08f, m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
 	}
 
-	// ImGui í”„ë ˆì„ ë° UI ë Œë”ë§
+	// ImGui ?”„? ˆ?„ ë°? UI ? Œ?”ë§?
 	ImGui_ImplDX11_NewFrame();
 	ImGui_ImplWin32_NewFrame();
 	ImGui::NewFrame();
 
 	if (ImGui::Begin("Controls"))
 	{
-		// SkyBox ì„ íƒ
+		// SkyBox ?„ ?ƒ
 		{
 			int cur = (m_->m_SkyBoxChoice == App::Impl::SkyBoxChoice::Off) ? 0 : (m_->m_SkyBoxChoice == App::Impl::SkyBoxChoice::Hanako ? 1 : 2);
 			const char* items[] = { "Off", "Hanako.dds", "cubemap.dds" };
@@ -693,7 +693,7 @@ void App::OnRender()
 				m_->m_SkyBoxChoice = (cur == 0) ? App::Impl::SkyBoxChoice::Off : (cur == 1 ? App::Impl::SkyBoxChoice::Hanako : App::Impl::SkyBoxChoice::CubeMap);
 				if (m_->m_SkyBoxChoice == App::Impl::SkyBoxChoice::Off)
 				{
-					// Off: ë°°ê²½ ë‹¨ìƒ‰ ì‚¬ìš©
+					// Off: ë°°ê²½ ?‹¨?ƒ‰ ?‚¬?š©
 				}
 				else
 				{
@@ -710,7 +710,7 @@ void App::OnRender()
 		ImGui::Checkbox("Rotate Cube", &m_->m_RotateModel);
 		ImGui::DragFloat3("Cube Scale", &m_->m_cubeScale.x, 0.1f, 20.0f);
 		ImGui::DragFloat3("Cube Pos (x,y,z)", &m_->m_cubePos.x, 0.1f);
-		// ëª¨ë¸ íšŒì „(ë„) í¸ì§‘
+		// ëª¨ë¸ ?šŒ? „(?„) ?¸ì§?
 		ImGui::DragFloat3("Cube Rotation (deg)", &m_->m_cubeRotation.x, 1.0f, -360.0f, 360.0f, "%.1f");
 		ImGui::Separator();
 		ImGui::Text("Camera");
@@ -767,18 +767,18 @@ void App::OnRender()
 	}
 	ImGui::End();
 
-    // Models ë…ë¦½ ì°½
+    // Models ?…ë¦? ì°?
     {
         ImGui::SetNextWindowSize(ImVec2(420, 520), ImGuiCond_FirstUseEver);
 
         ImGui::Begin("Model Loader (FBX / OBJ / PMX)");
-        // ë²„ê·¸ ì¬í˜„ í† ê¸€ UI
+        // ë²„ê·¸ ?¬?˜„ ?† ê¸? UI
         ImGui::Checkbox("Repro alpha occlusion (DepthWrite+ConstBlend)", &m_->m_ReproAlphaOcclusion);
         if (m_->m_ReproAlphaOcclusion)
         {
             ImGui::TextDisabled("Tip: Draw near-to-far to see rear hidden by alpha");
         }
-		// ë Œë” ëª¨ë“œ ì„ íƒ
+		// ? Œ?” ëª¨ë“œ ?„ ?ƒ
 		{
 			int curMode = (m_->m_RenderMode == RenderMode::None) ? 0 : (m_->m_RenderMode == RenderMode::Cube ? 1 : 2);
 			const char* items[] = { "None", "Cube", "Model" };
@@ -799,7 +799,7 @@ void App::OnRender()
 		if (ImGui::Button("Unload Model"))
 		{
 			UnloadModel();
-			m_->m_RenderMode = RenderMode::None; // ìš”êµ¬ì‚¬í•­: ì‹œì‘/ì–¸ë¡œë“œì‹œ ì•„ë¬´ê²ƒë„ ë Œë” X
+			m_->m_RenderMode = RenderMode::None; // ?š”êµ¬ì‚¬?•­: ?‹œ?‘/?–¸ë¡œë“œ?‹œ ?•„ë¬´ê²ƒ?„ ? Œ?” X
 		}
 
 		if (!m_->m_Models.empty())
@@ -860,7 +860,7 @@ void App::OnRender()
         ImGui::End();
     }
 
-		// í˜„ì¬ ì¹´ë©”ë¼ í¬ì›Œë“œ ê¸°ì¤€ ìŠ¤ì¹´ì´ë°•ìŠ¤ ë©´ ì´ë¯¸ì§€ë¥¼ í‘œì‹œ (ìŠ¤ì¹´ì´ë°•ìŠ¤ Onì¼ ë•Œë§Œ)
+		// ?˜„?¬ ì¹´ë©”?¼ ?¬?›Œ?“œ ê¸°ì?? ?Š¤ì¹´ì´ë°•ìŠ¤ ë©? ?´ë¯¸ì??ë¥? ?‘œ?‹œ (?Š¤ì¹´ì´ë°•ìŠ¤ On?¼ ?•Œë§?)
 	if (m_->m_SkyBoxChoice != App::Impl::SkyBoxChoice::Off)
 	{
 		int face = 0;
@@ -910,7 +910,7 @@ bool App::InitD3D()
 {
 	HRESULT hr = S_OK;
 
-	// ìŠ¤ì™‘ì²´ì¸ì˜ ê°’ë“¤ì„ ì„¤ì •í•  êµ¬ì¡°ì²´ë¥¼ ë§Œë“­ë‹ˆë‹¤
+	// ?Š¤?™‘ì²´ì¸?˜ ê°’ë“¤?„ ?„¤? •?•  êµ¬ì¡°ì²´ë?? ë§Œë“­?‹ˆ?‹¤
     DXGI_SWAP_CHAIN_DESC swapDesc = {};
     swapDesc.BufferCount = 1;
 	swapDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
@@ -925,38 +925,38 @@ bool App::InitD3D()
 	swapDesc.SampleDesc.Quality = 0;
     swapDesc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
 
-	// ë””ë²„ê·¸ ì°½ì„ ë„ìš°ê¸° ìœ„í•¨ì…ë‹ˆë‹¤.
+	// ?””ë²„ê·¸ ì°½ì„ ?„?š°ê¸? ?œ„?•¨?…?‹ˆ?‹¤.
 	UINT creationFlags = 0;
 #ifdef _DEBUG
 	creationFlags |= D3D11_CREATE_DEVICE_DEBUG;
 #endif
 
 	/*
-	* @brief  Direct3D ë””ë°”ì´ìŠ¤, ë””ë°”ì´ìŠ¤ ì»¨í…ìŠ¤íŠ¸, ìŠ¤ì™‘ì²´ì¸ ìƒì„±
+	* @brief  Direct3D ?””ë°”ì´?Š¤, ?””ë°”ì´?Š¤ ì»¨í…?Š¤?Š¸, ?Š¤?™‘ì²´ì¸ ?ƒ?„±
 	* @details
-	*   - Adapter        : NULL â†’ ê¸°ë³¸ GPU ì‚¬ìš©
-	*   - DriverType     : D3D_DRIVER_TYPE_HARDWARE â†’ í•˜ë“œì›¨ì–´ ê°€ì†
-	*   - Flags          : creationFlags (ë””ë²„ê·¸ ëª¨ë“œ ì—¬ë¶€ í¬í•¨)
-	*   - SwapChainDesc  : ë°±ë²„í¼, ì£¼ì‚¬ìœ¨ ë“± ìŠ¤ì™‘ì²´ì¸ ì„¤ì •
+	*   - Adapter        : NULL ?†’ ê¸°ë³¸ GPU ?‚¬?š©
+	*   - DriverType     : D3D_DRIVER_TYPE_HARDWARE ?†’ ?•˜?“œ?›¨?–´ ê°??†
+	*   - Flags          : creationFlags (?””ë²„ê·¸ ëª¨ë“œ ?—¬ë¶? ?¬?•¨)
+	*   - SwapChainDesc  : ë°±ë²„?¼, ì£¼ì‚¬?œ¨ ?“± ?Š¤?™‘ì²´ì¸ ?„¤? •
 	*   - ë°˜í™˜           : m_pDevice, m_pDeviceContext, m_pSwapChain
 	*/
 	HR_T(D3D11CreateDeviceAndSwapChain(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, creationFlags, NULL, NULL,
 		D3D11_SDK_VERSION, &swapDesc, &m_->m_pSwapChain, &m_->m_pDevice, NULL, &m_->m_pDeviceContext));
 
 	/*
-	* @brief  ìŠ¤ì™‘ì²´ì¸ ë°±ë²„í¼ë¡œ RTVë¥¼ ë§Œë“¤ê³  OM ìŠ¤í…Œì´ì§€ì— ë°”ì¸ë”©í•œë‹¤
+	* @brief  ?Š¤?™‘ì²´ì¸ ë°±ë²„?¼ë¡? RTVë¥? ë§Œë“¤ê³? OM ?Š¤?…Œ?´ì§??— ë°”ì¸?”©?•œ?‹¤
 	* @details
-	*   - GetBuffer(0): ë°±ë²„í¼(ID3D11Texture2D)ë¥¼ íšë“
-	*   - CreateRenderTargetView: ë°±ë²„í¼ ê¸°ë°˜ RTV ìƒì„±(ë¦¬ì†ŒìŠ¤ ë‚´ë¶€ ì°¸ì¡° ì¦ê°€)
-	*   - ë¡œì»¬ í…ìŠ¤ì²˜ í¬ì¸í„°ëŠ” Releaseë¡œ ì •ë¦¬ (RTVê°€ ìˆ˜ëª… ê´€ë¦¬)
-	*   - OMSetRenderTargets: ìƒì„±í•œ RTVë¥¼ ë Œë” íƒ€ê²Ÿì„ ìµœì¢… ì¶œë ¥ íŒŒì´í”„ë¼ì¸ì— ë°”ì¸ë”©
+	*   - GetBuffer(0): ë°±ë²„?¼(ID3D11Texture2D)ë¥? ?š?“
+	*   - CreateRenderTargetView: ë°±ë²„?¼ ê¸°ë°˜ RTV ?ƒ?„±(ë¦¬ì†Œ?Š¤ ?‚´ë¶? ì°¸ì¡° ì¦ê??)
+	*   - ë¡œì»¬ ?…?Š¤ì²? ?¬?¸?„°?Š” Releaseë¡? ? •ë¦? (RTVê°? ?ˆ˜ëª? ê´?ë¦?)
+	*   - OMSetRenderTargets: ?ƒ?„±?•œ RTVë¥? ? Œ?” ???ê²Ÿì„ ìµœì¢… ì¶œë ¥ ?ŒŒ?´?”„?¼?¸?— ë°”ì¸?”©
 	*/
 	ID3D11Texture2D* pBackBufferTexture = nullptr;
 	HR_T(m_->m_pSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&pBackBufferTexture));
 	HR_T(m_->m_pDevice->CreateRenderTargetView(pBackBufferTexture, NULL, &m_->m_pRenderTargetView));
 	SAFE_RELEASE(pBackBufferTexture);
 
-	// ê¹Šì´ ìŠ¤í…ì‹¤ í…ìŠ¤ì²˜/ë·° ìƒì„±
+	// ê¹Šì´ ?Š¤?…?‹¤ ?…?Š¤ì²?/ë·? ?ƒ?„±
 	D3D11_TEXTURE2D_DESC dsDesc = {};
 	dsDesc.Width = m_ClientWidth;
 	dsDesc.Height = m_ClientHeight;
@@ -975,7 +975,7 @@ bool App::InitD3D()
 	HR_T(m_->m_pDevice->CreateDepthStencilView(pDepthStencil, nullptr, &m_->m_pDepthStencilView));
 	SAFE_RELEASE(pDepthStencil);
 
-	// DepthStencilState ìƒì„± ë° ì„¤ì •
+	// DepthStencilState ?ƒ?„± ë°? ?„¤? •
 	D3D11_DEPTH_STENCIL_DESC dssDesc = {};
 	dssDesc.DepthEnable = TRUE;
 	dssDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
@@ -984,16 +984,16 @@ bool App::InitD3D()
 	HR_T(m_->m_pDevice->CreateDepthStencilState(&dssDesc, &m_->m_pDepthStencilState));
 	m_->m_pDeviceContext->OMSetDepthStencilState(m_->m_pDepthStencilState, 0);
 
-	// ë Œë” íƒ€ê²Ÿ/DSV ë°”ì¸ë”©
+	// ? Œ?” ???ê²?/DSV ë°”ì¸?”©
 	m_->m_pDeviceContext->OMSetRenderTargets(1, &m_->m_pRenderTargetView, m_->m_pDepthStencilView);
 
 	/*
-	* @brief  ë·°í¬íŠ¸(Viewport) ì„¤ì •
+	* @brief  ë·°í¬?Š¸(Viewport) ?„¤? •
 	* @details
-	*   - TopLeftX/Y : ì¶œë ¥ ì˜ì—­ì˜ ì‹œì‘ ì¢Œí‘œ (0,0 â†’ ì¢Œìƒë‹¨)
-	*   - Width/Height : ìœˆë„ìš° í´ë¼ì´ì–¸íŠ¸ í¬ê¸° ê¸°ì¤€
+	*   - TopLeftX/Y : ì¶œë ¥ ?˜?—­?˜ ?‹œ?‘ ì¢Œí‘œ (0,0 ?†’ ì¢Œìƒ?‹¨)
+	*   - Width/Height : ?œˆ?„?š° ?´?¼?´?–¸?Š¸ ?¬ê¸? ê¸°ì??
 	*   - MinDepth/MaxDepth : ê¹Šì´ ë²”ìœ„ (ë³´í†µ 0.0 ~ 1.0)
-	*   - RSSetViewports : ë˜ìŠ¤í„°ë¼ì´ì € ìŠ¤í…Œì´ì§€ì— ë·°í¬íŠ¸ ë°”ì¸ë”©
+	*   - RSSetViewports : ?˜?Š¤?„°?¼?´??? ?Š¤?…Œ?´ì§??— ë·°í¬?Š¸ ë°”ì¸?”©
 	*/
 	D3D11_VIEWPORT viewport = {};
 	viewport.TopLeftX = 0;
@@ -1004,7 +1004,7 @@ bool App::InitD3D()
 	viewport.MaxDepth = 1.0f;
 	m_->m_pDeviceContext->RSSetViewports(1, &viewport);
 
-	// ì»¬ë§ ì„¤ì • (ì–‘ë©´ ë Œë”ë§/í›„ë©´ ì»¬ë§)
+	// ì»¬ë§ ?„¤? • (?–‘ë©? ? Œ?”ë§?/?›„ë©? ì»¬ë§)
 	CD3D11_RASTERIZER_DESC rasterizerDesc(CD3D11_DEFAULT{});
 	rasterizerDesc.FillMode = D3D11_FILL_SOLID;
 	rasterizerDesc.CullMode = D3D11_CULL_NONE;
@@ -1015,7 +1015,7 @@ bool App::InitD3D()
 	rasterizerDesc.FrontCounterClockwise = true;
 	HR_T(m_->m_pDevice->CreateRasterizerState(&rasterizerDesc, &m_->RSCullClockWise));
 
-	// ì•ŒíŒŒ ë¸”ë Œë”© ìƒíƒœ ìƒì„± SrcAlpha/InvSrcAlpha
+	// ?•Œ?ŒŒ ë¸”ë Œ?”© ?ƒ?ƒœ ?ƒ?„± SrcAlpha/InvSrcAlpha
 	{
 		D3D11_BLEND_DESC bd{};
 		bd.AlphaToCoverageEnable = FALSE;
@@ -1047,32 +1047,32 @@ void App::UninitD3D()
 }
 
 /*
- * @brief InitScene() ì „ì²´ íë¦„
- *   1. ì •ì (Vertex) ë°°ì—´ì„ GPU ë²„í¼ë¡œ ìƒì„±
- *   2. VS ì…ë ¥ ì‹œê·¸ë‹ˆì²˜ì— ë§ì¶° InputLayout ìƒì„±
- *   3. VS ë°”ì´íŠ¸ì½”ë“œë¡œ Vertex Shader ìƒì„± ë° ë²„í¼ í•´ì œ
- *   4. ì¸ë±ìŠ¤ ë²„í¼(Index Buffer) ìƒì„±
- *   5. PS ë°”ì´íŠ¸ì½”ë“œë¡œ Pixel Shader ìƒì„± ë° ë²„í¼ í•´ì œ
+ * @brief InitScene() ? „ì²? ?ë¦?
+ *   1. ? •? (Vertex) ë°°ì—´?„ GPU ë²„í¼ë¡? ?ƒ?„±
+ *   2. VS ?…? ¥ ?‹œê·¸ë‹ˆì²˜ì— ë§ì¶° InputLayout ?ƒ?„±
+ *   3. VS ë°”ì´?Š¸ì½”ë“œë¡? Vertex Shader ?ƒ?„± ë°? ë²„í¼ ?•´? œ
+ *   4. ?¸?±?Š¤ ë²„í¼(Index Buffer) ?ƒ?„±
+ *   5. PS ë°”ì´?Š¸ì½”ë“œë¡? Pixel Shader ?ƒ?„± ë°? ë²„í¼ ?•´? œ
  */
 bool App::InitScene()
 {
 	//HRESULT hr = 0;
-	ID3D10Blob* errorMessage = nullptr;	 // ì—ëŸ¬ ë©”ì‹œì§€ë¥¼ ì €ì¥í•  ë²„í¼.
+	ID3D10Blob* errorMessage = nullptr;	 // ?—?Ÿ¬ ë©”ì‹œì§?ë¥? ????¥?•  ë²„í¼.
 
 	// ***********************************************************************************************
-	// íë¸Œì„¤ì •
-	// 24ê°œ ì •ì  (ê° ë©´ 4ê°œ) + í…ìŠ¤ì²˜ ì¢Œí‘œ
+	// ?ë¸Œì„¤? •
+	// 24ê°? ? •?  (ê°? ë©? 4ê°?) + ?…?Š¤ì²? ì¢Œí‘œ
 	m_->m_VertextBufferStride = sizeof(VertexLightTex);
 	m_->m_VertextBufferOffset = 0;
 	// ***********************************************************************************************
-    // ì‘ì€ íë¸Œ ë°ì´í„° ì„¤ì • (TBN ì •ì )
+    // ?‘??? ?ë¸? ?°?´?„° ?„¤? • (TBN ? •? )
     StaticMeshData cube = StaticMesh::CreateBox(XMFLOAT4(1,1,1,1));
     m_->m_VertextBufferStride = sizeof(VertexTBN);
     StaticMesh::AssignMemory(m_->m_pDevice, m_->m_pVertexBuffer, cube);
     StaticMesh::AssignIndexMemory(m_->m_pDevice, m_->m_pIndexBuffer, cube, m_->m_nIndices);
 
 	// ***********************************************************************************************
-	// ìƒìˆ˜ ë²„í¼ ì„¤ì •
+	// ?ƒ?ˆ˜ ë²„í¼ ?„¤? •
 	//
 	D3D11_BUFFER_DESC cbd;
 	ZeroMemory(&cbd, sizeof(cbd));
@@ -1080,16 +1080,16 @@ bool App::InitScene()
 	cbd.ByteWidth = sizeof(ConstantBuffer);
 	cbd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 	cbd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-	// ë‹¨ì¼ ìƒìˆ˜ ë²„í¼ ìƒì„± (VS/PS ê³µìš©, b0)
+	// ?‹¨?¼ ?ƒ?ˆ˜ ë²„í¼ ?ƒ?„± (VS/PS ê³µìš©, b0)
 	HR_T(m_->m_pDevice->CreateBuffer(&cbd, nullptr, &m_->m_pConstantBuffer));
 
 		// ***********************************************************************************************
-	// ìŠ¤ì¹´ì´ ë°•ìŠ¤ íë¸Œ ì„¤ì •
+	// ?Š¤ì¹´ì´ ë°•ìŠ¤ ?ë¸? ?„¤? •
     HR_T(CreateDDSTextureFromFile(m_->m_pDevice, L"..\\Resource\\Skybox\\Hanako.dds", nullptr, &m_->m_pSkyHanakoSRV));
     HR_T(CreateDDSTextureFromFile(m_->m_pDevice, L"..\\Resource\\Skybox\\cubemap.dds", nullptr, &m_->m_pSkyCubeMapSRV));
     m_->m_pTextureSRV = m_->m_pSkyCubeMapSRV;
 	
-	// ìƒ˜í”ŒëŸ¬ ìƒì„±
+	// ?ƒ˜?”Œ?Ÿ¬ ?ƒ?„±
 	D3D11_SAMPLER_DESC sampDesc = {};
 	sampDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
 	sampDesc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
@@ -1099,15 +1099,15 @@ bool App::InitScene()
 	HR_T(m_->m_pDevice->CreateSamplerState(&sampDesc, &m_->m_pSamplerState));
 
 	// ***********************************************************************************************
-	// ì¹´ë©”ë¼ ì„¤ì •
-	// ì¹´ë©”ë¼(View/Proj)ë¡œ ìƒìˆ˜ ë²„í¼ë¥¼ ì¤€ë¹„í•©ë‹ˆë‹¤ (GameApp::m_Camera ì‚¬ìš©)
+	// ì¹´ë©”?¼ ?„¤? •
+	// ì¹´ë©”?¼(View/Proj)ë¡? ?ƒ?ˆ˜ ë²„í¼ë¥? ì¤?ë¹„í•©?‹ˆ?‹¤ (GameApp::m_Camera ?‚¬?š©)
 	m_->m_baseProjection.world = XMMatrixIdentity();
-	// ì¹´ë©”ë¼ ì´ˆê¸° í”„ëŸ¬ìŠ¤í…€ ê°’ë“¤ ì„¤ì •
+	// ì¹´ë©”?¼ ì´ˆê¸° ?”„?Ÿ¬?Š¤??? ê°’ë“¤ ?„¤? •
 	m_Camera.SetFrustum(XMConvertToRadians(90.0f), AspectRatio(), 1.0f, 1000.0f);
 	m_->m_baseProjection.view = XMMatrixTranspose(m_Camera.GetViewMatrixXM());
 	m_->m_baseProjection.proj = XMMatrixTranspose(m_Camera.GetProjMatrixXM());
 	m_->m_baseProjection.worldInvTranspose = XMMatrixInverse(nullptr, XMMatrixTranspose(m_->m_baseProjection.world));
-	// DirectionalLight ì´ˆê¸°ê°’ í•„ë“œ ëŒ€ì…
+	// DirectionalLight ì´ˆê¸°ê°? ?•„?“œ ????…
 	m_->m_baseProjection.dirLight.ambient = DirectX::XMFLOAT4(0,0,0,1);
 	m_->m_baseProjection.dirLight.diffuse = DirectX::XMFLOAT4(1,1,1,1);
 	m_->m_baseProjection.dirLight.specular = DirectX::XMFLOAT4(1,1,1,1);
@@ -1117,14 +1117,14 @@ bool App::InitScene()
 	m_->m_baseProjection.pad = 0.0f;
 
 	// ***********************************************************************************************
-	// ìœ í‹¸ ì´ˆê¸°í™”. ë¼ì¸ ë Œë”ëŸ¬, ìŠ¤ì¹´ì´ë°•ìŠ¤, ë””ë²„ê·¸ ë°•ìŠ¤
+	// ?œ ?‹¸ ì´ˆê¸°?™”. ?¼?¸ ? Œ?”?Ÿ¬, ?Š¤ì¹´ì´ë°•ìŠ¤, ?””ë²„ê·¸ ë°•ìŠ¤
 	if (!m_->m_LineRenderer) m_->m_LineRenderer = new LineRenderer();
 	m_->m_LineRenderer->Initialize(m_->m_pDevice);
 
-    // Skybox: ê¸°ì¡´ Hanakoë¥¼ ê¸°ë³¸ìœ¼ë¡œ ì´ˆê¸°í™” (ì„ í˜¸ DDSë¥¼ ì„¤ì •)
+    // Skybox: ê¸°ì¡´ Hanakoë¥? ê¸°ë³¸?œ¼ë¡? ì´ˆê¸°?™” (?„ ?˜¸ DDSë¥? ?„¤? •)
 	if (!m_->m_Skybox) m_->m_Skybox = new Skybox();
-	// SkyboxëŠ” ì´ë¯¸ CreateDDSTextureFromFileë¡œ SRVê°€ ìƒì„±ë˜ì–´ ìˆìœ¼ë¯€ë¡œ, ì—¬ê¸°ì„  í˜„ì¬ ì„ íƒëœ SRVë¥¼ ì‚¬ìš©í•˜ë„ë¡ InitializeëŠ” ê²½ë¡œ ê¸°ë°˜ ëŒ€ì‹  ìŠ¤í‚µí•  ìˆ˜ ìˆìŠµë‹ˆë‹¤.
-	// ê°„í¸í™”ë¥¼ ìœ„í•´ cubemap.ddsë¡œ ì´ˆê¸°í™”
+	// Skybox?Š” ?´ë¯? CreateDDSTextureFromFileë¡? SRVê°? ?ƒ?„±?˜?–´ ?ˆ?œ¼ë¯?ë¡?, ?—¬ê¸°ì„  ?˜„?¬ ?„ ?ƒ?œ SRVë¥? ?‚¬?š©?•˜?„ë¡? Initialize?Š” ê²½ë¡œ ê¸°ë°˜ ????‹  ?Š¤?‚µ?•  ?ˆ˜ ?ˆ?Šµ?‹ˆ?‹¤.
+	// ê°„í¸?™”ë¥? ?œ„?•´ cubemap.ddsë¡? ì´ˆê¸°?™”
 	m_->m_Skybox->Initialize(m_->m_pDevice, m_->m_CurrentSkyboxPath, m_->m_pSkyBoxVertexShader, m_->m_pSkyBoxPixelShader, m_->m_pSkyBoxInputLayout, m_->m_pConstantBuffer);
 
 	// Debug box buffers for light position marker
@@ -1162,7 +1162,7 @@ void App::UninitScene()
 	if (m_->m_LineRenderer) { m_->m_LineRenderer->Release(); delete m_->m_LineRenderer; m_->m_LineRenderer = nullptr; }
 	if (m_->m_Skybox) { m_->m_Skybox->Release(); delete m_->m_Skybox; m_->m_Skybox = nullptr; }
 
-    // ëª¨ë¸ ë¦¬ì†ŒìŠ¤ í•´ì œ
+    // ëª¨ë¸ ë¦¬ì†Œ?Š¤ ?•´? œ
 	UnloadModel();
 }
 
@@ -1224,23 +1224,28 @@ bool App::InitTexture()
 
 bool App::InitImGui()
 {
-	// ImGui ì´ˆê¸°í™”
+	// ImGui ì´ˆê¸°?™”
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 	ImGui::StyleColorsDark();
-	// í•œê¸€/ì¼ë³¸ì–´ í‘œì‹œë¥¼ ìœ„í•œ í°íŠ¸ ì„¤ì •
+	// ?•œê¸?/?¼ë³¸ì–´ ?‘œ?‹œë¥? ?œ„?•œ ?°?Š¸ ?„¤? •
 	{
 		ImGuiIO& io = ImGui::GetIO();
-		io.Fonts->AddFontDefault();
 		ImFontConfig cfg{};
-		cfg.MergeMode = true;
 		cfg.PixelSnapH = true;
 		cfg.OversampleH = 2;
 		cfg.OversampleV = 2;
 		const ImWchar* rangeKR = io.Fonts->GetGlyphRangesKorean();
-		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\NotoSansKR-Regular.ttf", 17.0f, &cfg, rangeKR);
+		const ImWchar* rangeENG = io.Fonts->GetGlyphRangesDefault();
 		const ImWchar* rangeJP = io.Fonts->GetGlyphRangesJapanese();
-		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\meiryo.ttc", 17.0f, &cfg, rangeJP);
+		// ÇÑ±Û: NotoSansKR-Regular
+		cfg.MergeMode = false;
+		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\NotoSansKR-Regular.ttf", 20.0f, &cfg, rangeKR);
+		// ÀÏº»¾î: Meiryo
+		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\meiryo.ttc", 22.0f, &cfg, rangeJP);
+		// ¿µ¾î
+		cfg.MergeMode = true;
+		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\NotoSansKR-Regular.ttf", 20.0f, &cfg, rangeENG);
 	}
 	ImGui_ImplWin32_Init(m_hWnd);
 	ImGui_ImplDX11_Init(m_->m_pDevice, m_->m_pDeviceContext);
@@ -1250,7 +1255,7 @@ bool App::InitImGui()
 bool App::InitBasicEffect()
 {
 	// Vertex Shader -------------------------------------
-	D3D11_INPUT_ELEMENT_DESC layout[] = // ì…ë ¥ ë ˆì´ì•„ì›ƒ.
+	D3D11_INPUT_ELEMENT_DESC layout[] = // ?…? ¥ ? ˆ?´?•„?›ƒ.
 	{
 		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 0,  D3D11_INPUT_PER_VERTEX_DATA, 0 },
 		{ "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT,    0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
@@ -1267,9 +1272,9 @@ bool App::InitBasicEffect()
 
 	HR_T(m_->m_pDevice->CreateVertexShader(vertexShaderBuffer->GetBufferPointer(),
 		vertexShaderBuffer->GetBufferSize(), NULL, &m_->m_pVertexShader));
-	SAFE_RELEASE(vertexShaderBuffer);	// ì»´íŒŒì¼ ë²„í¼ í•´ì œ
+	SAFE_RELEASE(vertexShaderBuffer);	// ì»´íŒŒ?¼ ë²„í¼ ?•´? œ
 
-	// PMX ì „ìš©: NoTBN ì…ë ¥ìš© VS/IL ìƒì„±
+	// PMX ? „?š©: NoTBN ?…? ¥?š© VS/IL ?ƒ?„±
 	D3D11_INPUT_ELEMENT_DESC layoutNoTBN[] =
 	{
 		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 0,  D3D11_INPUT_PER_VERTEX_DATA, 0 },
@@ -1293,7 +1298,7 @@ bool App::InitBasicEffect()
 	ID3D10Blob* vsLine = nullptr;
     HR_T(CompileShaderFromFile(L"19_BasicVS.hlsl", "VSLine", "vs_5_0", &vsLine));
 
-    // FBX GPU ìŠ¤í‚¤ë‹ìš© VS/IL ìƒì„± (POSITION,NORMAL,TANGENT,BINORMAL,COLOR,TEXCOORD,BLENDINDICES,BLENDWEIGHT)
+    // FBX GPU ?Š¤?‚¤?‹?š© VS/IL ?ƒ?„± (POSITION,NORMAL,TANGENT,BINORMAL,COLOR,TEXCOORD,BLENDINDICES,BLENDWEIGHT)
     {
         D3D11_INPUT_ELEMENT_DESC layoutSkinned[] =
         {
@@ -1322,14 +1327,14 @@ bool App::InitBasicEffect()
     HR_T(CompileShaderFromFile(L"19_BasicPS.hlsl", "main", "ps_4_0", &pixelShaderBuffer));
 	HR_T(m_->m_pDevice->CreatePixelShader(pixelShaderBuffer->GetBufferPointer(),
 		pixelShaderBuffer->GetBufferSize(), NULL, &m_->m_pPixelShader));
-	SAFE_RELEASE(pixelShaderBuffer);	// í”½ì…€ ì…°ì´ë” ë²„í¼ ë”ì´ìƒ í•„ìš”ì—†ìŒ
+	SAFE_RELEASE(pixelShaderBuffer);	// ?”½??? ?…°?´?” ë²„í¼ ?”?´?ƒ ?•„?š”?—†?Œ
 	return true;
 }
 
 bool App::InitSkyBoxEffect()
 {
 	// Vertex Shader -------------------------------------
-	D3D11_INPUT_ELEMENT_DESC layout[] = // ì…ë ¥ ë ˆì´ì•„ì›ƒ.
+	D3D11_INPUT_ELEMENT_DESC layout[] = // ?…? ¥ ? ˆ?´?•„?›ƒ.
 	{
 		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 0,  D3D11_INPUT_PER_VERTEX_DATA, 0 },
 	};
@@ -1341,23 +1346,23 @@ bool App::InitSkyBoxEffect()
 
 	HR_T(m_->m_pDevice->CreateVertexShader(vertexShaderBuffer->GetBufferPointer(),
 		vertexShaderBuffer->GetBufferSize(), NULL, &m_->m_pSkyBoxVertexShader));
-	SAFE_RELEASE(vertexShaderBuffer);	// ì»´íŒŒì¼ ë²„í¼ í•´ì œ
+	SAFE_RELEASE(vertexShaderBuffer);	// ì»´íŒŒ?¼ ë²„í¼ ?•´? œ
 
 	// Pixel Shader -------------------------------------
 	ID3D10Blob* pixelShaderBuffer = nullptr;
     HR_T(CompileShaderFromFile(L"19_SkyBoxPS.hlsl", "PS", "ps_4_0", &pixelShaderBuffer));
 	HR_T(m_->m_pDevice->CreatePixelShader(pixelShaderBuffer->GetBufferPointer(),
 		pixelShaderBuffer->GetBufferSize(), NULL, &m_->m_pSkyBoxPixelShader));
-	SAFE_RELEASE(pixelShaderBuffer);	// í”½ì…€ ì…°ì´ë” ë²„í¼ ë”ì´ìƒ í•„ìš”ì—†ìŒ
+	SAFE_RELEASE(pixelShaderBuffer);	// ?”½??? ?…°?´?” ë²„í¼ ?”?´?ƒ ?•„?š”?—†?Œ
 	return true;
 }
 
 // ------------------------- Model Loader (FBX/OBJ/PMX via Assimp) -------------------------
 bool App::LoadModelFromFile(const std::wstring& pathW)
 {
-    // ìƒˆ ëª¨ë¸ë¸ ì¶”ê°€
+    // ?ƒˆ ëª¨ë¸?¸ ì¶”ê??
 
-    // í´ë°± í…ìŠ¤ì²˜ ìƒì„±(ìµœì´ˆ 1íšŒ)
+    // ?´ë°? ?…?Š¤ì²? ?ƒ?„±(ìµœì´ˆ 1?šŒ)
 	UINT fallBackColor = 0x000000FF;
     if (!m_->m_pFallbackWhite) fallBackColor = 0xFFFFFFFF;
     if (!m_->m_pFallbackBlack) fallBackColor = 0x000000FF; // a=1
@@ -1370,7 +1375,7 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
 	D3D11_SHADER_RESOURCE_VIEW_DESC srvd{}; srvd.Format = td.Format; srvd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D; srvd.Texture2D.MipLevels = 1; srvd.Texture2D.MostDetailedMip = 0;
 	HR_T(m_->m_pDevice->CreateShaderResourceView(tex.Get(), &srvd, &m_->m_pFallbackNormal));
 
-	// ë°›ì€ ê²½ë¡œì—ì„œ ì´ë¦„, í™•ì¥ì ì¶”ì¶œ
+	// ë°›ì?? ê²½ë¡œ?—?„œ ?´ë¦?, ?™•?¥? ì¶”ì¶œ
 	std::wstring ext{L""}, fileName{L""};
     if (!pathW.empty())
     {
@@ -1442,15 +1447,15 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
 
 void App::UnloadModel()
 {
-    // ë¡œë“œëœ ëª¨ë¸ì´ ì—†ìœ¼ë©´ ì•„ë¬´ ê²ƒë„ í•˜ì§€ ì•ŠëŠ”ë‹¤
+    // ë¡œë“œ?œ ëª¨ë¸?´ ?—†?œ¼ë©? ?•„ë¬? ê²ƒë„ ?•˜ì§? ?•Š?Š”?‹¤
     if (m_->m_Models.empty())
     {
         m_->m_RenderMode = RenderMode::None;
         return;
     }
 
-    // ê° ModelEntryê°€ ê°€ì§„ Manager(FBX/OBJ/PMX)ê°€ ë‚´ë¶€ì—ì„œ VB/IB/SRVë¥¼ ì •ë¦¬í•˜ë¯€ë¡œ
-    // ì—¬ê¸°ì„œëŠ” ì»¨í…Œì´ë„ˆë§Œ ì •ë¦¬í•œë‹¤.
+    // ê°? ModelEntryê°? ê°?ì§? Manager(FBX/OBJ/PMX)ê°? ?‚´ë¶??—?„œ VB/IB/SRVë¥? ? •ë¦¬í•˜ë¯?ë¡?
+    // ?—¬ê¸°ì„œ?Š” ì»¨í…Œ?´?„ˆë§? ? •ë¦¬í•œ?‹¤.
     m_->m_Models.clear();
     m_->m_RenderMode = RenderMode::None;
 }
