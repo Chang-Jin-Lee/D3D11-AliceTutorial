@@ -54,6 +54,7 @@ public:
 	void RenderGBufferDebug();  // G-Buffer 디버그 뷰
 	void RenderDeferredUI();    // Deferred Rendering UI
 	void RenderAdvancedRigUI(); // Advanced Animation(Socket/Blend/Layer/IK) UI
+	void RenderSoundDebugUI();  // Sound Debug UI (3D 사운드, Pan 테스트)
 
 	// 로더 API
 	bool LoadModelFromFile(const std::wstring& pathW);
