@@ -299,22 +299,6 @@ void App::OnRender()
 	}
 	ImGui::End();
 
-	// ============================== 큐브 설명 창 ==============================
-	{
-		ImGuiIO& io = ImGui::GetIO();
-		ImVec2 size(260.0f, 80.0f);
-		ImVec2 pos(10.0f, io.DisplaySize.y - size.y - 10.0f);
-		ImGui::SetNextWindowPos(pos, ImGuiCond_Always);
-		ImGui::SetNextWindowSize(size, ImGuiCond_Always);
-		ImGuiWindowFlags flags = ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse;
-		if (ImGui::Begin("Cube Description", nullptr, flags))
-		{
-			ImGui::Text("front : Yuuka");
-			ImGui::Text("etc   : Hanako");
-		}
-		ImGui::End();
-	}
-
 	// ============================== 시스템 정보 창(FPS/GPU/CPU) ==============================
 	{
 		ImGuiIO& io = ImGui::GetIO();
