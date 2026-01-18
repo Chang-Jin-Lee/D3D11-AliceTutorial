@@ -104,6 +104,8 @@ namespace Sound
 	// @param up : 리스너의 위쪽 방향 (정규화된 벡터)
 	void SetListener(const XMFLOAT3& pos, const XMFLOAT3& vel,
 	                 const XMFLOAT3& forward, const XMFLOAT3& up);
+	void SetListener(const XMFLOAT3& pos, const XMFLOAT3& vel,
+		const XMVECTOR& forward, const XMVECTOR& up);
 
 	// @brief SoundBox(또는 임의 오브젝트) 3D 루프 인스턴스 재생
 	// @param instanceId : 인스턴스 고유 ID (예: "SoundBox#0")

@@ -53,6 +53,11 @@ namespace
 
 	// DirectX XMFLOAT3 -> FMOD_VECTOR 변환 헬퍼
 	inline FMOD_VECTOR ToFmod(const XMFLOAT3& v) { return FMOD_VECTOR{ v.x, v.y, v.z }; }
+	inline FMOD_VECTOR ToFmod(XMVECTOR v) {
+		XMFLOAT3 f3;
+		XMStoreFloat3(&f3, v); // SIMD 레지스터에서 float3 메모리로 저장
+		return FMOD_VECTOR{ f3.x, f3.y, f3.z };
+	}
 
 	// 재생 끝난 SFX 채널 청소
 	void CleanupSFX()
@@ -432,6 +437,22 @@ bool Sound::PlaySFX(const std::wstring& key, float volume, float pitch, bool loo
 	else
 	{
 		// 원샷 SFX: Fire and Forget 방식 (중첩 재생 가능)
+		// 동시 재생되는 효과음이 너무 많으면 가장 오래된 것부터 끈다.
+		// 현재는 64개 문제 생기면 더 늘리거나 줄이거나 할 것
+		// 광클로 인한 채널 고갈 방지임
+		// 광클해서 소리 나오다가 갑자기 안나오는 그 오류를 해결하기 위함임. 
+		if (g_ChannelsSFX.size() >= 64)
+		{
+			// 벡터의 맨 앞(begin)이 가장 오래된 채널임
+			FMOD::Channel* oldCh = g_ChannelsSFX.front();
+			if (oldCh)
+			{
+				oldCh->stop(); // 강제 정지하고 다음 CleanupSFX()때 제거됨, 혹은 여기서 바로 pop해도 됨
+			}
+			// 관리 리스트에서 제거
+			g_ChannelsSFX.erase(g_ChannelsSFX.begin());
+		}
+
 		FMOD::Channel* channel = nullptr;
 		FMOD_RESULT r = g_System->playSound(sound, nullptr, false, &channel);
 
@@ -571,9 +592,21 @@ void Sound::SetSfxPitch(const std::wstring& key, float pitch)
 }
 
 // ================= 3D 사운드 =================
-
 void Sound::SetListener(const XMFLOAT3& pos, const XMFLOAT3& vel,
                         const XMFLOAT3& forward, const XMFLOAT3& up)
+{
+	if (!g_System) return;
+
+	FMOD_VECTOR p = ToFmod(pos);
+	FMOD_VECTOR v = ToFmod(vel);
+	FMOD_VECTOR f = ToFmod(forward);
+	FMOD_VECTOR u = ToFmod(up);
+
+	g_System->set3DListenerAttributes(0, &p, &v, &f, &u);
+}
+
+void Sound::SetListener(const XMFLOAT3& pos, const XMFLOAT3& vel,
+	const XMVECTOR& forward, const XMVECTOR& up)
 {
 	if (!g_System) return;
 
