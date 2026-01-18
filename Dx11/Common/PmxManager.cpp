@@ -408,11 +408,11 @@ bool PmxManager::LoadVMD(ID3D11Device* device, const std::wstring& vmdPath)
                     // 이름은 Shift-JIS. CP932로 와이드 변환
                     std::wstring boneW = ConvertSjisToWString(bf.name.c_str(), bf.name.size());
                     VMDKey k{};
-                    k.t = (double)max(0, bf.frame) / 30.0; // 30fps 고정 가정
+                    k.t = (double)std::max(0, bf.frame) / 30.0; // 30fps 고정 가정
                     k.T = { bf.position[0], bf.position[1], bf.position[2] };
                     k.Q = { bf.orientation[0], bf.orientation[1], bf.orientation[2], bf.orientation[3] };
                     m_VMDChannels[boneW].push_back(k);
-                    if ((uint32_t)max(0, bf.frame) > maxFrame) maxFrame = (uint32_t)bf.frame;
+                    if ((uint32_t)std::max(0, bf.frame) > maxFrame) maxFrame = (uint32_t)bf.frame;
                 }
                 for (auto& kv : m_VMDChannels)
                 {

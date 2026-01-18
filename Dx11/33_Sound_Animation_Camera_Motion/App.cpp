@@ -670,9 +670,9 @@ bool App::OnInitialize()
 	m_->m_Models[4]->scale = XMFLOAT3(2.0f, 1.0f, 8.0f);
 	m_->m_Models[4]->pos = XMFLOAT3(0.0f, -2.0f, 0.0f);
 	m_->m_Models[4]->useInstancePbrMaterial = true;
-	m_->m_Models[4]->instancePbrMaterial.baseColor = XMFLOAT4(0.3f, 0.3f, 0.3f, 1.0f);
+	m_->m_Models[4]->instancePbrMaterial.baseColor = XMFLOAT4(0.9f, 0.9f, 0.9f, 1.0f);
 	m_->m_Models[4]->instancePbrMaterial.metalness = 0.01f;
-	m_->m_Models[4]->instancePbrMaterial.roughness = 1.0f;
+	m_->m_Models[4]->instancePbrMaterial.roughness = 0.5f;
 	m_->m_Models[4]->instancePbrMaterial.ambientOcclusion = 1.0f;
 
 	// ====================================== 큐브 ======================================
@@ -1821,14 +1821,21 @@ bool App::InitImGui()
 	// 한글/일본어 표시를 위한 방법
 	{
 		ImGuiIO& io = ImGui::GetIO();
-		io.Fonts->AddFontDefault();
-		ImFontConfig cfg{}; cfg.MergeMode = true; cfg.PixelSnapH = true; cfg.OversampleH = 2; cfg.OversampleV = 2;
-		// 한글: 맑은 고딕
+		ImFontConfig cfg{};
+		cfg.PixelSnapH = true;
+		cfg.OversampleH = 2;
+		cfg.OversampleV = 2;
 		const ImWchar* rangeKR = io.Fonts->GetGlyphRangesKorean();
-		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\NotoSansKR-Regular.ttf", 17.0f, &cfg, rangeKR);
-		// 일본어: Meiryo
+		const ImWchar* rangeENG = io.Fonts->GetGlyphRangesDefault();
 		const ImWchar* rangeJP = io.Fonts->GetGlyphRangesJapanese();
-		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\meiryo.ttc", 17.0f, &cfg, rangeJP);
+		// 한글: NotoSansKR-Regular
+		cfg.MergeMode = false;
+		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\NotoSansKR-Regular.ttf", 20.0f, &cfg, rangeKR);
+		// 일본어: Meiryo
+		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\meiryo.ttc", 22.0f, &cfg, rangeJP);
+		// 영어
+		cfg.MergeMode = true;
+		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\NotoSansKR-Regular.ttf", 20.0f, &cfg, rangeENG);
 	}
 
 	ImGui_ImplWin32_Init(m_hWnd);

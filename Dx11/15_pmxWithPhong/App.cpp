@@ -827,16 +827,21 @@ bool App::InitImGui()
 	// 한글/일본어 표시를 위한 폰트 설정
 	{
 		ImGuiIO& io = ImGui::GetIO();
-		io.Fonts->AddFontDefault();
 		ImFontConfig cfg{};
-		cfg.MergeMode = true;
 		cfg.PixelSnapH = true;
 		cfg.OversampleH = 2;
 		cfg.OversampleV = 2;
 		const ImWchar* rangeKR = io.Fonts->GetGlyphRangesKorean();
-		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\NotoSansKR-Regular.ttf", 17.0f, &cfg, rangeKR);
+		const ImWchar* rangeENG = io.Fonts->GetGlyphRangesDefault();
 		const ImWchar* rangeJP = io.Fonts->GetGlyphRangesJapanese();
-		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\meiryo.ttc", 17.0f, &cfg, rangeJP);
+		// 한글: NotoSansKR-Regular
+		cfg.MergeMode = false;
+		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\NotoSansKR-Regular.ttf", 20.0f, &cfg, rangeKR);
+		// 일본어: Meiryo
+		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\meiryo.ttc", 22.0f, &cfg, rangeJP);
+		// 영어
+		cfg.MergeMode = true;
+		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\NotoSansKR-Regular.ttf", 20.0f, &cfg, rangeENG);
 	}
 	ImGui_ImplWin32_Init(m_hWnd);
 	ImGui_ImplDX11_Init(m_pDevice, m_pDeviceContext);

@@ -18,9 +18,10 @@
 #include "../Common/SystemInfomation.h"
 #include "../Common/Transform.h"
 #include "../Common/mmd/VmdCameraPlayer.h"
+#include "../Common/Sound/SoundSystem.h"
+#include "../Common/Sound/SoundManager.h"
 #include "SceneA.h"
 #include "SceneB.h"
-#include "SoundManager.h"
 #include <algorithm>
 #include <format>
 #include <assimp/Importer.hpp>
@@ -165,138 +166,6 @@ struct SharedModelData {
 	std::vector<ID3D11ShaderResourceView*> normalSRVs; // 노말맵 텍스처 (옵션)
 };
 
-// 여러 모델을 그리기 위한 구조체
-// SoundBox 구조체 (영역 기반 BGM 재생)
-struct SoundBox
-{
-	std::wstring bgmKey;      // 이 구역에서 틀어야 할 BGM 키
-
-	// Transform 정보
-	XMFLOAT3 position = { 0, 0, 0 };
-	XMFLOAT3 scale = { 1, 1, 1 };
-
-	// Local AABB (기본 크기)
-	XMFLOAT3 boundsMin = { -10.0f, -10.0f, -10.0f };
-	XMFLOAT3 boundsMax = { 10.0f, 10.0f, 10.0f };
-
-	// 콜백 함수
-	std::function<void()> onEnter;  // 박스에 들어왔을 때 호출
-	std::function<void()> onExit;   // 박스에서 나갔을 때 호출
-
-	// 플레이어가 내부에 있는지 확인하는 함수
-	bool Contains(const XMFLOAT3& playerPos) const
-	{
-		// 1. Local AABB -> World AABB 변환
-		XMFLOAT3 worldMin, worldMax;
-
-		float x0 = boundsMin.x * scale.x + position.x;
-		float x1 = boundsMax.x * scale.x + position.x;
-		worldMin.x = std::min(x0, x1);
-		worldMax.x = (std::max)(x0, x1);
-
-		float y0 = boundsMin.y * scale.y + position.y;
-		float y1 = boundsMax.y * scale.y + position.y;
-		worldMin.y = std::min(y0, y1);
-		worldMax.y = (std::max)(y0, y1);
-
-		float z0 = boundsMin.z * scale.z + position.z;
-		float z1 = boundsMax.z * scale.z + position.z;
-		worldMin.z = std::min(z0, z1);
-		worldMax.z = (std::max)(z0, z1);
-
-		// 2. Point(플레이어) vs AABB(박스) 충돌 검사
-		if (playerPos.x >= worldMin.x && playerPos.x <= worldMax.x &&
-			playerPos.y >= worldMin.y && playerPos.y <= worldMax.y &&
-			playerPos.z >= worldMin.z && playerPos.z <= worldMax.z)
-		{
-			return true;
-		}
-
-		return false;
-	}
-};
-
-// SoundBox 시스템
-class SoundBoxSystem
-{
-private:
-	std::vector<SoundBox> m_SoundBoxes;
-	std::vector<bool> m_WasInside;  // 이전 프레임에 박스 안에 있었는지 추적
-
-public:
-	void AddBox(const SoundBox& box)
-	{
-		m_SoundBoxes.push_back(box);
-		m_WasInside.push_back(false);  // 초기값: 박스 밖
-	}
-
-	void Clear()
-	{
-		m_SoundBoxes.clear();
-		m_WasInside.clear();
-	}
-
-	// 매 프레임 호출
-	void Update(const XMFLOAT3& playerPos)
-	{
-		std::wstring targetBGM = L"";
-		bool insideAnyBox = false;
-		size_t foundBoxIndex = SIZE_MAX;
-
-		// 모든 박스를 순회하며 플레이어가 내부에 있는지 확인
-		for (size_t i = 0; i < m_SoundBoxes.size(); ++i)
-		{
-			const auto& box = m_SoundBoxes[i];
-			bool isInside = box.Contains(playerPos);
-			
-			// 진입 감지: 이전 프레임에는 밖에 있었고, 지금은 안에 있음
-			if (isInside && !m_WasInside[i])
-			{
-				if (box.onEnter)
-				{
-					box.onEnter();
-				}
-			}
-			// 이탈 감지: 이전 프레임에는 안에 있었고, 지금은 밖에 있음
-			else if (!isInside && m_WasInside[i])
-			{
-				if (box.onExit)
-				{
-					box.onExit();
-				}
-			}
-			
-			// 상태 업데이트
-			m_WasInside[i] = isInside;
-			
-			// 가장 먼저 발견된 박스의 BGM을 사용
-			if (isInside && !insideAnyBox)
-			{
-				targetBGM = box.bgmKey;
-				insideAnyBox = true;
-				foundBoxIndex = i;
-			}
-		}
-
-		// 박스 안에 들어왔고, 재생해야 할 BGM이 현재 BGM과 다르다면 교체
-		if (insideAnyBox && !targetBGM.empty())
-		{
-			if (Sound::GetCurrentBGMKey() != targetBGM)
-			{
-				Sound::PlayBGM(targetBGM);
-			}
-		}
-		else
-		{
-			// 박스 밖에 있으면 BGM을 유지 (또는 원하면 StopBGM 호출)
-			Sound::StopBGM();
-		}
-	}
-
-	const std::vector<SoundBox>& GetBoxes() const { return m_SoundBoxes; }
-	std::vector<SoundBox>& GetBoxes() { return m_SoundBoxes; }
-};
-
 struct ModelEntry {
 	std::wstring modelName{ L"" };
 	ModelSource source = ModelSource::Custom; // 공유 데이터 동일 경로 모델끼리
@@ -319,7 +188,7 @@ struct ModelEntry {
 	bool animatorInited = false;
 	// 애니메이션 업데이트 LOD를 위한 누적 시간 (입력/ImGui 프리즈 방지용)
 	float animUpdateAccum = 0.0f;
-	Material instanceMaterial{{1, 1, 1, 1}, {1, 1, 1, 1}, {1, 1, 1, 32}, {0, 0, 0, 0} };
+	Material instanceMaterial{ {1, 1, 1, 1}, {1, 1, 1, 1}, {1, 1, 1, 32}, {0, 0, 0, 0} };
 	bool useInstanceMaterial = false;
 	bool useNormalMap = false;
 	bool useSpecularMap = false;
@@ -385,27 +254,27 @@ struct CubeData {
 // TPS 카메라 헬퍼
 static float SignedYawXZ(XMVECTOR fromDirWS, XMVECTOR toDirWS)
 {
-    // Y 제거하고 XZ에서만 각도
-    XMVECTOR a = XMVectorSet(XMVectorGetX(fromDirWS), 0.0f, XMVectorGetZ(fromDirWS), 0.0f);
-    XMVECTOR b = XMVectorSet(XMVectorGetX(toDirWS),   0.0f, XMVectorGetZ(toDirWS),   0.0f);
+	// Y 제거하고 XZ에서만 각도
+	XMVECTOR a = XMVectorSet(XMVectorGetX(fromDirWS), 0.0f, XMVectorGetZ(fromDirWS), 0.0f);
+	XMVECTOR b = XMVectorSet(XMVectorGetX(toDirWS), 0.0f, XMVectorGetZ(toDirWS), 0.0f);
 
-    float la = XMVectorGetX(XMVector3Length(a));
-    float lb = XMVectorGetX(XMVector3Length(b));
-    if (la < 1e-6f || lb < 1e-6f) return 0.0f;
+	float la = XMVectorGetX(XMVector3Length(a));
+	float lb = XMVectorGetX(XMVector3Length(b));
+	if (la < 1e-6f || lb < 1e-6f) return 0.0f;
 
-    a = XMVector3Normalize(a);
-    b = XMVector3Normalize(b);
+	a = XMVector3Normalize(a);
+	b = XMVector3Normalize(b);
 
-    float dot = XMVectorGetX(XMVector3Dot(a, b));
-    dot = std::clamp(dot, -1.0f, 1.0f);
+	float dot = XMVectorGetX(XMVector3Dot(a, b));
+	dot = std::clamp(dot, -1.0f, 1.0f);
 
-    float ang = std::acos(dot);
+	float ang = std::acos(dot);
 
-    // 부호: cross.y
-    float cy = XMVectorGetY(XMVector3Cross(a, b));
-    float sign = (cy >= 0.0f) ? 1.0f : -1.0f;
+	// 부호: cross.y
+	float cy = XMVectorGetY(XMVector3Cross(a, b));
+	float sign = (cy >= 0.0f) ? 1.0f : -1.0f;
 
-    return ang * sign;
+	return ang * sign;
 }
 
 // 본 캐시/텍스트 일괄 구축 함수
@@ -462,24 +331,24 @@ static void BuildBoneCacheStructure(ModelEntry& entry, const char* filter) {
 	entry.boneDisplayText += std::to_string((unsigned)cache.size());
 	entry.boneDisplayText += "\n\n";
 
-	 std::vector<int8_t> memo(cache.size(), -1);
+	std::vector<int8_t> memo(cache.size(), -1);
 
-    auto subtreeContainsFilter = [&](auto&& self, int idx) -> bool {
-        if (!useFilter) return true;
-        if (idx < 0 || idx >= (int)cache.size()) return false;
+	auto subtreeContainsFilter = [&](auto&& self, int idx) -> bool {
+		if (!useFilter) return true;
+		if (idx < 0 || idx >= (int)cache.size()) return false;
 
-        int8_t& m = memo[(size_t)idx];
-        if (m != -1) return m != 0;
+		int8_t& m = memo[(size_t)idx];
+		if (m != -1) return m != 0;
 
-        bool ok = (cache[idx].nameU8.find(f) != std::string::npos);
-        if (!ok) {
-            for (int ch : cache[idx].children) {
-                if (self(self, ch)) { ok = true; break; }
-            }
-        }
-        m = ok ? 1 : 0;
-        return ok;
-    };
+		bool ok = (cache[idx].nameU8.find(f) != std::string::npos);
+		if (!ok) {
+			for (int ch : cache[idx].children) {
+				if (self(self, ch)) { ok = true; break; }
+			}
+		}
+		m = ok ? 1 : 0;
+		return ok;
+		};
 
 	/*std::function<bool(int)> subtreeContainsFilter = [&](int idx) -> bool {
 		if (!useFilter)
@@ -844,37 +713,37 @@ struct App::Impl {
 
 	// ===================== TPS Camera Follow =====================
 	bool  m_TpsCamAttached = false;     // V키 토글
-	float m_TpsYawRad   = 0.0f;
+	float m_TpsYawRad = 0.0f;
 	float m_TpsPitchRad = XMConvertToRadians(15.0f);
 
-	float m_TpsDist     = 220.0f;
-	float m_TpsDistMin  = 80.0f;
-	float m_TpsDistMax  = 450.0f;
+	float m_TpsDist = 220.0f;
+	float m_TpsDistMin = 80.0f;
+	float m_TpsDistMax = 450.0f;
 	float m_TpsZoomStep = 12.0f;        // 휠 1칸 당 거리 변화
 
 	float m_TpsRotSpeed = 0.004f;       // 마우스 회전 민감도
 	float m_TpsPitchMin = XMConvertToRadians(-35.0f);
 	float m_TpsPitchMax = XMConvertToRadians(60.0f);
 
-	float m_TpsTargetHeightStand  = 95.0f;
+	float m_TpsTargetHeightStand = 95.0f;
 	float m_TpsTargetHeightCrouch = 70.0f;
 
 	int   m_TpsLastWheel = 0;
 
 	// Aim
 	float m_AimYawSmoothed = 0.0f;
-	float m_AimSmoothing   = 18.0f;         // 클수록 빨리 따라감
-	float m_AimMaxYawDeg   = 70.0f;         // 좌우 제한
-	float m_AimFarDist     = 2000.0f;       // 조준점 생성용 거리
+	float m_AimSmoothing = 18.0f;         // 클수록 빨리 따라감
+	float m_AimMaxYawDeg = 70.0f;         // 좌우 제한
+	float m_AimFarDist = 2000.0f;       // 조준점 생성용 거리
 
 	// ===================== TPS Character Control =====================
 	float m_CharWalkSpeed = 180.0f;   // 걷기 속도 (units/sec) - UI에서 조절
-	float m_CharRunMul    = 1.7f;     // 달리기 배율 - UI에서 조절
+	float m_CharRunMul = 1.7f;     // 달리기 배율 - UI에서 조절
 	float m_CharTurnSpeed = 12.0f;    // 회전 따라가기(라디안/초) - UI에서 조절
 	bool  m_CharRotateToMove = true; // 이동 방향으로 몸통 회전
 
 	// ===================== Recoil(UI) : 앉은 상태 클릭 흔들림 줄이기 =====================
-	float m_RecoilKickUi  = 0.25f;    // 기본값을 낮춰서 "덜 흔들리게" (UI에서 조절)
+	float m_RecoilKickUi = 0.25f;    // 기본값을 낮춰서 "덜 흔들리게" (UI에서 조절)
 	float m_RecoilDecayUi = 12.0f;    // 감쇠 속도 (UI에서 조절)
 
 	// ===================== Sniper Charge Shot =====================
@@ -890,7 +759,7 @@ struct App::Impl {
 
 	// ===================== Movement SFX state =====================
 	bool m_LastMove = false;
-	bool m_LastRun  = false;
+	bool m_LastRun = false;
 
 	// HDR 관련 변수
 	// Quad를 그려야함
@@ -1059,6 +928,13 @@ bool App::OnInitialize() {
 
 	AssetManager::Create();
 
+	// ====================================== 씬 이미지 초기 로드  ====================================== 
+	// 만화 뷰어 초기화: 처음에는 AliceDagwa.png 표시
+	m_->m_MangaIndex = 0;
+	m_->m_CurrentSceneImagePath = L"..\\Resource\\Image\\AliceDagwa.png";
+	m_->m_OriginalSceneImagePath = m_->m_CurrentSceneImagePath;
+	LoadSceneImage(m_->m_CurrentSceneImagePath);
+
 	// 로비에서 나올 음성
 	Sound::Load(L"Waitforsecond3", L"..\\Resource\\Sound\\Dagwa.mp3", Sound::Type::SFX);
 	Sound::Load(L"Waitforsecond2", L"..\\Resource\\Sound\\Waitforsecond2.mp3", Sound::Type::SFX);
@@ -1067,9 +943,9 @@ bool App::OnInitialize() {
 
 	// 데이터 로딩은 별도 스레드에서 시작 
 	m_loaderThread = std::jthread([this](std::stop_token st)
-	{
-		LoadDataAsync(st);
-	});
+		{
+			LoadDataAsync(st);
+		});
 
 	return true;
 }
@@ -1100,29 +976,42 @@ void App::LoadDataAsync(std::stop_token stoken)
 		Sound::Load(L"RabbitHole", L"..\\Resource\\Sound\\RabbitHole.mp3", Sound::Type::BGM);
 		Sound::Load(L"Specialist", L"..\\Resource\\Sound\\Specialist.mp3", Sound::Type::BGM);
 
-		// SoundBox 예제 추가 (테스트용)
-		// SoundBox는 영역에 들어가면 자동으로 BGM이 재생되므로 초기 PlayBGM은 제거
-		Sound::SetBGMVolume(0.6f);
-		Sound::PlayBGM(L"LetItHappen");
-		
+		// ====================================== SoundBox 예제 추가 (테스트용) ======================================
+		// - 옛날에는 BGM을 전역으로 PlayBGM/StopBGM으로 제어했지만,
+		//   이제는 SoundBox마다 3D 인스턴스를 별도로 만들어서 onEnter/onExit에서
+		//   "들어갈 때 0초부터 재생, 나가면 완전히 정지" 하도록 한다.
+		//Sound::SetBGMVolume(0.6f);
+		//Sound::PlayBGM(L"LetItHappen");
+
 		// 예제 SoundBox 생성 (원점 주변 10x10x10 영역)
 		SoundBox box1;
 		box1.bgmKey = L"LetItHappen";
+		box1.instanceId = L"SB_Origin_LetItHappen"; // ✅ 이 박스만의 고유 인스턴스 ID
 		box1.position = { 0.0f, 50.0f, 0.0f };
 		box1.scale = { 10.0f, 10.0f, 10.0f };
 		box1.boundsMin = { -10.0f, -10.0f, -10.0f };
 		box1.boundsMax = { 10.0f, 10.0f, 10.0f };
+		// 중심에 가까울수록 커지게 기본 감쇄 설정
+		box1.edgeVolume = 0.0f;
+		box1.centerVolume = 1.0f;
+		box1.curve = 1.0f;
+		box1.minDist = 50.0f;
+
+		// 박스 진입 시: 항상 0초부터 재생되도록 Stop 후 Play
+		box1.onEnter = [id = box1.instanceId, key = box1.bgmKey]()
+		{
+			Sound::Stop3DInstance(id);
+			Sound::Play3DInstance(id, key, true);
+		};
+		// 박스 이탈 시: 정지(시간도 멈춤)
+		box1.onExit = [id = box1.instanceId]()
+		{
+			Sound::Stop3DInstance(id);
+		};
 		m_->m_SoundBoxSystem.AddBox(box1);
 
 	}
 	m_fLoadingProgress = 0.1f;
-
-	// ====================================== 씬 이미지 초기 로드  ====================================== 
-	// 만화 뷰어 초기화: 처음에는 AliceDagwa.png 표시
-	m_->m_MangaIndex = 0;
-	m_->m_CurrentSceneImagePath = L"..\\Resource\\Image\\AliceDagwa.png";
-	m_->m_OriginalSceneImagePath = m_->m_CurrentSceneImagePath;
-	LoadSceneImage(m_->m_CurrentSceneImagePath);
 
 	m_fLoadingProgress = 0.2f;
 	m_sLoadingStr = L"IBL을 초기화 합니다.";
@@ -1167,13 +1056,13 @@ void App::LoadDataAsync(std::stop_token stoken)
 		auto mo = std::make_unique<ModelObject>(m_->m_Models[mi]->modelName, mi);
 		m_->m_Objects.push_back(std::move(mo));
 	}
-	m_->m_Models[0]->boundsBoneIndex = 1;
-	m_->m_Models[5]->boundsBoneIndex = 1;
-	m_->m_Models[6]->boundsBoneIndex = 1;
-	m_->m_Models[7]->boundsBoneIndex = 1;
-	m_->m_Models[8]->boundsBoneIndex = 1;
-	m_->m_Models[9]->boundsBoneIndex = 1;
-	m_->m_Models[10]->boundsBoneIndex = 1;
+	m_->m_Models[0]->boundsBoneIndex = 2;
+	m_->m_Models[5]->boundsBoneIndex = 2;
+	m_->m_Models[6]->boundsBoneIndex = 2;
+	m_->m_Models[7]->boundsBoneIndex = 2;
+	m_->m_Models[8]->boundsBoneIndex = 2;
+	m_->m_Models[9]->boundsBoneIndex = 2;
+	m_->m_Models[10]->boundsBoneIndex = 2;
 
 	m_->m_Models[0]->modelShading = ShadingMode::PBR;
 	m_->m_Models[1]->modelShading = ShadingMode::PBR;
@@ -1182,6 +1071,9 @@ void App::LoadDataAsync(std::stop_token stoken)
 	m_->m_Models[5]->modelShading = ShadingMode::PBR;
 	m_->m_Models[6]->modelShading = ShadingMode::PBR;
 	m_->m_Models[7]->modelShading = ShadingMode::PBR;
+	m_->m_Models[8]->modelShading = ShadingMode::PBR;
+	m_->m_Models[9]->modelShading = ShadingMode::PBR;
+	m_->m_Models[10]->modelShading = ShadingMode::PBR;
 
 	m_->m_Models[0]->pos = XMFLOAT3(0, 0.0f, 0.0f);
 	m_->m_Models[1]->pos = XMFLOAT3(-26, 66.5f, -29.3f);
@@ -1209,6 +1101,12 @@ void App::LoadDataAsync(std::stop_token stoken)
 	m_->m_Models[2]->useInstancePbrMaterial = true;
 	m_->m_Models[3]->useInstancePbrMaterial = true;
 	m_->m_Models[4]->useInstancePbrMaterial = true;
+	m_->m_Models[5]->useInstancePbrMaterial = true;
+	m_->m_Models[6]->useInstancePbrMaterial = true;
+	m_->m_Models[7]->useInstancePbrMaterial = true;
+	m_->m_Models[8]->useInstancePbrMaterial = true;
+	m_->m_Models[9]->useInstancePbrMaterial = true;
+	m_->m_Models[10]->useInstancePbrMaterial = true;
 
 	m_->m_Models[2]->instancePbrMaterial.metalness = 1.0f;
 	m_->m_Models[2]->instancePbrMaterial.roughness = 0.01f;
@@ -1222,6 +1120,38 @@ void App::LoadDataAsync(std::stop_token stoken)
 	m_->m_Models[4]->instancePbrMaterial.metalness = 0.01f;
 	m_->m_Models[4]->instancePbrMaterial.roughness = 1.0f;
 	m_->m_Models[4]->instancePbrMaterial.ambientOcclusion = 1.0f;
+
+
+
+	m_->m_Models[5]->instancePbrMaterial.baseColor = XMFLOAT4(0.96f, 0.96f, 0.96f, 1.0f);
+	m_->m_Models[5]->instancePbrMaterial.metalness = 0.1f;
+	m_->m_Models[5]->instancePbrMaterial.roughness = 0.43f;
+	m_->m_Models[5]->instancePbrMaterial.ambientOcclusion = 1.0f;
+
+	m_->m_Models[6]->instancePbrMaterial.baseColor = XMFLOAT4(0.96f, 0.96f, 0.96f, 1.0f);
+	m_->m_Models[6]->instancePbrMaterial.metalness = 0.1f;
+	m_->m_Models[6]->instancePbrMaterial.roughness = 0.43f;
+	m_->m_Models[6]->instancePbrMaterial.ambientOcclusion = 1.0f;
+
+	m_->m_Models[7]->instancePbrMaterial.baseColor = XMFLOAT4(0.96f, 0.96f, 0.96f, 1.0f);
+	m_->m_Models[7]->instancePbrMaterial.metalness = 0.1f;
+	m_->m_Models[7]->instancePbrMaterial.roughness = 0.43f;
+	m_->m_Models[7]->instancePbrMaterial.ambientOcclusion = 1.0f;
+
+	m_->m_Models[8]->instancePbrMaterial.baseColor = XMFLOAT4(0.96f, 0.96f, 0.96f, 1.0f);
+	m_->m_Models[8]->instancePbrMaterial.metalness = 0.1f;
+	m_->m_Models[8]->instancePbrMaterial.roughness = 0.43f;
+	m_->m_Models[8]->instancePbrMaterial.ambientOcclusion = 1.0f;
+
+	m_->m_Models[9]->instancePbrMaterial.baseColor = XMFLOAT4(0.96f, 0.96f, 0.96f, 1.0f);
+	m_->m_Models[9]->instancePbrMaterial.metalness = 0.1f;
+	m_->m_Models[9]->instancePbrMaterial.roughness = 0.43f;
+	m_->m_Models[9]->instancePbrMaterial.ambientOcclusion = 1.0f;
+
+	m_->m_Models[10]->instancePbrMaterial.baseColor = XMFLOAT4(0.96f, 0.96f, 0.96f, 1.0f);
+	m_->m_Models[10]->instancePbrMaterial.metalness = 0.1f;
+	m_->m_Models[10]->instancePbrMaterial.roughness = 0.43f;
+	m_->m_Models[10]->instancePbrMaterial.ambientOcclusion = 1.0f;
 
 	m_->m_Models[5]->uiAnimPlaying = false;
 	m_->m_Models[6]->uiAnimPlaying = false;
@@ -1239,73 +1169,113 @@ void App::LoadDataAsync(std::stop_token stoken)
 	// ====================================== SoundBox 생성 및 애니메이션 바인딩 ======================================
 	// 각 SoundBox에 해당하는 모델의 애니메이션을 설정하는 콜백 함수를 바인딩합니다.
 	// 박스에 들어가면 BGM 재생 + 해당 모델의 애니메이션이 자동으로 실행됩니다.
-	
+
 	// Model 5: CaramellDansen
 	SoundBox boxCaramellDansen;
 	boxCaramellDansen.bgmKey = L"CaramellDansen";
+	boxCaramellDansen.instanceId = L"SB_Caramell"; // ✅ 박스별 고유 인스턴스 ID
 	boxCaramellDansen.position = m_->m_Models[5]->pos;
+	boxCaramellDansen.minDist = 50.0f;
 	boxCaramellDansen.scale = { 15.0f, 15.0f, 15.0f };
 	boxCaramellDansen.boundsMin = { -10.0f, -10.0f, -10.0f };
 	boxCaramellDansen.boundsMax = { 10.0f, 10.0f, 10.0f };
-	boxCaramellDansen.onEnter = [this]() {
-		if (m_->m_Models.size() > 5) {
-			m_->m_Models[5]->uiAnimPlaying = true;
-			m_->m_Models[5]->fbxBaseAnimator.SetCurrentIndex(1);  // CaramellaDansen
-		}
+	boxCaramellDansen.onEnter = [this,
+		id = boxCaramellDansen.instanceId,
+		key = boxCaramellDansen.bgmKey]()
+	{
+		// ✅ 항상 0초부터 재생되도록, 들어올 때마다 Stop → Play 순서로 호출
+		Sound::Stop3DInstance(id);
+		Sound::Play3DInstance(id, key, true);
+
+		m_->m_Models[5]->uiAnimPlaying = true;
+		m_->m_Models[5]->fbxBaseAnimator.SetCurrentIndex(1);  // CaramellaDansen
 	};
-	boxCaramellDansen.onExit = [this]() {
-		if (m_->m_Models.size() > 5) {
-			m_->m_Models[5]->uiAnimPlaying = false;
-		}
+	boxCaramellDansen.onExit = [this, id = boxCaramellDansen.instanceId]()
+	{
+		// ✅ 박스에서 나가면 정지해서 시간이 더 이상 흐르지 않게 한다.
+		Sound::Stop3DInstance(id);
+
+		m_->m_Models[5]->uiAnimPlaying = false;
 	};
 	m_->m_SoundBoxSystem.AddBox(boxCaramellDansen);
 
 	// Model 6: menisyukiLeft
 	SoundBox boxMenisyukiLeft;
 	boxMenisyukiLeft.bgmKey = L"menisyuki";
+	boxMenisyukiLeft.instanceId = L"SB_Menisyuki_Left";
 	boxMenisyukiLeft.position = m_->m_Models[6]->pos;
+	boxMenisyukiLeft.minDist = 50.0f;
 	boxMenisyukiLeft.scale = { 15.0f, 15.0f, 15.0f };
 	boxMenisyukiLeft.boundsMin = { -10.0f, -10.0f, -10.0f };
 	boxMenisyukiLeft.boundsMax = { 10.0f, 10.0f, 10.0f };
-	boxMenisyukiLeft.onEnter = [this]() {
+	boxMenisyukiLeft.onEnter = [this,
+		id = boxMenisyukiLeft.instanceId,
+		key = boxMenisyukiLeft.bgmKey]()
+	{
+		Sound::Stop3DInstance(id);
+		Sound::Play3DInstance(id, key, true);
+
 		m_->m_Models[6]->uiAnimPlaying = true;
 		m_->m_Models[6]->fbxBaseAnimator.SetCurrentIndex(3);  // menisyuikiLeft
 	};
-	boxMenisyukiLeft.onExit = [this]() {
+	boxMenisyukiLeft.onExit = [this, id = boxMenisyukiLeft.instanceId]()
+	{
+		Sound::Stop3DInstance(id);
+
 		m_->m_Models[6]->uiAnimPlaying = false;
-		Sound::StopBGM();
 	};
 	m_->m_SoundBoxSystem.AddBox(boxMenisyukiLeft);
 
 	// Model 7: menisyukiRight
 	SoundBox boxMenisyukiRight;
 	boxMenisyukiRight.bgmKey = L"menisyuki";
+	boxMenisyukiRight.instanceId = L"SB_Menisyuki_Right";
 	boxMenisyukiRight.position = m_->m_Models[7]->pos;
+	boxMenisyukiRight.minDist = 50.0f;
 	boxMenisyukiRight.scale = { 15.0f, 15.0f, 15.0f };
 	boxMenisyukiRight.boundsMin = { -10.0f, -10.0f, -10.0f };
 	boxMenisyukiRight.boundsMax = { 10.0f, 10.0f, 10.0f };
-	boxMenisyukiRight.onEnter = [this]() {
+	boxMenisyukiRight.onEnter = [this,
+		id = boxMenisyukiRight.instanceId,
+		key = boxMenisyukiRight.bgmKey]()
+	{
+		Sound::Stop3DInstance(id);
+		Sound::Play3DInstance(id, key, true);
+
 		m_->m_Models[7]->uiAnimPlaying = true;
 		m_->m_Models[7]->fbxBaseAnimator.SetCurrentIndex(4);  // menisyukiRight
 	};
-	boxMenisyukiRight.onExit = [this]() {
+	boxMenisyukiRight.onExit = [this, id = boxMenisyukiRight.instanceId]()
+	{
+		Sound::Stop3DInstance(id);
+
 		m_->m_Models[7]->uiAnimPlaying = false;
-		Sound::StopBGM();
 	};
 	m_->m_SoundBoxSystem.AddBox(boxMenisyukiRight);
 
 	// Model 8: RabbitHole
 	SoundBox boxRabbitHole;
 	boxRabbitHole.bgmKey = L"RabbitHole";
+	boxRabbitHole.instanceId = L"SB_RabbitHole";
 	boxRabbitHole.position = m_->m_Models[8]->pos;
+	boxRabbitHole.minDist = 50.0f;
 	boxRabbitHole.scale = { 15.0f, 15.0f, 15.0f };
 	boxRabbitHole.boundsMin = { -10.0f, -10.0f, -10.0f };
 	boxRabbitHole.boundsMax = { 10.0f, 10.0f, 10.0f };
-	boxRabbitHole.onEnter = [this]() {
+	boxRabbitHole.onEnter = [this,
+		id = boxRabbitHole.instanceId,
+		key = boxRabbitHole.bgmKey]()
+	{
+		Sound::Stop3DInstance(id);
+		Sound::Play3DInstance(id, key, true);
+
 		m_->m_Models[8]->uiAnimPlaying = true;
 		m_->m_Models[8]->fbxBaseAnimator.SetCurrentIndex(5);  // RabbitHole
 	};
-	boxRabbitHole.onExit = [this]() {
+	boxRabbitHole.onExit = [this, id = boxRabbitHole.instanceId]()
+	{
+		Sound::Stop3DInstance(id);
+
 		m_->m_Models[8]->uiAnimPlaying = false;
 	};
 	m_->m_SoundBoxSystem.AddBox(boxRabbitHole);
@@ -1313,15 +1283,26 @@ void App::LoadDataAsync(std::stop_token stoken)
 	// Model 9: Specialist
 	SoundBox boxSpecialist;
 	boxSpecialist.bgmKey = L"Specialist";
+	boxSpecialist.instanceId = L"SB_Specialist";
 	boxSpecialist.position = m_->m_Models[9]->pos;
+	boxSpecialist.minDist = 50.0f;
 	boxSpecialist.scale = { 15.0f, 15.0f, 15.0f };
 	boxSpecialist.boundsMin = { -10.0f, -10.0f, -10.0f };
 	boxSpecialist.boundsMax = { 10.0f, 10.0f, 10.0f };
-	boxSpecialist.onEnter = [this]() {
+	boxSpecialist.onEnter = [this,
+		id = boxSpecialist.instanceId,
+		key = boxSpecialist.bgmKey]()
+	{
+		Sound::Stop3DInstance(id);
+		Sound::Play3DInstance(id, key, true);
+
 		m_->m_Models[9]->uiAnimPlaying = true;
 		m_->m_Models[9]->fbxBaseAnimator.SetCurrentIndex(10);  // Specialist
 	};
-	boxSpecialist.onExit = [this]() {
+	boxSpecialist.onExit = [this, id = boxSpecialist.instanceId]()
+	{
+		Sound::Stop3DInstance(id);
+
 		m_->m_Models[9]->uiAnimPlaying = false;
 	};
 	m_->m_SoundBoxSystem.AddBox(boxSpecialist);
@@ -1329,15 +1310,26 @@ void App::LoadDataAsync(std::stop_token stoken)
 	// Model 10: CaliforniaGirls
 	SoundBox boxCaliforniaGirls;
 	boxCaliforniaGirls.bgmKey = L"CaliforniaGirls";
+	boxCaliforniaGirls.instanceId = L"SB_CaliforniaGirls";
 	boxCaliforniaGirls.position = m_->m_Models[10]->pos;
+	boxCaliforniaGirls.minDist = 50.0f;
 	boxCaliforniaGirls.scale = { 15.0f, 15.0f, 15.0f };
 	boxCaliforniaGirls.boundsMin = { -10.0f, -10.0f, -10.0f };
 	boxCaliforniaGirls.boundsMax = { 10.0f, 10.0f, 10.0f };
-	boxCaliforniaGirls.onEnter = [this]() {
+	boxCaliforniaGirls.onEnter = [this,
+		id = boxCaliforniaGirls.instanceId,
+		key = boxCaliforniaGirls.bgmKey]()
+	{
+		Sound::Stop3DInstance(id);
+		Sound::Play3DInstance(id, key, true);
+
 		m_->m_Models[10]->uiAnimPlaying = true;
 		m_->m_Models[10]->fbxBaseAnimator.SetCurrentIndex(0);  // CaliforniaGirls
 	};
-	boxCaliforniaGirls.onExit = [this]() {
+	boxCaliforniaGirls.onExit = [this, id = boxCaliforniaGirls.instanceId]()
+	{
+		Sound::Stop3DInstance(id);
+
 		m_->m_Models[10]->uiAnimPlaying = false;
 	};
 	m_->m_SoundBoxSystem.AddBox(boxCaliforniaGirls);
@@ -1503,65 +1495,65 @@ void App::OnUninitialize() {
 }
 
 void App::OnInputProcess(const Keyboard::State& KeyState,
-                         const Keyboard::KeyboardStateTracker& KeyTracker,
-                         const Mouse::State& MouseState,
-                         const Mouse::ButtonStateTracker& MouseTracker)
+	const Keyboard::KeyboardStateTracker& KeyTracker,
+	const Mouse::State& MouseState,
+	const Mouse::ButtonStateTracker& MouseTracker)
 {
-    // 1) V키 토글 (ImGui가 키보드 잡고 있으면 무시)
-    if (!ImGui::GetIO().WantCaptureKeyboard && KeyTracker.IsKeyPressed(Keyboard::V))
-    {
-        m_->m_TpsCamAttached = !m_->m_TpsCamAttached;
+	// 1) V키 토글 (ImGui가 키보드 잡고 있으면 무시)
+	if (!ImGui::GetIO().WantCaptureKeyboard && KeyTracker.IsKeyPressed(Keyboard::V))
+	{
+		m_->m_TpsCamAttached = !m_->m_TpsCamAttached;
 
-        // 켤 때 현재 카메라 각도에서 이어서 시작
-        if (m_->m_TpsCamAttached)
-        {
-            XMFLOAT3 rotDeg = m_Camera.GetRotation();
-            m_->m_TpsYawRad   = XMConvertToRadians(rotDeg.y);
-            m_->m_TpsPitchRad = XMConvertToRadians(rotDeg.x);
-            m_->m_TpsLastWheel = MouseState.scrollWheelValue;
-        }
-    }
+		// 켤 때 현재 카메라 각도에서 이어서 시작
+		if (m_->m_TpsCamAttached)
+		{
+			XMFLOAT3 rotDeg = m_Camera.GetRotation();
+			m_->m_TpsYawRad = XMConvertToRadians(rotDeg.y);
+			m_->m_TpsPitchRad = XMConvertToRadians(rotDeg.x);
+			m_->m_TpsLastWheel = MouseState.scrollWheelValue;
+		}
+	}
 
-    // 2) TPS 부착 모드면: 자유카메라 입력은 막고, TPS 입력만 처리
-    if (m_->m_TpsCamAttached)
-    {
-        // RMB 누르면 relative
-        if (InputSystem::Instance && InputSystem::Instance->m_Mouse)
-        {
-            InputSystem::Instance->m_Mouse->SetMode(MouseState.rightButton ? Mouse::MODE_RELATIVE : Mouse::MODE_ABSOLUTE);
-        }
+	// 2) TPS 부착 모드면: 자유카메라 입력은 막고, TPS 입력만 처리
+	if (m_->m_TpsCamAttached)
+	{
+		// RMB 누르면 relative
+		if (InputSystem::Instance && InputSystem::Instance->m_Mouse)
+		{
+			InputSystem::Instance->m_Mouse->SetMode(MouseState.rightButton ? Mouse::MODE_RELATIVE : Mouse::MODE_ABSOLUTE);
+		}
 
-        // RMB 드래그로 yaw/pitch
-        if (!ImGui::GetIO().WantCaptureMouse && MouseState.positionMode == Mouse::MODE_RELATIVE)
-        {
-            m_->m_TpsYawRad   += float(MouseState.x) * m_->m_TpsRotSpeed;
-            m_->m_TpsPitchRad += float(MouseState.y) * m_->m_TpsRotSpeed;
-            m_->m_TpsPitchRad = std::clamp(m_->m_TpsPitchRad, m_->m_TpsPitchMin, m_->m_TpsPitchMax);
-        }
+		// RMB 드래그로 yaw/pitch
+		if (!ImGui::GetIO().WantCaptureMouse && MouseState.positionMode == Mouse::MODE_RELATIVE)
+		{
+			m_->m_TpsYawRad += float(MouseState.x) * m_->m_TpsRotSpeed;
+			m_->m_TpsPitchRad += float(MouseState.y) * m_->m_TpsRotSpeed;
+			m_->m_TpsPitchRad = std::clamp(m_->m_TpsPitchRad, m_->m_TpsPitchMin, m_->m_TpsPitchMax);
+		}
 
-        // 휠 줌
-        if (!ImGui::GetIO().WantCaptureMouse)
-        {
-            int wheel = MouseState.scrollWheelValue;
-            int delta = wheel - m_->m_TpsLastWheel;
-            m_->m_TpsLastWheel = wheel;
+		// 휠 줌
+		if (!ImGui::GetIO().WantCaptureMouse)
+		{
+			int wheel = MouseState.scrollWheelValue;
+			int delta = wheel - m_->m_TpsLastWheel;
+			m_->m_TpsLastWheel = wheel;
 
-            if (delta != 0)
-            {
-                // DirectXTK wheel: 보통 120 단위
-                float notches = float(delta) / 120.0f;
-                m_->m_TpsDist -= notches * m_->m_TpsZoomStep;
-                m_->m_TpsDist = std::clamp(m_->m_TpsDist, m_->m_TpsDistMin, m_->m_TpsDistMax);
-            }
-        }
+			if (delta != 0)
+			{
+				// DirectXTK wheel: 보통 120 단위
+				float notches = float(delta) / 120.0f;
+				m_->m_TpsDist -= notches * m_->m_TpsZoomStep;
+				m_->m_TpsDist = std::clamp(m_->m_TpsDist, m_->m_TpsDistMin, m_->m_TpsDistMax);
+			}
+		}
 
-        // TPS 모드에서는 기본 카메라 입력 처리 X
-        (void)KeyState; (void)MouseTracker;
-        return;
-    }
+		// TPS 모드에서는 기본 카메라 입력 처리 X
+		(void)KeyState; (void)MouseTracker;
+		return;
+	}
 
-    // 3) TPS 꺼져 있으면 원래대로(자유 카메라)
-    GameApp::OnInputProcess(KeyState, KeyTracker, MouseState, MouseTracker);
+	// 3) TPS 꺼져 있으면 원래대로(자유 카메라)
+	GameApp::OnInputProcess(KeyState, KeyTracker, MouseState, MouseTracker);
 }
 
 void App::OnUpdate(const float& dt) {
@@ -1616,8 +1608,99 @@ void App::OnUpdate(const float& dt) {
 		{
 			auto& alice = *m_->m_Models[(size_t)ci];
 			XMFLOAT3 playerPos = alice.pos;
+
+			// ===== 3D 사운드 리스너 업데이트 =====
+			//   - (playerPos - prevPos) / dt 를 그대로 사용할때 dt가 매우 작거나 튀면
+			//     속도가 폭주하여 도플러 계산 시 피치가 '찌직'거리며 심하게 변조됨
+			//   - 그래서 다음처럼 함. safeDt + 속도 클램프를 넣고, forward/up 벡터는 정규화해서 사용
+			static XMFLOAT3 prevPos = { 0, 0, 0 };
+
+			// dt가 0 또는 너무 작은 경우를 방지 (도플러/속도 폭주 방지)
+			const float safeDt = (dt > 1.0e-4f) ? dt : 1.0e-4f;
+
+			XMFLOAT3 rawVel = {
+				(playerPos.x - prevPos.x) / safeDt,
+				(playerPos.y - prevPos.y) / safeDt,
+				(playerPos.z - prevPos.z) / safeDt
+			};
+			prevPos = playerPos;
+
+			// 속도 벡터의 크기를 일정 값으로 클램프해서 이상치(스파이크) 제거
+			auto ClampVel = [](XMFLOAT3 v, float maxSpeed)
+			{
+				const float s2 = v.x * v.x + v.y * v.y + v.z * v.z;
+				const float maxS2 = maxSpeed * maxSpeed;
+				if (s2 > maxS2)
+				{
+					const float inv = maxSpeed / std::sqrt(s2);
+					v.x *= inv;
+					v.y *= inv;
+					v.z *= inv;
+				}
+				return v;
+			};
+			XMFLOAT3 vel = ClampVel(rawVel, 50.0f); // 필요시 50.0f 값을 튜닝
+
+			// 카메라 방향 사용 (FMOD에 넣기 전에 정규화해서 전달)
+			auto Normalize3 = [](XMFLOAT3 v)
+			{
+				XMVECTOR x = XMLoadFloat3(&v);
+				x = XMVector3Normalize(x);
+				XMStoreFloat3(&v, x);
+				return v;
+			};
+
+			XMFLOAT3 forward = Normalize3(m_Camera.GetForward());
+			XMFLOAT3 up = Normalize3(m_Camera.GetUp());
+
+			Sound::SetListener(playerPos, vel, forward, up);
+
+			// SoundBox 업데이트(3D 소스/볼륨 갱신)
 			m_->m_SoundBoxSystem.Update(playerPos);
 		}
+	}
+	else
+	{
+		// 모델이 없을 때는 카메라를 리스너로 사용
+		XMFLOAT3 camPos = m_Camera.GetPosition();
+		static XMFLOAT3 prevCamPos = { 0, 0, 0 };
+
+		// 위와 동일하게 safeDt/클램프 적용
+		const float safeDt = (dt > 1.0e-4f) ? dt : 1.0e-4f;
+		XMFLOAT3 rawVel = {
+			(camPos.x - prevCamPos.x) / safeDt,
+			(camPos.y - prevCamPos.y) / safeDt,
+			(camPos.z - prevCamPos.z) / safeDt
+		};
+		prevCamPos = camPos;
+
+		auto ClampVel = [](XMFLOAT3 v, float maxSpeed)
+		{
+			const float s2 = v.x * v.x + v.y * v.y + v.z * v.z;
+			const float maxS2 = maxSpeed * maxSpeed;
+			if (s2 > maxS2)
+			{
+				const float inv = maxSpeed / std::sqrt(s2);
+				v.x *= inv;
+				v.y *= inv;
+				v.z *= inv;
+			}
+			return v;
+		};
+		XMFLOAT3 vel = ClampVel(rawVel, 50.0f);
+
+		auto Normalize3 = [](XMFLOAT3 v)
+		{
+			XMVECTOR x = XMLoadFloat3(&v);
+			x = XMVector3Normalize(x);
+			XMStoreFloat3(&v, x);
+			return v;
+		};
+
+		XMFLOAT3 forward = Normalize3(m_Camera.GetForward());
+		XMFLOAT3 up = Normalize3(m_Camera.GetUp());
+
+		Sound::SetListener(camPos, vel, forward, up);
 	}
 
 	// Shadow light view-projection (directional, orthographic, scene-anchored
@@ -1720,261 +1803,261 @@ void App::OnUpdate(const float& dt) {
 				auto& alice = *m_->m_Models[(size_t)ci];
 				auto& rifle = *m_->m_Models[(size_t)wi];
 
-			// 입력 수집
-			CharacterInputState input{};
+				// 입력 수집
+				CharacterInputState input{};
 
-			XMVECTOR moveDirWS = XMVectorZero();
-			bool wantMove = false;
-			bool wantRun  = false;
+				XMVECTOR moveDirWS = XMVectorZero();
+				bool wantMove = false;
+				bool wantRun = false;
 
-			if (InputSystem::Instance)
-			{
-				const auto& ks = InputSystem::Instance->m_KeyboardState;
-				const auto& kt = InputSystem::Instance->m_KeyboardStateTracker;
-				const auto& ms = InputSystem::Instance->m_MouseState;
-				const auto& mt = InputSystem::Instance->m_MouseStateTracker;
-
-				const bool lockMove = m_->m_CharCtrl.IsMovementLocked();
-				const bool inStance = m_->m_CharCtrl.IsInShootStance();
-
-				if (!ImGui::GetIO().WantCaptureKeyboard)
+				if (InputSystem::Instance)
 				{
-					input.crouchTogglePressed = kt.IsKeyPressed(Keyboard::LeftControl) || kt.IsKeyPressed(Keyboard::RightControl);
+					const auto& ks = InputSystem::Instance->m_KeyboardState;
+					const auto& kt = InputSystem::Instance->m_KeyboardStateTracker;
+					const auto& ms = InputSystem::Instance->m_MouseState;
+					const auto& mt = InputSystem::Instance->m_MouseStateTracker;
 
-					// TPS 카메라가 붙어 있을 때만 WASD로 캐릭터를 조작 (자유카메라와 충돌 방지)
-					if (m_->m_TpsCamAttached && !lockMove)
+					const bool lockMove = m_->m_CharCtrl.IsMovementLocked();
+					const bool inStance = m_->m_CharCtrl.IsInShootStance();
+
+					if (!ImGui::GetIO().WantCaptureKeyboard)
 					{
-						// 카메라 yaw 기준 이동(전형적인 TPS)
-						const float yaw = m_->m_TpsYawRad;
-						XMVECTOR fwd = XMVectorSet(std::sinf(yaw), 0.0f, std::cosf(yaw), 0.0f);
-						fwd = XMVector3Normalize(fwd);
-						XMVECTOR right = XMVector3Normalize(XMVector3Cross(XMVectorSet(0,1,0,0), fwd));
+						input.crouchTogglePressed = kt.IsKeyPressed(Keyboard::LeftControl) || kt.IsKeyPressed(Keyboard::RightControl);
 
-						if (ks.IsKeyDown(Keyboard::W)) moveDirWS = XMVectorAdd(moveDirWS, fwd);
-						if (ks.IsKeyDown(Keyboard::S)) moveDirWS = XMVectorSubtract(moveDirWS, fwd);
-						if (ks.IsKeyDown(Keyboard::D)) moveDirWS = XMVectorAdd(moveDirWS, right);
-						if (ks.IsKeyDown(Keyboard::A)) moveDirWS = XMVectorSubtract(moveDirWS, right);
-
-						const float lenSq = XMVectorGetX(XMVector3LengthSq(moveDirWS));
-						wantMove = (lenSq > 1.0e-6f);
-						if (wantMove) moveDirWS = XMVector3Normalize(moveDirWS);
-
-						const bool shift = ks.IsKeyDown(Keyboard::LeftShift) || ks.IsKeyDown(Keyboard::RightShift);
-						wantRun = wantMove && shift;
-
-						input.move = wantMove;
-						input.run  = wantRun;
-
-						// ===== 실제 캐릭터 이동 적용 =====
-						float speed = m_->m_CharWalkSpeed * (wantRun ? m_->m_CharRunMul : 1.0f);
-
-						XMVECTOR delta = XMVectorScale(moveDirWS, speed * dt);
-						XMFLOAT3 d{}; XMStoreFloat3(&d, delta);
-
-						alice.pos.x += d.x;
-						alice.pos.z += d.z;
-
-						// ===== 이동 방향으로 캐릭터 회전(선택) =====
-						if (m_->m_CharRotateToMove)
+						// TPS 카메라가 붙어 있을 때만 WASD로 캐릭터를 조작 (자유카메라와 충돌 방지)
+						if (m_->m_TpsCamAttached && !lockMove)
 						{
-							auto WrapPi = [](float a)
+							// 카메라 yaw 기준 이동(전형적인 TPS)
+							const float yaw = m_->m_TpsYawRad;
+							XMVECTOR fwd = XMVectorSet(std::sinf(yaw), 0.0f, std::cosf(yaw), 0.0f);
+							fwd = XMVector3Normalize(fwd);
+							XMVECTOR right = XMVector3Normalize(XMVector3Cross(XMVectorSet(0, 1, 0, 0), fwd));
+
+							if (ks.IsKeyDown(Keyboard::W)) moveDirWS = XMVectorAdd(moveDirWS, fwd);
+							if (ks.IsKeyDown(Keyboard::S)) moveDirWS = XMVectorSubtract(moveDirWS, fwd);
+							if (ks.IsKeyDown(Keyboard::D)) moveDirWS = XMVectorAdd(moveDirWS, right);
+							if (ks.IsKeyDown(Keyboard::A)) moveDirWS = XMVectorSubtract(moveDirWS, right);
+
+							const float lenSq = XMVectorGetX(XMVector3LengthSq(moveDirWS));
+							wantMove = (lenSq > 1.0e-6f);
+							if (wantMove) moveDirWS = XMVector3Normalize(moveDirWS);
+
+							const bool shift = ks.IsKeyDown(Keyboard::LeftShift) || ks.IsKeyDown(Keyboard::RightShift);
+							wantRun = wantMove && shift;
+
+							input.move = wantMove;
+							input.run = wantRun;
+
+							// ===== 실제 캐릭터 이동 적용 =====
+							float speed = m_->m_CharWalkSpeed * (wantRun ? m_->m_CharRunMul : 1.0f);
+
+							XMVECTOR delta = XMVectorScale(moveDirWS, speed * dt);
+							XMFLOAT3 d{}; XMStoreFloat3(&d, delta);
+
+							alice.pos.x += d.x;
+							alice.pos.z += d.z;
+
+							// ===== 이동 방향으로 캐릭터 회전(선택) =====
+							if (m_->m_CharRotateToMove)
 							{
-								while (a > XM_PI)  a -= XM_2PI;
-								while (a < -XM_PI) a += XM_2PI;
-								return a;
-							};
+								auto WrapPi = [](float a)
+									{
+										while (a > XM_PI)  a -= XM_2PI;
+										while (a < -XM_PI) a += XM_2PI;
+										return a;
+									};
 
-							const float targetYaw = std::atan2(
-								XMVectorGetX(moveDirWS),
-								XMVectorGetZ(moveDirWS)) + XM_PI;
+								const float targetYaw = std::atan2(
+									XMVectorGetX(moveDirWS),
+									XMVectorGetZ(moveDirWS)) + XM_PI;
 
-							float curYaw = XMConvertToRadians(alice.rotDeg.y);
-							float diff = WrapPi(targetYaw - curYaw);
+								float curYaw = XMConvertToRadians(alice.rotDeg.y);
+								float diff = WrapPi(targetYaw - curYaw);
 
-							float k = 1.0f - std::exp(-m_->m_CharTurnSpeed * dt);
-							curYaw = curYaw + diff * k;
+								float k = 1.0f - std::exp(-m_->m_CharTurnSpeed * dt);
+								curYaw = curYaw + diff * k;
 
-							alice.rotDeg.y = XMConvertToDegrees(curYaw);
+								alice.rotDeg.y = XMConvertToDegrees(curYaw);
+							}
+						}
+						else
+						{
+							// TPS OFF 또는 lockMove면 캐릭터 locomotion 입력을 꺼서 "카메라 WASD"와 충돌 방지
+							input.move = false;
+							input.run = false;
+						}
+
+						// R은 Shoot_Stance에서만 의미
+						input.reloadPressed = inStance && kt.IsKeyPressed(Keyboard::R);
+					}
+
+					if (!ImGui::GetIO().WantCaptureMouse)
+					{
+						// 예전거 라이플 one-shot fire (keep commented)
+						// input.firePressed = inStance &&
+						//     (mt.leftButton == Mouse::ButtonStateTracker::PRESSED);
+
+						// 스나이퍼 모드: 눌러서 차지, 떼면 발사
+						if (m_->m_SniperEnabled && inStance)
+						{
+							// 마우스 위치(absolute면 마우스 위치, relative면 화면 중앙)
+							ImVec2 curPos;
+							if (ms.positionMode == Mouse::MODE_RELATIVE)
+								curPos = ImVec2(m_ClientWidth * 0.5f, m_ClientHeight * 0.5f);
+							else
+								curPos = ImVec2((float)ms.x, (float)ms.y);
+
+							if (mt.leftButton == Mouse::ButtonStateTracker::PRESSED)
+							{
+								m_->m_SniperCharging = true;
+								m_->m_SniperCharge01 = 0.0f;
+								m_->m_SniperAimPos = curPos;
+
+								// 마우스를 누르기 시작하는 순간: ShootCharged 루프 시작
+								if (!Sound::IsSfxPlaying(L"ShootCharged"))
+									Sound::PlaySFX(L"ShootCharged", 1.0f, 0.85f, true);
+							}
+
+							if (m_->m_SniperCharging)
+							{
+								// 조준점은 현재 마우스 위치를 따라가게(원하면 press 순간 고정도 가능)
+								m_->m_SniperAimPos = curPos;
+
+								if (mt.leftButton == Mouse::ButtonStateTracker::HELD)
+								{
+									float t = (m_->m_SniperChargeTimeSec > 0.001f) ? (dt / m_->m_SniperChargeTimeSec) : 1.0f;
+									m_->m_SniperCharge01 = std::clamp(m_->m_SniperCharge01 + t, 0.0f, 1.0f);
+								}
+
+								if (mt.leftButton == Mouse::ButtonStateTracker::RELEASED)
+								{
+									m_->m_SniperLastShotCharged = (m_->m_SniperCharge01 >= 1.0f - 1e-4f);
+
+									// 떼는 순간: ShootCharged 정지하고 Shoot 재생
+									Sound::StopSfx(L"ShootCharged");
+									Sound::PlaySFX(L"Shoot", 1.0f, 1.0f, false);
+
+									// 떼는 순간 "발사 트리거"
+									input.firePressed = true;
+
+									// 차지 종료
+									m_->m_SniperCharging = false;
+									m_->m_SniperCharge01 = 0.0f;
+								}
+							}
+						}
+					}
+				}
+
+				// ===== 이동 SFX =====
+				if (m_->m_TpsCamAttached) // TPS 조작 중일 때만
+				{
+					if (input.move)
+					{
+						// 발자국 루프 재생(이미 재생 중이면 유지)
+						float pitch = input.run ? m_->m_CharRunMul : 1.0f;
+						// loop=true: 이미 재생 중이면 재시작하지 않음 루프는 유지함
+						Sound::PlaySFX(L"Walk", 0.9f, pitch, true);
+
+						// 달리기 시작 순간 목소리 1회
+						if (input.run && !m_->m_LastRun)
+						{
+							Sound::PlaySFX(L"RunVoice", 1.0f, 1.0f, false);
 						}
 					}
 					else
 					{
-						// TPS OFF 또는 lockMove면 캐릭터 locomotion 입력을 꺼서 "카메라 WASD"와 충돌 방지
-						input.move = false;
-						input.run  = false;
+						// 멈추면 발자국 정지
+						Sound::StopSfx(L"Walk");
 					}
 
-					// R은 Shoot_Stance에서만 의미
-					input.reloadPressed = inStance && kt.IsKeyPressed(Keyboard::R);
+					m_->m_LastMove = input.move;
+					m_->m_LastRun = input.run;
 				}
 
-				if (!ImGui::GetIO().WantCaptureMouse)
+				// ===== 리로드/사격 SFX =====
+				if (input.reloadPressed)
 				{
-					// 예전거 라이플 one-shot fire (keep commented)
-					// input.firePressed = inStance &&
-					//     (mt.leftButton == Mouse::ButtonStateTracker::PRESSED);
-
-					// 스나이퍼 모드: 눌러서 차지, 떼면 발사
-					if (m_->m_SniperEnabled && inStance)
-					{
-						// 마우스 위치(absolute면 마우스 위치, relative면 화면 중앙)
-						ImVec2 curPos;
-						if (ms.positionMode == Mouse::MODE_RELATIVE)
-							curPos = ImVec2(m_ClientWidth * 0.5f, m_ClientHeight * 0.5f);
-						else
-							curPos = ImVec2((float)ms.x, (float)ms.y);
-
-						if (mt.leftButton == Mouse::ButtonStateTracker::PRESSED)
-						{
-							m_->m_SniperCharging = true;
-							m_->m_SniperCharge01 = 0.0f;
-							m_->m_SniperAimPos   = curPos;
-
-							// 마우스를 누르기 시작하는 순간: ShootCharged 루프 시작
-							if (!Sound::IsSfxPlaying(L"ShootCharged"))
-								Sound::PlaySFX(L"ShootCharged", 1.0f, 0.85f, true);
-						}
-
-						if (m_->m_SniperCharging)
-						{
-							// 조준점은 현재 마우스 위치를 따라가게(원하면 press 순간 고정도 가능)
-							m_->m_SniperAimPos = curPos;
-
-							if (mt.leftButton == Mouse::ButtonStateTracker::HELD)
-							{
-								float t = (m_->m_SniperChargeTimeSec > 0.001f) ? (dt / m_->m_SniperChargeTimeSec) : 1.0f;
-								m_->m_SniperCharge01 = std::clamp(m_->m_SniperCharge01 + t, 0.0f, 1.0f);
-							}
-
-							if (mt.leftButton == Mouse::ButtonStateTracker::RELEASED)
-							{
-								m_->m_SniperLastShotCharged = (m_->m_SniperCharge01 >= 1.0f - 1e-4f);
-
-								// 떼는 순간: ShootCharged 정지하고 Shoot 재생
-								Sound::StopSfx(L"ShootCharged");
-								Sound::PlaySFX(L"Shoot", 1.0f, 1.0f, false);
-
-								// 떼는 순간 "발사 트리거"
-								input.firePressed = true;
-
-								// 차지 종료
-								m_->m_SniperCharging = false;
-								m_->m_SniperCharge01 = 0.0f;
-							}
-						}
-					}
+					Sound::PlaySFX(L"Reload", 1.0f, 1.0f, false);
 				}
-			}
 
-			// ===== 이동 SFX =====
-			if (m_->m_TpsCamAttached) // TPS 조작 중일 때만
-			{
-				if (input.move)
+				// firePressed는 마우스를 떼는 순간에만 true가 되고,
+				// 그때 이미 Shoot 사운드가 재생되므로 여기서는 처리하지 않음
+
+				// ===  TPS 카메라 붙어있으면, 이번 프레임 카메라 pose + aim yaw 계산 ===
+				AimInputState aim{};
+				if (m_->m_TpsCamAttached)
 				{
-					// 발자국 루프 재생(이미 재생 중이면 유지)
-					float pitch = input.run ? m_->m_CharRunMul : 1.0f;
-					// loop=true: 이미 재생 중이면 재시작하지 않음 루프는 유지함
-					Sound::PlaySFX(L"Walk", 0.9f, pitch, true);
+					const XMMATRIX charWorld = alice.GetWorldMatrix();
+					const XMVECTOR charPosWS = XMVector3TransformCoord(XMVectorZero(), charWorld);
+					const XMVECTOR upWS = XMVectorSet(0, 1, 0, 0);
 
-					// 달리기 시작 순간 목소리 1회
-					if (input.run && !m_->m_LastRun)
-					{
-						Sound::PlaySFX(L"RunVoice", 1.0f, 1.0f, false);
-					}
+					// 카메라가 바라볼 피벗(서있을 때/앉을 때 높이 다르게)
+					const bool crouchLike = m_->m_CharCtrl.IsInShootStance(); // 이전 프레임 기준이라도 충분히 자연스럽습니다.
+					const float pivotH = crouchLike ? m_->m_TpsTargetHeightCrouch : m_->m_TpsTargetHeightStand;
+					const XMVECTOR pivotWS = XMVectorAdd(charPosWS, XMVectorScale(upWS, pivotH));
+
+					// 카메라 방향(저장된 yaw/pitch로)
+					const XMMATRIX camR = XMMatrixRotationRollPitchYaw(m_->m_TpsPitchRad, m_->m_TpsYawRad, 0.0f);
+					const XMVECTOR camForwardWS = XMVector3Normalize(camR.r[2]);
+
+					// 카메라 위치: 피벗에서 뒤로 dist만큼
+					const XMVECTOR camPosWS = XMVectorSubtract(pivotWS, XMVectorScale(camForwardWS, m_->m_TpsDist));
+
+					// 카메라 실제 적용
+					XMFLOAT3 cp{}; XMStoreFloat3(&cp, camPosWS);
+					m_Camera.SetPosition(cp);
+
+					XMFLOAT3 rotDeg{
+						XMConvertToDegrees(m_->m_TpsPitchRad),
+						XMConvertToDegrees(m_->m_TpsYawRad),
+						0.0f
+					};
+					m_Camera.SetRotation(rotDeg);
+					m_Camera.Update(0.0f); // world 재계산
+
+					// ---- AimYaw 계산(±70도 제한) ----
+					auto WrapPi = [](float a)
+						{
+							while (a > XM_PI)  a -= XM_2PI;
+							while (a < -XM_PI) a += XM_2PI;
+							return a;
+						};
+
+					// 캐릭터 yaw(몸통 방향)
+					float charYaw = XMConvertToRadians(alice.rotDeg.y);
+
+					// 카메라 yaw(조준 방향)
+					float camYaw = m_->m_TpsYawRad;
+
+					// 차이 = 상체가 돌아야 할 yaw
+					float yaw = WrapPi(camYaw - charYaw);
+
+					const float maxYawRad = XMConvertToRadians(m_->m_AimMaxYawDeg);
+					yaw = std::clamp(yaw, -maxYawRad, +maxYawRad);
+
+					// 스무딩(튀는 것 방지)
+					float a = 1.0f - std::exp(-m_->m_AimSmoothing * dt);
+					m_->m_AimYawSmoothed = m_->m_AimYawSmoothed + (yaw - m_->m_AimYawSmoothed) * a;
+
+					aim.enabled = true;
+					aim.yawRad = m_->m_AimYawSmoothed;
+					aim.weight = 1.0f;
 				}
 				else
 				{
-					// 멈추면 발자국 정지
-					Sound::StopSfx(L"Walk");
+					// TPS 끄면 aim도 0으로 복귀
+					float a = 1.0f - std::exp(-m_->m_AimSmoothing * dt);
+					m_->m_AimYawSmoothed = m_->m_AimYawSmoothed + (0.0f - m_->m_AimYawSmoothed) * a;
 				}
 
-				m_->m_LastMove = input.move;
-				m_->m_LastRun  = input.run;
-			}
+				// UI로 조절하는 리코일 파라미터를 컨트롤러에 반영
+				m_->m_CharCtrl.config.recoil.kick = m_->m_RecoilKickUi;
+				m_->m_CharCtrl.config.recoil.decay = m_->m_RecoilDecayUi;
 
-			// ===== 리로드/사격 SFX =====
-			if (input.reloadPressed)
-			{
-				Sound::PlaySFX(L"Reload", 1.0f, 1.0f, false);
-			}
-
-			// firePressed는 마우스를 떼는 순간에만 true가 되고,
-			// 그때 이미 Shoot 사운드가 재생되므로 여기서는 처리하지 않음
-
-			// ===  TPS 카메라 붙어있으면, 이번 프레임 카메라 pose + aim yaw 계산 ===
-			AimInputState aim{};
-			if (m_->m_TpsCamAttached)
-			{
-				const XMMATRIX charWorld = alice.GetWorldMatrix();
-				const XMVECTOR charPosWS = XMVector3TransformCoord(XMVectorZero(), charWorld);
-				const XMVECTOR upWS      = XMVectorSet(0, 1, 0, 0);
-
-				// 카메라가 바라볼 피벗(서있을 때/앉을 때 높이 다르게)
-				const bool crouchLike = m_->m_CharCtrl.IsInShootStance(); // 이전 프레임 기준이라도 충분히 자연스럽습니다.
-				const float pivotH = crouchLike ? m_->m_TpsTargetHeightCrouch : m_->m_TpsTargetHeightStand;
-				const XMVECTOR pivotWS = XMVectorAdd(charPosWS, XMVectorScale(upWS, pivotH));
-
-				// 카메라 방향(저장된 yaw/pitch로)
-				const XMMATRIX camR = XMMatrixRotationRollPitchYaw(m_->m_TpsPitchRad, m_->m_TpsYawRad, 0.0f);
-				const XMVECTOR camForwardWS = XMVector3Normalize(camR.r[2]);
-
-				// 카메라 위치: 피벗에서 뒤로 dist만큼
-				const XMVECTOR camPosWS = XMVectorSubtract(pivotWS, XMVectorScale(camForwardWS, m_->m_TpsDist));
-
-				// 카메라 실제 적용
-				XMFLOAT3 cp{}; XMStoreFloat3(&cp, camPosWS);
-				m_Camera.SetPosition(cp);
-
-				XMFLOAT3 rotDeg{
-					XMConvertToDegrees(m_->m_TpsPitchRad),
-					XMConvertToDegrees(m_->m_TpsYawRad),
-					0.0f
-				};
-				m_Camera.SetRotation(rotDeg);
-				m_Camera.Update(0.0f); // world 재계산
-
-				// ---- AimYaw 계산(±70도 제한) ----
-				auto WrapPi = [](float a)
-				{
-					while (a > XM_PI)  a -= XM_2PI;
-					while (a < -XM_PI) a += XM_2PI;
-					return a;
-				};
-
-				// 캐릭터 yaw(몸통 방향)
-				float charYaw = XMConvertToRadians(alice.rotDeg.y);
-
-				// 카메라 yaw(조준 방향)
-				float camYaw  = m_->m_TpsYawRad;
-
-				// 차이 = 상체가 돌아야 할 yaw
-				float yaw = WrapPi(camYaw - charYaw);
-
-				const float maxYawRad = XMConvertToRadians(m_->m_AimMaxYawDeg);
-				yaw = std::clamp(yaw, -maxYawRad, +maxYawRad);
-
-				// 스무딩(튀는 것 방지)
-				float a = 1.0f - std::exp(-m_->m_AimSmoothing * dt);
-				m_->m_AimYawSmoothed = m_->m_AimYawSmoothed + (yaw - m_->m_AimYawSmoothed) * a;
-
-				aim.enabled = true;
-				aim.yawRad  = m_->m_AimYawSmoothed;
-				aim.weight  = 1.0f;
-			}
-			else
-			{
-				// TPS 끄면 aim도 0으로 복귀
-				float a = 1.0f - std::exp(-m_->m_AimSmoothing * dt);
-				m_->m_AimYawSmoothed = m_->m_AimYawSmoothed + (0.0f - m_->m_AimYawSmoothed) * a;
-			}
-
-			// UI로 조절하는 리코일 파라미터를 컨트롤러에 반영
-			m_->m_CharCtrl.config.recoil.kick  = m_->m_RecoilKickUi;
-			m_->m_CharCtrl.config.recoil.decay = m_->m_RecoilDecayUi;
-
-			// update + palette upload + weapon apply 까지 컨트롤러가 처리
-			m_->m_CharCtrl.TickAndApply(dt, input, alice, &rifle, m_->m_pDevice, m_->m_pDeviceContext,
-			                            m_->m_TpsCamAttached ? &aim : nullptr);
+				// update + palette upload + weapon apply 까지 컨트롤러가 처리
+				m_->m_CharCtrl.TickAndApply(dt, input, alice, &rifle, m_->m_pDevice, m_->m_pDeviceContext,
+					m_->m_TpsCamAttached ? &aim : nullptr);
 			}
 		}
 
@@ -2354,7 +2437,7 @@ void App::PassClear() {
 						   m_->m_ClearColor.z, m_->m_ClearColor.w };
 	m_->m_pDeviceContext->ClearRenderTargetView(m_->m_pHdrRenderTargetView,
 		clearColor);
-	m_->m_pDeviceContext->ClearDepthStencilView(m_->m_pDepthStencilView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f,0);
+	m_->m_pDeviceContext->ClearDepthStencilView(m_->m_pDepthStencilView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
 	m_->m_pDeviceContext->OMSetRenderTargets(1, &m_->m_pHdrRenderTargetView, m_->m_pDepthStencilView);
 	m_->m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 }
@@ -2366,7 +2449,7 @@ void App::PassDebugDraw()
 	{
 		// AABB 계산 및 그리기
 
-		if (!mdlPtr->boundsValid && mdlPtr->shared ) { 
+		if (!mdlPtr->boundsValid && mdlPtr->shared) {
 			// AABB 계산 로직 
 			XMFLOAT3 mn, mx;
 			if (ComputeLocalAABB(m_->m_pDevice, m_->m_pDeviceContext, mdlPtr->shared->vb, mdlPtr->shared->stride, mn, mx))
@@ -2588,7 +2671,7 @@ void App::PassDebugDraw()
 			auto DrawEdge = [&](const int& i, const int& j) {
 				m_->m_LineRenderer->DrawLine(m_->m_pDeviceContext, corners[i], corners[j], boxColor,
 					m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
-			};
+				};
 
 			// 밑면 4개 선
 			DrawEdge(0, 1); DrawEdge(1, 2); DrawEdge(2, 3); DrawEdge(3, 0);
@@ -2899,7 +2982,7 @@ void App::PassMainScene() {
 			}
 			bool useSkinned = hasSkeleton && (s == sizeof(VertexSkinnedTBN)) && m_->m_pInputLayoutSkinned && m_->m_pVertexShaderSkinned && cbBones;
 
-			if (useSkinned) { 
+			if (useSkinned) {
 				m_->m_pDeviceContext->IASetInputLayout(m_->m_pInputLayoutSkinned);
 				m_->m_pDeviceContext->VSSetShader(m_->m_pVertexShaderSkinned, nullptr, 0);
 				if (cbBones) {
@@ -2936,7 +3019,7 @@ void App::PassMainScene() {
 				cb.useSpecularMap = mdlPtr->useSpecularMap;
 			}
 
-			const PBRMaterialCPU& activePbr = mdlPtr->useInstancePbrMaterial? mdlPtr->instancePbrMaterial : m_->m_DefaultPbrMaterial;
+			const PBRMaterialCPU& activePbr = mdlPtr->useInstancePbrMaterial ? mdlPtr->instancePbrMaterial : m_->m_DefaultPbrMaterial;
 			cb.pbrBaseColor = activePbr.baseColor;
 			cb.pbrMetalness = activePbr.metalness;
 			cb.pbrRoughness = activePbr.roughness;
@@ -2948,7 +3031,7 @@ void App::PassMainScene() {
 				ID3D11ShaderResourceView* srvDiffuse = nullptr;
 				if (mdlPtr->shared && sub.materialIndex < mdlPtr->shared->materialSRVs.size())
 					srvDiffuse = mdlPtr->shared->materialSRVs[sub.materialIndex];
-				if (!srvDiffuse) 
+				if (!srvDiffuse)
 					srvDiffuse = m_->m_pFallbackWhite;
 
 				ID3D11ShaderResourceView* srvNormal = nullptr;
@@ -3320,6 +3403,7 @@ void App::PassUI() {
 	m_->m_SystemInfo.RenderUI();
 	RenderSceneImageWindow();
 	RenderDeferredUI();
+	RenderSoundDebugUI();
 
 	// Sniper UI Overlay
 	if (m_->m_SniperEnabled && m_->m_SniperCharging)
@@ -3328,20 +3412,20 @@ void App::PassUI() {
 		ImVec2 p = m_->m_SniperAimPos;
 
 		const float r = m_->m_SniperAimRadius;
-		dl->AddCircle(p, r, IM_COL32(255,255,255,220), 32, 2.0f);
+		dl->AddCircle(p, r, IM_COL32(255, 255, 255, 220), 32, 2.0f);
 
 		// 게이지 바
 		ImVec2 barSize(80.0f, 7.0f);
 		ImVec2 barPos(p.x - barSize.x * 0.5f, p.y + r + 10.0f);
 
 		dl->AddRectFilled(barPos, ImVec2(barPos.x + barSize.x, barPos.y + barSize.y),
-		                  IM_COL32(0,0,0,160), 2.0f);
+			IM_COL32(0, 0, 0, 160), 2.0f);
 
 		dl->AddRectFilled(barPos, ImVec2(barPos.x + barSize.x * m_->m_SniperCharge01, barPos.y + barSize.y),
-		                  IM_COL32(255,255,255,220), 2.0f);
+			IM_COL32(255, 255, 255, 220), 2.0f);
 
 		dl->AddRect(barPos, ImVec2(barPos.x + barSize.x, barPos.y + barSize.y),
-		            IM_COL32(255,255,255,220), 2.0f);
+			IM_COL32(255, 255, 255, 220), 2.0f);
 	}
 
 	ImGui::Render();
@@ -3809,18 +3893,21 @@ bool App::InitImGui() {
 	// 한글/일본어 표시를 위한 방법
 	{
 		ImGuiIO& io = ImGui::GetIO();
-		io.Fonts->AddFontDefault();
 		ImFontConfig cfg{};
-		cfg.MergeMode = true;
 		cfg.PixelSnapH = true;
 		cfg.OversampleH = 2;
 		cfg.OversampleV = 2;
 		const ImWchar* rangeKR = io.Fonts->GetGlyphRangesKorean();
+		const ImWchar* rangeENG = io.Fonts->GetGlyphRangesDefault();
 		const ImWchar* rangeJP = io.Fonts->GetGlyphRangesJapanese();
 		// 한글: NotoSansKR-Regular
-		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\NotoSansKR-Regular.ttf", 17.0f, &cfg, rangeKR);
+		cfg.MergeMode = false;
+		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\NotoSansKR-Regular.ttf", 20.0f, &cfg, rangeKR);
 		// 일본어: Meiryo
-		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\meiryo.ttc", 17.0f, &cfg, rangeJP);
+		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\meiryo.ttc", 22.0f, &cfg, rangeJP);
+		// 영어
+		cfg.MergeMode = true;
+		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\NotoSansKR-Regular.ttf", 20.0f, &cfg, rangeENG);
 		m_pFontLarge = io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\NotoSansKR-Regular.ttf", 30.0f, NULL, rangeKR);
 	}
 
@@ -4199,7 +4286,7 @@ bool App::CreateGBuffer() {
 			{"BINORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0},
 			{"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0},
 			{"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0} };
-		HR_T(m_->m_pDevice->CreateInputLayout( gbufferLayout, ARRAYSIZE(gbufferLayout), vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), &m_->m_pGBufferInputLayout));
+		HR_T(m_->m_pDevice->CreateInputLayout(gbufferLayout, ARRAYSIZE(gbufferLayout), vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), &m_->m_pGBufferInputLayout));
 		HR_T(m_->m_pDevice->CreateVertexShader(vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), nullptr, &m_->m_pGBufferVS));
 		SAFE_RELEASE(vsBlob);
 
@@ -4235,185 +4322,185 @@ bool App::CreateGBuffer() {
 	return true;
 }
 
-	// ------------------------- Model Loader (FBX/OBJ/PMX via Assimp) -------------------------
-	bool App::LoadModelFromFile(const std::wstring& pathW) {
-		// 새 모델델 추가
+// ------------------------- Model Loader (FBX/OBJ/PMX via Assimp) -------------------------
+bool App::LoadModelFromFile(const std::wstring& pathW) {
+	// 새 모델델 추가
 
-		// 폴백 텍스처(화이트/블랙/노멀) 생성: 각각 최초 1회만 생성
-		auto createFallbackIfNull = [&](ID3D11ShaderResourceView** targetSRV,
-			UINT rgba) {
-				if (*targetSRV)
-					return;
-				D3D11_TEXTURE2D_DESC td{};
-				td.Width = 1;
-				td.Height = 1;
-				td.MipLevels = 1;
-				td.ArraySize = 1;
-				td.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-				td.SampleDesc.Count = 1;
-				td.Usage = D3D11_USAGE_IMMUTABLE;
-				td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-				D3D11_SUBRESOURCE_DATA sd{};
-				sd.pSysMem = &rgba;
-				sd.SysMemPitch = sizeof(UINT);
-				Microsoft::WRL::ComPtr<ID3D11Texture2D> tex;
-				HR_T(m_->m_pDevice->CreateTexture2D(&td, &sd, tex.GetAddressOf()));
-				D3D11_SHADER_RESOURCE_VIEW_DESC srvd{};
-				srvd.Format = td.Format;
-				srvd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-				srvd.Texture2D.MipLevels = 1;
-				srvd.Texture2D.MostDetailedMip = 0;
-				HR_T(m_->m_pDevice->CreateShaderResourceView(tex.Get(), &srvd, targetSRV));
-			};
-		createFallbackIfNull(&m_->m_pFallbackWhite, 0xFFFFFFFF);
-		createFallbackIfNull(&m_->m_pFallbackBlack, 0x000000FF); // a=1
-		createFallbackIfNull(&m_->m_pFallbackNormal,
-			0x8080FFFF); // (0.5,0.5,1,1) in RGBA8
+	// 폴백 텍스처(화이트/블랙/노멀) 생성: 각각 최초 1회만 생성
+	auto createFallbackIfNull = [&](ID3D11ShaderResourceView** targetSRV,
+		UINT rgba) {
+			if (*targetSRV)
+				return;
+			D3D11_TEXTURE2D_DESC td{};
+			td.Width = 1;
+			td.Height = 1;
+			td.MipLevels = 1;
+			td.ArraySize = 1;
+			td.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+			td.SampleDesc.Count = 1;
+			td.Usage = D3D11_USAGE_IMMUTABLE;
+			td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+			D3D11_SUBRESOURCE_DATA sd{};
+			sd.pSysMem = &rgba;
+			sd.SysMemPitch = sizeof(UINT);
+			Microsoft::WRL::ComPtr<ID3D11Texture2D> tex;
+			HR_T(m_->m_pDevice->CreateTexture2D(&td, &sd, tex.GetAddressOf()));
+			D3D11_SHADER_RESOURCE_VIEW_DESC srvd{};
+			srvd.Format = td.Format;
+			srvd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+			srvd.Texture2D.MipLevels = 1;
+			srvd.Texture2D.MostDetailedMip = 0;
+			HR_T(m_->m_pDevice->CreateShaderResourceView(tex.Get(), &srvd, targetSRV));
+		};
+	createFallbackIfNull(&m_->m_pFallbackWhite, 0xFFFFFFFF);
+	createFallbackIfNull(&m_->m_pFallbackBlack, 0x000000FF); // a=1
+	createFallbackIfNull(&m_->m_pFallbackNormal,
+		0x8080FFFF); // (0.5,0.5,1,1) in RGBA8
 
-		// 받은 경로에서 이름, 확장자 추출
-		std::wstring ext{ L"" }, fileName{ L"" };
-		if (!pathW.empty()) {
-			size_t dot = pathW.find_last_of(L'.');
-			if (dot != std::wstring::npos) {
-				ext = pathW.substr(dot);
-				std::transform(ext.begin(), ext.end(), ext.begin(), ::towlower);
-				size_t sep = pathW.find_last_of(L"\\/");
-				if (sep != std::wstring::npos)
-					fileName = pathW.substr(sep + 1, dot - sep - 1);
-				else
-					fileName = pathW.substr(0, dot);
-			}
+	// 받은 경로에서 이름, 확장자 추출
+	std::wstring ext{ L"" }, fileName{ L"" };
+	if (!pathW.empty()) {
+		size_t dot = pathW.find_last_of(L'.');
+		if (dot != std::wstring::npos) {
+			ext = pathW.substr(dot);
+			std::transform(ext.begin(), ext.end(), ext.begin(), ::towlower);
+			size_t sep = pathW.find_last_of(L"\\/");
+			if (sep != std::wstring::npos)
+				fileName = pathW.substr(sep + 1, dot - sep - 1);
+			else
+				fileName = pathW.substr(0, dot);
 		}
-
-		m_fLoadingProgress = 0.35f;
-
-		bool ok = false;
-		auto entry = std::make_unique<ModelEntry>();
-		entry->modelName = fileName;
-
-		// 캐시 확인
-		std::shared_ptr<SharedModelData> shared;
-		if (auto it = m_->m_ModelCache.find(pathW); it != m_->m_ModelCache.end())
-			shared = it->second.lock();
-
-		m_fLoadingProgress = 0.4f;
-		m_sLoadingStr = L"3D 모델에 대한 Geometry, Material을 로드합니다.";
-
-		if (!shared) {
-			shared = std::make_shared<SharedModelData>();
-			shared->pathW = pathW;
-			// 로드 경로에 따라 매니저 준비
-			if (ext == L".fbx") {
-				shared->source = ModelSource::FBX;
-				// 공용 AssetManager를 통해 FBX 모델 공유/캐시
-				shared->fbx = AssetManager::GetInstance().GetFbxModel(m_->m_pDevice, pathW);
-				if (ok = (shared->fbx != nullptr)) {
-					m_->PushLog("[OK] Loaded FBX(shared): " + Utf8FromWString(fileName));
-					shared->stride = shared->fbx->GetVertexStride();
-					shared->vb = shared->fbx->GetVertexBuffer();
-					shared->ib = shared->fbx->GetIndexBuffer();
-					shared->indexCount = shared->fbx->GetIndexCount();
-					shared->subsets.clear();
-					for (auto& s : shared->fbx->GetSubsets())
-						shared->subsets.push_back(
-							{ s.startIndex, s.indexCount, s.materialIndex });
-					shared->materialSRVs = shared->fbx->GetMaterialSRVs();
-					shared->normalSRVs = shared->fbx->GetNormalSRVs();
-				}
-				else {
-					m_->PushLog("[ERR] Failed FBX: " + Utf8FromWString(fileName));
-				}
-			}
-			else if (ext == L".obj") {
-				shared->source = ModelSource::OBJ;
-				shared->obj = std::make_shared<ObjManager>();
-				if (ok = shared->obj->Load(m_->m_pDevice, pathW)) {
-					m_->PushLog("[OK] Loaded OBJ(shared): " + Utf8FromWString(fileName));
-					shared->stride = shared->obj->GetVertexStride();
-					shared->vb = shared->obj->GetVertexBuffer();
-					shared->ib = shared->obj->GetIndexBuffer();
-					shared->indexCount = shared->obj->GetIndexCount();
-					shared->subsets.clear();
-					const auto& subs = shared->obj->GetSubsets();
-					for (auto& s : subs)
-						shared->subsets.push_back(
-							{ s.startIndex, s.indexCount, s.materialIndex });
-					shared->materialSRVs = shared->obj->GetMaterialSRVs();
-				}
-				else {
-					m_->PushLog("[ERR] Failed OBJ: " + Utf8FromWString(fileName));
-				}
-			}
-			else if (ext == L".pmx") {
-				shared->source = ModelSource::PMX;
-				shared->pmx = std::make_shared<PmxManager>();
-				if (ok = shared->pmx->Load(m_->m_pDevice, pathW)) {
-					m_->PushLog("[OK] Loaded PMX(shared): " + Utf8FromWString(fileName));
-					shared->stride = shared->pmx->GetVertexStride();
-					shared->vb = shared->pmx->GetVertexBuffer();
-					shared->ib = shared->pmx->GetIndexBuffer();
-					shared->indexCount = shared->pmx->GetIndexCount();
-					shared->subsets.clear();
-					const auto& subs = shared->pmx->GetSubsets();
-					for (auto& s : subs)
-						shared->subsets.push_back(
-							{ s.startIndex, s.indexCount, s.materialIndex });
-					shared->materialSRVs = shared->pmx->GetMaterialSRVs();
-				}
-				else {
-					m_->PushLog("[ERR] Failed PMX: " + Utf8FromWString(fileName));
-				}
-			}
-
-			if (ok) {
-				m_->m_ModelCache[pathW] = shared; // 캐시 등록
-			}
-		}
-		else {
-			ok = true;
-			m_->PushLog("[OK] Reused cached model: " + Utf8FromWString(fileName));
-		}
-
-		m_fLoadingProgress = 0.5f;
-		m_sLoadingStr = L"3D 모델의 Skeletal, Bone, Animation을 로드합니다.";
-
-
-		if (ok && shared) {
-			entry->shared = shared;
-			entry->source = shared->source;
-			// 본 캐시/출력텍스트 일괄 구축
-			BuildBoneCacheStructure(*entry, nullptr);
-			// 메시 통계는 UI에서 필요할 때 계산
-			entry->meshStatsValid = false;
-			entry->meshStats = MeshStats{};
-			// 모델별 셰이딩 초기값 = 현재 글로벌 셰이딩, 아웃라인 기본은 Toon일 때만 ON
-			entry->modelShading = m_->m_ShadingMode;
-			entry->outlineEnabled = (entry->modelShading == ShadingMode::ToonShading);
-			entry->instancePbrMaterial = m_->m_DefaultPbrMaterial;
-
-			// FBX 인스턴스 애니메이터를 로드 시점에 1회 초기화
-			if (entry->source == ModelSource::FBX && entry->shared &&
-				entry->shared->fbx) {
-				entry->fbxBaseAnimator.InitMetadata(entry->shared->fbx->GetScenePtr());
-				entry->fbxBaseAnimator.SetSharedContext(entry->shared->fbx->GetScenePtr(),
-					entry->shared->fbx->GetNodeIndexOfName(),
-					&entry->shared->fbx->GetBoneNames(),
-					&entry->shared->fbx->GetBoneOffsets(),
-					&entry->shared->fbx->GetGlobalInverse());
-				auto t = entry->shared->fbx->GetCurrentAnimationType();
-				entry->fbxBaseAnimator.SetType(t == FbxModel::AnimationType::Rigid
-					? FbxAnimation::AnimType::Rigid
-					: (t == FbxModel::AnimationType::Skinned
-						? FbxAnimation::AnimType::Skinned
-						: FbxAnimation::AnimType::None));
-				entry->animatorInited = true;
-			}
-
-			m_->m_Models.push_back(std::move(entry));
-		}
-		m_fLoadingProgress = 0.7f;
-		return ok;
 	}
+
+	m_fLoadingProgress = 0.35f;
+
+	bool ok = false;
+	auto entry = std::make_unique<ModelEntry>();
+	entry->modelName = fileName;
+
+	// 캐시 확인
+	std::shared_ptr<SharedModelData> shared;
+	if (auto it = m_->m_ModelCache.find(pathW); it != m_->m_ModelCache.end())
+		shared = it->second.lock();
+
+	m_fLoadingProgress = 0.4f;
+	m_sLoadingStr = L"3D 모델에 대한 Geometry, Material을 로드합니다.";
+
+	if (!shared) {
+		shared = std::make_shared<SharedModelData>();
+		shared->pathW = pathW;
+		// 로드 경로에 따라 매니저 준비
+		if (ext == L".fbx") {
+			shared->source = ModelSource::FBX;
+			// 공용 AssetManager를 통해 FBX 모델 공유/캐시
+			shared->fbx = AssetManager::GetInstance().GetFbxModel(m_->m_pDevice, pathW);
+			if (ok = (shared->fbx != nullptr)) {
+				m_->PushLog("[OK] Loaded FBX(shared): " + Utf8FromWString(fileName));
+				shared->stride = shared->fbx->GetVertexStride();
+				shared->vb = shared->fbx->GetVertexBuffer();
+				shared->ib = shared->fbx->GetIndexBuffer();
+				shared->indexCount = shared->fbx->GetIndexCount();
+				shared->subsets.clear();
+				for (auto& s : shared->fbx->GetSubsets())
+					shared->subsets.push_back(
+						{ s.startIndex, s.indexCount, s.materialIndex });
+				shared->materialSRVs = shared->fbx->GetMaterialSRVs();
+				shared->normalSRVs = shared->fbx->GetNormalSRVs();
+			}
+			else {
+				m_->PushLog("[ERR] Failed FBX: " + Utf8FromWString(fileName));
+			}
+		}
+		else if (ext == L".obj") {
+			shared->source = ModelSource::OBJ;
+			shared->obj = std::make_shared<ObjManager>();
+			if (ok = shared->obj->Load(m_->m_pDevice, pathW)) {
+				m_->PushLog("[OK] Loaded OBJ(shared): " + Utf8FromWString(fileName));
+				shared->stride = shared->obj->GetVertexStride();
+				shared->vb = shared->obj->GetVertexBuffer();
+				shared->ib = shared->obj->GetIndexBuffer();
+				shared->indexCount = shared->obj->GetIndexCount();
+				shared->subsets.clear();
+				const auto& subs = shared->obj->GetSubsets();
+				for (auto& s : subs)
+					shared->subsets.push_back(
+						{ s.startIndex, s.indexCount, s.materialIndex });
+				shared->materialSRVs = shared->obj->GetMaterialSRVs();
+			}
+			else {
+				m_->PushLog("[ERR] Failed OBJ: " + Utf8FromWString(fileName));
+			}
+		}
+		else if (ext == L".pmx") {
+			shared->source = ModelSource::PMX;
+			shared->pmx = std::make_shared<PmxManager>();
+			if (ok = shared->pmx->Load(m_->m_pDevice, pathW)) {
+				m_->PushLog("[OK] Loaded PMX(shared): " + Utf8FromWString(fileName));
+				shared->stride = shared->pmx->GetVertexStride();
+				shared->vb = shared->pmx->GetVertexBuffer();
+				shared->ib = shared->pmx->GetIndexBuffer();
+				shared->indexCount = shared->pmx->GetIndexCount();
+				shared->subsets.clear();
+				const auto& subs = shared->pmx->GetSubsets();
+				for (auto& s : subs)
+					shared->subsets.push_back(
+						{ s.startIndex, s.indexCount, s.materialIndex });
+				shared->materialSRVs = shared->pmx->GetMaterialSRVs();
+			}
+			else {
+				m_->PushLog("[ERR] Failed PMX: " + Utf8FromWString(fileName));
+			}
+		}
+
+		if (ok) {
+			m_->m_ModelCache[pathW] = shared; // 캐시 등록
+		}
+	}
+	else {
+		ok = true;
+		m_->PushLog("[OK] Reused cached model: " + Utf8FromWString(fileName));
+	}
+
+	m_fLoadingProgress = 0.5f;
+	m_sLoadingStr = L"3D 모델의 Skeletal, Bone, Animation을 로드합니다.";
+
+
+	if (ok && shared) {
+		entry->shared = shared;
+		entry->source = shared->source;
+		// 본 캐시/출력텍스트 일괄 구축
+		BuildBoneCacheStructure(*entry, nullptr);
+		// 메시 통계는 UI에서 필요할 때 계산
+		entry->meshStatsValid = false;
+		entry->meshStats = MeshStats{};
+		// 모델별 셰이딩 초기값 = 현재 글로벌 셰이딩, 아웃라인 기본은 Toon일 때만 ON
+		entry->modelShading = m_->m_ShadingMode;
+		entry->outlineEnabled = (entry->modelShading == ShadingMode::ToonShading);
+		entry->instancePbrMaterial = m_->m_DefaultPbrMaterial;
+
+		// FBX 인스턴스 애니메이터를 로드 시점에 1회 초기화
+		if (entry->source == ModelSource::FBX && entry->shared &&
+			entry->shared->fbx) {
+			entry->fbxBaseAnimator.InitMetadata(entry->shared->fbx->GetScenePtr());
+			entry->fbxBaseAnimator.SetSharedContext(entry->shared->fbx->GetScenePtr(),
+				entry->shared->fbx->GetNodeIndexOfName(),
+				&entry->shared->fbx->GetBoneNames(),
+				&entry->shared->fbx->GetBoneOffsets(),
+				&entry->shared->fbx->GetGlobalInverse());
+			auto t = entry->shared->fbx->GetCurrentAnimationType();
+			entry->fbxBaseAnimator.SetType(t == FbxModel::AnimationType::Rigid
+				? FbxAnimation::AnimType::Rigid
+				: (t == FbxModel::AnimationType::Skinned
+					? FbxAnimation::AnimType::Skinned
+					: FbxAnimation::AnimType::None));
+			entry->animatorInited = true;
+		}
+
+		m_->m_Models.push_back(std::move(entry));
+	}
+	m_fLoadingProgress = 0.7f;
+	return ok;
+}
 
 void App::UnloadModel() {
 	m_->m_Models.clear();
@@ -5182,223 +5269,223 @@ void App::RenderConsolPannel() {
 // ============================================================
 static void DrawCrossFadeEditor(const char* label, CrossFadeParams& f)
 {
-    ImGui::PushID(&f);
-    ImGui::SeparatorText(label);
+	ImGui::PushID(&f);
+	ImGui::SeparatorText(label);
 
-    ImGui::DragFloat("Duration (sec)", &f.durationSec, 0.01f, 0.0f, 2.0f, "%.3f");
-    ImGui::Checkbox("Use Exit Time", &f.useExitTime);
-    if (f.useExitTime)
-        ImGui::SliderFloat("Exit Norm", &f.exitNorm, 0.0f, 1.0f, "%.3f");
+	ImGui::DragFloat("Duration (sec)", &f.durationSec, 0.01f, 0.0f, 2.0f, "%.3f");
+	ImGui::Checkbox("Use Exit Time", &f.useExitTime);
+	if (f.useExitTime)
+		ImGui::SliderFloat("Exit Norm", &f.exitNorm, 0.0f, 1.0f, "%.3f");
 
-    ImGui::SliderFloat("Entry Norm", &f.entryNorm, 0.0f, 1.0f, "%.3f");
-    ImGui::Checkbox("SmoothStep", &f.smoothStep);
+	ImGui::SliderFloat("Entry Norm", &f.entryNorm, 0.0f, 1.0f, "%.3f");
+	ImGui::Checkbox("SmoothStep", &f.smoothStep);
 
-    ImGui::PopID();
+	ImGui::PopID();
 }
 
 static void DrawBlendCurve(bool smoothStep, float blend01, ImVec2 size)
 {
-    ImDrawList* dl = ImGui::GetWindowDrawList();
-    ImVec2 p0 = ImGui::GetCursorScreenPos();
-    ImVec2 p1 = ImVec2(p0.x + size.x, p0.y + size.y);
+	ImDrawList* dl = ImGui::GetWindowDrawList();
+	ImVec2 p0 = ImGui::GetCursorScreenPos();
+	ImVec2 p1 = ImVec2(p0.x + size.x, p0.y + size.y);
 
-    // 배경
-    dl->AddRectFilled(p0, p1, IM_COL32(30, 30, 30, 255), 4.0f);
-    dl->AddRect(p0, p1, IM_COL32(90, 90, 90, 255), 4.0f);
+	// 배경
+	dl->AddRectFilled(p0, p1, IM_COL32(30, 30, 30, 255), 4.0f);
+	dl->AddRect(p0, p1, IM_COL32(90, 90, 90, 255), 4.0f);
 
-    auto Eval = [&](float t)
-    {
-        t = std::clamp(t, 0.0f, 1.0f);
-        if (!smoothStep) return t;
-        return t * t * (3.0f - 2.0f * t);
-    };
+	auto Eval = [&](float t)
+		{
+			t = std::clamp(t, 0.0f, 1.0f);
+			if (!smoothStep) return t;
+			return t * t * (3.0f - 2.0f * t);
+		};
 
-    // 곡선
-    const int N = 64;
-    ImVec2 prev{};
-    for (int i = 0; i <= N; ++i)
-    {
-        float x = (float)i / (float)N;
-        float y = Eval(x);
+	// 곡선
+	const int N = 64;
+	ImVec2 prev{};
+	for (int i = 0; i <= N; ++i)
+	{
+		float x = (float)i / (float)N;
+		float y = Eval(x);
 
-        ImVec2 p = ImVec2(
-            p0.x + x * size.x,
-            p1.y - y * size.y
-        );
+		ImVec2 p = ImVec2(
+			p0.x + x * size.x,
+			p1.y - y * size.y
+		);
 
-        if (i > 0)
-            dl->AddLine(prev, p, IM_COL32(220, 220, 220, 255), 2.0f);
-        prev = p;
-    }
+		if (i > 0)
+			dl->AddLine(prev, p, IM_COL32(220, 220, 220, 255), 2.0f);
+		prev = p;
+	}
 
-    // 현재 점(blend01)
-    float yb = Eval(blend01);
-    ImVec2 dot = ImVec2(p0.x + blend01 * size.x, p1.y - yb * size.y);
-    dl->AddCircleFilled(dot, 5.0f, IM_COL32(255, 200, 0, 255));
+	// 현재 점(blend01)
+	float yb = Eval(blend01);
+	ImVec2 dot = ImVec2(p0.x + blend01 * size.x, p1.y - yb * size.y);
+	dl->AddCircleFilled(dot, 5.0f, IM_COL32(255, 200, 0, 255));
 
-    ImGui::Dummy(size);
+	ImGui::Dummy(size);
 }
 
 static void DrawStateMachineGraph(const char* id, AnimStateMachine& sm)
 {
-    const auto& states = sm.GetStates();
-    const auto& trans  = sm.GetTransitions();
+	const auto& states = sm.GetStates();
+	const auto& trans = sm.GetTransitions();
 
-    ImVec2 avail = ImGui::GetContentRegionAvail();
-    ImVec2 size = ImVec2(avail.x, 180.0f);
-    ImGui::BeginChild(id, size, true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+	ImVec2 avail = ImGui::GetContentRegionAvail();
+	ImVec2 size = ImVec2(avail.x, 180.0f);
+	ImGui::BeginChild(id, size, true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 
-    ImDrawList* dl = ImGui::GetWindowDrawList();
-    ImVec2 origin = ImGui::GetCursorScreenPos();
+	ImDrawList* dl = ImGui::GetWindowDrawList();
+	ImVec2 origin = ImGui::GetCursorScreenPos();
 
-    const float nodeW = 120.0f;
-    const float nodeH = 36.0f;
-    const float gapX  = 40.0f;
-    const float gapY  = 28.0f;
+	const float nodeW = 120.0f;
+	const float nodeH = 36.0f;
+	const float gapX = 40.0f;
+	const float gapY = 28.0f;
 
-    // 간단 배치(가로로 쭉)
-    std::vector<ImVec2> nodePos(states.size());
-    for (int i = 0; i < (int)states.size(); ++i)
-    {
-        nodePos[(size_t)i] = ImVec2(
-            origin.x + 20.0f + i * (nodeW + gapX),
-            origin.y + 40.0f
-        );
-    }
+	// 간단 배치(가로로 쭉)
+	std::vector<ImVec2> nodePos(states.size());
+	for (int i = 0; i < (int)states.size(); ++i)
+	{
+		nodePos[(size_t)i] = ImVec2(
+			origin.x + 20.0f + i * (nodeW + gapX),
+			origin.y + 40.0f
+		);
+	}
 
-    int cur = sm.GetCurrentStateIndex();
-    bool inTr = sm.IsInTransition();
-    int from = sm.GetFromStateIndex();
-    int to   = sm.GetToStateIndex();
-    float b01 = sm.GetBlend01();
+	int cur = sm.GetCurrentStateIndex();
+	bool inTr = sm.IsInTransition();
+	int from = sm.GetFromStateIndex();
+	int to = sm.GetToStateIndex();
+	float b01 = sm.GetBlend01();
 
-    // 링크 그리기
-    for (int ti = 0; ti < (int)trans.size(); ++ti)
-    {
-        const auto& t = trans[(size_t)ti];
+	// 링크 그리기
+	for (int ti = 0; ti < (int)trans.size(); ++ti)
+	{
+		const auto& t = trans[(size_t)ti];
 
-        int a = t.from;
-        int b = t.to;
-        if (b < 0 || b >= (int)states.size()) continue;
+		int a = t.from;
+		int b = t.to;
+		if (b < 0 || b >= (int)states.size()) continue;
 
-        ImVec2 pA;
-        if (a >= 0 && a < (int)states.size())
-            pA = ImVec2(nodePos[(size_t)a].x + nodeW, nodePos[(size_t)a].y + nodeH * 0.5f);
-        else
-            pA = ImVec2(origin.x + 10.0f, origin.y + 40.0f + nodeH * 0.5f); // AnyState
+		ImVec2 pA;
+		if (a >= 0 && a < (int)states.size())
+			pA = ImVec2(nodePos[(size_t)a].x + nodeW, nodePos[(size_t)a].y + nodeH * 0.5f);
+		else
+			pA = ImVec2(origin.x + 10.0f, origin.y + 40.0f + nodeH * 0.5f); // AnyState
 
-        ImVec2 pB = ImVec2(nodePos[(size_t)b].x, nodePos[(size_t)b].y + nodeH * 0.5f);
+		ImVec2 pB = ImVec2(nodePos[(size_t)b].x, nodePos[(size_t)b].y + nodeH * 0.5f);
 
-        bool activeEdge = inTr && (a == from) && (b == to);
-        ImU32 col = activeEdge ? IM_COL32(255, 200, 0, 255) : IM_COL32(120, 120, 120, 255);
-        float thickness = activeEdge ? (2.0f + 4.0f * b01) : 2.0f;
+		bool activeEdge = inTr && (a == from) && (b == to);
+		ImU32 col = activeEdge ? IM_COL32(255, 200, 0, 255) : IM_COL32(120, 120, 120, 255);
+		float thickness = activeEdge ? (2.0f + 4.0f * b01) : 2.0f;
 
-        dl->AddLine(pA, pB, col, thickness);
+		dl->AddLine(pA, pB, col, thickness);
 
-        if (activeEdge)
-        {
-            ImVec2 mid = ImVec2((pA.x + pB.x) * 0.5f, (pA.y + pB.y) * 0.5f - 14.0f);
-            char buf[64];
-            snprintf(buf, 64, "blend=%.2f", b01);
-            dl->AddText(mid, IM_COL32(255, 220, 120, 255), buf);
-        }
-    }
+		if (activeEdge)
+		{
+			ImVec2 mid = ImVec2((pA.x + pB.x) * 0.5f, (pA.y + pB.y) * 0.5f - 14.0f);
+			char buf[64];
+			snprintf(buf, 64, "blend=%.2f", b01);
+			dl->AddText(mid, IM_COL32(255, 220, 120, 255), buf);
+		}
+	}
 
-    // 노드 그리기 클릭 강제전환도 가능하게 하고자 함
+	// 노드 그리기 클릭 강제전환도 가능하게 하고자 함
 	// 그래야 바로바로 변하는거 볼 수 있음
-    for (int i = 0; i < (int)states.size(); ++i)
-    {
-        ImVec2 p = nodePos[(size_t)i];
-        ImVec2 p2 = ImVec2(p.x + nodeW, p.y + nodeH);
+	for (int i = 0; i < (int)states.size(); ++i)
+	{
+		ImVec2 p = nodePos[(size_t)i];
+		ImVec2 p2 = ImVec2(p.x + nodeW, p.y + nodeH);
 
-        bool activeNode = (i == cur);
-        bool fromNode = inTr && (i == from);
-        bool toNode   = inTr && (i == to);
+		bool activeNode = (i == cur);
+		bool fromNode = inTr && (i == from);
+		bool toNode = inTr && (i == to);
 
-        ImU32 fill = IM_COL32(60, 60, 60, 255);
-        ImU32 border = IM_COL32(120, 120, 120, 255);
+		ImU32 fill = IM_COL32(60, 60, 60, 255);
+		ImU32 border = IM_COL32(120, 120, 120, 255);
 
-        if (activeNode) border = IM_COL32(120, 255, 120, 255);
-        if (fromNode)   border = IM_COL32(255, 200, 0, 255);
-        if (toNode)     border = IM_COL32(255, 200, 0, 255);
+		if (activeNode) border = IM_COL32(120, 255, 120, 255);
+		if (fromNode)   border = IM_COL32(255, 200, 0, 255);
+		if (toNode)     border = IM_COL32(255, 200, 0, 255);
 
-        dl->AddRectFilled(p, p2, fill, 6.0f);
-        dl->AddRect(p, p2, border, 6.0f, 0, activeNode ? 3.0f : 2.0f);
+		dl->AddRectFilled(p, p2, fill, 6.0f);
+		dl->AddRect(p, p2, border, 6.0f, 0, activeNode ? 3.0f : 2.0f);
 
-        dl->AddText(ImVec2(p.x + 8, p.y + 8), IM_COL32(220, 220, 220, 255), states[(size_t)i].name.c_str());
+		dl->AddText(ImVec2(p.x + 8, p.y + 8), IM_COL32(220, 220, 220, 255), states[(size_t)i].name.c_str());
 
-        // 클릭 히트박스
-        ImGui::SetCursorScreenPos(p);
-        ImGui::InvisibleButton((std::string("node##") + id + std::to_string(i)).c_str(), ImVec2(nodeW, nodeH));
-        if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
-            sm.ForceState(i);
-    }
+		// 클릭 히트박스
+		ImGui::SetCursorScreenPos(p);
+		ImGui::InvisibleButton((std::string("node##") + id + std::to_string(i)).c_str(), ImVec2(nodeW, nodeH));
+		if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
+			sm.ForceState(i);
+	}
 
-    // 상단 텍스트
-    ImGui::SetCursorScreenPos(ImVec2(origin.x + 10, origin.y + 8));
-    ImGui::Text("Current: %s  |  InTransition: %s", sm.CurrentStateName().c_str(), inTr ? "true" : "false");
+	// 상단 텍스트
+	ImGui::SetCursorScreenPos(ImVec2(origin.x + 10, origin.y + 8));
+	ImGui::Text("Current: %s  |  InTransition: %s", sm.CurrentStateName().c_str(), inTr ? "true" : "false");
 
-    ImGui::EndChild();
+	ImGui::EndChild();
 }
 
 static void DrawTransitionsEditor(const char* layerName, AnimStateMachine& sm)
 {
-    ImGui::PushID(layerName); // ★ 충돌 제거 핵심
+	ImGui::PushID(layerName); // ★ 충돌 제거 핵심
 
-    auto& trans = sm.GetTransitions();
-    const auto& states = sm.GetStates();
+	auto& trans = sm.GetTransitions();
+	const auto& states = sm.GetStates();
 
-    ImGui::SeparatorText(layerName);
+	ImGui::SeparatorText(layerName);
 
-    for (int i = 0; i < (int)trans.size(); ++i)
-    {
-        ImGui::PushID(i);
+	for (int i = 0; i < (int)trans.size(); ++i)
+	{
+		ImGui::PushID(i);
 
-        auto& t = trans[(size_t)i];
-        auto NameOf = [&](int idx)->const char*
-        {
-            if (idx < 0) return "*";
-            if (idx >= 0 && idx < (int)states.size()) return states[(size_t)idx].name.c_str();
-            return "?";
-        };
+		auto& t = trans[(size_t)i];
+		auto NameOf = [&](int idx)->const char*
+			{
+				if (idx < 0) return "*";
+				if (idx >= 0 && idx < (int)states.size()) return states[(size_t)idx].name.c_str();
+				return "?";
+			};
 
-        std::string header = std::string(NameOf(t.from)) + " -> " + NameOf(t.to) +
-            "  (pri=" + std::to_string(t.priority) + ")";
+		std::string header = std::string(NameOf(t.from)) + " -> " + NameOf(t.to) +
+			"  (pri=" + std::to_string(t.priority) + ")";
 
-        if (ImGui::TreeNode("##trnode", "%s", header.c_str()))
-        {
-            ImGui::DragInt("Priority", &t.priority, 1, -1000, 1000);
+		if (ImGui::TreeNode("##trnode", "%s", header.c_str()))
+		{
+			ImGui::DragInt("Priority", &t.priority, 1, -1000, 1000);
 
-            DrawCrossFadeEditor("Fade", t.fade);
+			DrawCrossFadeEditor("Fade", t.fade);
 
-            ImGui::SeparatorText("Conditions");
-            for (int ci = 0; ci < (int)t.conditions.size(); ++ci)
-            {
-                const auto& c = t.conditions[(size_t)ci];
-                ImGui::BulletText("cond[%d] type=%d param=%s (f=%.2f i=%d)",
-                    ci, (int)c.type, c.param.c_str(), c.f, c.i);
-            }
+			ImGui::SeparatorText("Conditions");
+			for (int ci = 0; ci < (int)t.conditions.size(); ++ci)
+			{
+				const auto& c = t.conditions[(size_t)ci];
+				ImGui::BulletText("cond[%d] type=%d param=%s (f=%.2f i=%d)",
+					ci, (int)c.type, c.param.c_str(), c.f, c.i);
+			}
 
-            ImGui::TreePop();
-        }
+			ImGui::TreePop();
+		}
 
-        ImGui::PopID();
-    }
+		ImGui::PopID();
+	}
 
-    ImGui::PopID();
+	ImGui::PopID();
 }
 
 void App::RenderAdvancedRigUI()
 {
-    if (!m_->m_CharRigInited) return;
+	if (!m_->m_CharRigInited) return;
 
-    auto& ctrl = m_->m_CharCtrl;
+	auto& ctrl = m_->m_CharCtrl;
 
-    ImGui::Begin("AnimGraph / Blend Debug##AdvancedRig");
+	ImGui::Begin("AnimGraph / Blend Debug##AdvancedRig");
 
-    ImGui::Checkbox("Enable AdvancedRig", &m_->m_UseAdvancedRig);
-    ImGui::Text("Rig Inited: %s", m_->m_CharRigInited ? "true" : "false");
-    ImGui::Separator();
+	ImGui::Checkbox("Enable AdvancedRig", &m_->m_UseAdvancedRig);
+	ImGui::Text("Rig Inited: %s", m_->m_CharRigInited ? "true" : "false");
+	ImGui::Separator();
 
 	// ----- Weapon Socket Transform -----
 	ImGui::SeparatorText("Weapon Socket Transform");
@@ -5408,7 +5495,7 @@ void App::RenderAdvancedRigUI()
 		bool changed = false;
 
 		// |= 연산자를 사용해 하나라도 변경되면 changed가 true가 됨
-		changed |= ImGui::DragFloat3("Socket Pos", &sock.pos.x, 1.00f, -500.0f,500.0f, "%.4f");
+		changed |= ImGui::DragFloat3("Socket Pos", &sock.pos.x, 1.00f, -500.0f, 500.0f, "%.4f");
 		changed |= ImGui::DragFloat3("Socket Rot", &sock.rotDeg.x, 1.0f, -360.0f, 360.0f);
 		changed |= ImGui::DragFloat3("Socket Scale", &sock.scale.x, 0.01f, 0.1f, 10.0f);
 
@@ -5419,126 +5506,126 @@ void App::RenderAdvancedRigUI()
 		}
 	}
 
-    // ----- Base/Upper/Add Runtime -----
-    ImGui::SeparatorText("Runtime States");
-    ImGui::Text("Base : %s", ctrl.DebugBaseState().c_str());
-    ImGui::Text("Upper: %s", ctrl.DebugUpperState().c_str());
-    ImGui::Text("Add  : %s", ctrl.DebugAddState().c_str());
+	// ----- Base/Upper/Add Runtime -----
+	ImGui::SeparatorText("Runtime States");
+	ImGui::Text("Base : %s", ctrl.DebugBaseState().c_str());
+	ImGui::Text("Upper: %s", ctrl.DebugUpperState().c_str());
+	ImGui::Text("Add  : %s", ctrl.DebugAddState().c_str());
 
-    // 전환 진행률 + 커브
-    {
-        auto& b = ctrl.BaseSM();
-        ImGui::SeparatorText("Base Transition");
-        ImGui::Text("InTransition=%s  blend=%.3f  from=%d to=%d",
-            b.IsInTransition() ? "true" : "false",
-            b.GetBlend01(), b.GetFromStateIndex(), b.GetToStateIndex());
-        ImGui::ProgressBar(b.IsInTransition() ? b.GetBlend01() : 0.0f, ImVec2(-1, 0));
-        DrawBlendCurve(b.GetActiveFade().smoothStep, b.IsInTransition() ? b.GetBlend01() : 0.0f, ImVec2(ImGui::GetContentRegionAvail().x, 70));
-    }
+	// 전환 진행률 + 커브
+	{
+		auto& b = ctrl.BaseSM();
+		ImGui::SeparatorText("Base Transition");
+		ImGui::Text("InTransition=%s  blend=%.3f  from=%d to=%d",
+			b.IsInTransition() ? "true" : "false",
+			b.GetBlend01(), b.GetFromStateIndex(), b.GetToStateIndex());
+		ImGui::ProgressBar(b.IsInTransition() ? b.GetBlend01() : 0.0f, ImVec2(-1, 0));
+		DrawBlendCurve(b.GetActiveFade().smoothStep, b.IsInTransition() ? b.GetBlend01() : 0.0f, ImVec2(ImGui::GetContentRegionAvail().x, 70));
+	}
 
-    {
-        auto& u = ctrl.UpperSM();
-        ImGui::SeparatorText("Upper Transition");
-        ImGui::Text("InTransition=%s  blend=%.3f", u.IsInTransition() ? "true" : "false", u.GetBlend01());
-        ImGui::ProgressBar(u.IsInTransition() ? u.GetBlend01() : 0.0f, ImVec2(-1, 0));
-        DrawBlendCurve(u.GetActiveFade().smoothStep, u.IsInTransition() ? u.GetBlend01() : 0.0f, ImVec2(ImGui::GetContentRegionAvail().x, 70));
-    }
+	{
+		auto& u = ctrl.UpperSM();
+		ImGui::SeparatorText("Upper Transition");
+		ImGui::Text("InTransition=%s  blend=%.3f", u.IsInTransition() ? "true" : "false", u.GetBlend01());
+		ImGui::ProgressBar(u.IsInTransition() ? u.GetBlend01() : 0.0f, ImVec2(-1, 0));
+		DrawBlendCurve(u.GetActiveFade().smoothStep, u.IsInTransition() ? u.GetBlend01() : 0.0f, ImVec2(ImGui::GetContentRegionAvail().x, 70));
+	}
 
-    {
-        auto& a = ctrl.AddSM();
-        ImGui::SeparatorText("Additive Transition");
-        ImGui::Text("InTransition=%s  blend=%.3f", a.IsInTransition() ? "true" : "false", a.GetBlend01());
-        ImGui::ProgressBar(a.IsInTransition() ? a.GetBlend01() : 0.0f, ImVec2(-1, 0));
-        DrawBlendCurve(a.GetActiveFade().smoothStep, a.IsInTransition() ? a.GetBlend01() : 0.0f, ImVec2(ImGui::GetContentRegionAvail().x, 70));
-    }
+	{
+		auto& a = ctrl.AddSM();
+		ImGui::SeparatorText("Additive Transition");
+		ImGui::Text("InTransition=%s  blend=%.3f", a.IsInTransition() ? "true" : "false", a.GetBlend01());
+		ImGui::ProgressBar(a.IsInTransition() ? a.GetBlend01() : 0.0f, ImVec2(-1, 0));
+		DrawBlendCurve(a.GetActiveFade().smoothStep, a.IsInTransition() ? a.GetBlend01() : 0.0f, ImVec2(ImGui::GetContentRegionAvail().x, 70));
+	}
 
-    // ----- Graph View -----
-    ImGui::SeparatorText("Graph View (click node = Force State)");
-    DrawStateMachineGraph("BaseGraph",  ctrl.BaseSM());
-    DrawStateMachineGraph("UpperGraph", ctrl.UpperSM());
-    DrawStateMachineGraph("AddGraph",   ctrl.AddSM());
+	// ----- Graph View -----
+	ImGui::SeparatorText("Graph View (click node = Force State)");
+	DrawStateMachineGraph("BaseGraph", ctrl.BaseSM());
+	DrawStateMachineGraph("UpperGraph", ctrl.UpperSM());
+	DrawStateMachineGraph("AddGraph", ctrl.AddSM());
 
-    // ----- Transition Parameter Edit -----
-    ImGui::SeparatorText("Edit Transitions (live)");
-    DrawTransitionsEditor("Base Transitions",  ctrl.BaseSM());
-    DrawTransitionsEditor("Upper Transitions", ctrl.UpperSM());
-    DrawTransitionsEditor("Add Transitions",   ctrl.AddSM());
+	// ----- Transition Parameter Edit -----
+	ImGui::SeparatorText("Edit Transitions (live)");
+	DrawTransitionsEditor("Base Transitions", ctrl.BaseSM());
+	DrawTransitionsEditor("Upper Transitions", ctrl.UpperSM());
+	DrawTransitionsEditor("Add Transitions", ctrl.AddSM());
 
-    // ----- Slot(Key) -> Animation Index Mapping -----
-    ImGui::SeparatorText("Slot Mapping (key -> animation index)");
-    {
-        auto& map = ctrl.GetAnimIndexMap();
-        const auto& animNames = ctrl.GetAnimNames();
+	// ----- Slot(Key) -> Animation Index Mapping -----
+	ImGui::SeparatorText("Slot Mapping (key -> animation index)");
+	{
+		auto& map = ctrl.GetAnimIndexMap();
+		const auto& animNames = ctrl.GetAnimNames();
 
-        // 키 정렬해서 보여주기
-        std::vector<std::string> keys;
-        keys.reserve(map.size());
-        for (auto& kv : map) keys.push_back(kv.first);
-        std::sort(keys.begin(), keys.end());
+		// 키 정렬해서 보여주기
+		std::vector<std::string> keys;
+		keys.reserve(map.size());
+		for (auto& kv : map) keys.push_back(kv.first);
+		std::sort(keys.begin(), keys.end());
 
-        for (auto& k : keys)
-        {
-            int& idx = map[k];
-            ImGui::PushID(k.c_str());
+		for (auto& k : keys)
+		{
+			int& idx = map[k];
+			ImGui::PushID(k.c_str());
 
-            ImGui::Text("%s", k.c_str());
-            ImGui::SameLine(140);
+			ImGui::Text("%s", k.c_str());
+			ImGui::SameLine(140);
 
-            // 콤보로 애니 선택
-            int cur = idx;
-            const char* preview = (cur >= 0 && cur < (int)animNames.size()) ? animNames[(size_t)cur].c_str() : "<none>";
-            if (ImGui::BeginCombo("##AnimCombo", preview))
-            {
-                // none
-                if (ImGui::Selectable("<none>", cur < 0)) idx = -1;
+			// 콤보로 애니 선택
+			int cur = idx;
+			const char* preview = (cur >= 0 && cur < (int)animNames.size()) ? animNames[(size_t)cur].c_str() : "<none>";
+			if (ImGui::BeginCombo("##AnimCombo", preview))
+			{
+				// none
+				if (ImGui::Selectable("<none>", cur < 0)) idx = -1;
 
-                for (int i = 0; i < (int)animNames.size(); ++i)
-                {
-                    bool sel = (i == cur);
-                    if (ImGui::Selectable(animNames[(size_t)i].c_str(), sel))
-                        idx = i;
-                    if (sel) ImGui::SetItemDefaultFocus();
-                }
-                ImGui::EndCombo();
-            }
+				for (int i = 0; i < (int)animNames.size(); ++i)
+				{
+					bool sel = (i == cur);
+					if (ImGui::Selectable(animNames[(size_t)i].c_str(), sel))
+						idx = i;
+					if (sel) ImGui::SetItemDefaultFocus();
+				}
+				ImGui::EndCombo();
+			}
 
-            ImGui::PopID();
-        }
+			ImGui::PopID();
+		}
 
-        if (ImGui::Button("AutoBind (contains)"))
-            ctrl.AutoBindCommonSlotsByContains();
+		if (ImGui::Button("AutoBind (contains)"))
+			ctrl.AutoBindCommonSlotsByContains();
 
-        ImGui::SameLine();
-        if (ImGui::Button("Rebuild Default Graph"))
-        {
-            // 그래프를 다시 만들고 싶으면:
-            // - config나 slot mapping 바꾼 뒤 적용하려면 rebuild가 필요할 때가 있음
-            ctrl.BuildDefaultGraph();
-            ctrl.ResetRuntime();
-        }
-    }
+		ImGui::SameLine();
+		if (ImGui::Button("Rebuild Default Graph"))
+		{
+			// 그래프를 다시 만들고 싶으면:
+			// - config나 slot mapping 바꾼 뒤 적용하려면 rebuild가 필요할 때가 있음
+			ctrl.BuildDefaultGraph();
+			ctrl.ResetRuntime();
+		}
+	}
 
-    // ----- Recoil (Shake) -----
-    ImGui::SeparatorText("Recoil (Shake)");
-    ImGui::SliderFloat("Recoil Kick",  &m_->m_RecoilKickUi,  0.0f, 1.5f);
-    ImGui::SliderFloat("Recoil Decay", &m_->m_RecoilDecayUi, 0.0f, 30.0f);
+	// ----- Recoil (Shake) -----
+	ImGui::SeparatorText("Recoil (Shake)");
+	ImGui::SliderFloat("Recoil Kick", &m_->m_RecoilKickUi, 0.0f, 1.5f);
+	ImGui::SliderFloat("Recoil Decay", &m_->m_RecoilDecayUi, 0.0f, 30.0f);
 
-    // ----- Character Move (TPS) -----
-    ImGui::SeparatorText("Character Move (TPS)");
-    ImGui::Checkbox("Rotate to Move Dir", &m_->m_CharRotateToMove);
-    ImGui::SliderFloat("Walk Speed", &m_->m_CharWalkSpeed, 10.0f, 800.0f);
-    ImGui::SliderFloat("Run Mul",    &m_->m_CharRunMul,    1.0f,  3.0f);
-    ImGui::SliderFloat("Turn Speed", &m_->m_CharTurnSpeed, 1.0f, 25.0f);
+	// ----- Character Move (TPS) -----
+	ImGui::SeparatorText("Character Move (TPS)");
+	ImGui::Checkbox("Rotate to Move Dir", &m_->m_CharRotateToMove);
+	ImGui::SliderFloat("Walk Speed", &m_->m_CharWalkSpeed, 10.0f, 800.0f);
+	ImGui::SliderFloat("Run Mul", &m_->m_CharRunMul, 1.0f, 3.0f);
+	ImGui::SliderFloat("Turn Speed", &m_->m_CharTurnSpeed, 1.0f, 25.0f);
 
-    // ----- Sniper -----
-    ImGui::SeparatorText("Sniper");
-    ImGui::Checkbox("Sniper Enabled", &m_->m_SniperEnabled);
-    ImGui::SliderFloat("Charge Time (sec)", &m_->m_SniperChargeTimeSec, 0.1f, 3.0f);
-    ImGui::SliderFloat("Aim Radius", &m_->m_SniperAimRadius, 4.0f, 30.0f);
+	// ----- Sniper -----
+	ImGui::SeparatorText("Sniper");
+	ImGui::Checkbox("Sniper Enabled", &m_->m_SniperEnabled);
+	ImGui::SliderFloat("Charge Time (sec)", &m_->m_SniperChargeTimeSec, 0.1f, 3.0f);
+	ImGui::SliderFloat("Aim Radius", &m_->m_SniperAimRadius, 4.0f, 30.0f);
 
 
 
-    ImGui::End();
+	ImGui::End();
 }
 
 void App::RenderWaitingUI()
@@ -5559,7 +5646,8 @@ void App::RenderWaitingUI()
 	ImGui::SetNextWindowSize(size, ImGuiCond_FirstUseEver);
 
 	//if (ImGui::Begin("Loading...", &m_->m_ShowSceneImageWindow, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse))
-	if (ImGui::Begin("Loading...", &m_->m_ShowSceneImageWindow, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse))
+	//if (ImGui::Begin("Loading...", &m_->m_ShowSceneImageWindow, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse))
+	if (ImGui::Begin("Loading...", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse))
 	{
 		if (m_bIsLoaded) // atomic 읽기
 		{
@@ -5649,8 +5737,8 @@ void App::RenderWaitingUI()
 
 			// 3. 로딩 프로그레스 바
 			// ImVec2(-1, 0)은 가로 폭을 꽉 채운다는 의미
-			ImGui::ProgressBar(m_fLoadingProgress, ImVec2(-1.0f, 0.0f), 
-			std::format("Loading... {:.0f}%", m_fLoadingProgress * 100.0f).c_str());
+			ImGui::ProgressBar(m_fLoadingProgress, ImVec2(-1.0f, 0.0f),
+				std::format("Loading... {:.0f}%", m_fLoadingProgress * 100.0f).c_str());
 			ImGui::Spacing();
 			const wchar_t* currentPtr = m_sLoadingStr.load(); // UI 스레드에서 acquire 또는 relaxed로 로드
 			ImGui::Text("%s", Utf8FromWString(currentPtr).c_str());
@@ -5729,7 +5817,7 @@ void App::RenderWaitingUI()
 				}
 			}
 			*/
-			
+
 			// 만화 뷰어: 로딩 중에는 AliceDagwa.png 표시
 			if (m_->m_pSceneImageSRV)
 			{
@@ -5767,7 +5855,7 @@ void App::RenderWaitingUI()
 						m_->m_MangaIndex++;
 						m_->m_CurrentSceneImagePath = std::format(L"..\\Resource\\Image\\Manga\\{:02d}.png", m_->m_MangaIndex);
 						LoadSceneImage(m_->m_CurrentSceneImagePath);
-						
+
 						// 랜덤 사운드 재생
 						int soundChoice = (rand() % 2) + 1;  // 1 또는 2
 						if (soundChoice == 1)
@@ -5793,7 +5881,7 @@ void App::RenderWaitingUI()
 				ImGui::Text("Loading Image...");
 			}
 		}
-		
+
 	}
 	ImGui::End();
 }
@@ -5994,6 +6082,64 @@ void App::RenderDeferredUI() {
 		}
 	}
 	ImGui::End();
+}
+
+// Sound Debug UI - 3D 사운드 및 Pan 테스트
+void App::RenderSoundDebugUI() {
+	ImGuiIO& io = ImGui::GetIO();
+	ImVec2 pos(io.DisplaySize.x - 400.0f, 200.0f);
+	ImGui::SetNextWindowPos(pos, ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(380.0f, 600.0f), ImGuiCond_FirstUseEver);
+
+	if (ImGui::Begin("Sound Debug"))
+	{
+		// ===== 2D Pan 테스트 =====
+		ImGui::SeparatorText("Pan Test (2D)");
+		static float pan = 0.0f;
+		if (ImGui::Button("Play Pan Test"))
+		{
+			// 리소스 로드에서 key="test" 를 SFX로 등록해두었으므로 그것을 사용
+			// (간단한 핑 소리 등으로 좌/우 Pan을 확인)
+			Sound::PlayPanTest2D(L"test", true);
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Stop Pan Test"))
+		{
+			Sound::StopPanTest2D();
+		}
+		ImGui::SliderFloat("Pan (-1=L, +1=R)", &pan, -1.0f, 1.0f);
+		Sound::SetPanTest2D(pan);
+
+		// ===== SoundBox 파라미터 =====
+		ImGui::SeparatorText("SoundBoxes");
+		auto& boxes = m_->m_SoundBoxSystem.GetBoxes();
+		for (int i = 0; i < (int)boxes.size(); ++i)
+		{
+			auto& b = boxes[i];
+			ImGui::PushID(i);
+			if (ImGui::TreeNode("SoundBox", "SoundBox #%d", i))
+			{
+				ImGui::Text("Key: %ls", b.bgmKey.c_str());
+				ImGui::DragFloat3("Pos", &b.position.x, 0.1f);
+				ImGui::DragFloat3("Scale", &b.scale.x, 0.1f);
+
+				ImGui::SliderFloat("Edge Volume", &b.edgeVolume, 0.0f, 1.0f);
+				ImGui::SliderFloat("Center Volume", &b.centerVolume, 0.0f, 1.0f);
+				ImGui::SliderFloat("Curve", &b.curve, 0.1f, 8.0f);
+
+				ImGui::DragFloat("MinDist", &b.minDist, 0.1f, 0.01f, 1000.0f);
+				ImGui::DragFloat("MaxDist", &b.maxDist, 0.1f, 0.01f, 5000.0f);
+
+				ImGui::SliderFloat("LR Weight", &b.lrWeight, -1.0f, 1.0f);
+				ImGui::DragFloat("LR Max Meters", &b.lrMaxMeters, 0.1f, 0.0f, 100.0f);
+
+				ImGui::TreePop();
+			}
+			ImGui::PopID();
+		}
+
+		ImGui::End();
+	}
 }
 
 void App::LoadSceneImage(const std::wstring& path) {

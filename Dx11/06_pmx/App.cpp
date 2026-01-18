@@ -94,16 +94,21 @@ bool App::OnInitialize()
 	// 한글/일본어 표시를 위한 폰트 설정
 	{
 		ImGuiIO& io = ImGui::GetIO();
-		io.Fonts->AddFontDefault();
 		ImFontConfig cfg{};
-		cfg.MergeMode = true;
 		cfg.PixelSnapH = true;
 		cfg.OversampleH = 2;
 		cfg.OversampleV = 2;
 		const ImWchar* rangeKR = io.Fonts->GetGlyphRangesKorean();
-		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\NotoSansKR-Regular.ttf", 17.0f, &cfg, rangeKR);
+		const ImWchar* rangeENG = io.Fonts->GetGlyphRangesDefault();
 		const ImWchar* rangeJP = io.Fonts->GetGlyphRangesJapanese();
-		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\meiryo.ttc", 17.0f, &cfg, rangeJP);
+		// 한글: NotoSansKR-Regular
+		cfg.MergeMode = false;
+		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\NotoSansKR-Regular.ttf", 20.0f, &cfg, rangeKR);
+		// 일본어: Meiryo
+		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\meiryo.ttc", 22.0f, &cfg, rangeJP);
+		// 영어
+		cfg.MergeMode = true;
+		io.Fonts->AddFontFromFileTTF("..\\Resource\\Font\\NotoSansKR-Regular.ttf", 20.0f, &cfg, rangeENG);
 	}
 	ImGui_ImplWin32_Init(m_hWnd);
 	ImGui_ImplDX11_Init(m_pDevice, m_pDeviceContext);
@@ -293,22 +298,6 @@ void App::OnRender()
 		ImGui::DragFloatRange2("Near/Far", &m_CameraNear, &m_CameraFar, 0.1f, 0.01f, 5000.0f, "Near: %.2f", "Far: %.2f");
 	}
 	ImGui::End();
-
-	// ============================== 큐브 설명 창 ==============================
-	{
-		ImGuiIO& io = ImGui::GetIO();
-		ImVec2 size(260.0f, 80.0f);
-		ImVec2 pos(10.0f, io.DisplaySize.y - size.y - 10.0f);
-		ImGui::SetNextWindowPos(pos, ImGuiCond_Always);
-		ImGui::SetNextWindowSize(size, ImGuiCond_Always);
-		ImGuiWindowFlags flags = ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse;
-		if (ImGui::Begin("Cube Description", nullptr, flags))
-		{
-			ImGui::Text("front : Yuuka");
-			ImGui::Text("etc   : Hanako");
-		}
-		ImGui::End();
-	}
 
 	// ============================== 시스템 정보 창(FPS/GPU/CPU) ==============================
 	{

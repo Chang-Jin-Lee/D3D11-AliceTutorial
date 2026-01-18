@@ -28,12 +28,12 @@
     <Filter Include="Animation">
       <UniqueIdentifier>{d17dde4a-806c-450b-a0f2-53414953a234}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Sound">
+      <UniqueIdentifier>{9033aebc-bb94-488d-9c07-1087145cbb82}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="framework.h">
-      <Filter>헤더 파일</Filter>
-    </ClInclude>
-    <ClInclude Include="Mesh/FbxTypes.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="pch.h">
@@ -123,6 +123,18 @@
     <ClInclude Include="Animation\CharacterAnimController.h">
       <Filter>Animation</Filter>
     </ClInclude>
+    <ClInclude Include="Mesh/FbxTypes.h">
+      <Filter>Mesh</Filter>
+    </ClInclude>
+    <ClInclude Include="Sound\SoundBox.h">
+      <Filter>Sound</Filter>
+    </ClInclude>
+    <ClInclude Include="Sound\SoundSystem.h">
+      <Filter>Sound</Filter>
+    </ClInclude>
+    <ClInclude Include="Sound\SoundManager.h">
+      <Filter>Sound</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Common.cpp">
@@ -205,6 +217,15 @@
     </ClCompile>
     <ClCompile Include="Animation\Animator.cpp">
       <Filter>Animation</Filter>
+    </ClCompile>
+    <ClCompile Include="Sound\SoundBox.cpp">
+      <Filter>Sound</Filter>
+    </ClCompile>
+    <ClCompile Include="Sound\SoundSystem.cpp">
+      <Filter>Sound</Filter>
+    </ClCompile>
+    <ClCompile Include="Sound\SoundManager.cpp">
+      <Filter>Sound</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>
