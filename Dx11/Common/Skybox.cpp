@@ -79,8 +79,15 @@ bool Skybox::Initialize(ID3D11Device* device,
 
 bool Skybox::ChangeDDS(ID3D11Device* device, const wchar_t* ddsPath)
 {
+    ID3D11ShaderResourceView* nextSRV = nullptr;
+    if (FAILED(CreateDDSTextureFromFile(device, ddsPath, nullptr, &nextSRV)))
+    {
+        return false;
+    }
+
     if (pImpl->m_srv) { pImpl->m_srv->Release(); pImpl->m_srv = nullptr; }
-    return SUCCEEDED(CreateDDSTextureFromFile(device, ddsPath, nullptr, &pImpl->m_srv));
+    pImpl->m_srv = nextSRV;
+    return true;
 }
 
 void Skybox::Render(ID3D11DeviceContext* ctx,

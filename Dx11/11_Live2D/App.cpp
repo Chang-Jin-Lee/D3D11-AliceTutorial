@@ -40,6 +40,14 @@
 #include <malloc.h>
 #include <cstdio>
 #include <string>
+namespace
+{
+    std::string ToUtf8Bytes(const std::filesystem::path& path)
+    {
+        const auto u8 = path.u8string();
+        return std::string(reinterpret_cast<const char*>(u8.c_str()), u8.size());
+    }
+}
 
 using namespace Live2D::Cubism::Framework;
 
@@ -144,10 +152,9 @@ public:
                     auto stem = path.filename().wstring();
                     // motion3.json 이름 필터
                     std::wstring wname = stem;
-                    std::string name(wname.begin(), wname.end());
-                    if (name.size() >= 12 && name.find("motion3.json") != std::string::npos)
+                    if (wname.size() >= 12 && wname.find(L"motion3.json") != std::wstring::npos)
                     {
-                        autoMotionFiles.push_back(std::string(path.filename().u8string()));
+                        autoMotionFiles.push_back(ToUtf8Bytes(path.filename()));
                     }
                 }
             }
@@ -162,7 +169,7 @@ public:
     // 외부 모션 추가: 모델 폴더 내부면 auto에 상대경로로, 외부면 extra에 절대경로로 등록
     void AddExtraMotionFromPath(const std::wstring& fullPathW)
     {
-        std::string fullPath(fullPathW.begin(), fullPathW.end());
+        std::string fullPath = ToUtf8Bytes(std::filesystem::path(fullPathW));
         // baseDir로 시작하는지 검사(대소문자 단순 비교)
         if (!baseDir.empty())
         {
@@ -251,11 +258,12 @@ public:
 
 	bool LoadFromModel3(const std::wstring& model3Path)
 	{
-		std::string spath(model3Path.begin(), model3Path.end());
+		const std::filesystem::path modelPath(model3Path);
+		std::string spath = ToUtf8Bytes(modelPath);
 		auto pos = spath.find_last_of("/\\");
 		baseDir = (pos==std::string::npos) ? std::string() : spath.substr(0,pos+1);
 		// 읽기
-		FILE* fp = nullptr; fopen_s(&fp, spath.c_str(), "rb"); if(!fp) return false;
+		FILE* fp = nullptr; _wfopen_s(&fp, model3Path.c_str(), L"rb"); if(!fp) return false;
 		fseek(fp, 0, SEEK_END); long sz = ftell(fp); fseek(fp, 0, SEEK_SET);
 		std::vector<uint8_t> buf(sz); fread(buf.data(),1,sz,fp); fclose(fp);
 		setting.reset(new CubismModelSettingJson(buf.data(), (csmSizeInt)buf.size()));
@@ -776,7 +784,7 @@ void App::OnRender()
 							{
 								// 파일명만 표시
 								std::filesystem::path p = std::filesystem::path(m_L2D->extraMotionPaths[mi]);
-								line = p.filename().u8string();
+								line = ToUtf8Bytes(p.filename());
 							}
 						}
 						else

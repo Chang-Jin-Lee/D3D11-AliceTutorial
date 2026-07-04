@@ -1,72 +1,47 @@
 <Project>
-  <!-- ==== 경로/트리플릿 공통 설정 ==== -->
   <PropertyGroup>
-    <!-- vcpkg 루트 경로: 필요시 본인 경로로 수정 -->
-    <VcpkgRoot>D:\vcpkg</VcpkgRoot>
-    
-    <TripletStatic>x64-windows-static-md</TripletStatic>
-    <TripletDynamic>x64-windows</TripletDynamic>
+    <SolutionDir Condition="'$(SolutionDir)'==''">$(MSBuildThisFileDirectory)</SolutionDir>
+    <ThirdPartyDir>$(SolutionDir)third_party\</ThirdPartyDir>
+    <AssimpDir>$(ThirdPartyDir)assimp\</AssimpDir>
+    <DirectXTKDir>$(ThirdPartyDir)DirectXTK\</DirectXTKDir>
+    <ImGuiDir>$(ThirdPartyDir)imgui\</ImGuiDir>
+    <ImGuiNodeEditorDir>$(ThirdPartyDir)imgui-node-editor\</ImGuiNodeEditorDir>
   </PropertyGroup>
 
-  <!-- ==== 공통: 포함 디렉터리 ==== -->
   <ItemDefinitionGroup>
     <ClCompile>
+      <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalIncludeDirectories>
-        $(VcpkgRoot)\installed\$(TripletStatic)\include;
-        $(VcpkgRoot)\installed\$(TripletDynamic)\include;
+        $(DirectXTKDir)include;
+        $(DirectXTKDir)include\directxtk;
+        $(DirectXTKDir)src;
+        $(ImGuiDir);
+        $(ImGuiDir)backends;
+        $(ImGuiDir)misc\cpp;
+        $(ImGuiNodeEditorDir);
+        $(AssimpDir)include;
+        $(ThirdPartyDir)stb;
+        $(ThirdPartyDir)FMOD\inc;
         %(AdditionalIncludeDirectories)
       </AdditionalIncludeDirectories>
     </ClCompile>
-  </ItemDefinitionGroup>
-
-  <!-- ==== Debug 전용 설정 ==== -->
-  <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
     <Link>
       <AdditionalLibraryDirectories>
-        $(VcpkgRoot)\installed\$(TripletStatic)\debug\lib;
-        $(VcpkgRoot)\installed\$(TripletDynamic)\debug\lib;
-        %(AdditionalLibraryDirectories)
-      </AdditionalLibraryDirectories>
-      <!-- DX11 기준: directxtk.lib / directxtex.lib / imgui.lib + Assimp import lib -->
-      <AdditionalDependencies>
-        directxtk.lib;
-        directxtex.lib;
-        imguid.lib;
-        assimp-vc143-mtd.lib;
-        %(AdditionalDependencies)
-      </AdditionalDependencies>
-    </Link>
-
-    <!-- Assimp DLL 자동 복사 (Debug) -->
-    <PostBuildEvent>
-      <Command>
-        xcopy /Y /D "$(VcpkgRoot)\installed\$(TripletDynamic)\debug\bin\assimp-vc143-mtd.dll" "$(OutDir)"
-      </Command>
-    </PostBuildEvent>
-  </ItemDefinitionGroup>
-
-  <!-- ==== Release 전용 설정 ==== -->
-  <ItemDefinitionGroup Condition="'$(Configuration)'=='Release'">
-    <Link>
-      <AdditionalLibraryDirectories>
-        $(VcpkgRoot)\installed\$(TripletStatic)\lib;
-        $(VcpkgRoot)\installed\$(TripletDynamic)\lib;
+        $(AssimpDir)lib\msvc;
+        $(ThirdPartyDir)FMOD\64x;
         %(AdditionalLibraryDirectories)
       </AdditionalLibraryDirectories>
       <AdditionalDependencies>
-        directxtk.lib;
-        directxtex.lib;
-        imgui.lib;
         assimp-vc143-mt.lib;
+        d3d11.lib;
+        dxgi.lib;
+        d3dcompiler.lib;
+        dxguid.lib;
+        windowscodecs.lib;
+        xinput.lib;
+        wbemuuid.lib;
         %(AdditionalDependencies)
       </AdditionalDependencies>
     </Link>
-
-    <!-- Assimp DLL 자동 복사 (Release) -->
-    <PostBuildEvent>
-      <Command>
-        xcopy /Y /D "$(VcpkgRoot)\installed\$(TripletDynamic)\bin\assimp-vc143-mt.dll" "$(OutDir)"
-      </Command>
-    </PostBuildEvent>
   </ItemDefinitionGroup>
 </Project>

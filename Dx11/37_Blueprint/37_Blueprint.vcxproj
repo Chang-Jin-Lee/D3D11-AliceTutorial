@@ -19,20 +19,22 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="37_BasicPixelShader.hlsl">
+    <CopyFileToFolders Include="37_BasicPixelShader.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Pixel</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
-    </FxCompile>
-    <FxCompile Include="37_BasicVertexShader.hlsl">
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="37_BasicVertexShader.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Vertex</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
-    </FxCompile>
+    </CopyFileToFolders>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\third_party\imgui-node-editor\imgui_bezier_math.inl" />
     <None Include="..\third_party\imgui-node-editor\imgui_extra_math.inl" />
     <None Include="..\third_party\imgui-node-editor\imgui_node_editor_internal.inl" />
-    <None Include="37_Shared.fxh" />
+    <CopyFileToFolders Include="37_Shared.fxh">
+      <FileType>Document</FileType>
+    </CopyFileToFolders>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\third_party\imgui-node-editor\crude_json.cpp" />

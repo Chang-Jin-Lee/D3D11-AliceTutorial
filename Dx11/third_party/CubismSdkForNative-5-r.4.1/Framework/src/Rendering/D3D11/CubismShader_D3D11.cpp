@@ -140,11 +140,11 @@ void CubismShader_D3D11::GenerateShaders(ID3D11Device* device)
         {
             break;
         }
-        if (!LoadShaderProgram(device, true, ShaderNames_NormalMaskedInverted, static_cast<csmChar*>("PixelMaskedInverted")))
+        if (!LoadShaderProgram(device, true, ShaderNames_NormalMaskedInverted, static_cast<const csmChar*>("PixelMaskedInverted")))
         {
             break;
         }
-        if (!LoadShaderProgram(device, true, ShaderNames_NormalPremultipliedAlpha, static_cast<csmChar*>("PixelNormalPremult")))
+        if (!LoadShaderProgram(device, true, ShaderNames_NormalPremultipliedAlpha, static_cast<const csmChar*>("PixelNormalPremult")))
         {
             break;
         }
@@ -152,7 +152,7 @@ void CubismShader_D3D11::GenerateShaders(ID3D11Device* device)
         {
             break;
         }
-        if (!LoadShaderProgram(device, true, ShaderNames_NormalMaskedInvertedPremultipliedAlpha, static_cast<csmChar*>("PixelMaskedInvertedPremult")))
+        if (!LoadShaderProgram(device, true, ShaderNames_NormalMaskedInvertedPremultipliedAlpha, static_cast<const csmChar*>("PixelMaskedInvertedPremult")))
         {
             break;
         }

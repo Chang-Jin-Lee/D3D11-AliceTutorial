@@ -543,7 +543,7 @@ static bool OpenFileDialogModel(std::wstring& outPath)
 	OPENFILENAMEW ofn{};
 	ofn.lStructSize = sizeof(ofn);
 	ofn.hwndOwner = GameApp::m_hWnd;
-	ofn.lpstrFilter = L"Models (*.fbx;*.obj;*.pmx)\0*.fbx;*.obj;*.pmx\0All Files\0*.*\0\0";
+	ofn.lpstrFilter = L"Models (*.fbx;*.obj;*.pmx;*.gltf;*.glb)\0*.fbx;*.obj;*.pmx;*.gltf;*.glb\0All Files\0*.*\0\0";
 	ofn.lpstrFile = file;
 	ofn.nMaxFile = MAX_PATH;
 	ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
@@ -628,7 +628,7 @@ bool App::OnInitialize()
 
 	// ====================================== 3D 모델 ======================================
 	LoadModelFromFile(L"..\\Resource\\fbx\\Rapi.fbx"); // 0
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\char\\char.fbx"); // 1
+	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\char.fbx"); // 1
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Ground.fbx"); // 2
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Ground.fbx"); // 3
 
@@ -2448,7 +2448,7 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
 		shared = std::make_shared<SharedModelData>();
 		shared->pathW = pathW;
 		// 로드 경로에 따라 매니저 준비
-		if (ext == L".fbx")
+		if (ext == L".fbx" || ext == L".gltf" || ext == L".glb")
 		{
 			shared->source = ModelSource::FBX;
 			// 공용 AssetManager를 통해 FBX 모델 공유/캐시

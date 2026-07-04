@@ -4,11 +4,18 @@
 
 #include <directxtk/WICTextureLoader.h>
 #include <directxtk/DDSTextureLoader.h>
-#include <DirectXTex.h>
+#define STBI_ONLY_TGA
+#define STBI_NO_STDIO
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
 #include <wrl/client.h>
 #include <assimp/scene.h>
 #include <assimp/Importer.hpp>
+#include <algorithm>
+#include <cwctype>
 #include <filesystem>
+#include <fstream>
+#include <limits>
 
 using Microsoft::WRL::ComPtr;
 
@@ -169,20 +176,57 @@ static HRESULT CreateTextureFromTgaFile(ID3D11Device* device, const wchar_t* pat
 	if (!device || !path || !outSRV) return E_INVALIDARG;
 	*outSRV = nullptr;
 
-	using namespace DirectX;
+	std::ifstream file(std::filesystem::path(path), std::ios::binary);
+	if (!file) return HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
 
-	TexMetadata metadata{};
-	ScratchImage image;
-	HRESULT hr = LoadFromTGAFile(path, &metadata, image);
+	std::vector<unsigned char> bytes(
+		(std::istreambuf_iterator<char>(file)),
+		std::istreambuf_iterator<char>());
+	if (bytes.empty()) return E_FAIL;
+	if (bytes.size() > static_cast<size_t>(std::numeric_limits<int>::max())) return HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE);
+
+	int width = 0;
+	int height = 0;
+	int channels = 0;
+	stbi_uc* pixels = stbi_load_from_memory(bytes.data(), static_cast<int>(bytes.size()), &width, &height, &channels, STBI_rgb_alpha);
+	if (!pixels || width <= 0 || height <= 0)
+	{
+		if (pixels) stbi_image_free(pixels);
+		return E_FAIL;
+	}
+
+	D3D11_TEXTURE2D_DESC td{};
+	td.Width = static_cast<UINT>(width);
+	td.Height = static_cast<UINT>(height);
+	td.MipLevels = 1;
+	td.ArraySize = 1;
+	td.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	td.SampleDesc.Count = 1;
+	td.Usage = D3D11_USAGE_IMMUTABLE;
+	td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+
+	D3D11_SUBRESOURCE_DATA sd{};
+	sd.pSysMem = pixels;
+	sd.SysMemPitch = static_cast<UINT>(width * 4);
+
+	ComPtr<ID3D11Texture2D> tex;
+	HRESULT hr = device->CreateTexture2D(&td, &sd, tex.GetAddressOf());
+	stbi_image_free(pixels);
 	if (FAILED(hr)) return hr;
 
-	hr = CreateShaderResourceView(
-		device,
-		image.GetImages(),
-		image.GetImageCount(),
-		metadata,
-		outSRV);
-	return hr;
+	D3D11_SHADER_RESOURCE_VIEW_DESC srvd{};
+	srvd.Format = td.Format;
+	srvd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+	srvd.Texture2D.MipLevels = 1;
+	srvd.Texture2D.MostDetailedMip = 0;
+	return device->CreateShaderResourceView(tex.Get(), &srvd, outSRV);
+}
+
+static std::wstring LowerExtension(const std::wstring& path)
+{
+	std::wstring ext = std::filesystem::path(path).extension().wstring();
+	std::transform(ext.begin(), ext.end(), ext.begin(), [](wchar_t ch) { return static_cast<wchar_t>(towlower(ch)); });
+	return ext;
 }
 
 // WIC + TGA 지원을 한꺼번에 처리하는 래퍼
@@ -198,17 +242,16 @@ static HRESULT CreateTextureFromFileWithTga(
 	ID3D11Resource** resPtr = outRes ? outRes : dummyRes.GetAddressOf();
 
 	ID3D11ShaderResourceView* srv = nullptr;
-	HRESULT hr = CreateWICTextureFromFile(device, path.c_str(), resPtr, &srv);
+	std::wstring ext = LowerExtension(path);
+	HRESULT hr = (ext == L".dds")
+		? CreateDDSTextureFromFile(device, path.c_str(), resPtr, &srv)
+		: CreateWICTextureFromFile(device, path.c_str(), resPtr, &srv);
 	if (FAILED(hr))
 	{
 		// 확장자가 .tga 이면 직접 파싱 시도
-		if (path.size() >= 4)
+		if (ext == L".tga")
 		{
-			std::wstring ext = path.substr(path.size() - 4);
-			if (ext == L".tga" || ext == L".TGA")
-			{
-				hr = CreateTextureFromTgaFile(device, path.c_str(), &srv);
-			}
+			hr = CreateTextureFromTgaFile(device, path.c_str(), &srv);
 		}
 	}
 
@@ -344,13 +387,22 @@ bool FbxMaterialLoader::Load(ID3D11Device* device, const aiScene* scene, const s
 	{
 		aiMaterial* mat = scene->mMaterials[m];
 
-		// BaseColor / Diffuse
+		// glTF PBR base color first, then legacy diffuse for FBX/OBJ/PMX.
 		m_->baseColorSRVs[m] = LoadTextureFromMaterial(
 			device, scene, mat,
-			aiTextureType_DIFFUSE,          // BaseColor
+			aiTextureType_BASE_COLOR,
 			baseDir,
 			m_->cache,
-			m_->white);
+			nullptr);
+		if (!m_->baseColorSRVs[m])
+		{
+			m_->baseColorSRVs[m] = LoadTextureFromMaterial(
+				device, scene, mat,
+				aiTextureType_DIFFUSE,
+				baseDir,
+				m_->cache,
+				m_->white);
+		}
 
 		// Metallic / Roughness (Assimp PBR 텍스처 타입 사용)
 		m_->metallicSRVs[m] = LoadTextureFromMaterial(

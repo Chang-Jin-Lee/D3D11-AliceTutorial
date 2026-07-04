@@ -19,51 +19,61 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="35_BasicPS.hlsl">
+    <CopyFileToFolders Include="35_BasicPS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
       <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.0</ShaderModel>
-    </FxCompile>
-    <FxCompile Include="35_BasicVS.hlsl">
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="35_BasicVS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
-    </FxCompile>
-    <FxCompile Include="35_DeferredGBufferPS.hlsl">
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="35_DeferredGBufferPS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
       <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.0</ShaderModel>
-    </FxCompile>
-    <FxCompile Include="35_DeferredGBufferVS.hlsl">
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="35_DeferredGBufferVS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
-    </FxCompile>
-    <FxCompile Include="35_DeferredLightPS.hlsl">
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="35_DeferredLightPS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
       <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.0</ShaderModel>
-    </FxCompile>
-    <FxCompile Include="35_QuadVS.hlsl">
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="35_QuadVS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
-    </FxCompile>
-    <FxCompile Include="35_SkyBoxPS.hlsl">
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="35_SkyBoxPS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
       <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.0</ShaderModel>
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">PS</EntryPointName>
-    </FxCompile>
-    <FxCompile Include="35_SkyBoxVS.hlsl">
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="35_SkyBoxVS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">VS</EntryPointName>
-    </FxCompile>
-    <FxCompile Include="35_ToneMappingPS_HDR.hlsl">
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="35_ToneMappingPS_HDR.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
       <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.0</ShaderModel>
-    </FxCompile>
-    <FxCompile Include="35_ToneMappingPS_LDR.hlsl">
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="35_ToneMappingPS_LDR.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
       <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.0</ShaderModel>
-    </FxCompile>
+    </CopyFileToFolders>
   </ItemGroup>
   <ItemGroup>
-    <None Include="35_DeferredShared.fxh" />
-    <None Include="35_LightingHelper.hlsli" />
-    <None Include="35_PBRHelper.hlsli" />
-    <None Include="35_Shared.fxh" />
-    <None Include="35_SkyBox.hlsli" />
+    <CopyFileToFolders Include="35_DeferredShared.fxh">
+      <FileType>Document</FileType>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="35_LightingHelper.hlsli">
+      <FileType>Document</FileType>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="35_PBRHelper.hlsli">
+      <FileType>Document</FileType>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="35_Shared.fxh">
+      <FileType>Document</FileType>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="35_SkyBox.hlsli">
+      <FileType>Document</FileType>
+    </CopyFileToFolders>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="App.cpp" />

@@ -31,6 +31,15 @@
     <Filter Include="Sound">
       <UniqueIdentifier>{9033aebc-bb94-488d-9c07-1087145cbb82}</UniqueIdentifier>
     </Filter>
+    <Filter Include="ThirdParty">
+      <UniqueIdentifier>{ce8aeb90-f796-40af-a657-09f74e4ea13c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\DirectXTK">
+      <UniqueIdentifier>{f5b03e0c-4022-472d-9528-4df170303d7a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\imgui">
+      <UniqueIdentifier>{cc76d239-6213-463a-ae14-e2a1151d39b4}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="framework.h">
@@ -59,6 +68,9 @@
     </ClInclude>
     <ClInclude Include="Skybox.h">
       <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="SkyboxAssetManager.h">
+      <Filter>Assets</Filter>
     </ClInclude>
     <ClInclude Include="SystemInfomation.h">
       <Filter>헤더 파일</Filter>
@@ -164,6 +176,9 @@
     <ClCompile Include="Skybox.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
+    <ClCompile Include="SkyboxAssetManager.cpp">
+      <Filter>Assets</Filter>
+    </ClCompile>
     <ClCompile Include="SystemInfomation.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
@@ -226,6 +241,48 @@
     </ClCompile>
     <ClCompile Include="Sound\SoundManager.cpp">
       <Filter>Sound</Filter>
+    </ClCompile>
+    <ClCompile Include="..\third_party\DirectXTK\src\DDSTextureLoader.cpp">
+      <Filter>ThirdParty\DirectXTK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\third_party\DirectXTK\src\GamePad.cpp">
+      <Filter>ThirdParty\DirectXTK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\third_party\DirectXTK\src\Keyboard.cpp">
+      <Filter>ThirdParty\DirectXTK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\third_party\DirectXTK\src\Mouse.cpp">
+      <Filter>ThirdParty\DirectXTK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\third_party\DirectXTK\src\SimpleMath.cpp">
+      <Filter>ThirdParty\DirectXTK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\third_party\DirectXTK\src\WICTextureLoader.cpp">
+      <Filter>ThirdParty\DirectXTK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\third_party\imgui\imgui.cpp">
+      <Filter>ThirdParty\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\third_party\imgui\imgui_demo.cpp">
+      <Filter>ThirdParty\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\third_party\imgui\imgui_draw.cpp">
+      <Filter>ThirdParty\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\third_party\imgui\imgui_tables.cpp">
+      <Filter>ThirdParty\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\third_party\imgui\imgui_widgets.cpp">
+      <Filter>ThirdParty\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\third_party\imgui\backends\imgui_impl_dx11.cpp">
+      <Filter>ThirdParty\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\third_party\imgui\backends\imgui_impl_win32.cpp">
+      <Filter>ThirdParty\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\third_party\imgui\misc\cpp\imgui_stdlib.cpp">
+      <Filter>ThirdParty\imgui</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>
