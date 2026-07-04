@@ -16,6 +16,10 @@
     <Filter Include="Shaders">
       <UniqueIdentifier>{1036be48-cf97-43e7-bbc0-6ffa3db5fdb6}</UniqueIdentifier>
     </Filter>
+    <Filter Include="App Parts">
+      <UniqueIdentifier>{c1f8b455-428e-44bb-9cfb-0df93773d6f4}</UniqueIdentifier>
+      <Extensions>inl</Extensions>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="36_BasicPS.hlsl">
@@ -80,6 +84,27 @@
   <ItemGroup>
     <ClInclude Include="App.h">
       <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="App_InternalTypes.inl">
+      <Filter>App Parts</Filter>
+    </ClInclude>
+    <ClInclude Include="App_Lifecycle.inl">
+      <Filter>App Parts</Filter>
+    </ClInclude>
+    <ClInclude Include="App_UpdateInput.inl">
+      <Filter>App Parts</Filter>
+    </ClInclude>
+    <ClInclude Include="App_RenderPasses.inl">
+      <Filter>App Parts</Filter>
+    </ClInclude>
+    <ClInclude Include="App_ModelLoading.inl">
+      <Filter>App Parts</Filter>
+    </ClInclude>
+    <ClInclude Include="App_ImGuiPanels.inl">
+      <Filter>App Parts</Filter>
+    </ClInclude>
+    <ClInclude Include="App_Utilities.inl">
+      <Filter>App Parts</Filter>
     </ClInclude>
     <ClInclude Include="SceneA.h">
       <Filter>헤더 파일</Filter>
