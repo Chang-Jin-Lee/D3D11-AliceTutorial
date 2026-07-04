@@ -1,4 +1,35 @@
 <Project>
+  <ItemGroup>
+    <FxCompile Update="*PS*.hlsl">
+      <ShaderType>Pixel</ShaderType>
+      <ShaderModel>5.0</ShaderModel>
+    </FxCompile>
+    <FxCompile Update="*PixelShader*.hlsl">
+      <ShaderType>Pixel</ShaderType>
+      <ShaderModel>5.0</ShaderModel>
+    </FxCompile>
+    <FxCompile Update="*VS*.hlsl">
+      <ShaderType>Vertex</ShaderType>
+      <ShaderModel>5.0</ShaderModel>
+    </FxCompile>
+    <FxCompile Update="*VertexShader*.hlsl">
+      <ShaderType>Vertex</ShaderType>
+      <ShaderModel>5.0</ShaderModel>
+    </FxCompile>
+    <FxCompile Update="*SkyBoxPS.hlsl">
+      <EntryPointName>PS</EntryPointName>
+    </FxCompile>
+    <FxCompile Update="*SkyBoxVS.hlsl">
+      <EntryPointName>VS</EntryPointName>
+    </FxCompile>
+  </ItemGroup>
+
+  <ItemDefinitionGroup>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+    </Link>
+  </ItemDefinitionGroup>
+
   <!-- 공통 bin 폴더 정의 -->
   <PropertyGroup>
     <CommonBinDir>$(SolutionDir)bin\</CommonBinDir>
@@ -26,5 +57,29 @@
           DestinationFolder="$(CommonBinDir)"
           SkipUnchangedFiles="true"
           Condition="Exists('$(TargetDir)$(TargetName).pdb')" />
+  </Target>
+
+  <!-- repo-local runtime DLLs -->
+  <Target Name="CopyThirdPartyRuntimeDlls"
+          AfterTargets="Build"
+          Condition="'$(ConfigurationType)'!='StaticLibrary'">
+    <ItemGroup>
+      <RuntimeDll Include="$(SolutionDir)third_party\assimp\bin\msvc\assimp-vc143-mt.dll"
+                  Condition="Exists('$(SolutionDir)third_party\assimp\bin\msvc\assimp-vc143-mt.dll')" />
+    </ItemGroup>
+
+    <Copy SourceFiles="@(RuntimeDll)"
+          DestinationFolder="$(TargetDir)"
+          SkipUnchangedFiles="true"
+          Retries="10"
+          RetryDelayMilliseconds="250"
+          Condition="'@(RuntimeDll)'!=''" />
+
+    <Copy SourceFiles="@(RuntimeDll)"
+          DestinationFolder="$(CommonBinDir)"
+          SkipUnchangedFiles="true"
+          Retries="10"
+          RetryDelayMilliseconds="250"
+          Condition="'@(RuntimeDll)'!=''" />
   </Target>
 </Project>

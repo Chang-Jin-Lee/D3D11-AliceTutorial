@@ -36,6 +36,9 @@ public:
     int useSpecularMap{ 1 };
 
     // 텍스처 경로/리소스(있을 때만 사용)
+    std::wstring facePathStorage[6];
+    std::wstring normalPathStorage[6];
+    std::wstring specularPathStorage[6];
     const wchar_t* facePaths[6]    = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
     const wchar_t* normalPaths[6]  = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
     const wchar_t* specularPaths[6]= { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };

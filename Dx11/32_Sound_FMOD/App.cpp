@@ -24,6 +24,7 @@
 #include "../Common/StaticMesh.h"
 #include "../Common/LineRenderer.h"
 #include "../Common/Skybox.h"
+#include "../Common/SkyboxAssetManager.h"
 #include "../Common/SystemInfomation.h"
 #include "../Common/Mesh/FbxModel.h"
 #include "../Common/Mesh/FbxAnimation.h"
@@ -340,6 +341,8 @@ struct App::Impl {
 	ImVec2							m_SkyFaceSize = ImVec2(0, 0);
 	// 초기 스카이박스는 IBL Baker Sample 환경맵을 사용
 	wchar_t							m_CurrentSkyboxPath[260] = L"..\\Resource\\Skybox\\Sample\\BakerSampleEnvHDR.dds";
+	std::wstring					m_CurrentIBLPath = L"..\\Resource\\Skybox\\Sample\\BakerSample";
+	unsigned int					m_SkyboxAssetGeneration = 0;
 
 	// Cube 텍스처 경로는 CubeObject 안으로 이동
 	// 기본 메시 버퍼/입력 레이아웃
@@ -522,7 +525,7 @@ static bool OpenFileDialogModel(std::wstring& outPath)
 	OPENFILENAMEW ofn{};
 	ofn.lStructSize = sizeof(ofn);
 	ofn.hwndOwner = GameApp::m_hWnd;
-	ofn.lpstrFilter = L"Models (*.fbx;*.obj;*.pmx)\0*.fbx;*.obj;*.pmx\0All Files\0*.*\0\0";
+	ofn.lpstrFilter = L"Models (*.fbx;*.obj;*.pmx;*.gltf;*.glb)\0*.fbx;*.obj;*.pmx;*.gltf;*.glb\0All Files\0*.*\0\0";
 	ofn.lpstrFile = file;
 	ofn.nMaxFile = MAX_PATH;
 	ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
@@ -1362,6 +1365,13 @@ void App::OnRender()
 	RenderConsolPannel();
 	m_->m_SystemInfo.RenderUI();
 	RenderSceneImageWindow();
+	const unsigned int skyboxGeneration = SkyboxAssetManager::GetCompletedGeneration();
+	if (skyboxGeneration != m_->m_SkyboxAssetGeneration)
+	{
+		m_->m_SkyboxAssetGeneration = skyboxGeneration;
+		if (!m_->m_CurrentIBLPath.empty()) ChangeIBLSkyBox(m_->m_CurrentIBLPath);
+	}
+	SkyboxAssetManager::RenderStatusUI();
 
 	ImGui::Render();
 
@@ -1967,7 +1977,7 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
 		shared = std::make_shared<SharedModelData>();
 		shared->pathW = pathW;
 		// 로드 경로에 따라 매니저 준비
-		if (ext == L".fbx")
+		if (ext == L".fbx" || ext == L".gltf" || ext == L".glb")
 		{
 			shared->source = ModelSource::FBX;
 			// 공용 AssetManager를 통해 FBX 모델 공유/캐시
@@ -2872,33 +2882,68 @@ void App::LoadSceneImage(const std::wstring& path)
 
 void App::ChangeIBLSkyBox(const std::wstring& path)
 {
-	m_->m_pIblDiffuseSRV = nullptr;
-	m_->m_pIblSpecularSRV = nullptr;
-	m_->m_pIblBrdfLutSRV = nullptr;
+	m_->m_CurrentIBLPath = path;
+
+	auto releaseSRV = [](ID3D11ShaderResourceView*& srv)
 	{
-		HR_T(CreateDDSTextureFromFile(
-			m_->m_pDevice,
-			(path + L"DiffuseHDR.dds").c_str(),
-			nullptr,
-			&m_->m_pIblDiffuseSRV));
+		if (srv) { srv->Release(); srv = nullptr; }
+	};
 
-		HR_T(CreateDDSTextureFromFile(
-			m_->m_pDevice,
-			(path + L"SpecularHDR.dds").c_str(),
-			nullptr,
-			&m_->m_pIblSpecularSRV));
+	ID3D11ShaderResourceView* diffuseSRV = nullptr;
+	ID3D11ShaderResourceView* specularSRV = nullptr;
+	ID3D11ShaderResourceView* brdfSRV = nullptr;
 
-		HR_T(CreateDDSTextureFromFile(
-			m_->m_pDevice,
-			(path + L"Brdf.dds").c_str(),
-			nullptr,
-			&m_->m_pIblBrdfLutSRV));
+	auto loadDDS = [&](const std::wstring& file, ID3D11ShaderResourceView** outSRV) -> bool
+	{
+		if (!std::filesystem::exists(file))
+		{
+			m_->PushLog("[WARN] Missing IBL asset: " + Utf8FromWString(file));
+			return false;
+		}
+		const HRESULT hr = CreateDDSTextureFromFile(m_->m_pDevice, file.c_str(), nullptr, outSRV);
+		if (FAILED(hr))
+		{
+			m_->PushLog("[WARN] Failed IBL asset: " + Utf8FromWString(file));
+			return false;
+		}
+		return true;
+	};
 
-		m_->PushLog("[OK] Loaded IBL(Sample): Diffuse / Specular / BRDF LUT");
+	const std::wstring diffusePath = path + L"DiffuseHDR.dds";
+	const std::wstring specularPath = path + L"SpecularHDR.dds";
+	const std::wstring brdfPath = path + L"Brdf.dds";
+	if (!SkyboxAssetManager::HasIBLAssetSet(path))
+	{
+		SkyboxAssetManager::EnsureSkyboxAssetsAsync();
+		m_->PushLog("[INFO] Skybox IBL assets are missing; downloading from GitHub release.");
+	}
+	const bool loaded =
+		loadDDS(diffusePath, &diffuseSRV) &&
+		loadDDS(specularPath, &specularSRV) &&
+		loadDDS(brdfPath, &brdfSRV);
+
+	releaseSRV(m_->m_pIblDiffuseSRV);
+	releaseSRV(m_->m_pIblSpecularSRV);
+	releaseSRV(m_->m_pIblBrdfLutSRV);
+
+	if (loaded)
+	{
+		m_->m_pIblDiffuseSRV = diffuseSRV; diffuseSRV = nullptr;
+		m_->m_pIblSpecularSRV = specularSRV; specularSRV = nullptr;
+		m_->m_pIblBrdfLutSRV = brdfSRV; brdfSRV = nullptr;
+		m_->PushLog("[OK] Loaded IBL: " + Utf8FromWString(path));
+	}
+	else
+	{
+		m_->PushLog("[WARN] IBL disabled; keeping app alive without this asset set.");
 	}
 
-	// IBL과 동일한 환경맵을 스카이박스에도 사용 (배경과 반사가 일치하도록)
-	ChangeSkyboxDDS((path + L"EnvHDR.dds").c_str());
+	releaseSRV(diffuseSRV);
+	releaseSRV(specularSRV);
+	releaseSRV(brdfSRV);
+
+	const std::wstring envPath = path + L"EnvHDR.dds";
+	ChangeSkyboxDDS(std::filesystem::exists(envPath) ? envPath.c_str() : L"..\\Resource\\Skybox\\cubemap.dds");
 }
 
 void App::ChangeScene(std::unique_ptr<Scene> next)

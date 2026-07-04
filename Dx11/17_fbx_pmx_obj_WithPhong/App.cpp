@@ -207,7 +207,7 @@ static bool OpenFileDialogModel(std::wstring& outPath)
 	OPENFILENAMEW ofn{};
 	ofn.lStructSize = sizeof(ofn);
 	ofn.hwndOwner = GameApp::m_hWnd;
-	ofn.lpstrFilter = L"Models (*.fbx;*.obj;*.pmx)\0*.fbx;*.obj;*.pmx\0All Files\0*.*\0\0";
+	ofn.lpstrFilter = L"Models (*.fbx;*.obj;*.pmx;*.gltf;*.glb)\0*.fbx;*.obj;*.pmx;*.gltf;*.glb\0All Files\0*.*\0\0";
 	ofn.lpstrFile = file;
 	ofn.nMaxFile = MAX_PATH;
 	ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
@@ -1271,7 +1271,7 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
 	}
 
 	bool ok = false;
-	if (ext == L".fbx")
+	if (ext == L".fbx" || ext == L".gltf" || ext == L".glb")
 	{
 		ok = m_->m_FbxManager.Load(m_->m_pDevice, pathW);
 		if (ok)

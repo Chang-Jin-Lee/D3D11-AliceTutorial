@@ -19,26 +19,32 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="32_BasicPS.hlsl">
+    <CopyFileToFolders Include="32_BasicPS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
       <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.0</ShaderModel>
-    </FxCompile>
-    <FxCompile Include="32_BasicVS.hlsl">
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="32_BasicVS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
-    </FxCompile>
-    <FxCompile Include="32_SkyBoxPS.hlsl">
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="32_SkyBoxPS.hlsl">
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">PS</EntryPointName>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
-    </FxCompile>
-    <FxCompile Include="32_SkyBoxVS.hlsl">
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="32_SkyBoxVS.hlsl">
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">VS</EntryPointName>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
-    </FxCompile>
+    </CopyFileToFolders>
   </ItemGroup>
   <ItemGroup>
-    <None Include="32_LightingHelper.hlsli" />
-    <None Include="32_Shared.fxh" />
-    <None Include="32_SkyBox.hlsli" />
+    <CopyFileToFolders Include="32_LightingHelper.hlsli">
+      <FileType>Document</FileType>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="32_Shared.fxh">
+      <FileType>Document</FileType>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="32_SkyBox.hlsli">
+      <FileType>Document</FileType>
+    </CopyFileToFolders>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="App.cpp" />

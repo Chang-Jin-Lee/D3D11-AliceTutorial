@@ -22,6 +22,19 @@
     <ClCompile Include="App.cpp" />
     <ClCompile Include="WinMain.cpp" />
   </ItemGroup>
+  <ItemGroup Condition="'$(Platform)'=='x64'">
+    <ClCompile Include="..\third_party\CubismSdkForNative-5-r.4.1\Framework\src\*.cpp" />
+    <ClCompile Include="..\third_party\CubismSdkForNative-5-r.4.1\Framework\src\Effect\*.cpp" />
+    <ClCompile Include="..\third_party\CubismSdkForNative-5-r.4.1\Framework\src\Id\*.cpp" />
+    <ClCompile Include="..\third_party\CubismSdkForNative-5-r.4.1\Framework\src\Math\*.cpp" />
+    <ClCompile Include="..\third_party\CubismSdkForNative-5-r.4.1\Framework\src\Model\*.cpp" />
+    <ClCompile Include="..\third_party\CubismSdkForNative-5-r.4.1\Framework\src\Motion\*.cpp" />
+    <ClCompile Include="..\third_party\CubismSdkForNative-5-r.4.1\Framework\src\Physics\*.cpp" />
+    <ClCompile Include="..\third_party\CubismSdkForNative-5-r.4.1\Framework\src\Rendering\*.cpp" />
+    <ClCompile Include="..\third_party\CubismSdkForNative-5-r.4.1\Framework\src\Rendering\D3D11\*.cpp" />
+    <ClCompile Include="..\third_party\CubismSdkForNative-5-r.4.1\Framework\src\Type\*.cpp" />
+    <ClCompile Include="..\third_party\CubismSdkForNative-5-r.4.1\Framework\src\Utils\*.cpp" />
+  </ItemGroup>
   <ItemGroup>
     <ClInclude Include="App.h" />
   </ItemGroup>
@@ -147,8 +160,8 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>$(SolutionDir)third_party\CubismSdkForNative-5-r.4.1\Core\lib\windows\x86_64\143;$(SolutionDir)third_party\CubismSdkForNative-5-r.4.1\Samples\D3D11\Demo\proj.d3d11.cmake\build\proj_msvc2022_x64_mt\Framework\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>Live2DFramework.lib;Live2DCubismCore_MTd.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SolutionDir)third_party\CubismSdkForNative-5-r.4.1\Core\lib\windows\x86_64\143;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>Live2DCubismCore_MDd.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PreBuildEvent>
       <Command>xcopy /Y /E /I /D "$(SolutionDir)Resource\*" "$(OutDir)\..\Resource\"</Command>
@@ -163,14 +176,15 @@
       <PreprocessorDefinitions>NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <AdditionalIncludeDirectories>..\Common;$(SolutionDir)third_party\CubismSdkForNative-5-r.4.1\Framework\src;$(SolutionDir)third_party\CubismSdkForNative-5-r.4.1\Core\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalLibraryDirectories>$(SolutionDir)third_party\CubismSdkForNative-5-r.4.1\Core\lib\windows\x86_64\143;$(SolutionDir)third_party\CubismSdkForNative-5-r.4.1\Samples\D3D11\Demo\proj.d3d11.cmake\build\proj_msvc2022_x64_mt\Framework\Release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>Live2DFramework.lib;Live2DCubismCore_MT.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SolutionDir)third_party\CubismSdkForNative-5-r.4.1\Core\lib\windows\x86_64\143;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>Live2DCubismCore_MD.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
