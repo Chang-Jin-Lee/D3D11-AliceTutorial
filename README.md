@@ -10,6 +10,28 @@ D3D 그래픽스를 학습하면서 정리한 튜토리얼 프로젝트입니다
 |---|---|
 | <div align="center">[<img src="https://github.com/user-attachments/assets/3aafc53e-d6ae-492d-8680-b240c19f1f92" width="450"/>](https://www.youtube.com/playlist?list=PLbPdrhrt0AJgCSKYyzjAjHwpQ_Yt4uBMx)<br/></div> | <div align="center">[<img src="https://github.com/user-attachments/assets/64a50e8e-5580-4e76-97d1-b500f9c5a8a2" width="230"/>](https://velog.io/@whoamicj/series/DirectX11)<br/></div> |
 
+## 대표 데모
+
+채용자가 빠르게 볼 대표 프로젝트는 [`36_AdvancedAnim_Sound_Click`](Dx11/36_AdvancedAnim_Sound_Click)입니다. 앞 단계에서 구현한 모델 로딩, PBR/IBL, 톤매핑, 디퍼드 렌더링 위에 애니메이션 블렌딩, 레이어, IK, 소켓, FMOD 3D 사운드, ImGui 디버그 UI, 멀티스레드 로딩을 묶은 최종 데모입니다.
+
+| 항목 | 내용 |
+|---|---|
+| 실행 | `Dx11/TutorialApp.sln` 열기 -> `36_AdvancedAnim_Sound_Click` 시작 프로젝트 -> `x64` 빌드 |
+| 렌더링 | Forward/Deferred 전환, Shadow, PBR, IBL, Tone Mapping |
+| 애니메이션 | Blend, Additive, Layer, IK, Socket |
+| 사운드/UI | FMOD 3D Sound, SoundBox, ImGui Debug Panels |
+| 구조 | `Dx11/Common` 공통 코드 + `35_DeferredRendering` 렌더링 단계 + `36_AdvancedAnim_Sound_Click` 통합 데모 |
+
+### 코드 구조 요약
+
+```text
+Dx11/Common/                         공통 D3D 앱, 카메라, 메시, 애니메이션, 사운드, 로더
+Dx11/35_DeferredRendering/           G-Buffer, Deferred Lighting, Tone Mapping
+Dx11/36_AdvancedAnim_Sound_Click/    대표 통합 데모
+  App.cpp                            구현 파일 인덱스
+  App_*.inl                          수명주기, 입력/업데이트, 렌더 패스, 모델 로딩, UI, 유틸리티
+```
+
 ### 프로젝트 바로가기
 
 - 이미지를 클릭하거나, 아래 각 번호/이름을 클릭해도 해당 디렉토리로 이동합니다
