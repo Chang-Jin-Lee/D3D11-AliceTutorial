@@ -77,7 +77,7 @@ public:
 
 private:
 	// ·Îµå ÇïÆÛ
-	bool LoadMaterials(ID3D11Device* device, const struct aiScene* scene, const std::wstring& baseDir);
+	bool LoadMaterials(ID3D11Device* device, const struct aiScene* scene, const std::wstring& baseDir, const std::wstring& fallbackTextureDir);
 	bool BuildMeshBuffers(ID3D11Device* device, const struct aiScene* scene);
 
 	// ½ºÄÌ·¹Åæ/º»/°¡ÁßÄ¡ ºôµå (Assimp)

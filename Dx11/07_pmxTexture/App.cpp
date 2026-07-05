@@ -4,7 +4,7 @@
 *   - 무엇을 하는가
 *     · PMX를 읽어서, 머티리얼의 DIFFUSE 텍스쳐를 찾아서, 픽셀 셰이더에서 샘플링해 그린다
 *   - 어떻게 처리하는가
-*     · 경로: PMX 파일 위치를 기준으로 상대경로를 풀고, 실패하면 같은 폴더의 "Alice.fbm/" 폴더에서 다시 찾는다
+*     · 경로: PMX 파일 위치를 기준으로 상대경로를 풀고, 실패하면 같은 폴더의 "model-name.fbm/" 폴더에서 다시 찾는다
 *     · 임베디드: "*0" 같은 형식이면 aiTexture에서 직접 읽어 메모리로 텍스쳐를 만든다
 *     · 서브셋: 머티리얼 인덱스별로 인덱스 범위를 저장해, 렌더 때 해당 텍스쳐를 바인딩하고 부분 그리기를 한다
 *     · 셰이더: VS는 TEXCOORD를 넘기고, PS는 tex0.Sample(samp0, uv)로 실제 텍스쳐를 샘플한다
@@ -388,7 +388,7 @@ void App::OnRender()
 			// 텍스처 폴더(폴더명만)
 			{
 				std::filesystem::path model(m_ModelPath);
-				std::filesystem::path texdir = model.parent_path() / L"Alice.fbm";
+				std::filesystem::path texdir = model.parent_path() / (model.stem().wstring() + L".fbm");
 				ImGui::Text("Texture Folder: %ls", texdir.filename().c_str());
 			}
 		}
@@ -603,11 +603,11 @@ bool App::InitScene()
 	* @details :
 	*   - 입력: aiScene의 materials, 모델 파일 경로(baseDir)
 	*   - 출력: m_MaterialSRVs[m] (머티리얼 인덱스 → SRV)
-	*   - 알고리즘: material → DIFFUSE 경로 조회 → (임베디드|외부) 로드 분기 → 실패 시 "Alice.fbm/" 폴더 재시도 → 배열 저장
+	*   - 알고리즘: material → DIFFUSE 경로 조회 → (임베디드|외부) 로드 분기 → 실패 시 "model-name.fbm/" 폴더 재시도 → 배열 저장
 	*/
 	// 머티리얼 텍스처 로드 (DIFFUSE)
 	// - 머티리얼에서 DIFFUSE 텍스쳐 경로를 꺼내고, 외부/임베디드 모두 처리한다
-	// - 경로는 PMX 파일 폴더 기준으로 해석하고, 실패하면 "Alice.fbm/" 하위에서 재시도한다
+	// - 경로는 PMX 파일 폴더 기준으로 해석하고, 실패하면 "model-name.fbm/" 하위에서 재시도한다
 	// - 결과는 머티리얼 인덱스 → SRV 배열(m_MaterialSRVs[m])에 저장한다
 	m_Subsets.clear();
 	m_MaterialSRVs.clear();
@@ -616,6 +616,7 @@ bool App::InitScene()
 	std::wstring modelPathW = m_ModelPath;
 	size_t slash = modelPathW.find_last_of(L"/\\");
 	std::wstring baseDir = (slash == std::wstring::npos) ? L"" : modelPathW.substr(0, slash + 1);
+	std::wstring modelStem = std::filesystem::path(modelPathW).stem().wstring();
 	for (unsigned m = 0; m < scene->mNumMaterials; ++m)
 	{
 		aiMaterial* mat = scene->mMaterials[m];
@@ -661,7 +662,7 @@ bool App::InitScene()
 			}
 			else
 			{
-				// 외부 텍스쳐 파일: 모델 폴더 기준 상대경로 + 실패 시 "Alice.fbm/" 폴더 재시도
+				// 외부 텍스쳐 파일: 모델 폴더 기준 상대경로 + 실패 시 "model-name.fbm/" 폴더 재시도
 				std::wstring wtex = wstring_from_utf8(t);
 				bool isAbs = (!wtex.empty() && (wtex.find(L":") != std::wstring::npos || wtex[0] == L'/' || wtex[0] == L'\\'));
 				std::wstring full = isAbs ? wtex : (baseDir + wtex);
@@ -669,8 +670,8 @@ bool App::InitScene()
 				HRESULT hrLoad = CreateWICTextureFromFile(m_pDevice, full.c_str(), res.GetAddressOf(), &srv);
 				if (FAILED(hrLoad))
 				{
-					// 예: "head_face_M_BC.jpg" 처럼 파일명만 올 때 → baseDir + "Alice.fbm/" + 파일명
-					std::wstring fbm = L"Alice.fbm/" + wtex;
+					// 예: "head_face_M_BC.jpg" 처럼 파일명만 올 때 → baseDir + "model-name.fbm/" + 파일명
+					std::wstring fbm = modelStem + L".fbm/" + wtex;
 					std::wstring full2 = baseDir + fbm;
 					res.Reset(); srv = nullptr;
 					hrLoad = CreateWICTextureFromFile(m_pDevice, full2.c_str(), res.GetAddressOf(), &srv);

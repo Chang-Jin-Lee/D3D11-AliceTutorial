@@ -835,8 +835,7 @@ bool App::OnInitialize()
 
 
 	// ====================================== 3D ¸ðµ¨ ======================================
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\char\\char.fbx"); // 0
-	LoadModelFromFile(L"..\\Resource\\pmx\\Nikke-Alice\\alice-Apose.pmx"); // 0
+	LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 0
 
 	m_->m_Models[0]->pos = XMFLOAT3(0, 0.0f, 0.0f);
 

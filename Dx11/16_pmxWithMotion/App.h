@@ -105,8 +105,8 @@ public:
 
 	// PMX 관리자
 	PmxManager m_Pmx;
-	std::wstring m_ModelPath = L"..\\Resource\\pmx\\Nikke-Alice\\alice-Apose.pmx";
-	wchar_t m_LastPmxPath[260] = L"..\\Resource\\pmx\\Nikke-Alice\\alice-Apose.pmx";
+	std::wstring m_ModelPath = L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb";
+	wchar_t m_LastPmxPath[260] = L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb";
 	wchar_t m_LastVmdPath[260] = L"";
 	// ImGui InputText는 UTF-8 char*을 사용하므로 별도 버퍼 유지
 	char m_LastPmxPathA[520] = "";
