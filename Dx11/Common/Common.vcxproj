@@ -143,6 +143,7 @@
   <ItemGroup>
     <ClInclude Include="Animation\Animator.h" />
     <ClInclude Include="Animation\CharacterAnimController.h" />
+    <ClInclude Include="Animation\ExternalAnimationClipLibrary.h" />
     <ClInclude Include="AssetManager.h" />
     <ClInclude Include="BaseObject.h" />
     <ClInclude Include="Camera.h" />
@@ -179,6 +180,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Animation\Animator.cpp" />
+    <ClCompile Include="Animation\ExternalAnimationClipLibrary.cpp" />
     <ClCompile Include="AssetManager.cpp" />
     <ClCompile Include="BaseObject.cpp" />
     <ClCompile Include="Camera.cpp" />
