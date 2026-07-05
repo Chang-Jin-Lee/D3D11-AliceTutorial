@@ -1141,13 +1141,12 @@ void App::RenderWaitingUI()
 	{
 		if (m_bIsLoaded) // atomic 읽기
 		{
-			// 로딩 완료 사운드 재생 (한 번만)
+			// Play the public loading-complete cue once.
 			if (!m_->m_LoadingDoneSoundPlayed)
 			{
-				Sound::PlaySFX(L"LoadingDone", 1.0f, 1.0f, false);
+				Sound::PlaySFX(L"UiDone", 1.0f, 1.0f, false);
 				m_->m_LoadingDoneSoundPlayed = true;
-				// 로딩 완료 시 AliceDagwaDone.png 표시
-				m_->m_CurrentSceneImagePath = L"..\\Resource\\Image\\AliceDagwaDone.png";
+				m_->m_CurrentSceneImagePath = L"..\\Resource\\Image\\Public\\LoadingDone.png";
 				LoadSceneImage(m_->m_CurrentSceneImagePath);
 			}
 
@@ -1167,7 +1166,7 @@ void App::RenderWaitingUI()
 			ImGui::Separator();
 			ImGui::Spacing();
 
-			// 로딩 완료 시 AliceDagwaDone.png 표시 및 클릭으로 게임 시작
+			// Public loading-complete image; click to start.
 			if (m_->m_pSceneImageSRV)
 			{
 				ImVec2 avail = ImGui::GetContentRegionAvail();
@@ -1213,7 +1212,7 @@ void App::RenderWaitingUI()
 			ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.9f + pulse * 0.1f, 0.5f + pulse * 0.5f, 0.0f + pulse * 0.8f, 1.0f));
 			if (m_pFontLarge)ImGui::PushFont(m_pFontLarge);
 
-			ImGui::Text("%s", Utf8FromWString(L"앨리스를 눌러보세요!").c_str());
+			ImGui::Text("%s", Utf8FromWString(L"샘플을 눌러보세요!").c_str());
 			ImGui::PopStyleColor();
 			ImGui::SetWindowFontScale(1.0f);
 
@@ -1235,12 +1234,11 @@ void App::RenderWaitingUI()
 
 			ImGui::Spacing();
 
-			// 4. 이미지 및 인터랙션 - 만화 뷰어 (로딩 중에만 표시)
-			// "앨리스 보기" 버튼
-			if (ImGui::Button(Utf8FromWString(L"앨리스 보기").c_str()))
+			// 4. Public comic preview shown during loading.
+			if (ImGui::Button(Utf8FromWString(L"샘플 보기").c_str()))
 			{
 				m_->m_MangaIndex = 0;
-				m_->m_CurrentSceneImagePath = L"..\\Resource\\Image\\AliceDagwa.png";
+				m_->m_CurrentSceneImagePath = L"..\\Resource\\Image\\Public\\Loading.png";
 				LoadSceneImage(m_->m_CurrentSceneImagePath);
 			}
 			ImGui::Spacing();
@@ -1308,7 +1306,7 @@ void App::RenderWaitingUI()
 			}
 			*/
 
-			// 만화 뷰어: 로딩 중에는 AliceDagwa.png 표시
+			// Public comic viewer: loading placeholder followed by public pages.
 			if (m_->m_pSceneImageSRV)
 			{
 				ImVec2 avail = ImGui::GetContentRegionAvail();
@@ -1327,37 +1325,26 @@ void App::RenderWaitingUI()
 				ImVec2 imgSize(w, h);
 
 				// 투명 버튼을 이미지 위에 깔아서 클릭 감지
-				ImGui::PushID("MangaClickArea");
+				ImGui::PushID("ComicClickArea");
 				if (ImGui::InvisibleButton("##ClickArea", imgSize))
 				{
-					// 클릭 시 다음 만화로 이동
+					// Advance to the next public comic image.
 					if (m_->m_MangaIndex == 0)
 					{
-						// AliceDagwa -> Manga/01.png
 						m_->m_MangaIndex = 1;
-						m_->m_CurrentSceneImagePath = std::format(L"..\\Resource\\Image\\Manga\\{:02d}.png", m_->m_MangaIndex);
+						m_->m_CurrentSceneImagePath = std::format(L"..\\Resource\\Image\\Public\\Comic\\{:02d}.png", m_->m_MangaIndex);
 						LoadSceneImage(m_->m_CurrentSceneImagePath);
-						Sound::PlaySFX(L"Waitforsecond3", 1.0f, 1.0f, false);
+						Sound::PlaySFX(L"UiAdvance", 1.0f, 1.0f, false);
 					}
-					else if (m_->m_MangaIndex < 53)
+					else if (m_->m_MangaIndex < 3)
 					{
-						// Manga 페이지들 사이에서 이동
 						m_->m_MangaIndex++;
-						m_->m_CurrentSceneImagePath = std::format(L"..\\Resource\\Image\\Manga\\{:02d}.png", m_->m_MangaIndex);
+						m_->m_CurrentSceneImagePath = std::format(L"..\\Resource\\Image\\Public\\Comic\\{:02d}.png", m_->m_MangaIndex);
 						LoadSceneImage(m_->m_CurrentSceneImagePath);
 
-						// 랜덤 사운드 재생
-						int soundChoice = (rand() % 2) + 1;  // 1 또는 2
-						if (soundChoice == 1)
-						{
-							Sound::PlaySFX(L"Waitforsecond2", 1.0f, 1.0f, false);
-						}
-						else
-						{
-							Sound::PlaySFX(L"Waitforsecond", 1.0f, 1.0f, false);
-						}
+						Sound::PlaySFX(L"UiAdvance", 1.0f, 1.0f, false);
 					}
-					// 53번째 페이지 이후에는 더 이상 진행하지 않음
+					// Stop advancing after the staged public pages.
 				}
 				ImGui::PopID();
 
@@ -1588,9 +1575,8 @@ void App::RenderSoundDebugUI() {
 		static float pan = 0.0f;
 		if (ImGui::Button("Play Pan Test"))
 		{
-			// 리소스 로드에서 key="test" 를 SFX로 등록해두었으므로 그것을 사용
-			// (간단한 핑 소리 등으로 좌/우 Pan을 확인)
-			Sound::PlayPanTest2D(L"test", true);
+			// Use a public SFX key loaded during sample initialization.
+			Sound::PlayPanTest2D(L"UiAdvance", true);
 		}
 		ImGui::SameLine();
 		if (ImGui::Button("Stop Pan Test"))

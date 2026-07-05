@@ -630,9 +630,9 @@ struct App::Impl {
 	float m_ScenePopupTimer = 0.0f;
 	std::string m_ScenePopupMessage;
 
-	// 만화 뷰어 관련
-	int m_MangaIndex = 0;  // 0 = AliceDagwa, 1-53 = Manga/1.png ~ Manga/53.png
-	bool m_LoadingDoneSoundPlayed = false;  // 로딩 완료 사운드 재생 여부
+	// Public image viewer state
+	int m_MangaIndex = 0;  // 0 = Public loading image, 1-3 = Public comic pages
+	bool m_LoadingDoneSoundPlayed = false;  // public loading-complete UI sound state
 
 	// VMD 카메라 상태 (공용)
 	mmd::VmdCameraState m_VmdCamera;
@@ -642,8 +642,9 @@ struct App::Impl {
 	bool m_UseAdvancedRig = true;
 	bool m_CharRigInited = false;
 	int m_CharModelIndex = 0;
-	int m_WeaponModelIndex = 1;
+	int m_WeaponModelIndex = -1;
 
+	ExternalAnimationClipLibrary m_ExternalAnimClips;
 	CharacterAnimController m_CharCtrl;
 
 	// ===================== TPS Camera Follow =====================

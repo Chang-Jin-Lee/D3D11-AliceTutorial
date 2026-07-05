@@ -33,17 +33,11 @@ bool App::OnInitialize() {
 	AssetManager::Create();
 
 	// ====================================== 씬 이미지 초기 로드  ====================================== 
-	// 만화 뷰어 초기화: 처음에는 AliceDagwa.png 표시
+	// 만화 뷰어 초기화: public loading placeholder 표시
 	m_->m_MangaIndex = 0;
-	m_->m_CurrentSceneImagePath = L"..\\Resource\\Image\\AliceDagwa.png";
+	m_->m_CurrentSceneImagePath = L"..\\Resource\\Image\\Public\\Loading.png";
 	m_->m_OriginalSceneImagePath = m_->m_CurrentSceneImagePath;
 	LoadSceneImage(m_->m_CurrentSceneImagePath);
-
-	// 로비에서 나올 음성
-	Sound::Load(L"Waitforsecond3", L"..\\Resource\\Sound\\Dagwa.mp3", Sound::Type::SFX);
-	Sound::Load(L"Waitforsecond2", L"..\\Resource\\Sound\\Waitforsecond2.mp3", Sound::Type::SFX);
-	Sound::Load(L"Waitforsecond", L"..\\Resource\\Sound\\Waitforsecond.mp3", Sound::Type::SFX);
-	Sound::Load(L"LoadingDone", L"..\\Resource\\Sound\\LoadingDone.mp3", Sound::Type::SFX);
 
 	// 데이터 로딩은 별도 스레드에서 시작 
 	m_loaderThread = std::jthread([this](std::stop_token st)
@@ -65,55 +59,13 @@ void App::LoadDataAsync(std::stop_token stoken)
 	}
 	else {
 		m_->PushLog("[OK] FMOD initialized");
-		// SFX 로드 
-		Sound::Load(L"Walk", L"..\\Resource\\Sound\\Walk.mp3", Sound::Type::SFX);
-		Sound::Load(L"RunVoice", L"..\\Resource\\Sound\\Run_voice.mp3", Sound::Type::SFX);
-		Sound::Load(L"Shoot", L"..\\Resource\\Sound\\Shoot.mp3", Sound::Type::SFX);
-		Sound::Load(L"ShootCharged", L"..\\Resource\\Sound\\ShootCharged.mp3", Sound::Type::SFX);
-		Sound::Load(L"Reload", L"..\\Resource\\Sound\\Reload.mp3", Sound::Type::SFX);
-		Sound::Load(L"LetItHappen", L"..\\Resource\\Sound\\LetItHappen.mp3", Sound::Type::BGM);
-		Sound::Load(L"test", L"..\\Resource\\Sound\\test.wav", Sound::Type::SFX);
-
-		Sound::Load(L"CaliforniaGirls", L"..\\Resource\\Sound\\CaliforniaGirls.wav", Sound::Type::BGM);
-		Sound::Load(L"CaramellDansen", L"..\\Resource\\Sound\\CaramellDansen.wav", Sound::Type::BGM);
-		Sound::Load(L"menisyuki", L"..\\Resource\\Sound\\MeniShukiRushshu.mp3", Sound::Type::BGM);
-		Sound::Load(L"RabbitHole", L"..\\Resource\\Sound\\RabbitHole.mp3", Sound::Type::BGM);
-		Sound::Load(L"Specialist", L"..\\Resource\\Sound\\Specialist.mp3", Sound::Type::BGM);
-
-		// ====================================== SoundBox 예제 추가 (테스트용) ======================================
-		// - 옛날에는 BGM을 전역으로 PlayBGM/StopBGM으로 제어했지만,
-		//   이제는 SoundBox마다 3D 인스턴스를 별도로 만들어서 onEnter/onExit에서
-		//   "들어갈 때 0초부터 재생, 나가면 완전히 정지" 하도록 한다.
-		//Sound::SetBGMVolume(0.6f);
-		//Sound::PlayBGM(L"LetItHappen");
-
-		// 예제 SoundBox 생성 (원점 주변 10x10x10 영역)
-		SoundBox box1;
-		box1.bgmKey = L"LetItHappen";
-		box1.instanceId = L"SB_Origin_LetItHappen"; // ✅ 이 박스만의 고유 인스턴스 ID
-		box1.position = { 0.0f, 50.0f, 0.0f };
-		box1.scale = { 10.0f, 10.0f, 10.0f };
-		box1.boundsMin = { -10.0f, -10.0f, -10.0f };
-		box1.boundsMax = { 10.0f, 10.0f, 10.0f };
-		// 중심에 가까울수록 커지게 기본 감쇄 설정
-		box1.edgeVolume = 0.0f;
-		box1.centerVolume = 1.0f;
-		box1.curve = 1.0f;
-		box1.minDist = 50.0f;
-
-		// 박스 진입 시: 항상 0초부터 재생되도록 Stop 후 Play
-		box1.onEnter = [id = box1.instanceId, key = box1.bgmKey]()
-		{
-			Sound::Stop3DInstance(id);
-			Sound::Play3DInstance(id, key, true);
-		};
-		// 박스 이탈 시: 정지(시간도 멈춤)
-		box1.onExit = [id = box1.instanceId]()
-		{
-			Sound::Stop3DInstance(id);
-		};
-		m_->m_SoundBoxSystem.AddBox(box1);
-
+		Sound::Load(L"UiAdvance", L"..\\Resource\\Sound\\Public\\ui_advance.wav", Sound::Type::SFX);
+		Sound::Load(L"UiDone", L"..\\Resource\\Sound\\Public\\ui_done.wav", Sound::Type::SFX);
+		Sound::Load(L"Walk", L"..\\Resource\\Sound\\Public\\step.wav", Sound::Type::SFX);
+		Sound::Load(L"RunVoice", L"..\\Resource\\Sound\\Public\\run.wav", Sound::Type::SFX);
+		Sound::Load(L"Shoot", L"..\\Resource\\Sound\\Public\\action.wav", Sound::Type::SFX);
+		Sound::Load(L"ShootCharged", L"..\\Resource\\Sound\\Public\\action.wav", Sound::Type::SFX);
+		Sound::Load(L"Reload", L"..\\Resource\\Sound\\Public\\reload.wav", Sound::Type::SFX);
 	}
 	m_fLoadingProgress = 0.1f;
 
@@ -130,28 +82,28 @@ void App::LoadDataAsync(std::stop_token stoken)
 	m_fLoadingProgress = 0.3f;
 	m_sLoadingStr = L"3D 모델을 로드합니다. 시간이 오래 걸릴 수 있습니다";
 	if (stoken.stop_requested()) return;
-	// ====================================== 3D 모델 ======================================
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\char\\char.fbx"); // 0
-	// LoadModelFromFile(L"..\\Resource\\fbx\\Alice_UmaUma.fbx"); // 0
+	// ====================================== Public sample models ======================================
+	auto loadModel = [&](const std::wstring& path, const char* label) -> int {
+		if (!std::filesystem::exists(path)) {
+			m_->PushLog(std::string("[WARN] Missing model asset: ") + label + " (" + Utf8FromWString(path) + ")");
+			return -1;
+		}
+		if (!LoadModelFromFile(path)) {
+			m_->PushLog(std::string("[WARN] Failed to load model asset: ") + label);
+			return -1;
+		}
+		return (int)m_->m_Models.size() - 1;
+		};
 
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice3DGame\\Alice.fbx"); // 0
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice3DGame\\Alice_.fbx"); // 0
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping_idle_walk_run.fbx"); // 0
+	const int playerIndex = loadModel(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb", "player");
 	m_fLoadingProgress = 0.8f;
 	if (stoken.stop_requested()) return;
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice3DGame\\AmazingWonderland.fbx"); // 1
+	const int enemy1Index = loadModel(L"..\\Resource\\fbx\\Public\\MyAlice\\Enemy\\AliceEnemy1.glb", "enemy 1");
 	m_fLoadingProgress = 0.9f;
 	if (stoken.stop_requested()) return;
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\sphere.fbx"); // 2
-	// LoadModelFromFile(L"..\\Resource\\fbx\\Neon.fbx"); // 3
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\sphere.fbx"); // 3
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Ground.fbx"); // 4
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice3DGame\\Alice_.fbx"); // 5
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice3DGame\\Alice_.fbx"); // 6
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice3DGame\\Alice_.fbx"); // 7
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice3DGame\\Alice_.fbx"); // 8
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice3DGame\\Alice_.fbx"); // 9
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice3DGame\\Alice_.fbx"); // 10
+	const int enemy2Index = loadModel(L"..\\Resource\\fbx\\Public\\MyAlice\\Enemy\\AliceEnemy2.glb", "enemy 2");
+	const int enemy3Index = loadModel(L"..\\Resource\\fbx\\Public\\MyAlice\\Enemy\\AliceEnemy3.glb", "enemy 3");
+	const int groundIndex = loadModel(L"..\\Resource\\fbx\\Study\\Ground.fbx", "ground");
 
 	m_fLoadingProgress = 0.95f;
 	if (stoken.stop_requested()) return;
@@ -160,284 +112,49 @@ void App::LoadDataAsync(std::stop_token stoken)
 		auto mo = std::make_unique<ModelObject>(m_->m_Models[mi]->modelName, mi);
 		m_->m_Objects.push_back(std::move(mo));
 	}
-	m_->m_Models[0]->boundsBoneIndex = 2;
-	m_->m_Models[5]->boundsBoneIndex = 2;
-	m_->m_Models[6]->boundsBoneIndex = 2;
-	m_->m_Models[7]->boundsBoneIndex = 2;
-	m_->m_Models[8]->boundsBoneIndex = 2;
-	m_->m_Models[9]->boundsBoneIndex = 2;
-	m_->m_Models[10]->boundsBoneIndex = 2;
+	auto modelAt = [&](int index) -> ModelEntry* {
+		return (index >= 0 && index < (int)m_->m_Models.size())
+			? m_->m_Models[(size_t)index].get()
+			: nullptr;
+		};
 
-	m_->m_Models[0]->modelShading = ShadingMode::PBR;
-	m_->m_Models[1]->modelShading = ShadingMode::PBR;
-	m_->m_Models[2]->modelShading = ShadingMode::PBR;
-	m_->m_Models[3]->modelShading = ShadingMode::PBR;
-	m_->m_Models[5]->modelShading = ShadingMode::PBR;
-	m_->m_Models[6]->modelShading = ShadingMode::PBR;
-	m_->m_Models[7]->modelShading = ShadingMode::PBR;
-	m_->m_Models[8]->modelShading = ShadingMode::PBR;
-	m_->m_Models[9]->modelShading = ShadingMode::PBR;
-	m_->m_Models[10]->modelShading = ShadingMode::PBR;
+	for (auto& model : m_->m_Models) {
+		if (model)
+			model->modelShading = ShadingMode::PBR;
+	}
 
-	m_->m_Models[0]->pos = XMFLOAT3(0, 0.0f, 0.0f);
-	m_->m_Models[1]->pos = XMFLOAT3(-26, 66.5f, -29.3f);
-	m_->m_Models[2]->pos = XMFLOAT3(-220, 90.0f, -80.0f);
-	m_->m_Models[3]->pos = XMFLOAT3(170, 90.0f, 70.0f);
-	m_->m_Models[4]->pos = XMFLOAT3(0.0f, -2.0f, 0.0f);
-	m_->m_Models[5]->pos = XMFLOAT3(-350.0f, 0.0f, 230.0f);
-	m_->m_Models[6]->pos = XMFLOAT3(0.0f, 0.0f, 300.0f);
-	m_->m_Models[7]->pos = XMFLOAT3(350.0f, 0.0f, 230.0f);
-	m_->m_Models[8]->pos = XMFLOAT3(-350.0f, 0.0f, -260.0f);
-	m_->m_Models[9]->pos = XMFLOAT3(350.0f, 0.0f, -260.0f);
-	m_->m_Models[10]->pos = XMFLOAT3(0.0f, 0.0f, -300.0f);
+	if (auto* player = modelAt(playerIndex)) {
+		player->pos = XMFLOAT3(0.0f, 0.0f, 0.0f);
+		player->rotDeg = XMFLOAT3(0.0f, 0.0f, 0.0f);
+		if (player->boneCache.size() > 2)
+			player->boundsBoneIndex = 2;
+	}
 
-	m_->m_Models[0]->rotDeg = XMFLOAT3(0, 0.0f, 0.0f);
-	m_->m_Models[1]->rotDeg = XMFLOAT3(13, 90.0f, 2.0f);
-	m_->m_Models[5]->rotDeg = XMFLOAT3(0.0f, -60.0f, 0.0f);
-	m_->m_Models[7]->rotDeg = XMFLOAT3(0.0f, 60.0f, 0.0f);
-	m_->m_Models[8]->rotDeg = XMFLOAT3(0.0f, -120.0f, 0.0f);
-	m_->m_Models[9]->rotDeg = XMFLOAT3(0.0f, -240.0f, 0.0f);
-	m_->m_Models[10]->rotDeg = XMFLOAT3(0.0f, 180.0f, 0.0f);
+	if (auto* enemy = modelAt(enemy1Index)) {
+		enemy->pos = XMFLOAT3(-180.0f, 0.0f, 140.0f);
+		enemy->rotDeg = XMFLOAT3(0.0f, 130.0f, 0.0f);
+	}
+	if (auto* enemy = modelAt(enemy2Index)) {
+		enemy->pos = XMFLOAT3(180.0f, 0.0f, 140.0f);
+		enemy->rotDeg = XMFLOAT3(0.0f, -130.0f, 0.0f);
+	}
+	if (auto* enemy = modelAt(enemy3Index)) {
+		enemy->pos = XMFLOAT3(0.0f, 0.0f, -220.0f);
+		enemy->rotDeg = XMFLOAT3(0.0f, 0.0f, 0.0f);
+	}
 
-	m_->m_Models[3]->scale = XMFLOAT3(0.5f, 0.5f, 0.5f);
-	m_->m_Models[4]->scale = XMFLOAT3(2.0f, 1.0f, 8.0f);
+	if (auto* ground = modelAt(groundIndex)) {
+		ground->pos = XMFLOAT3(0.0f, -2.0f, 0.0f);
+		ground->scale = XMFLOAT3(2.0f, 1.0f, 8.0f);
+		ground->useInstancePbrMaterial = true;
+		ground->instancePbrMaterial.baseColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f);
+		ground->instancePbrMaterial.metalness = 0.01f;
+		ground->instancePbrMaterial.roughness = 1.0f;
+		ground->instancePbrMaterial.ambientOcclusion = 1.0f;
+	}
 
-	m_->m_Models[2]->useInstancePbrMaterial = true;
-	m_->m_Models[3]->useInstancePbrMaterial = true;
-	m_->m_Models[4]->useInstancePbrMaterial = true;
-	m_->m_Models[5]->useInstancePbrMaterial = true;
-	m_->m_Models[6]->useInstancePbrMaterial = true;
-	m_->m_Models[7]->useInstancePbrMaterial = true;
-	m_->m_Models[8]->useInstancePbrMaterial = true;
-	m_->m_Models[9]->useInstancePbrMaterial = true;
-	m_->m_Models[10]->useInstancePbrMaterial = true;
-
-	m_->m_Models[2]->instancePbrMaterial.metalness = 1.0f;
-	m_->m_Models[2]->instancePbrMaterial.roughness = 0.01f;
-	m_->m_Models[2]->instancePbrMaterial.ambientOcclusion = 1.0f;
-
-	m_->m_Models[3]->instancePbrMaterial.metalness = 1.0f;
-	m_->m_Models[3]->instancePbrMaterial.roughness = 0.01f;
-	m_->m_Models[3]->instancePbrMaterial.ambientOcclusion = 1.0f;
-
-	m_->m_Models[4]->instancePbrMaterial.baseColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f);
-	m_->m_Models[4]->instancePbrMaterial.metalness = 0.01f;
-	m_->m_Models[4]->instancePbrMaterial.roughness = 1.0f;
-	m_->m_Models[4]->instancePbrMaterial.ambientOcclusion = 1.0f;
-
-
-
-	m_->m_Models[5]->instancePbrMaterial.baseColor = XMFLOAT4(0.96f, 0.96f, 0.96f, 1.0f);
-	m_->m_Models[5]->instancePbrMaterial.metalness = 0.1f;
-	m_->m_Models[5]->instancePbrMaterial.roughness = 0.43f;
-	m_->m_Models[5]->instancePbrMaterial.ambientOcclusion = 1.0f;
-
-	m_->m_Models[6]->instancePbrMaterial.baseColor = XMFLOAT4(0.96f, 0.96f, 0.96f, 1.0f);
-	m_->m_Models[6]->instancePbrMaterial.metalness = 0.1f;
-	m_->m_Models[6]->instancePbrMaterial.roughness = 0.43f;
-	m_->m_Models[6]->instancePbrMaterial.ambientOcclusion = 1.0f;
-
-	m_->m_Models[7]->instancePbrMaterial.baseColor = XMFLOAT4(0.96f, 0.96f, 0.96f, 1.0f);
-	m_->m_Models[7]->instancePbrMaterial.metalness = 0.1f;
-	m_->m_Models[7]->instancePbrMaterial.roughness = 0.43f;
-	m_->m_Models[7]->instancePbrMaterial.ambientOcclusion = 1.0f;
-
-	m_->m_Models[8]->instancePbrMaterial.baseColor = XMFLOAT4(0.96f, 0.96f, 0.96f, 1.0f);
-	m_->m_Models[8]->instancePbrMaterial.metalness = 0.1f;
-	m_->m_Models[8]->instancePbrMaterial.roughness = 0.43f;
-	m_->m_Models[8]->instancePbrMaterial.ambientOcclusion = 1.0f;
-
-	m_->m_Models[9]->instancePbrMaterial.baseColor = XMFLOAT4(0.96f, 0.96f, 0.96f, 1.0f);
-	m_->m_Models[9]->instancePbrMaterial.metalness = 0.1f;
-	m_->m_Models[9]->instancePbrMaterial.roughness = 0.43f;
-	m_->m_Models[9]->instancePbrMaterial.ambientOcclusion = 1.0f;
-
-	m_->m_Models[10]->instancePbrMaterial.baseColor = XMFLOAT4(0.96f, 0.96f, 0.96f, 1.0f);
-	m_->m_Models[10]->instancePbrMaterial.metalness = 0.1f;
-	m_->m_Models[10]->instancePbrMaterial.roughness = 0.43f;
-	m_->m_Models[10]->instancePbrMaterial.ambientOcclusion = 1.0f;
-
-	m_->m_Models[5]->uiAnimPlaying = false;
-	m_->m_Models[6]->uiAnimPlaying = false;
-	m_->m_Models[7]->uiAnimPlaying = false;
-	m_->m_Models[8]->uiAnimPlaying = false;
-	m_->m_Models[9]->uiAnimPlaying = false;
-	m_->m_Models[10]->uiAnimPlaying = false;
-	m_->m_Models[5]->fbxBaseAnimator.SetCurrentIndex(1);    // Idle
-	m_->m_Models[6]->fbxBaseAnimator.SetCurrentIndex(1);    // Idle
-	m_->m_Models[7]->fbxBaseAnimator.SetCurrentIndex(1);    // Idle
-	m_->m_Models[8]->fbxBaseAnimator.SetCurrentIndex(1);    // Idle
-	m_->m_Models[9]->fbxBaseAnimator.SetCurrentIndex(1);    // Idle
-	m_->m_Models[10]->fbxBaseAnimator.SetCurrentIndex(1);   // Idle
-
-	// ====================================== SoundBox 생성 및 애니메이션 바인딩 ======================================
-	// 각 SoundBox에 해당하는 모델의 애니메이션을 설정하는 콜백 함수를 바인딩합니다.
-	// 박스에 들어가면 BGM 재생 + 해당 모델의 애니메이션이 자동으로 실행됩니다.
-
-	// Model 5: CaramellDansen
-	SoundBox boxCaramellDansen;
-	boxCaramellDansen.bgmKey = L"CaramellDansen";
-	boxCaramellDansen.instanceId = L"SB_Caramell"; // ✅ 박스별 고유 인스턴스 ID
-	boxCaramellDansen.position = m_->m_Models[5]->pos;
-	boxCaramellDansen.minDist = 50.0f;
-	boxCaramellDansen.scale = { 15.0f, 15.0f, 15.0f };
-	boxCaramellDansen.boundsMin = { -10.0f, -10.0f, -10.0f };
-	boxCaramellDansen.boundsMax = { 10.0f, 10.0f, 10.0f };
-	boxCaramellDansen.onEnter = [this,
-		id = boxCaramellDansen.instanceId,
-		key = boxCaramellDansen.bgmKey]()
-	{
-		// ✅ 항상 0초부터 재생되도록, 들어올 때마다 Stop → Play 순서로 호출
-		Sound::Stop3DInstance(id);
-		Sound::Play3DInstance(id, key, true);
-
-		m_->m_Models[5]->uiAnimPlaying = true;
-		m_->m_Models[5]->fbxBaseAnimator.SetCurrentIndex(1);  // CaramellaDansen
-	};
-	boxCaramellDansen.onExit = [this, id = boxCaramellDansen.instanceId]()
-	{
-		// ✅ 박스에서 나가면 정지해서 시간이 더 이상 흐르지 않게 한다.
-		Sound::Stop3DInstance(id);
-
-		m_->m_Models[5]->uiAnimPlaying = false;
-	};
-	m_->m_SoundBoxSystem.AddBox(boxCaramellDansen);
-
-	// Model 6: menisyukiLeft
-	SoundBox boxMenisyukiLeft;
-	boxMenisyukiLeft.bgmKey = L"menisyuki";
-	boxMenisyukiLeft.instanceId = L"SB_Menisyuki_Left";
-	boxMenisyukiLeft.position = m_->m_Models[6]->pos;
-	boxMenisyukiLeft.minDist = 50.0f;
-	boxMenisyukiLeft.scale = { 15.0f, 15.0f, 15.0f };
-	boxMenisyukiLeft.boundsMin = { -10.0f, -10.0f, -10.0f };
-	boxMenisyukiLeft.boundsMax = { 10.0f, 10.0f, 10.0f };
-	boxMenisyukiLeft.onEnter = [this,
-		id = boxMenisyukiLeft.instanceId,
-		key = boxMenisyukiLeft.bgmKey]()
-	{
-		Sound::Stop3DInstance(id);
-		Sound::Play3DInstance(id, key, true);
-
-		m_->m_Models[6]->uiAnimPlaying = true;
-		m_->m_Models[6]->fbxBaseAnimator.SetCurrentIndex(3);  // menisyuikiLeft
-	};
-	boxMenisyukiLeft.onExit = [this, id = boxMenisyukiLeft.instanceId]()
-	{
-		Sound::Stop3DInstance(id);
-
-		m_->m_Models[6]->uiAnimPlaying = false;
-	};
-	m_->m_SoundBoxSystem.AddBox(boxMenisyukiLeft);
-
-	// Model 7: menisyukiRight
-	SoundBox boxMenisyukiRight;
-	boxMenisyukiRight.bgmKey = L"menisyuki";
-	boxMenisyukiRight.instanceId = L"SB_Menisyuki_Right";
-	boxMenisyukiRight.position = m_->m_Models[7]->pos;
-	boxMenisyukiRight.minDist = 50.0f;
-	boxMenisyukiRight.scale = { 15.0f, 15.0f, 15.0f };
-	boxMenisyukiRight.boundsMin = { -10.0f, -10.0f, -10.0f };
-	boxMenisyukiRight.boundsMax = { 10.0f, 10.0f, 10.0f };
-	boxMenisyukiRight.onEnter = [this,
-		id = boxMenisyukiRight.instanceId,
-		key = boxMenisyukiRight.bgmKey]()
-	{
-		Sound::Stop3DInstance(id);
-		Sound::Play3DInstance(id, key, true);
-
-		m_->m_Models[7]->uiAnimPlaying = true;
-		m_->m_Models[7]->fbxBaseAnimator.SetCurrentIndex(4);  // menisyukiRight
-	};
-	boxMenisyukiRight.onExit = [this, id = boxMenisyukiRight.instanceId]()
-	{
-		Sound::Stop3DInstance(id);
-
-		m_->m_Models[7]->uiAnimPlaying = false;
-	};
-	m_->m_SoundBoxSystem.AddBox(boxMenisyukiRight);
-
-	// Model 8: RabbitHole
-	SoundBox boxRabbitHole;
-	boxRabbitHole.bgmKey = L"RabbitHole";
-	boxRabbitHole.instanceId = L"SB_RabbitHole";
-	boxRabbitHole.position = m_->m_Models[8]->pos;
-	boxRabbitHole.minDist = 50.0f;
-	boxRabbitHole.scale = { 15.0f, 15.0f, 15.0f };
-	boxRabbitHole.boundsMin = { -10.0f, -10.0f, -10.0f };
-	boxRabbitHole.boundsMax = { 10.0f, 10.0f, 10.0f };
-	boxRabbitHole.onEnter = [this,
-		id = boxRabbitHole.instanceId,
-		key = boxRabbitHole.bgmKey]()
-	{
-		Sound::Stop3DInstance(id);
-		Sound::Play3DInstance(id, key, true);
-
-		m_->m_Models[8]->uiAnimPlaying = true;
-		m_->m_Models[8]->fbxBaseAnimator.SetCurrentIndex(5);  // RabbitHole
-	};
-	boxRabbitHole.onExit = [this, id = boxRabbitHole.instanceId]()
-	{
-		Sound::Stop3DInstance(id);
-
-		m_->m_Models[8]->uiAnimPlaying = false;
-	};
-	m_->m_SoundBoxSystem.AddBox(boxRabbitHole);
-
-	// Model 9: Specialist
-	SoundBox boxSpecialist;
-	boxSpecialist.bgmKey = L"Specialist";
-	boxSpecialist.instanceId = L"SB_Specialist";
-	boxSpecialist.position = m_->m_Models[9]->pos;
-	boxSpecialist.minDist = 50.0f;
-	boxSpecialist.scale = { 15.0f, 15.0f, 15.0f };
-	boxSpecialist.boundsMin = { -10.0f, -10.0f, -10.0f };
-	boxSpecialist.boundsMax = { 10.0f, 10.0f, 10.0f };
-	boxSpecialist.onEnter = [this,
-		id = boxSpecialist.instanceId,
-		key = boxSpecialist.bgmKey]()
-	{
-		Sound::Stop3DInstance(id);
-		Sound::Play3DInstance(id, key, true);
-
-		m_->m_Models[9]->uiAnimPlaying = true;
-		m_->m_Models[9]->fbxBaseAnimator.SetCurrentIndex(10);  // Specialist
-	};
-	boxSpecialist.onExit = [this, id = boxSpecialist.instanceId]()
-	{
-		Sound::Stop3DInstance(id);
-
-		m_->m_Models[9]->uiAnimPlaying = false;
-	};
-	m_->m_SoundBoxSystem.AddBox(boxSpecialist);
-
-	// Model 10: CaliforniaGirls
-	SoundBox boxCaliforniaGirls;
-	boxCaliforniaGirls.bgmKey = L"CaliforniaGirls";
-	boxCaliforniaGirls.instanceId = L"SB_CaliforniaGirls";
-	boxCaliforniaGirls.position = m_->m_Models[10]->pos;
-	boxCaliforniaGirls.minDist = 50.0f;
-	boxCaliforniaGirls.scale = { 15.0f, 15.0f, 15.0f };
-	boxCaliforniaGirls.boundsMin = { -10.0f, -10.0f, -10.0f };
-	boxCaliforniaGirls.boundsMax = { 10.0f, 10.0f, 10.0f };
-	boxCaliforniaGirls.onEnter = [this,
-		id = boxCaliforniaGirls.instanceId,
-		key = boxCaliforniaGirls.bgmKey]()
-	{
-		Sound::Stop3DInstance(id);
-		Sound::Play3DInstance(id, key, true);
-
-		m_->m_Models[10]->uiAnimPlaying = true;
-		m_->m_Models[10]->fbxBaseAnimator.SetCurrentIndex(0);  // CaliforniaGirls
-	};
-	boxCaliforniaGirls.onExit = [this, id = boxCaliforniaGirls.instanceId]()
-	{
-		Sound::Stop3DInstance(id);
-
-		m_->m_Models[10]->uiAnimPlaying = false;
-	};
-	m_->m_SoundBoxSystem.AddBox(boxCaliforniaGirls);
-
+	m_->m_CharModelIndex = modelAt(playerIndex) ? playerIndex : -1;
+	m_->m_WeaponModelIndex = -1;
 
 	// ====================================== 큐브  ======================================
 	auto co = std::make_unique<CubeObject>(
@@ -466,21 +183,45 @@ void App::LoadDataAsync(std::stop_token stoken)
 	m_->m_OutlineColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 1);
 
 	// ====================================== Advanced Rig 초기화 (CharacterAnimController) ======================================
-	// - Alice(0): 캐릭터
-	// - AmazingWonderland(1): 라이플
-	// - CharacterAnimController가 모든 애니메이션 로직을 처리
-	if (m_->m_UseAdvancedRig && m_->m_Models.size() >= 2) {
+	m_->m_ExternalAnimClips.Clear();
+	auto loadExternalClip = [&](const std::string& key, const std::wstring& path) {
+		std::string error;
+		if (!m_->m_ExternalAnimClips.LoadClip(key, path, &error)) {
+			std::string message = "[WARN] External animation clip failed: " + key + " (" + Utf8FromWString(path) + ")";
+			if (!error.empty())
+				message += " - " + error;
+			m_->PushLog(message);
+		}
+		};
+	const std::wstring idleClip = L"..\\Resource\\fbx\\Public\\MyAlice\\Animations\\anim_Idle.fbx";
+	const std::wstring walkClip = L"..\\Resource\\fbx\\Public\\MyAlice\\Animations\\Walk_Loop_F_0_Seq.fbx";
+	const std::wstring runClip = L"..\\Resource\\fbx\\Public\\MyAlice\\Animations\\Run_Combat_Loop_F_0_Seq.fbx";
+	const std::wstring rollClip = L"..\\Resource\\fbx\\Public\\MyAlice\\Animations\\Roll_F_0_Seq.fbx";
+	loadExternalClip("Idle", idleClip);
+	loadExternalClip("Walk", walkClip);
+	loadExternalClip("Run", runClip);
+	loadExternalClip("Roll", rollClip);
+
+	// Placeholder action mappings until dedicated authored clips exist.
+	loadExternalClip("IdleToShoot", rollClip);
+	loadExternalClip("IdleToShoot_Reverse", rollClip);
+	loadExternalClip("Shoot_Stance", idleClip);
+	loadExternalClip("Shoot", rollClip);
+	loadExternalClip("Reload", rollClip);
+
+	// - The character index is the actual loaded player slot.
+	// - No weapon model is required; socket output is optional.
+	if (m_->m_UseAdvancedRig) {
 		const int ci = m_->m_CharModelIndex;
 		if (ci >= 0 && ci < (int)m_->m_Models.size()) {
-			auto& alice = *m_->m_Models[(size_t)ci];
-			if (alice.shared && alice.shared->fbx && alice.shared->fbx->HasSkeleton()) {
-				// 컨트롤러 설정
+			auto& player = *m_->m_Models[(size_t)ci];
+			if (player.shared && player.shared->fbx && player.shared->fbx->HasSkeleton()) {
 				m_->m_CharCtrl.config.weaponSocket.socketName = "WeaponPoint";
-				//m_->m_CharCtrl.config.weaponSocket.parentBone = "Hand_R";
-				m_->m_CharCtrl.config.weaponSocket.parentBone = "手首.R";
+				m_->m_CharCtrl.config.weaponSocket.parentBone = "J_Bip_R_Hand";
 				m_->m_CharCtrl.config.weaponSocket.pos = { 0.0f, 0.0f, 0.0f };
 				m_->m_CharCtrl.config.weaponSocket.rotDeg = { 0.0f, 0.0f, 0.0f };
 				m_->m_CharCtrl.config.weaponSocket.scale = { 1.0f, 1.0f, 1.0f };
+				m_->m_CharCtrl.config.ik.enabled = false;
 
 				// 전환 테이블(원하는 곳만 override) - Locomotion은 즉시 반응
 				m_->m_CharCtrl.config.baseTransitions["Idle"]["Run"] = { 0.18f, false, 0.0f, 0.0f, true };
@@ -493,12 +234,13 @@ void App::LoadDataAsync(std::stop_token stoken)
 				// 컨트롤러 초기화
 				if (m_->m_CharCtrl.InitializeRig(
 					m_->m_pDevice,
-					alice.shared->fbx->GetScenePtr(),
-					alice.shared->fbx->GetNodeIndexOfName(),
-					alice.shared->fbx->GetGlobalInverse(),
-					alice.shared->fbx->GetBoneNames(),
-					alice.shared->fbx->GetBoneOffsets(),
-					&alice.shared->fbx->GetAnimationNames()))
+					player.shared->fbx->GetScenePtr(),
+					player.shared->fbx->GetNodeIndexOfName(),
+					player.shared->fbx->GetGlobalInverse(),
+					player.shared->fbx->GetBoneNames(),
+					player.shared->fbx->GetBoneOffsets(),
+					&player.shared->fbx->GetAnimationNames(),
+					&m_->m_ExternalAnimClips))
 				{
 					m_->m_CharRigInited = true;
 					m_->PushLog("[OK] CharacterAnimController: Initialized");
@@ -511,57 +253,14 @@ void App::LoadDataAsync(std::stop_token stoken)
 			}
 			else {
 				m_->m_CharRigInited = false;
-				m_->PushLog("[WARN] AdvancedRig: Alice model has no skeleton (socket disabled)");
+				m_->PushLog("[WARN] AdvancedRig: player model has no skeleton (socket disabled)");
 			}
 		}
-	}
-	// ====================================== (임시) Idle-only 테스트 ======================================
-	// AdvancedRig가 정상 동작하는 것이 확인되어, Idle-only 테스트는 비활성화한다.
-	/*
-	// - CharacterAnimator를 사용해서 Idle 애니메이션만 실행
-	if (m_->m_Models.size() > 0) {
-		const int ci = m_->m_CharModelIndex;
-		if (ci >= 0 && ci < (int)m_->m_Models.size()) {
-			auto& alice = *m_->m_Models[(size_t)ci];
-			if (alice.shared && alice.shared->fbx && alice.shared->fbx->HasSkeleton()) {
-				// Idle 애니메이션 찾기
-				auto ToLower = [](std::string s) {
-					for (char& c : s) c = (char)std::tolower((unsigned char)c);
-					return s;
-				};
-				auto FindByContains = [&](const std::string& key) -> int {
-					const auto& names = alice.shared->fbx->GetAnimationNames();
-					const std::string k = ToLower(key);
-					for (int i = 0; i < (int)names.size(); ++i) {
-						if (ToLower(names[(size_t)i]).find(k) != std::string::npos)
-							return i;
-					}
-					return -1;
-				};
-				int idxIdle = FindByContains("idle");
-				if (idxIdle >= 0) {
-					m_->m_CharAnimIdxIdle = idxIdle;
-				}
-
-				// CharacterAnimator 초기화
-				m_->m_CharRig.Initialize(
-					m_->m_pDevice,
-					alice.shared->fbx->GetScenePtr(),
-					alice.shared->fbx->GetNodeIndexOfName(),
-					alice.shared->fbx->GetGlobalInverse(),
-					alice.shared->fbx->GetBoneNames(),
-					alice.shared->fbx->GetBoneOffsets());
-
-				m_->m_CharRigInited = true;
-				m_->PushLog("[OK] CharacterAnimator: Idle animation initialized");
-			}
-			else {
-				m_->m_CharRigInited = false;
-				m_->PushLog("[WARN] CharacterAnimator: Model has no skeleton");
-			}
+		else {
+			m_->m_CharRigInited = false;
+			m_->PushLog("[WARN] AdvancedRig: no valid player model");
 		}
 	}
-	*/
 	m_fLoadingProgress = 1.0f;
 	// 스레드를 종료시킴 
 	m_bIsLoaded = true;

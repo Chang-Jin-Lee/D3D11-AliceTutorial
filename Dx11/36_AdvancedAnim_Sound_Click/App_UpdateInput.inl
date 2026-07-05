@@ -83,11 +83,11 @@ void App::OnUpdate(const float& dt) {
 	// ====================================== 사운드 중첩 재생 테스트 (1, 2, 3 숫자 키) ======================================
 	if (InputSystem::Instance)
 	{
-		// 1 키: test.wav를 중첩 재생 (새로운 채널로 계속 추가)
+		// 1 key: play a neutral UI advance sound
 		if (InputSystem::Instance->m_KeyboardStateTracker.IsKeyPressed(Keyboard::Keys::D1))
 		{
-			Sound::PlaySFX(L"test");
-			m_->PushLog("[Sound] test.mp3 started (overlap play)");
+			Sound::PlaySFX(L"UiAdvance");
+			m_->PushLog("[Sound] UI advance sound played");
 		}
 		// 2 키: 현재 재생 중인 모든 SFX 정지 (BGM은 계속 재생)
 		if (InputSystem::Instance->m_KeyboardStateTracker.IsKeyPressed(Keyboard::Keys::D2))
@@ -104,64 +104,61 @@ void App::OnUpdate(const float& dt) {
 	}
 
 	// ====================================== SoundBox 시스템 업데이트 ======================================
-	// 플레이어 캐릭터 위치를 가져와서 SoundBox 업데이트
-	if (!m_->m_Models.empty())
+	// Use the loaded player slot when available; otherwise listen from the camera.
+	const int listenerModelIndex = m_->m_CharModelIndex;
+	if (listenerModelIndex >= 0 && listenerModelIndex < (int)m_->m_Models.size())
 	{
-		const int ci = 0; // 첫 번째 모델을 플레이어로 가정
-		if (ci >= 0 && ci < (int)m_->m_Models.size())
+		auto& player = *m_->m_Models[(size_t)listenerModelIndex];
+		XMFLOAT3 playerPos = player.pos;
+
+		// ===== 3D 사운드 리스너 업데이트 =====
+		//   - (playerPos - prevPos) / dt 를 그대로 사용할때 dt가 매우 작거나 튀면
+		//     속도가 폭주하여 도플러 계산 시 피치가 '찌직'거리며 심하게 변조됨
+		//   - 그래서 다음처럼 함. safeDt + 속도 클램프를 넣고, forward/up 벡터는 정규화해서 사용
+		static XMFLOAT3 prevPos = { 0, 0, 0 };
+
+		// dt가 0 또는 너무 작은 경우를 방지 (도플러/속도 폭주 방지)
+		const float safeDt = (dt > 1.0e-4f) ? dt : 1.0e-4f;
+
+		XMFLOAT3 rawVel = {
+			(playerPos.x - prevPos.x) / safeDt,
+			(playerPos.y - prevPos.y) / safeDt,
+			(playerPos.z - prevPos.z) / safeDt
+		};
+		prevPos = playerPos;
+
+		// 속도 벡터의 크기를 일정 값으로 클램프해서 이상치(스파이크) 제거
+		auto ClampVel = [](XMFLOAT3 v, float maxSpeed)
 		{
-			auto& alice = *m_->m_Models[(size_t)ci];
-			XMFLOAT3 playerPos = alice.pos;
-
-			// ===== 3D 사운드 리스너 업데이트 =====
-			//   - (playerPos - prevPos) / dt 를 그대로 사용할때 dt가 매우 작거나 튀면
-			//     속도가 폭주하여 도플러 계산 시 피치가 '찌직'거리며 심하게 변조됨
-			//   - 그래서 다음처럼 함. safeDt + 속도 클램프를 넣고, forward/up 벡터는 정규화해서 사용
-			static XMFLOAT3 prevPos = { 0, 0, 0 };
-
-			// dt가 0 또는 너무 작은 경우를 방지 (도플러/속도 폭주 방지)
-			const float safeDt = (dt > 1.0e-4f) ? dt : 1.0e-4f;
-
-			XMFLOAT3 rawVel = {
-				(playerPos.x - prevPos.x) / safeDt,
-				(playerPos.y - prevPos.y) / safeDt,
-				(playerPos.z - prevPos.z) / safeDt
-			};
-			prevPos = playerPos;
-
-			// 속도 벡터의 크기를 일정 값으로 클램프해서 이상치(스파이크) 제거
-			auto ClampVel = [](XMFLOAT3 v, float maxSpeed)
+			const float s2 = v.x * v.x + v.y * v.y + v.z * v.z;
+			const float maxS2 = maxSpeed * maxSpeed;
+			if (s2 > maxS2)
 			{
-				const float s2 = v.x * v.x + v.y * v.y + v.z * v.z;
-				const float maxS2 = maxSpeed * maxSpeed;
-				if (s2 > maxS2)
-				{
-					const float inv = maxSpeed / std::sqrt(s2);
-					v.x *= inv;
-					v.y *= inv;
-					v.z *= inv;
-				}
-				return v;
-			};
-			XMFLOAT3 vel = ClampVel(rawVel, 50.0f); // 필요시 50.0f 값을 튜닝
+				const float inv = maxSpeed / std::sqrt(s2);
+				v.x *= inv;
+				v.y *= inv;
+				v.z *= inv;
+			}
+			return v;
+		};
+		XMFLOAT3 vel = ClampVel(rawVel, 50.0f); // 필요시 50.0f 값을 튜닝
 
-			// 카메라 방향 사용 (FMOD에 넣기 전에 정규화해서 전달)
-			auto Normalize3 = [](XMFLOAT3 v)
-			{
-				XMVECTOR x = XMLoadFloat3(&v);
-				x = XMVector3Normalize(x);
-				XMStoreFloat3(&v, x);
-				return v;
-			};
+		// 카메라 방향 사용 (FMOD에 넣기 전에 정규화해서 전달)
+		auto Normalize3 = [](XMFLOAT3 v)
+		{
+			XMVECTOR x = XMLoadFloat3(&v);
+			x = XMVector3Normalize(x);
+			XMStoreFloat3(&v, x);
+			return v;
+		};
 
-			XMFLOAT3 forward = Normalize3(m_Camera.GetForward());
-			XMFLOAT3 up = Normalize3(m_Camera.GetUp());
+		XMFLOAT3 forward = Normalize3(m_Camera.GetForward());
+		XMFLOAT3 up = Normalize3(m_Camera.GetUp());
 
-			Sound::SetListener(playerPos, vel, forward, up);
+		Sound::SetListener(playerPos, vel, forward, up);
 
-			// SoundBox 업데이트(3D 소스/볼륨 갱신)
-			m_->m_SoundBoxSystem.Update(playerPos);
-		}
+		// SoundBox 업데이트(3D 소스/볼륨 갱신)
+		m_->m_SoundBoxSystem.Update(playerPos);
 	}
 	else
 	{
@@ -205,6 +202,7 @@ void App::OnUpdate(const float& dt) {
 		XMFLOAT3 up = Normalize3(m_Camera.GetUp());
 
 		Sound::SetListener(camPos, vel, forward, up);
+		m_->m_SoundBoxSystem.Update(camPos);
 	}
 
 	// Shadow light view-projection (directional, orthographic, scene-anchored
@@ -294,18 +292,20 @@ void App::OnUpdate(const float& dt) {
 		XMFLOAT3 sceneCenter = { 0.0f, 0.0f, 0.0f };
 		int sceneModelCount = 0;
 
-		// ===================== AdvancedRig: Alice 애니메이션 + 소켓으로 Rifle 장착 =====================
-		// - 이 블록은 "공유 데이터" 최적화와 별개로, 캐릭터(0)만 특별 처리한다.
-		// - 이후 일반 루프에서는 캐릭터(0)의 기본 FbxAnimation::UpdateAndUpload를 스킵한다.
-		if (m_->m_UseAdvancedRig && m_->m_CharRigInited && m_->m_Models.size() >= 2) {
+		// ===================== AdvancedRig: player animation and optional socket attachment =====================
+		// - This block handles the player model separately from the shared-data update path.
+		// - The general loop below skips the player model's default FbxAnimation::UpdateAndUpload.
+		if (m_->m_UseAdvancedRig && m_->m_CharRigInited) {
 			const int ci = m_->m_CharModelIndex;
 			const int wi = m_->m_WeaponModelIndex;
-			if (ci < 0 || wi < 0 || ci >= (int)m_->m_Models.size() || wi >= (int)m_->m_Models.size()) {
+			if (ci < 0 || ci >= (int)m_->m_Models.size()) {
 				// invalid indices -> fallback to normal update path
 			}
 			else {
-				auto& alice = *m_->m_Models[(size_t)ci];
-				auto& rifle = *m_->m_Models[(size_t)wi];
+				auto& player = *m_->m_Models[(size_t)ci];
+				ModelEntry* weapon = nullptr;
+				if (wi >= 0 && wi < (int)m_->m_Models.size())
+					weapon = m_->m_Models[(size_t)wi].get();
 
 				// 입력 수집
 				CharacterInputState input{};
@@ -358,8 +358,8 @@ void App::OnUpdate(const float& dt) {
 							XMVECTOR delta = XMVectorScale(moveDirWS, speed * dt);
 							XMFLOAT3 d{}; XMStoreFloat3(&d, delta);
 
-							alice.pos.x += d.x;
-							alice.pos.z += d.z;
+							player.pos.x += d.x;
+							player.pos.z += d.z;
 
 							// ===== 이동 방향으로 캐릭터 회전(선택) =====
 							if (m_->m_CharRotateToMove)
@@ -375,13 +375,13 @@ void App::OnUpdate(const float& dt) {
 									XMVectorGetX(moveDirWS),
 									XMVectorGetZ(moveDirWS)) + XM_PI;
 
-								float curYaw = XMConvertToRadians(alice.rotDeg.y);
+								float curYaw = XMConvertToRadians(player.rotDeg.y);
 								float diff = WrapPi(targetYaw - curYaw);
 
 								float k = 1.0f - std::exp(-m_->m_CharTurnSpeed * dt);
 								curYaw = curYaw + diff * k;
 
-								alice.rotDeg.y = XMConvertToDegrees(curYaw);
+								player.rotDeg.y = XMConvertToDegrees(curYaw);
 							}
 						}
 						else
@@ -397,10 +397,6 @@ void App::OnUpdate(const float& dt) {
 
 					if (!ImGui::GetIO().WantCaptureMouse)
 					{
-						// 예전거 라이플 one-shot fire (keep commented)
-						// input.firePressed = inStance &&
-						//     (mt.leftButton == Mouse::ButtonStateTracker::PRESSED);
-
 						// 스나이퍼 모드: 눌러서 차지, 떼면 발사
 						if (m_->m_SniperEnabled && inStance)
 						{
@@ -492,7 +488,7 @@ void App::OnUpdate(const float& dt) {
 				AimInputState aim{};
 				if (m_->m_TpsCamAttached)
 				{
-					const XMMATRIX charWorld = alice.GetWorldMatrix();
+					const XMMATRIX charWorld = player.GetWorldMatrix();
 					const XMVECTOR charPosWS = XMVector3TransformCoord(XMVectorZero(), charWorld);
 					const XMVECTOR upWS = XMVectorSet(0, 1, 0, 0);
 
@@ -529,7 +525,7 @@ void App::OnUpdate(const float& dt) {
 						};
 
 					// 캐릭터 yaw(몸통 방향)
-					float charYaw = XMConvertToRadians(alice.rotDeg.y);
+					float charYaw = XMConvertToRadians(player.rotDeg.y);
 
 					// 카메라 yaw(조준 방향)
 					float camYaw = m_->m_TpsYawRad;
@@ -559,56 +555,11 @@ void App::OnUpdate(const float& dt) {
 				m_->m_CharCtrl.config.recoil.kick = m_->m_RecoilKickUi;
 				m_->m_CharCtrl.config.recoil.decay = m_->m_RecoilDecayUi;
 
-				// update + palette upload + weapon apply 까지 컨트롤러가 처리
-				m_->m_CharCtrl.TickAndApply(dt, input, alice, &rifle, m_->m_pDevice, m_->m_pDeviceContext,
+				// update + palette upload + optional socket attachment
+				m_->m_CharCtrl.TickAndApply(dt, input, player, weapon, m_->m_pDevice, m_->m_pDeviceContext,
 					m_->m_TpsCamAttached ? &aim : nullptr);
 			}
 		}
-
-		// ===================== 간단한 Idle 애니메이션 테스트 =====================
-		// - CharacterAnimator를 사용해서 Idle 애니메이션만 실행
-		// AdvancedRig가 정상 동작하는 것이 확인되어, Idle-only 테스트는 비활성화한다.
-		/*
-		if (m_->m_CharRigInited && m_->m_Models.size() > 0) {
-			const int ci = m_->m_CharModelIndex;
-			if (ci >= 0 && ci < (int)m_->m_Models.size()) {
-				auto& alice = *m_->m_Models[(size_t)ci];
-				if (alice.shared && alice.shared->fbx && alice.shared->fbx->HasSkeleton()) {
-					// 시간 업데이트
-					m_->m_CharTimeSec += dt;
-
-					// Idle 애니메이션 포인터 획득
-					const aiScene* sc = alice.shared->fbx->GetScenePtr();
-					const aiAnimation* animIdle = nullptr;
-					if (sc && sc->mNumAnimations > 0) {
-						const int iIdle = m_->m_CharAnimIdxIdle;
-						if (iIdle >= 0 && (unsigned)iIdle < sc->mNumAnimations) {
-							animIdle = sc->mAnimations[iIdle];
-						}
-					}
-
-					// CharacterAnimator로 Idle 애니메이션만 실행 (블렌딩 없음)
-					if (animIdle) {
-						m_->m_CharRig.UpdateAnimation(
-							dt,
-							animIdle, m_->m_CharTimeSec,  // animA, timeA
-							animIdle, m_->m_CharTimeSec,  // animB, timeB (같은 애니메이션)
-							0.0f,                        // blendFactor (블렌딩 없음)
-							nullptr, 0.0f,              // upperAnim, timeUpper 없음
-							nullptr, 0.0f,              // addAnim, timeAdd 없음
-							nullptr,                    // refAnim 없음
-							0.0f, 0u,                    // proceduralAdditiveAlpha, proceduralSeed 없음
-							false, nullptr, 0, XMVectorZero(), 0.0f  // IK 없음
-						);
-
-						// GPU 업로드
-						alice.fbxBaseAnimator.EnsureBoneCB(m_->m_pDevice, 1023);
-						alice.fbxBaseAnimator.UploadPalette(m_->m_pDeviceContext, m_->m_CharRig.finalTransforms);
-					}
-				}
-			}
-		}
-		*/
 
 		size_t i = 0;
 		for (auto& mdlPtr : m_->m_Models) {
@@ -629,73 +580,18 @@ void App::OnUpdate(const float& dt) {
 			sceneModelCount++;
 
 			// AdvancedRig 대상 캐릭터는 여기서 기본 업데이트를 하지 않는다.
-			const bool isRigCharacter = (m_->m_CharModelIndex >= i &&
-				m_->m_CharModelIndex < (int)m_->m_Models.size() &&
-				mdlPtr.get() == m_->m_Models[(size_t)m_->m_CharModelIndex].get());
+			const int charIndex = m_->m_CharModelIndex;
+			const bool isRigCharacter =
+				charIndex >= 0 &&
+				charIndex < (int)m_->m_Models.size() &&
+				(size_t)charIndex == i &&
+				mdlPtr.get() == m_->m_Models[(size_t)charIndex].get();
 			if (isRigCharacter && m_->m_UseAdvancedRig && m_->m_CharRigInited) {
 				// shared 중복 업데이트 방지 마킹은 유지
 				//updated.insert(mdl.shared.get());
 				++i;
 				continue;
 			}
-
-			// 2. 애니메이션 로직 실행
-			//if (isInit) {
-			//	static float totalTime = 0.0f;
-			//	static float blendWeight = 0.0f;
-			//	static bool isShoot = false;
-			//	totalTime += dt;
-			//
-			//	// 키 입력
-			//	bool keyRun = InputSystem::Instance->m_KeyboardState.IsKeyDown(DirectX::Keyboard::Z);
-			//	bool keyShoot = InputSystem::Instance->m_KeyboardState.IsKeyDown(DirectX::Keyboard::X);
-			//
-			//	// 블렌딩 가중치 부드럽게 변경 (0:Idle <-> 1:Run)
-			//	float targetW = keyRun ? 1.0f : 0.0f;
-			//	blendWeight = blendWeight + (targetW - blendWeight) * dt * 5.0f;
-			//
-			//	// Assimp 씬 데이터
-			//	const aiScene* scene = m_->m_Models[0]->shared->fbx->GetScenePtr();
-			//
-			//	// 애니메이션 인덱스 가정 (실제 파일 순서 확인 필요)
-			//	// 0:Idle, 2:Run, 3:ShootStance, 5:Reload
-			//	const aiAnimation* animIdle = scene->mAnimations[0];
-			//	const aiAnimation* animRun = scene->mAnimations[2];
-			//	const aiAnimation* animShoot = scene->mAnimations[3];
-			//	const aiAnimation* animReload = scene->mAnimations[5]; // IK 타겟용
-			//
-			//	// [핵심] 통합 업데이트 호출
-			//	charAnim.UpdateAnimation(
-			//		dt,
-			//		animIdle, totalTime,      // A: Idle
-			//		animRun, totalTime,       // B: Run
-			//		blendWeight,              // 0~1 보간
-			//		keyShoot ? animShoot : nullptr, totalTime, // 상체 레이어 (사격 자세)
-			//		nullptr, 0.f, nullptr     // Additive (생략)
-			//	);
-			//
-			//	// 3. 결과 행렬 GPU 업로드
-			//	m_->m_Models[0]->animator.UploadPalette(m_->m_pDeviceContext, charAnim.finalTransforms);
-			//
-			//	// 4. 소켓을 이용한 라이플 트랜스폼 동기화
-			//	// 앨리스의 현재 월드 행렬
-			//	XMMATRIX aliceWorld = aliceObj->GetWorldMatrix();
-			//
-			//	// 소켓의 최종 월드 행렬 계산 (소켓 로컬 * 부모 본 * 앨리스 월드)
-			//	XMMATRIX rifleMat = charAnim.GetSocketWorldMatrix("WeaponPoint", aliceWorld);
-			//
-			//	// 라이플 모델에 분해하여 적용 (Decompose)
-			//	XMVECTOR S, R, T;
-			//	XMMatrixDecompose(&S, &R, &T, rifleMat);
-			//
-			//	XMStoreFloat3(&rifleObj->scale, S);
-			//	XMStoreFloat3(&rifleObj->pos, T);
-			//
-			//	// 회전은 Quaternion -> Euler 변환이 필요하거나, 
-			//	// 모델 클래스가 Quaternion을 지원하도록 수정해야 함.
-			//	// 여기서는 예시로 Quaternion 값을 직접 사용한다고 가정.
-			//	// rifleObj->rotQuat = R; 
-			//}
 
 			if (mdl.source == ModelSource::FBX && mdl.shared->fbx) {
 				// 인스턴스별 애니메이션 업데이트 (공유 지오메트리/스켈레톤 사용)
