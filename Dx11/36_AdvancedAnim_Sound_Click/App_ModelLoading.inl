@@ -182,4 +182,3 @@ void App::UnloadModel() {
 	m_->m_SelectedModelIdx = -1;
 	m_->m_SelectedBoneIdx = -1;
 }
-

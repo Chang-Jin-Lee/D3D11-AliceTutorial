@@ -778,4 +778,3 @@ static bool OpenFileDialogVMD(std::wstring& outPath) {
 	}
 	return false;
 }
-

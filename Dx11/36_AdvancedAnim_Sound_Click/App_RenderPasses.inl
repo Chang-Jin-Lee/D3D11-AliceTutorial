@@ -53,7 +53,7 @@ void App::PassDebugDraw()
 		// AABB 계산 및 그리기
 
 		if (!mdlPtr->boundsValid && mdlPtr->shared) {
-			// AABB 계산 로직 
+			// AABB 계산 로직
 			XMFLOAT3 mn, mx;
 			if (ComputeLocalAABB(m_->m_pDevice, m_->m_pDeviceContext, mdlPtr->shared->vb, mdlPtr->shared->stride, mn, mx))
 			{
@@ -1041,4 +1041,3 @@ void App::PassUI() {
 	ImGui::Render();
 	ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 }
-

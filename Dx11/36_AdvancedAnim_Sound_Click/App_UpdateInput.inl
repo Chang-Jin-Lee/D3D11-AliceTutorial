@@ -795,4 +795,3 @@ template <typename T> void App::UpdateCB(ID3D11Buffer* buffer, const T& data) {
 	memcpy(mapped.pData, &data, sizeof(T));
 	m_->m_pDeviceContext->Unmap(buffer, 0);
 }
-

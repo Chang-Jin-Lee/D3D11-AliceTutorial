@@ -13,31 +13,31 @@
 ## File Structure
 
 **Create:**
-- `Dx11/36_AdvancedAnim_Sound_Click/App_InternalTypes.inl`  
+- `Dx11/36_AdvancedAnim_Sound_Click/App_InternalTypes.inl`
   Owns file-local structs, enums, static helper functions, and `App::Impl`.
-- `Dx11/36_AdvancedAnim_Sound_Click/App_Lifecycle.inl`  
+- `Dx11/36_AdvancedAnim_Sound_Click/App_Lifecycle.inl`
   Owns constructor/destructor, initialization, shutdown, async loading, and setup/teardown helpers.
-- `Dx11/36_AdvancedAnim_Sound_Click/App_UpdateInput.inl`  
+- `Dx11/36_AdvancedAnim_Sound_Click/App_UpdateInput.inl`
   Owns input processing, update, and constant buffer update helper.
-- `Dx11/36_AdvancedAnim_Sound_Click/App_RenderPasses.inl`  
+- `Dx11/36_AdvancedAnim_Sound_Click/App_RenderPasses.inl`
   Owns frame render orchestration and render passes.
-- `Dx11/36_AdvancedAnim_Sound_Click/App_ModelLoading.inl`  
+- `Dx11/36_AdvancedAnim_Sound_Click/App_ModelLoading.inl`
   Owns model load/unload functions.
-- `Dx11/36_AdvancedAnim_Sound_Click/App_ImGuiPanels.inl`  
+- `Dx11/36_AdvancedAnim_Sound_Click/App_ImGuiPanels.inl`
   Owns ImGui panels and debug UI.
-- `Dx11/36_AdvancedAnim_Sound_Click/App_Utilities.inl`  
+- `Dx11/36_AdvancedAnim_Sound_Click/App_Utilities.inl`
   Owns skybox, scene image, scene switching, trim, HDR, and swapchain helpers.
-- `Dx11/35_DeferredRendering/README.md`  
+- `Dx11/35_DeferredRendering/README.md`
   Documents the deferred rendering sample.
 
 **Modify:**
-- `Dx11/36_AdvancedAnim_Sound_Click/App.cpp`  
+- `Dx11/36_AdvancedAnim_Sound_Click/App.cpp`
   Reduce to includes, library pragmas, namespace aliases, and ordered `.inl` includes.
-- `Dx11/36_AdvancedAnim_Sound_Click/36_AdvancedAnim_Sound_Click.vcxproj`  
+- `Dx11/36_AdvancedAnim_Sound_Click/36_AdvancedAnim_Sound_Click.vcxproj`
   Register new `.inl` files as project-visible include files.
-- `Dx11/36_AdvancedAnim_Sound_Click/36_AdvancedAnim_Sound_Click.vcxproj.filters`  
+- `Dx11/36_AdvancedAnim_Sound_Click/36_AdvancedAnim_Sound_Click.vcxproj.filters`
   Add a filter for implementation parts.
-- `README.md`  
+- `README.md`
   Add a compact representative demo and code map section near the top.
 
 ---

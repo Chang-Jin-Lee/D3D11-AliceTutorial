@@ -32,14 +32,14 @@ bool App::OnInitialize() {
 
 	AssetManager::Create();
 
-	// ====================================== 씬 이미지 초기 로드  ====================================== 
+	// ====================================== 씬 이미지 초기 로드  ======================================
 	// 만화 뷰어 초기화: public loading placeholder 표시
 	m_->m_MangaIndex = 0;
 	m_->m_CurrentSceneImagePath = L"..\\Resource\\Image\\Public\\Loading.png";
 	m_->m_OriginalSceneImagePath = m_->m_CurrentSceneImagePath;
 	LoadSceneImage(m_->m_CurrentSceneImagePath);
 
-	// 데이터 로딩은 별도 스레드에서 시작 
+	// 데이터 로딩은 별도 스레드에서 시작
 	m_loaderThread = std::jthread([this](std::stop_token st)
 		{
 			LoadDataAsync(st);
@@ -262,7 +262,7 @@ void App::LoadDataAsync(std::stop_token stoken)
 		}
 	}
 	m_fLoadingProgress = 1.0f;
-	// 스레드를 종료시킴 
+	// 스레드를 종료시킴
 	m_bIsLoaded = true;
 }
 
