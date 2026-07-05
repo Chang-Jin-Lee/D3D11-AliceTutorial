@@ -614,15 +614,15 @@ bool App::OnInitialize()
 	{
 		m_->PushLog("[OK] FMOD initialized");
 		
-		// test.wav 파일 미리 로드 (중첩 재생 테스트용, SFX 타입)
-		std::wstring soundPath = L"..\\Resource\\sound\\test.wav";
+		// Public SFX sample pre-load (overlap playback test, SFX type)
+		std::wstring soundPath = L"..\\Resource\\Sound\\Public\\ui_advance.wav";
 		if (Sound::Load(soundPath, Sound::Type::SFX))
 		{
-			m_->PushLog("[OK] test.wav loaded for testing");
+			m_->PushLog("[OK] public SFX sample loaded for testing");
 		}
 		else
 		{
-			m_->PushLog("[ERR] Failed to load test.wav");
+			m_->PushLog("[ERR] Failed to load public SFX sample");
 		}
 	}
 
@@ -638,10 +638,10 @@ bool App::OnInitialize()
 
 	// ====================================== 3D 모델 ======================================
 	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\char\\char.fbx"); // 0
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_rabbit.fbx"); // 0
+	LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 0
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\sphere.fbx"); // 0
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\sphere.fbx"); // 0
-	LoadModelFromFile(L"..\\Resource\\fbx\\Neon.fbx"); // 0
+	LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Enemy\\AliceEnemy1.glb"); // 0
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Ground.fbx"); // 4
 
 	m_->m_Objects.clear();
@@ -941,12 +941,12 @@ void App::OnUpdate(const float& dt)
 	{
 		const auto& keyTracker = InputSystem::Instance->m_KeyboardStateTracker;
 
-		// 1 키: test.wav를 중첩 재생 (새로운 채널로 계속 추가)
+		// 1 key: overlap-play the public SFX sample (adds a new channel each time)
 		if (keyTracker.IsKeyPressed(Keyboard::Keys::D1))
 		{
-			std::wstring soundPath = L"..\\Resource\\sound\\test.wav";
+			std::wstring soundPath = L"..\\Resource\\Sound\\Public\\ui_advance.wav";
 			Sound::PlaySFX(soundPath);
-			m_->PushLog("[Sound] test.wav started (overlap play)");
+			m_->PushLog("[Sound] public SFX sample started (overlap play)");
 		}
 
 		// 2 키: 현재 재생 중인 모든 SFX 정지 (BGM은 계속 재생)

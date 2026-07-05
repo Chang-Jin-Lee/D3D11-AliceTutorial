@@ -645,10 +645,10 @@ bool App::OnInitialize()
 
 	// ====================================== 3D 모델 ======================================
 	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\char\\char.fbx"); // 0
-	LoadModelFromFile(L"..\\Resource\\fbx\\Alice_UmaUma.fbx"); // 0
+	LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 0
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\sphere.fbx"); // 0
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\sphere.fbx"); // 0
-	LoadModelFromFile(L"..\\Resource\\fbx\\Neon.fbx"); // 0
+	LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Enemy\\AliceEnemy1.glb"); // 0
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Ground.fbx"); // 4
 
 	m_->m_Objects.clear();
