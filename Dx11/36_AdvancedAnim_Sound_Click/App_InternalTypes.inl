@@ -1,4 +1,4 @@
-// 내부 전용 타입들
+﻿// 내부 전용 타입들
 struct DirectionalLight {
 	XMFLOAT4 ambient;
 	XMFLOAT4 diffuse;

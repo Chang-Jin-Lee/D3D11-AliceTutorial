@@ -1,4 +1,4 @@
-void App::OnRender() {
+﻿void App::OnRender() {
 
 	if (!m_bIsGameStarted)
 	{

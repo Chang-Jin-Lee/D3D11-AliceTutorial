@@ -1,4 +1,4 @@
-void App::PrepareSkyFaceSRVs() {
+﻿void App::PrepareSkyFaceSRVs() {
 	// 다른 스카이박스로 바꿀 수도 있으니 해제하고 다시 로드
 	for (int i = 0; i < 6; ++i)
 		SAFE_RELEASE(m_->m_pSkyFaceSRV[i]);
