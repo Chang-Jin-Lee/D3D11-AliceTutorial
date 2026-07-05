@@ -103,7 +103,7 @@ public:
 
 	// PMX 관리자
 	PmxMangerWithoutTBN m_Pmx;
-	std::wstring m_ModelPath = L"..\\Resource\\pmx\\Nikke-Alice\\alice-Apose.pmx";
+	std::wstring m_ModelPath = L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb";
 
 	ID3D11Buffer* m_pConstantBuffer = nullptr; 						// 상수 버퍼 (단일)
 	ConstantBuffer m_ConstantBuffer; 							// CPU-side 상수 버퍼 데이터

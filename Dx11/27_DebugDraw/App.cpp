@@ -579,15 +579,15 @@ bool App::OnInitialize()
 	if (!m_->m_SystemInfo.InitSysInfomation(m_->m_pDevice)) return false;
 
 	// ====================================== 3D 모델 ======================================
-	// 앨리스 로드
-	LoadModelFromFile(L"..\\Resource\\fbx\\SkinningTest.fbx"); // 0
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping_idle_walk_run.fbx"); // 1
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping_idle_walk_run.fbx"); // 2
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping_idle_walk_run.fbx"); // 3
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping_idle_walk_run.fbx"); // 4
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping_idle_walk_run.fbx"); // 5
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping_idle_walk_run.fbx"); // 6
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping_idle_walk_run.fbx"); // 7
+	// Public character set
+	LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 0
+	LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Enemy\\AliceEnemy1.glb"); // 1
+	LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Enemy\\AliceEnemy2.glb"); // 2
+	LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Enemy\\AliceEnemy3.glb"); // 3
+	LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Enemy\\AliceEnemy1.glb"); // 4
+	LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Enemy\\AliceEnemy2.glb"); // 5
+	LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Enemy\\AliceEnemy3.glb"); // 6
+	LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Enemy\\AliceEnemy1.glb"); // 7
 	
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Ground.fbx"); // 0
 

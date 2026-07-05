@@ -135,6 +135,9 @@
     <ClInclude Include="Animation\CharacterAnimController.h">
       <Filter>Animation</Filter>
     </ClInclude>
+    <ClInclude Include="Animation\ExternalAnimationClipLibrary.h">
+      <Filter>Animation</Filter>
+    </ClInclude>
     <ClInclude Include="Mesh/FbxTypes.h">
       <Filter>Mesh</Filter>
     </ClInclude>
@@ -231,6 +234,9 @@
       <Filter>mmd</Filter>
     </ClCompile>
     <ClCompile Include="Animation\Animator.cpp">
+      <Filter>Animation</Filter>
+    </ClCompile>
+    <ClCompile Include="Animation\ExternalAnimationClipLibrary.cpp">
       <Filter>Animation</Filter>
     </ClCompile>
     <ClCompile Include="Sound\SoundBox.cpp">

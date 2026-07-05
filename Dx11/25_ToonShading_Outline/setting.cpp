@@ -1,25 +1,25 @@
 //// 10개 인스턴스 로드 (5 열 × 2 행 구성: 각 셰이더 모드 × Outline Off/On)
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx");
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx");
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx");
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx");
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx");
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx");
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx");
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx");
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx");
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx");
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb");
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb");
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb");
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb");
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb");
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb");
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb");
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb");
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb");
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb");
 //// 동일 구성 10개 추가 (z=-60 라인에서 사용할 세트)
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx");
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx");
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx");
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx");
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx");
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx");
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx");
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx");
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx");
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx");
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb");
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb");
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb");
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb");
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb");
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb");
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb");
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb");
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb");
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb");
 //
 //m_->m_camera.SetPosition(XMFLOAT3(0.0f, 30.0f, -33.0f));
 //m_->m_camera.SetSpeed(30);
@@ -201,57 +201,57 @@
 
 
 
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 0
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 1
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 2
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 3
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 4
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 5
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 6
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 7
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 8
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 9
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 10
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 11
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 0
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 1
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 2
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 3
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 4
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 5
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 6
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 7
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 8
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 9
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 10
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 11
 //
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 12
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 13
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 14
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 15
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 16
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 17
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 18
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 19
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 20
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 21
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 22
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 23
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 12
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 13
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 14
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 15
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 16
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 17
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 18
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 19
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 20
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 21
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 22
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 23
 //
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 24
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 25
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 26
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 27
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 28
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 29
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 30
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 31
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 32
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 33
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 34
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 35
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 24
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 25
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 26
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 27
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 28
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 29
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 30
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 31
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 32
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 33
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 34
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 35
 //
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 36
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 37
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 38
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 39
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 40
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 41
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 42
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 43
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 44
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 45
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 46
-//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice_.fbx"); // 47
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 36
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 37
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 38
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 39
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 40
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 41
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 42
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 43
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 44
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 45
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 46
+//LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 47
 //
 //m_->m_camera.SetPosition(XMFLOAT3(0.0f, 30.0f, -33.0f));
 //m_->m_camera.SetSpeed(30);

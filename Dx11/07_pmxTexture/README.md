@@ -9,7 +9,7 @@
 
 - 내용: PMX 모델에 텍스쳐 매핑을 완성한 예제
 - 주요 구현:
-  - 머티리얼 DIFFUSE 텍스쳐 로딩: 외부 경로 + `Alice.fbm/` 폴더 폴백, 임베디드(`*0`) 텍스쳐 처리
+  - 머티리얼 DIFFUSE 텍스쳐 로딩: 외부 경로 + 모델 파일명 기반 `.fbm/` 폴더 폴백, 임베디드(`*0`) 텍스쳐 처리
   - Subset/Material 기반 드로우: 서브셋마다 SRV 바인딩 후 `DrawIndexed`
   - 샘플러/폴백: 선형 필터(Linear), Wrap, 로딩 실패 시 1x1 흰색 텍스처 폴백
   - 좌표/상태: Left-Handed, Rasterizer Cull None, Depth 테스트(LESS)
@@ -17,7 +17,7 @@
   - 카메라: RMB 드래그 회전(Yaw/Pitch), WASD 이동, Q/E 상승·하강, 마우스 휠 돌리(뷰 방향)
   - ImGui: System Info + Model Info(Vertices/Indices/Triangles/Subsets/Materials/Textures unique/fallback, Model Path, Texture Folder)
 - 프로젝트: `07_pmxTexture/`
-- 리소스 예시: `Resource/Nikke-Alice/`, 텍스처 폴더 `Resource/Nikke-Alice/Alice.fbm/`
+- 리소스 예시: `Resource/fbx/Public/MyAlice/Player/SampleModel.glb`, 텍스처 폴더 `SampleModel.fbm/`
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/4ffe5d7c-6063-42f7-a9b2-7d3be574ffa0" width="60%" />

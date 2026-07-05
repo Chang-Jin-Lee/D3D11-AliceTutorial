@@ -18,8 +18,8 @@
 *			흰색 픽셀로 실루엣만 그립니다.
 *
 *		- 리소스 구조(예시)
-*			../Resource/pmx/Nikke-Alice/alice-Apose.pmx		: PMX 모델
-*			../Resource/pmx/Nikke-Alice/Alice.fbm/			: 텍스처 폴더(현재 예제에선 미사용)
+*			../Resource/fbx/Public/MyAlice/Player/SampleModel.glb		: Assimp sample model
+*			SampleModel.fbm/			: Texture fallback folder (unused in this sample)
 *
 *		- 렌더 파이프라인 개요
 *			1) InitD3D

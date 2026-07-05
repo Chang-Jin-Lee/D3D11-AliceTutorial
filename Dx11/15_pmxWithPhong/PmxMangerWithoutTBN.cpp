@@ -43,13 +43,16 @@ bool PmxMangerWithoutTBN::Load(ID3D11Device* device, const std::wstring& pmxPath
 	std::wstring modelPathW = pmxPath;
 	size_t slash = modelPathW.find_last_of(L"/\\");
 	std::wstring baseDir = (slash == std::wstring::npos) ? L"" : modelPathW.substr(0, slash + 1);
+	std::wstring modelStem = modelPathW.substr(slash == std::wstring::npos ? 0 : slash + 1);
+	size_t dot = modelStem.find_last_of(L".");
+	if (dot != std::wstring::npos) modelStem = modelStem.substr(0, dot);
 
-	if (!LoadMaterials(device, scene, baseDir)) return false;
+	if (!LoadMaterials(device, scene, baseDir, modelStem + L".fbm/")) return false;
 	if (!BuildMeshBuffers(device, scene)) return false;
 	return true;
 }
 
-bool PmxMangerWithoutTBN::LoadMaterials(ID3D11Device* device, const aiScene* scene, const std::wstring& baseDir)
+bool PmxMangerWithoutTBN::LoadMaterials(ID3D11Device* device, const aiScene* scene, const std::wstring& baseDir, const std::wstring& fallbackTextureDir)
 {
 	m_MaterialSRVs.clear();
 	m_MaterialSRVs.resize(scene->mNumMaterials, nullptr);
@@ -112,7 +115,7 @@ bool PmxMangerWithoutTBN::LoadMaterials(ID3D11Device* device, const aiScene* sce
 					HRESULT hrLoad = DirectX::CreateWICTextureFromFile(device, full.c_str(), res.GetAddressOf(), &srv);
 					if (FAILED(hrLoad))
 					{
-						std::wstring fbm = L"Alice.fbm/" + wtex;
+						std::wstring fbm = fallbackTextureDir + wtex;
 						std::wstring full2 = baseDir + fbm;
 						res.Reset(); srv = nullptr;
 						hrLoad = DirectX::CreateWICTextureFromFile(device, full2.c_str(), res.GetAddressOf(), &srv);

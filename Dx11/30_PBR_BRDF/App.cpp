@@ -627,8 +627,8 @@ bool App::OnInitialize()
 	LoadSceneImage(m_->m_CurrentSceneImagePath);
 
 	// ====================================== 3D 모델 ======================================
-	LoadModelFromFile(L"..\\Resource\\fbx\\Rapi.fbx"); // 0
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\char.fbx"); // 1
+	LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 0
+	LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Enemy\\AliceEnemy1.glb"); // 1
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Ground.fbx"); // 2
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Ground.fbx"); // 3
 
@@ -1017,8 +1017,7 @@ void App::OnUpdate(const float& dt)
 	// F7: 키가 눌려있는 동안에만 일정 간격으로 스폰
 	if (InputSystem::Instance && InputSystem::Instance->m_KeyboardStateTracker.IsKeyPressed(DirectX::Keyboard::Keys::F7))
 	{
-		//if (LoadModelFromFile(L"..\\Resource\\fbx\\SkinningTest.fbx"))
-		if (LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping_idle_walk_run.fbx"))
+		if (LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Enemy\\AliceEnemy2.glb"))
 		{
 			int newIndex = (int)m_->m_Models.size() - 1;
 			if (newIndex >= 0)

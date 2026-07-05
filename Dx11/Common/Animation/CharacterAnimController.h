@@ -13,6 +13,7 @@
 #include <d3d11.h>
 
 #include "Animator.h"
+#include "ExternalAnimationClipLibrary.h"
 
 using namespace DirectX;
 
@@ -236,9 +237,16 @@ struct AnimLibrary
 {
     const aiScene* scene = nullptr;
     const std::unordered_map<std::string, int>* indexMap = nullptr;
+    const ExternalAnimationClipLibrary* externalClips = nullptr;
 
     const aiAnimation* Get(const std::string& key) const
     {
+        if (externalClips)
+        {
+            if (const aiAnimation* ext = externalClips->Get(key))
+                return ext;
+        }
+
         if (!scene || !indexMap) return nullptr;
         auto it = indexMap->find(key);
         if (it == indexMap->end()) return nullptr;
@@ -688,10 +696,12 @@ public:
         const XMFLOAT4X4& globalInv,
         const std::vector<std::string>& boneNames,
         const std::vector<XMFLOAT4X4>& boneOffsets,
-        const std::vector<std::string>* optionalAnimNames = nullptr)
+        const std::vector<std::string>* optionalAnimNames = nullptr,
+        const ExternalAnimationClipLibrary* externalClips = nullptr)
     {
         m_Lib.scene = scene;
         m_Lib.indexMap = &animIndex;
+        m_Lib.externalClips = externalClips;
 
         // 이름 캐시(contains 자동 바인딩용)
         m_AnimNames.clear();

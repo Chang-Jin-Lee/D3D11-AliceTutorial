@@ -809,12 +809,11 @@ bool App::OnInitialize() {
 
 	// ====================================== 3D 모델
 	// ======================================
-	//LoadModelFromFile(L"..\\Resource\\fbx\\Study\\char\\char.fbx"); // 0
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Alice3DGame\\Alice.fbx"); // 0
-	// LoadModelFromFile(L"..\\Resource\\fbx\\Alice_UmaUma.fbx"); // 0
+	// Public player sample occupies slot 0.
+	LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 0
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\sphere.fbx"); // 1
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\sphere.fbx"); // 2
-	// LoadModelFromFile(L"..\\Resource\\fbx\\Neon.fbx"); // 3
+	// Slot 3 remains a sphere for the deferred rendering sample.
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\sphere.fbx"); // 3
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Ground.fbx"); // 4
 
