@@ -71,8 +71,10 @@
   <!-- compiled shader outputs -->
   <Target Name="CopyCompiledShadersToCommonBin"
           AfterTargets="Build">
-    <ItemGroup>
-      <CompiledShader Include="$(TargetDir)*.cso" />
+    <ItemGroup Condition="'@(FxCompile)'!=''">
+      <CompiledShader Include="@(FxCompile->'$(TargetDir)%(Filename).cso')" />
+      <CompiledShader Remove="@(CompiledShader)"
+                      Condition="!Exists('%(CompiledShader.Identity)')" />
     </ItemGroup>
 
     <Copy SourceFiles="@(CompiledShader)"
