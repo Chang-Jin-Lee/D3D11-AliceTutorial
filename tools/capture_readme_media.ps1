@@ -220,12 +220,13 @@ function Write-CaptureReport {
     $lines.Add('|---|---|---|---|---|')
 
     foreach ($row in $Rows) {
-        $lines.Add('| {0} | {1} | {2} | {3} | {4} |' -f `
+        $line = '| {0} | {1} | {2} | {3} | {4} |' -f `
             (Format-MarkdownCell $row.Project),
             (Format-MarkdownCell $row.Exe),
             (Format-MarkdownCell $row.Output),
             (Format-MarkdownCell $row.Status),
-            (Format-MarkdownCell $row.Notes))
+            (Format-MarkdownCell $row.Notes)
+        $lines.Add($line)
     }
 
     Set-Content -LiteralPath $ReportPath -Value $lines -Encoding UTF8

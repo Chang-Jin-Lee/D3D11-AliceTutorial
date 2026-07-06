@@ -66,6 +66,10 @@
     <ItemGroup>
       <RuntimeDll Include="$(SolutionDir)third_party\assimp\bin\msvc\assimp-vc143-mt.dll"
                   Condition="Exists('$(SolutionDir)third_party\assimp\bin\msvc\assimp-vc143-mt.dll')" />
+      <RuntimeDll Include="$(SolutionDir)third_party\FMOD\64x\fmod.dll"
+                  Condition="Exists('$(SolutionDir)third_party\FMOD\64x\fmod.dll')" />
+      <RuntimeDll Include="$(SolutionDir)third_party\FMOD\64x\fmodL.dll"
+                  Condition="Exists('$(SolutionDir)third_party\FMOD\64x\fmodL.dll')" />
     </ItemGroup>
 
     <Copy SourceFiles="@(RuntimeDll)"
