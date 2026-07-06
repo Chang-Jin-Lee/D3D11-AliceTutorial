@@ -15,59 +15,217 @@ if (-not ('ReadmeCaptureWin32' -as [type])) {
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
+using System.Text;
 public static class ReadmeCaptureWin32 {
+  public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+  [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out int lpdwProcessId);
+  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+  [DllImport("user32.dll")] public static extern int GetWindowTextLength(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+  [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
   public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
 }
 "@
 }
 
-function Capture-WindowPng {
-  param([System.Diagnostics.Process]$Process, [string]$OutputPath)
-  $handle = $Process.MainWindowHandle
-  if ($handle -eq [IntPtr]::Zero) { throw "Process has no main window: $($Process.ProcessName)" }
+$HWND_TOPMOST = [IntPtr]::new(-1)
+$HWND_NOTOPMOST = [IntPtr]::new(-2)
+$SWP_NOSIZE = 0x0001
+$SWP_NOMOVE = 0x0002
+$SWP_SHOWWINDOW = 0x0040
+$PngSignature = [byte[]](0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
 
-  $showWindowResult = [ReadmeCaptureWin32]::ShowWindow($handle, 9)
-  $lastSetForegroundResult = $false
-  $foregrounded = $false
-  $foregroundDeadline = (Get-Date).AddMilliseconds(2000)
-  do {
-    $lastSetForegroundResult = [ReadmeCaptureWin32]::SetForegroundWindow($handle)
-    Start-Sleep -Milliseconds 100
-    if ([ReadmeCaptureWin32]::GetForegroundWindow() -eq $handle) {
-      $foregrounded = $true
-      break
-    }
-  } while ((Get-Date) -lt $foregroundDeadline)
+function Test-PngOutput {
+  param([string]$Path)
 
-  if (-not $foregrounded) {
-    $foregroundHandle = [ReadmeCaptureWin32]::GetForegroundWindow()
-    throw ("Failed to foreground process window: {0} (ShowWindow returned {1}; SetForegroundWindow returned {2}; target handle 0x{3}; foreground handle 0x{4})" -f `
-      $Process.ProcessName,
-      $showWindowResult,
-      $lastSetForegroundResult,
-      $handle.ToInt64().ToString('X'),
-      $foregroundHandle.ToInt64().ToString('X'))
+  if (-not (Test-Path -LiteralPath $Path)) {
+    throw "PNG capture did not create output: $Path"
   }
 
-  Start-Sleep -Milliseconds 300
-  $rect = New-Object ReadmeCaptureWin32+RECT
-  if (-not [ReadmeCaptureWin32]::GetWindowRect($handle, [ref]$rect)) { throw "GetWindowRect failed" }
+  $item = Get-Item -LiteralPath $Path
+  if ($item.Length -le 4096) {
+    throw "PNG capture output is too small to be valid: $($item.Length) bytes"
+  }
+
+  $stream = [System.IO.File]::OpenRead($Path)
+  try {
+    if ($stream.Length -lt $PngSignature.Length) {
+      throw "PNG capture output is too small to contain a PNG signature: $($stream.Length) bytes"
+    }
+
+    $header = New-Object byte[] $PngSignature.Length
+    $bytesRead = $stream.Read($header, 0, $header.Length)
+    if ($bytesRead -ne $PngSignature.Length) {
+      throw "PNG capture output could not be read: $Path"
+    }
+
+    for ($index = 0; $index -lt $PngSignature.Length; $index++) {
+      if ($header[$index] -ne $PngSignature[$index]) {
+        throw "PNG capture output has an invalid PNG signature: $Path"
+      }
+    }
+  }
+  finally {
+    $stream.Dispose()
+  }
+}
+
+function Get-WindowTitle {
+  param([IntPtr]$Handle)
+
+  $length = [ReadmeCaptureWin32]::GetWindowTextLength($Handle)
+  if ($length -le 0) {
+    return ''
+  }
+
+  $builder = New-Object System.Text.StringBuilder($length + 1)
+  [void][ReadmeCaptureWin32]::GetWindowText($Handle, $builder, $builder.Capacity)
+  return $builder.ToString()
+}
+
+function Resolve-CaptureWindow {
+  param([System.Diagnostics.Process]$Process)
+
+  $candidates = New-Object System.Collections.Generic.List[object]
+  $addCandidate = {
+    param([IntPtr]$candidateHandle)
+
+    if ($candidateHandle -eq [IntPtr]::Zero) {
+      return
+    }
+
+    if (-not [ReadmeCaptureWin32]::IsWindowVisible($candidateHandle)) {
+      return
+    }
+
+    $candidateTitle = Get-WindowTitle -Handle $candidateHandle
+    if ($candidateTitle -eq 'Exception') {
+      throw "Process main window is an exception dialog: $($Process.ProcessName)"
+    }
+
+    $candidateRect = New-Object ReadmeCaptureWin32+RECT
+    if (-not [ReadmeCaptureWin32]::GetWindowRect($candidateHandle, [ref]$candidateRect)) {
+      return
+    }
+
+    $candidateWidth = $candidateRect.Right - $candidateRect.Left
+    $candidateHeight = $candidateRect.Bottom - $candidateRect.Top
+    if ($candidateWidth -le 32 -or $candidateHeight -le 32) {
+      return
+    }
+
+    $candidates.Add([pscustomobject]@{
+      Handle = $candidateHandle
+      Title = $candidateTitle
+      Rect = $candidateRect
+      Width = $candidateWidth
+      Height = $candidateHeight
+    })
+  }
+
+  $Process.Refresh()
+  if ($null -ne $Process.MainWindowHandle) {
+    $mainWindowHandle = [IntPtr]$Process.MainWindowHandle
+    & $addCandidate $mainWindowHandle
+  }
+
+  $callback = [ReadmeCaptureWin32+EnumWindowsProc]{
+    param([IntPtr]$windowHandle, [IntPtr]$lParam)
+
+    $windowProcessId = 0
+    [void][ReadmeCaptureWin32]::GetWindowThreadProcessId($windowHandle, [ref]$windowProcessId)
+    if ($windowProcessId -eq $Process.Id) {
+      & $addCandidate $windowHandle
+    }
+
+    return $true
+  }
+
+  [void][ReadmeCaptureWin32]::EnumWindows($callback, [IntPtr]::Zero)
+
+  if ($candidates.Count -eq 0) {
+    throw "Process has no capturable main window: $($Process.ProcessName)"
+  }
+
+  $preferred = @($candidates | Where-Object { $_.Title -eq 'GameApp' } | Select-Object -First 1)
+  if ($preferred.Count -eq 0) {
+    $preferred = @($candidates | Where-Object { -not [string]::IsNullOrWhiteSpace($_.Title) } | Select-Object -First 1)
+  }
+
+  if ($preferred.Count -eq 0) {
+    return $candidates[0]
+  }
+
+  return $preferred[0]
+}
+
+function Capture-WindowPng {
+  param([System.Diagnostics.Process]$Process, [string]$OutputPath)
+  $Process.Refresh()
+  $handle = [IntPtr]::Zero
+  if ($null -ne $Process.MainWindowHandle) {
+    $handle = [IntPtr]$Process.MainWindowHandle
+  }
+
+  if ($handle -eq [IntPtr]::Zero) { throw "Process has no main window: $($Process.ProcessName)" }
+  if ($Process.MainWindowTitle -eq 'Exception') { throw "Process main window is an exception dialog: $($Process.ProcessName)" }
+  $captureWindow = Resolve-CaptureWindow -Process $Process
+  $handle = $captureWindow.Handle
+  $rect = $captureWindow.Rect
   $width = $rect.Right - $rect.Left
   $height = $rect.Bottom - $rect.Top
   if ($width -le 32 -or $height -le 32) { throw "Window rectangle too small: ${width}x${height}" }
   $bitmap = $null
   $graphics = $null
+  $topmostFlags = [uint32]($SWP_NOMOVE -bor $SWP_NOSIZE -bor $SWP_SHOWWINDOW)
   try {
+    if (-not [ReadmeCaptureWin32]::SetWindowPos($handle, $HWND_TOPMOST, 0, 0, 0, 0, $topmostFlags)) {
+      throw "SetWindowPos failed while making window topmost"
+    }
+
+    $showWindowResult = [ReadmeCaptureWin32]::ShowWindow($handle, 9)
+    $lastSetForegroundResult = $false
+    $foregrounded = $false
+    $foregroundDeadline = (Get-Date).AddMilliseconds(500)
+    do {
+      $lastSetForegroundResult = [ReadmeCaptureWin32]::SetForegroundWindow($handle)
+      [void][ReadmeCaptureWin32]::BringWindowToTop($handle)
+      Start-Sleep -Milliseconds 100
+      if ([ReadmeCaptureWin32]::GetForegroundWindow() -eq $handle) {
+        $foregrounded = $true
+        break
+      }
+    } while ((Get-Date) -lt $foregroundDeadline)
+
+    if (-not $foregrounded) {
+      $foregroundHandle = [ReadmeCaptureWin32]::GetForegroundWindow()
+      Write-Warning ("Continuing after foreground request was denied for process window: {0} (ShowWindow returned {1}; SetForegroundWindow returned {2}; target handle 0x{3}; foreground handle 0x{4})" -f `
+        $Process.ProcessName,
+        $showWindowResult,
+        $lastSetForegroundResult,
+        $handle.ToInt64().ToString('X'),
+        $foregroundHandle.ToInt64().ToString('X'))
+    }
+
+    [void][ReadmeCaptureWin32]::BringWindowToTop($handle)
+    Start-Sleep -Milliseconds 300
+
     $bitmap = New-Object System.Drawing.Bitmap($width, $height)
     $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
     $graphics.CopyFromScreen($rect.Left, $rect.Top, 0, 0, $bitmap.Size)
     $bitmap.Save($OutputPath, [System.Drawing.Imaging.ImageFormat]::Png)
+    Test-PngOutput -Path $OutputPath
   }
   finally {
+    if ($handle -ne [IntPtr]::Zero) {
+      [void][ReadmeCaptureWin32]::SetWindowPos($handle, $HWND_NOTOPMOST, 0, 0, 0, 0, $topmostFlags)
+    }
     if ($null -ne $graphics) {
       $graphics.Dispose()
     }
