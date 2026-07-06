@@ -59,6 +59,15 @@
           Condition="Exists('$(TargetDir)$(TargetName).pdb')" />
   </Target>
 
+  <!-- project-local runtime support files -->
+  <Target Name="CopyProjectFilesToCommonBin"
+          AfterTargets="Build"
+          Condition="'@(CopyFileToFolders)'!=''">
+    <Copy SourceFiles="@(CopyFileToFolders->'%(FullPath)')"
+          DestinationFolder="$(CommonBinDir)"
+          SkipUnchangedFiles="true" />
+  </Target>
+
   <!-- repo-local runtime DLLs -->
   <Target Name="CopyThirdPartyRuntimeDlls"
           AfterTargets="Build"
