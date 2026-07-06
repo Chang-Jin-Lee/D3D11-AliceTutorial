@@ -1,6 +1,4 @@
 # D3D11-AliceTutorial
-> 이전 GitHub attachment 기반 README는 [`README_old.md`](README_old.md)에 보존했습니다.
-
 이 저장소는 [DirectX SDK Samples - Direct3D11 Tutorials](https://github.com/walbourn/directx-sdk-samples/tree/main/Direct3D11Tutorials) 을 기반으로  
 D3D 그래픽스를 학습하면서 정리한 튜토리얼 프로젝트입니다.
 
