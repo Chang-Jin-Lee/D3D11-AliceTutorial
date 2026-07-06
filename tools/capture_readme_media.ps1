@@ -18,6 +18,7 @@ using System.Runtime.InteropServices;
 public static class ReadmeCaptureWin32 {
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
   public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
 }
@@ -28,20 +29,52 @@ function Capture-WindowPng {
   param([System.Diagnostics.Process]$Process, [string]$OutputPath)
   $handle = $Process.MainWindowHandle
   if ($handle -eq [IntPtr]::Zero) { throw "Process has no main window: $($Process.ProcessName)" }
-  [ReadmeCaptureWin32]::ShowWindow($handle, 5) | Out-Null
-  [ReadmeCaptureWin32]::SetForegroundWindow($handle) | Out-Null
+
+  $showWindowResult = [ReadmeCaptureWin32]::ShowWindow($handle, 9)
+  $lastSetForegroundResult = $false
+  $foregrounded = $false
+  $foregroundDeadline = (Get-Date).AddMilliseconds(2000)
+  do {
+    $lastSetForegroundResult = [ReadmeCaptureWin32]::SetForegroundWindow($handle)
+    Start-Sleep -Milliseconds 100
+    if ([ReadmeCaptureWin32]::GetForegroundWindow() -eq $handle) {
+      $foregrounded = $true
+      break
+    }
+  } while ((Get-Date) -lt $foregroundDeadline)
+
+  if (-not $foregrounded) {
+    $foregroundHandle = [ReadmeCaptureWin32]::GetForegroundWindow()
+    throw ("Failed to foreground process window: {0} (ShowWindow returned {1}; SetForegroundWindow returned {2}; target handle 0x{3}; foreground handle 0x{4})" -f `
+      $Process.ProcessName,
+      $showWindowResult,
+      $lastSetForegroundResult,
+      $handle.ToInt64().ToString('X'),
+      $foregroundHandle.ToInt64().ToString('X'))
+  }
+
   Start-Sleep -Milliseconds 300
   $rect = New-Object ReadmeCaptureWin32+RECT
   if (-not [ReadmeCaptureWin32]::GetWindowRect($handle, [ref]$rect)) { throw "GetWindowRect failed" }
   $width = $rect.Right - $rect.Left
   $height = $rect.Bottom - $rect.Top
   if ($width -le 32 -or $height -le 32) { throw "Window rectangle too small: ${width}x${height}" }
-  $bitmap = New-Object System.Drawing.Bitmap($width, $height)
-  $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-  $graphics.CopyFromScreen($rect.Left, $rect.Top, 0, 0, $bitmap.Size)
-  $bitmap.Save($OutputPath, [System.Drawing.Imaging.ImageFormat]::Png)
-  $graphics.Dispose()
-  $bitmap.Dispose()
+  $bitmap = $null
+  $graphics = $null
+  try {
+    $bitmap = New-Object System.Drawing.Bitmap($width, $height)
+    $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+    $graphics.CopyFromScreen($rect.Left, $rect.Top, 0, 0, $bitmap.Size)
+    $bitmap.Save($OutputPath, [System.Drawing.Imaging.ImageFormat]::Png)
+  }
+  finally {
+    if ($null -ne $graphics) {
+      $graphics.Dispose()
+    }
+    if ($null -ne $bitmap) {
+      $bitmap.Dispose()
+    }
+  }
 }
 
 function Resolve-ExistingInputPath {
@@ -383,3 +416,9 @@ foreach ($project in $selectedProjects) {
 $reportPath = Join-Path $mediaDir 'capture-report.md'
 Write-CaptureReport -Rows $reportRows -ReportPath $reportPath
 Write-Host "Capture report written to $(Convert-ToReportPath -Path $reportPath -RepoRoot $repoRoot)"
+
+$failedRows = @($reportRows | Where-Object { $_.Status -eq 'Failure' })
+if ($failedRows.Count -gt 0) {
+    $failedProjects = @($failedRows | ForEach-Object { $_.Project } | Select-Object -Unique) -join ', '
+    throw "README media capture completed with $($failedRows.Count) failure row(s) for project(s): $failedProjects"
+}
