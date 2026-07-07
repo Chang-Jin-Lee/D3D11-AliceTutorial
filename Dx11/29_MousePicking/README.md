@@ -12,5 +12,5 @@
 
 | 마우스로 선택한 모습 |
 |---|
-| <div align="center"><img src="https://github.com/user-attachments/assets/d98018a9-b1a2-4dc6-bf2a-ff098796aedd" width="600"/></div> |
+| <div align="center"><img src="../../docs/media/readme/29-MousePicking.png" width="600"/></div> |
 

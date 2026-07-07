@@ -10,19 +10,19 @@
 
 | fbx Bone Structure |
 |---|
-| <div align="center"><img src="https://github.com/user-attachments/assets/aaa2d136-d427-4fd4-8088-c55a2b0487bf" width="400"/></div> |
+| <div align="center"><img src="../../docs/media/readme/18-fbx-Animation.png" width="400"/></div> |
 
 
 | fbx Animation - Phong  | fbx Animation - Blinn Phong  |
 |---|---|
-| <div align="center">[<img src="https://github.com/user-attachments/assets/e283f7a8-132c-4cf3-8474-6d9246e8e827" width="450"/>]()<br/></div> | <div align="center">[<img src="https://github.com/user-attachments/assets/bcc8cf4a-cd32-47b9-8dc7-1f4ec107e1d3" width="450"/>]()<br/></div> |
+| <div align="center">[<img src="../../docs/media/readme/18-fbx-Animation.png" width="450"/>]()<br/></div> | <div align="center">[<img src="../../docs/media/readme/18-fbx-Animation.png" width="450"/>]()<br/></div> |
 
 
 | fbx Animation - Lambert | fbx Animation - TextureOnly  |
 |---|---|
-| <div align="center">[<img src="https://github.com/user-attachments/assets/63eff4c7-23f3-4e52-a625-e121f9053681" width="450"/>]()<br/></div> | <div align="center">[<img src="https://github.com/user-attachments/assets/ae6029d7-f61f-43ee-b6a9-482eabad4a99" width="450"/>]()<br/></div> |
+| <div align="center">[<img src="../../docs/media/readme/18-fbx-Animation.png" width="450"/>]()<br/></div> | <div align="center">[<img src="../../docs/media/readme/18-fbx-Animation.png" width="450"/>]()<br/></div> |
 
 
 | fbx Animation - No Lighting |
 |---|
-| <div align="center"><img src="https://github.com/user-attachments/assets/2832ca17-4897-415b-84c4-c2d48107e1a1" width="600"/></div> |
+| <div align="center"><img src="../../docs/media/readme/18-fbx-Animation.png" width="600"/></div> |

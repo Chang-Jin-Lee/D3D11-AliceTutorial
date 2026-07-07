@@ -6,4 +6,4 @@
 
 | MultiModels With Animations |
 |---|
-| <div align="center"><img src="https://github.com/user-attachments/assets/33dc6967-19f2-40e0-a54a-27645860018d" width="600"/></div> |
+| <div align="center"><img src="../../docs/media/readme/21-MultiModels-With-Animations.png" width="600"/></div> |

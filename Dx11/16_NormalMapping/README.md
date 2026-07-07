@@ -8,6 +8,6 @@
 
 ###  Normal Mapping Block
 
-<img width="1282" height="1000" alt="스크린샷 2025-09-30 161035" src="https://github.com/user-attachments/assets/b4098f54-8df7-489f-a802-f6a1e709e322" />
+<img width="1282" height="1000" alt="스크린샷 2025-09-30 161035" src="../../docs/media/readme/16-NormalMapping.png" />
 
 

@@ -14,48 +14,48 @@
 
 | fbx - Phong  | fbx - Blinn Phong  |
 |--------------|--------------------|
-| <div align="center">[<img src="https://github.com/user-attachments/assets/93201a8d-af36-480d-ba2f-d876dc532c61" width="450"/>]()<br/></div> | <div align="center">[<img src="https://github.com/user-attachments/assets/6a66a027-8ddf-4770-9fe7-a9172f2e9b00" width="450"/>]()<br/></div> |
+| <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> | <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> |
 
 | fbx - Lambert | fbx - TextureOnly  |
 |--------------|-------------------|
-| <div align="center">[<img src="https://github.com/user-attachments/assets/f4fdba6c-0e45-4dd1-a80c-34ff27cdf030" width="450"/>]()<br/></div> | <div align="center">[<img src="https://github.com/user-attachments/assets/7c5a898a-3ae7-4b45-9051-7cca0c23881e" width="450"/>]()<br/></div> |
+| <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> | <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> |
 
  
 ## In blender
 
 | blender - no light  | blender - Sun Light  |
 |---|---|
-| <div align="center">[<img src="https://github.com/user-attachments/assets/7e45fceb-49aa-4af5-8339-4c95777b27ba" width="450"/>]()<br/></div> | <div align="center">[<img src="https://github.com/user-attachments/assets/3eb168e1-d54e-4e21-af0f-f1d05cfd68d6" width="450"/>]()<br/></div> |
+| <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> | <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> |
  
 ## PMX
 
 | pmx - Phong  | pmx - Blinn Phong  |
 |---|---|
-| <div align="center">[<img src="https://github.com/user-attachments/assets/0e9f5864-6690-4464-b60b-b7e3c20a136f" width="450"/>]()<br/></div> | <div align="center">[<img src="https://github.com/user-attachments/assets/f4053efc-2f1d-4e42-be28-f597521886fe" width="450"/>]()<br/></div> |
+| <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> | <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> |
 
 | pmx - Lambert | pmx - TextureOnly  |
 |---|---|
-| <div align="center">[<img src="https://github.com/user-attachments/assets/50bf6e62-b9ba-421c-8e69-8df151ce19de" width="450"/>]()<br/></div> | <div align="center">[<img src="https://github.com/user-attachments/assets/925c3ca6-533c-420b-ba8b-b626fc0cbd03" width="450"/>]()<br/></div> |
+| <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> | <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> |
 
 
 ## FBX
 
 | fbx - Phong  | fbx - Blinn Phong  |
 |---|---|
-| <div align="center">[<img src="https://github.com/user-attachments/assets/8085cef0-9c9a-426d-ad04-a9c36e949ad5" width="450"/>]()<br/></div> | <div align="center">[<img src="https://github.com/user-attachments/assets/67be9ca5-4142-401f-b533-64b23938724d" width="450"/>]()<br/></div> |
+| <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> | <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> |
 
 | fbx - Lambert | fbx - TextureOnly  |
 |---|---|
-| <div align="center">[<img src="https://github.com/user-attachments/assets/431864f2-41c1-4bc9-b8c5-29325d976af4" width="450"/>]()<br/></div> | <div align="center">[<img src="https://github.com/user-attachments/assets/18637cb0-e8d6-4a04-aad2-9b559224b0f5" width="450"/>]()<br/></div> |
+| <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> | <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> |
 
 
 | fbx - Phong  | fbx - Blinn Phong  |
 |--------------|--------------------|
-| <div align="center">[<img src="https://github.com/user-attachments/assets/54197bf9-15c8-4488-b934-0b3866d3a355" width="450"/>]()<br/></div> | <div align="center">[<img src="https://github.com/user-attachments/assets/84ffebbc-20db-4cb0-8614-6bab06dbaa92" width="450"/>]()<br/></div> |
+| <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> | <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> |
 
 | fbx - Lambert | fbx - TextureOnly  |
 |--------------|-------------------|
-| <div align="center">[<img src="https://github.com/user-attachments/assets/54a7d0f5-4ca6-46a9-a2e3-a72effdea8a6" width="450"/>]()<br/></div> | <div align="center">[<img src="https://github.com/user-attachments/assets/c7883b9b-2586-445f-9082-e951a734993d" width="450"/>]()<br/></div> |
+| <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> | <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> |
 
 
 
@@ -64,9 +64,9 @@
 
 | obj - Phong  | obj - Blinn Phong  |
 |---|---|
-| <div align="center">[<img src="https://github.com/user-attachments/assets/eeb78589-9bab-4373-9248-bcaccafe3a49" width="450"/>]()<br/></div> | <div align="center">[<img src="https://github.com/user-attachments/assets/d4fda6ef-aec6-4fc9-8532-4dc39e38c8c1" width="450"/>]()<br/></div> |
+| <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> | <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> |
 
 | obj - Lambert | obj - TextureOnly  |
 |---|---|
-| <div align="center">[<img src="https://github.com/user-attachments/assets/43a7690e-a3b8-44d8-a9e8-d6dca84f525b" width="450"/>]()<br/></div> | <div align="center">[<img src="https://github.com/user-attachments/assets/35520c47-e2b6-40f8-b207-132c0b8a6fd8" width="450"/>]()<br/></div> |
+| <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> | <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> |
 

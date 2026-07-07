@@ -8,6 +8,7 @@
 
 #include "App.h"
 #include "../Common/Helper.h"
+#include "../Common/ReadmeCapture.h"
 #include <windows.h>
 #include <random>
 #include <d3d11.h>
@@ -609,6 +610,35 @@ bool App::OnInitialize()
 	m_->m_OutlineThickness = 0.3f;
 	m_->m_OutlineColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 1);
 
+	if (ReadmeCapture::IsEnabled())
+	{
+		const XMFLOAT3 characterScale(95.0f, 95.0f, 95.0f);
+		const XMFLOAT3 characterPositions[8] = {
+			XMFLOAT3(0.0f, 0.0f, 0.0f),
+			XMFLOAT3(-90.0f, 0.0f, 85.0f),
+			XMFLOAT3(90.0f, 0.0f, 85.0f),
+			XMFLOAT3(-45.0f, 0.0f, 170.0f),
+			XMFLOAT3(45.0f, 0.0f, 170.0f),
+			XMFLOAT3(-135.0f, 0.0f, 170.0f),
+			XMFLOAT3(135.0f, 0.0f, 170.0f),
+			XMFLOAT3(0.0f, 0.0f, 245.0f),
+		};
+		const float characterYaw[8] = { -35.0f, 145.0f, -145.0f, 150.0f, -150.0f, 130.0f, -130.0f, 180.0f };
+		for (int i = 0; i < 8 && i < (int)m_->m_Models.size(); ++i)
+		{
+			auto& model = *m_->m_Models[(size_t)i];
+			model.pos = characterPositions[i];
+			model.scale = characterScale;
+			model.rotDeg = XMFLOAT3(0.0f, characterYaw[i], 0.0f);
+		}
+		if (m_->m_Models.size() > 8)
+		{
+			m_->m_Models[8]->pos = XMFLOAT3(0.0f, -2.0f, 110.0f);
+			m_->m_Models[8]->scale = XMFLOAT3(1.5f, 1.0f, 5.0f);
+		}
+		m_Camera.SetPosition(XMFLOAT3(10.0f, 75.0f, -155.0f));
+		m_Camera.SetRotation(XMFLOAT3(13.0f, -4.0f, 0.0f));
+	}
 	return true;
 }
 

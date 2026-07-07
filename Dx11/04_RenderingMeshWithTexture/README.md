@@ -8,5 +8,5 @@
 - 결과: 각 면에 다른 이미지를 가진 텍스처 큐브 렌더링
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/f341bbb1-f09a-425c-b605-99392074e557" width="60%" />
+  <img src="../../docs/media/readme/04-RenderingMeshWithTexture.png" width="60%" />
 </p>

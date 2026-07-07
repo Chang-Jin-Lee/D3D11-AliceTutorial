@@ -7,5 +7,5 @@
 - 결과: 화면에 큐브 1개가 렌더링됨
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/0cde58dd-97c3-43be-abc9-021bc4bc3165" width="60%" />
+  <img src="../../docs/media/readme/02-RenderingCube.png" width="60%" />
 </p>

@@ -8,6 +8,12 @@
 struct aiAnimation;
 struct aiScene;
 
+enum class ExternalAnimationClipTransform
+{
+    None,
+    UnrealCmZUpToGlbMeters,
+};
+
 namespace Assimp
 {
     class Importer;
@@ -25,7 +31,11 @@ public:
     ExternalAnimationClipLibrary(const ExternalAnimationClipLibrary&) = delete;
     ExternalAnimationClipLibrary& operator=(const ExternalAnimationClipLibrary&) = delete;
 
-    bool LoadClip(const std::string& key, const std::wstring& pathW, std::string* errorOut = nullptr);
+    bool LoadClip(
+        const std::string& key,
+        const std::wstring& pathW,
+        std::string* errorOut = nullptr,
+        ExternalAnimationClipTransform transform = ExternalAnimationClipTransform::None);
     void Clear();
 
     const aiAnimation* Get(const std::string& key) const;

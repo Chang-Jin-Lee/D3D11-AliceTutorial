@@ -7,6 +7,7 @@
 
 #include "App.h"
 #include "../Common/Helper.h"
+#include "../Common/ReadmeCapture.h"
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -310,6 +311,19 @@ bool App::OnInitialize()
 
 	if (!m_->m_SystemInfo.InitSysInfomation(m_->m_pDevice)) return false;
 
+	if (ReadmeCapture::IsEnabled())
+	{
+		if (LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb") && !m_->m_Models.empty())
+		{
+			auto& model = *m_->m_Models.back();
+			model.pos = XMFLOAT3(0.0f, 0.0f, 0.0f);
+			model.scale = XMFLOAT3(80.0f, 80.0f, 80.0f);
+			model.rotDeg = XMFLOAT3(0.0f, -35.0f, 0.0f);
+			model.autoRotate = true;
+			m_Camera.SetPosition(XMFLOAT3(20.0f, 70.0f, -150.0f));
+			m_Camera.SetRotation(XMFLOAT3(10.0f, -6.0f, 0.0f));
+		}
+	}
 	return true;
 }
 

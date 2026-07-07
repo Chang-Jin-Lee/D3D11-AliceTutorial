@@ -6,6 +6,7 @@
 #include "App.h"
 #include "SoundManager.h"
 #include "../Common/Helper.h"
+#include "../Common/ReadmeCapture.h"
 #include "../Common/mmd/VmdCameraPlayer.h"
 #include <windows.h>
 #include <random>
@@ -705,6 +706,40 @@ bool App::OnInitialize()
 	m_->m_OutlineThickness = 0.3f;
 	m_->m_OutlineColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 1);
 
+	if (ReadmeCapture::IsEnabled())
+	{
+		if (m_->m_Models.size() > 0)
+		{
+			auto& player = *m_->m_Models[0];
+			player.pos = XMFLOAT3(0.0f, 0.0f, 0.0f);
+			player.scale = XMFLOAT3(95.0f, 95.0f, 95.0f);
+			player.rotDeg = XMFLOAT3(0.0f, -25.0f, 0.0f);
+		}
+		if (m_->m_Models.size() > 1)
+		{
+			m_->m_Models[1]->pos = XMFLOAT3(115.0f, 42.0f, 95.0f);
+			m_->m_Models[1]->scale = XMFLOAT3(0.45f, 0.45f, 0.45f);
+		}
+		if (m_->m_Models.size() > 2)
+		{
+			m_->m_Models[2]->pos = XMFLOAT3(-115.0f, 42.0f, 95.0f);
+			m_->m_Models[2]->scale = XMFLOAT3(0.45f, 0.45f, 0.45f);
+		}
+		if (m_->m_Models.size() > 3)
+		{
+			auto& enemy = *m_->m_Models[3];
+			enemy.pos = XMFLOAT3(90.0f, 0.0f, 70.0f);
+			enemy.scale = XMFLOAT3(95.0f, 95.0f, 95.0f);
+			enemy.rotDeg = XMFLOAT3(0.0f, -145.0f, 0.0f);
+		}
+		if (m_->m_Models.size() > 4)
+		{
+			m_->m_Models[4]->pos = XMFLOAT3(0.0f, -2.0f, 85.0f);
+			m_->m_Models[4]->scale = XMFLOAT3(1.5f, 1.0f, 5.0f);
+		}
+		m_Camera.SetPosition(XMFLOAT3(8.0f, 65.0f, -120.0f));
+		m_Camera.SetRotation(XMFLOAT3(11.0f, -4.0f, 0.0f));
+	}
 	return true;
 }
 

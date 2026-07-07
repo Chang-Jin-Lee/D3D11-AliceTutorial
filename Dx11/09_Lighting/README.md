@@ -8,5 +8,5 @@
   - Light Marker: 라이트 위치에 작은 흰색 큐브 렌더링(스케일 0.2)
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/f90261e6-66a4-4e38-8469-6de78fe1f791" width="60%" />
+  <img src="../../docs/media/readme/09-Lighting.png" width="60%" />
 </p>

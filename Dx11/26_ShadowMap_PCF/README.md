@@ -13,11 +13,11 @@
 
 | 그림자가 반대로 생긴 사진 |
 |---|
-| <div align="center"><img src="https://github.com/user-attachments/assets/629d1a4d-f10b-453d-8a81-d64b43b87085" width="600"/></div> |
+| <div align="center"><img src="../../docs/media/readme/26-ShadowMap-PCF.png" width="600"/></div> |
 
 
 </br>
 
 | 그림자가 제대로 그려진 사진 | 그림자가 제대로 그려진 사진2 | 
 |---|---|
-| <div align="center"><img src="https://github.com/user-attachments/assets/4bde0d75-f15a-4c94-81f2-23c14c405384" width="600"/></div> | <div align="center"><img src="https://github.com/user-attachments/assets/c0d19bec-bd8c-4f36-bc7f-7a85b063034d" width="600"/></div> | 
+| <div align="center"><img src="../../docs/media/readme/26-ShadowMap-PCF.png" width="600"/></div> | <div align="center"><img src="../../docs/media/readme/26-ShadowMap-PCF.png" width="600"/></div> |

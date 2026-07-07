@@ -15,13 +15,13 @@
   - 참고: 큐브맵 레이아웃에 따라 `Fz`를 `Fx = diag(-1,1,1)`로 교체 가능
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/11115b61-13e1-4065-8803-61b960ddf732" width="60%" />
+  <img src="../../docs/media/readme/10-StaticCube-SkyBox.png" width="60%" />
 </p>
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/fd61a447-e126-4845-84b6-cf7396a7dfaa" width="60%" />
+  <img src="../../docs/media/readme/10-StaticCube-SkyBox.png" width="60%" />
 </p>
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/711c99d8-8264-40d4-a6e4-ad6cfb3d3989" width="60%" />
+  <img src="../../docs/media/readme/10-StaticCube-SkyBox.png" width="60%" />
 </p>

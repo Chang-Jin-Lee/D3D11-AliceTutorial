@@ -3,6 +3,7 @@
 
 #include "../Helper.h"
 
+#include <assimp/anim.h>
 #include <assimp/config.h>
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
@@ -22,7 +23,39 @@ ExternalAnimationClipLibrary::ExternalAnimationClipLibrary(ExternalAnimationClip
 
 ExternalAnimationClipLibrary& ExternalAnimationClipLibrary::operator=(ExternalAnimationClipLibrary&& other) noexcept = default;
 
-bool ExternalAnimationClipLibrary::LoadClip(const std::string& key, const std::wstring& pathW, std::string* errorOut)
+namespace
+{
+    void ApplyClipTransform(aiAnimation* animation, ExternalAnimationClipTransform transform)
+    {
+        if (!animation || transform == ExternalAnimationClipTransform::None)
+            return;
+
+        if (transform == ExternalAnimationClipTransform::UnrealCmZUpToGlbMeters)
+        {
+            for (unsigned channelIndex = 0; channelIndex < animation->mNumChannels; ++channelIndex)
+            {
+                aiNodeAnim* channel = animation->mChannels[channelIndex];
+                if (!channel)
+                    continue;
+
+                for (unsigned keyIndex = 0; keyIndex < channel->mNumPositionKeys; ++keyIndex)
+                {
+                    aiVector3D& value = channel->mPositionKeys[keyIndex].mValue;
+                    const aiVector3D original = value;
+                    value.x = original.x * 0.01f;
+                    value.y = -original.z * 0.01f;
+                    value.z = original.y * 0.01f;
+                }
+            }
+        }
+    }
+}
+
+bool ExternalAnimationClipLibrary::LoadClip(
+    const std::string& key,
+    const std::wstring& pathW,
+    std::string* errorOut,
+    ExternalAnimationClipTransform transform)
 {
     if (key.empty())
     {
@@ -53,6 +86,7 @@ bool ExternalAnimationClipLibrary::LoadClip(const std::string& key, const std::w
         if (errorOut) *errorOut = "file contains no animation";
         return false;
     }
+    ApplyClipTransform(scene->mAnimations[0], transform);
 
     ClipEntry entry;
     entry.pathW = pathW;
