@@ -1,5 +1,11 @@
 ### 32. FMOD + 애니메이션 동기화
 
+## Screenshot
+
+| README capture |
+|---|
+| <img src="../../docs/media/readme/32-Sound-FMOD.png" width="600"/> |
+
 - 목적 
   - 이후 시네마틱 카메라 연출과 애니메이션과 사운드를 하나로 통합하기 위함
 - 작업내용

@@ -6,7 +6,7 @@
   - 라인의 색을 반영해서 그려냅니다
   - 실제 좌표축을 2D화시켜서 NDC 좌표에 그려닙니다
 
-<img width="164" height="164" alt="스크린샷 2025-09-24 002821" src="https://github.com/user-attachments/assets/5de0dc4b-d243-4970-8096-89881887ae73" />
-<img width="2052" height="1600" alt="스크린샷 2025-09-24 005041" src="https://github.com/user-attachments/assets/dfb3d962-8a72-425a-9d30-b668be7cc2f9" />
-<img width="2052" height="1600" alt="스크린샷 2025-09-24 005051" src="https://github.com/user-attachments/assets/813b88b3-4abb-43a0-971c-97fdd03b9a17" />
-<img width="2052" height="1600" alt="스크린샷 2025-09-24 005058" src="https://github.com/user-attachments/assets/c622b7ed-5fde-4a17-bfa6-5a0ccca73d7c" />
+<img width="164" height="164" alt="스크린샷 2025-09-24 002821" src="../../docs/media/readme/13-LineRenderer-AxisDebug.png" />
+<img width="2052" height="1600" alt="스크린샷 2025-09-24 005041" src="../../docs/media/readme/13-LineRenderer-AxisDebug.png" />
+<img width="2052" height="1600" alt="스크린샷 2025-09-24 005051" src="../../docs/media/readme/13-LineRenderer-AxisDebug.png" />
+<img width="2052" height="1600" alt="스크린샷 2025-09-24 005058" src="../../docs/media/readme/13-LineRenderer-AxisDebug.png" />

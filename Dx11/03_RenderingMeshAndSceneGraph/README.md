@@ -9,5 +9,5 @@
 - 결과: 계층 변환과 깊이 테스트가 올바르게 동작하는 다중 메쉬 장면
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/c8260ecb-9408-4313-8b99-7c4ed71c7ae3" width="60%" />
+  <img src="../../docs/media/readme/03-RenderingMeshAndSceneGraph.png" width="60%" />
 </p>

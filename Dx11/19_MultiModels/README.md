@@ -7,12 +7,12 @@
 
 | MultiModels - Phong  | MultiModels - Blinn Phong  |
 |---|---|
-| <div align="center"><img src="https://github.com/user-attachments/assets/ecdc703d-2b8e-43e2-a36d-8151e05d7347" width="450"/></div> | <div align="center"><img src="https://github.com/user-attachments/assets/6b77a4fd-fd98-454a-b747-2e30dc314381" width="450"/></div> |
+| <div align="center"><img src="../../docs/media/readme/19-MultiModels.png" width="450"/></div> | <div align="center"><img src="../../docs/media/readme/19-MultiModels.png" width="450"/></div> |
 
 | MultiModels - No Lighting |
 |---|
-| <div align="center"><img src="https://github.com/user-attachments/assets/82900d8d-b73a-46d6-92b2-d9bbdb5ae68a" width="600"/></div> |
+| <div align="center"><img src="../../docs/media/readme/19-MultiModels.png" width="600"/></div> |
 
 | MultiModels - Lambert | MultiModels - TextureOnly  |
 |---|---|
-| <div align="center"><img src="https://github.com/user-attachments/assets/c74917a1-4978-464f-a3d7-af8248a84d25" width="450"/></div> | <div align="center"><img src="https://github.com/user-attachments/assets/e70cf2b9-c040-4755-8c3e-a8a5e2ae02cb" width="450"/></div> |
+| <div align="center"><img src="../../docs/media/readme/19-MultiModels.png" width="450"/></div> | <div align="center"><img src="../../docs/media/readme/19-MultiModels.png" width="450"/></div> |

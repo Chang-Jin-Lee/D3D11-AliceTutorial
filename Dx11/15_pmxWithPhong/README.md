@@ -8,20 +8,20 @@
 
 ###  Phong
 
-<img width="1282" height="1000" alt="스크린샷 2025-09-25 152820" src="https://github.com/user-attachments/assets/85fda45a-c5fc-483e-a3dc-c1be3cdc6a91" />
+<img width="1282" height="1000" alt="스크린샷 2025-09-25 152820" src="../../docs/media/readme/15-pmxWithPhong.png" />
 
 ### Blinn-Phong
 
-<img width="1282" height="1000" alt="스크린샷 2025-09-25 152823" src="https://github.com/user-attachments/assets/9163e8c2-1316-49b5-bd63-7d7a8c6281d5" />
+<img width="1282" height="1000" alt="스크린샷 2025-09-25 152823" src="../../docs/media/readme/15-pmxWithPhong.png" />
 
 ### Lambert
 
-<img width="1282" height="1000" alt="스크린샷 2025-09-25 152826" src="https://github.com/user-attachments/assets/e978dc30-f704-48bf-b543-44987b9afac8" />
+<img width="1282" height="1000" alt="스크린샷 2025-09-25 152826" src="../../docs/media/readme/15-pmxWithPhong.png" />
 
 ### Unlit
 
-<img width="1282" height="1000" alt="스크린샷 2025-09-25 152829" src="https://github.com/user-attachments/assets/76399753-f02c-4dc9-a0d1-fc740d1e7578" />
+<img width="1282" height="1000" alt="스크린샷 2025-09-25 152829" src="../../docs/media/readme/15-pmxWithPhong.png" />
 
 ### TextureOnly
 
-<img width="1282" height="1000" alt="스크린샷 2025-09-25 152832" src="https://github.com/user-attachments/assets/24b747fa-e6c7-4a73-85b2-9e47919f6ed4" />
+<img width="1282" height="1000" alt="스크린샷 2025-09-25 152832" src="../../docs/media/readme/15-pmxWithPhong.png" />

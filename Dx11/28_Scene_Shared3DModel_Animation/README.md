@@ -13,9 +13,9 @@
   
 | ¿©·¯ ¸ðµ¨, ¾Ö´Ï¸ÞÀÌ¼Ç |
 |---|
-| <div align="center"><img src="https://github.com/user-attachments/assets/fec46685-11a0-412d-b2e2-e6cfe8840163" width="600"/></div> |
+| <div align="center"><img src="../../docs/media/readme/28-Scene-Shared3DModel-Animation.png" width="600"/></div> |
 
 | ¾À B | ¾À A |
 |---|---|
-| <div align="center"><img src="https://github.com/user-attachments/assets/a4dfc6eb-0646-4a63-b01e-5a1c59c0292a" width="600"/></div> | <div align="center"><img src="https://github.com/user-attachments/assets/5b4398bd-75dc-4d8e-b089-a5426f450101" width="600"/></div> |
+| <div align="center"><img src="../../docs/media/readme/28-Scene-Shared3DModel-Animation.png" width="600"/></div> | <div align="center"><img src="../../docs/media/readme/28-Scene-Shared3DModel-Animation.png" width="600"/></div> |
 

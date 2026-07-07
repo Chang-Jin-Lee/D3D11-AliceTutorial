@@ -8,4 +8,4 @@
 
 | Skinned With Bone Structure |
 |---|
-| <div align="center"><img src="https://github.com/user-attachments/assets/c65b9a1b-4ede-419c-a8d8-260c393d2e27" width="600"/></div> |
+| <div align="center"><img src="../../docs/media/readme/24-Skinned-With-Bone-Structure.png" width="600"/></div> |

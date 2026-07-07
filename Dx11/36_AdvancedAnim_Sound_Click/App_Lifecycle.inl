@@ -205,7 +205,11 @@ void App::LoadDataAsync(std::stop_token stoken)
 	m_->m_ExternalAnimClips.Clear();
 	auto loadExternalClip = [&](const std::string& key, const std::wstring& path) {
 		std::string error;
-		if (!m_->m_ExternalAnimClips.LoadClip(key, path, &error)) {
+		if (!m_->m_ExternalAnimClips.LoadClip(
+			key,
+			path,
+			&error,
+			ExternalAnimationClipTransform::UnrealCmZUpToGlbMeters)) {
 			std::string message = "[WARN] External animation clip failed: " + key + " (" + Utf8FromWString(path) + ")";
 			if (!error.empty())
 				message += " - " + error;

@@ -10,8 +10,8 @@
 
 | Animation - Skinned  | Animation - Rigid  |
 |---|---|
-| <div align="center"><img src="https://github.com/user-attachments/assets/33dc6967-19f2-40e0-a54a-27645860018d" width="450"/></div> | <div align="center"><img src="https://github.com/user-attachments/assets/ceae8311-2d3e-4689-86ac-12815cddeb91" width="450"/></div> |
+| <div align="center"><img src="../../docs/media/readme/23-Rigid-Animation.png" width="450"/></div> | <div align="center"><img src="../../docs/media/readme/23-Rigid-Animation.png" width="450"/></div> |
 
 | Animation - Static Mesh |
 |---|
-| <div align="center"><img src="https://github.com/user-attachments/assets/4212258c-a59c-4291-a05e-46d948c13a83" width="600"/></div> |
+| <div align="center"><img src="../../docs/media/readme/23-Rigid-Animation.png" width="600"/></div> |

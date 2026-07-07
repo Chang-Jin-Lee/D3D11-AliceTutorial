@@ -8,6 +8,7 @@
 
 #include "App.h"
 #include "../Common/Helper.h"
+#include "../Common/ReadmeCapture.h"
 #include <windows.h>
 #include <random>
 #include <d3d11.h>
@@ -650,6 +651,23 @@ bool App::OnInitialize()
 	m_->m_OutlineThickness = 0.3f;
 	m_->m_OutlineColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 1);
 
+	if (ReadmeCapture::IsEnabled())
+	{
+		if (m_->m_Models.size() > 0)
+		{
+			auto& player = *m_->m_Models[0];
+			player.pos = XMFLOAT3(0.0f, 0.0f, 0.0f);
+			player.scale = XMFLOAT3(80.0f, 80.0f, 80.0f);
+			player.rotDeg = XMFLOAT3(0.0f, -35.0f, 0.0f);
+		}
+		if (m_->m_Models.size() > 1)
+		{
+			m_->m_Models[1]->pos = XMFLOAT3(0.0f, -2.0f, 70.0f);
+			m_->m_Models[1]->scale = XMFLOAT3(1.5f, 1.0f, 5.0f);
+		}
+		m_Camera.SetPosition(XMFLOAT3(20.0f, 70.0f, -165.0f));
+		m_Camera.SetRotation(XMFLOAT3(10.0f, -6.0f, 0.0f));
+	}
 	return true;
 }
 

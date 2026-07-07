@@ -8,10 +8,10 @@
 
 | Depth Buffer and Alpha Blending artifact |
 |---|
-| <div align="center"><img src="https://github.com/user-attachments/assets/51fb9f1b-0ec6-412c-8ac7-6758ecb7b3ad" width="600"/></div> |
+| <div align="center"><img src="../../docs/media/readme/20-Depth-And-Alpha-Issue.png" width="600"/></div> |
 
 - 각 1,2,3번을 주석처리해가면서 비교해보면 여러 결과를 얻을 수 있습니다
 
 | Depth Buffer and Alpha Blending artifact | Depth Buffer and Alpha Blending artifact |
 |---|---|
-| <img src="https://github.com/user-attachments/assets/aed9ce5a-cf53-4ec7-ba4b-761d1adc63be" width="1026" height="600" /> | <img src="https://github.com/user-attachments/assets/e0cf7237-0d73-4e36-9d3d-114c163474f3" width="1026" height="600" /> |
+| <img src="../../docs/media/readme/20-Depth-And-Alpha-Issue.png" width="1026" height="600" /> | <img src="../../docs/media/readme/20-Depth-And-Alpha-Issue.png" width="1026" height="600" /> |

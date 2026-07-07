@@ -8,7 +8,7 @@
 - 결과: 화면 중앙에 사각형 출력
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/a44c63b4-0313-4c7d-b98f-03bfcf7abaa0" width="60%" />
+  <img src="../../docs/media/readme/01-RenderingQuadangle.png" width="60%" />
 </p>
 
 ---

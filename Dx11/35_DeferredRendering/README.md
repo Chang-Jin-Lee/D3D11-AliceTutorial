@@ -1,5 +1,11 @@
 # 35. Deferred Rendering
 
+## Screenshot
+
+| README capture |
+|---|
+| <img src="../../docs/media/readme/35-DeferredRendering.png" width="600"/> |
+
 이 예제는 Forward Rendering으로 그리던 장면을 G-Buffer 기반 Deferred Rendering 구조로 확장한 단계입니다. 목적은 "많은 조명을 한 번에 다루기 위해 렌더링을 지오메트리 패스와 라이팅 패스로 나눈다"는 핵심 흐름을 직접 확인하는 것입니다.
 
 ## 핵심 구현

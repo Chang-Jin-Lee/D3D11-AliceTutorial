@@ -9,5 +9,5 @@
 - 결과: 화면에 PMX A-포즈 캐릭터 실루엣 표시
   
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/e2de8438-8e10-4c28-a28b-ed25736a5756" width="60%" />
+  <img src="../../docs/media/readme/06-pmx.png" width="60%" />
 </p>

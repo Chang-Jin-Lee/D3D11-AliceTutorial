@@ -14,5 +14,5 @@
   
 | 디버그 박스 |
 |---|
-| <div align="center"><img src="https://github.com/user-attachments/assets/45944195-2e6a-4057-bd88-4df1812bf882" width="600"/></div> |
+| <div align="center"><img src="../../docs/media/readme/27-DebugDraw.png" width="600"/></div> |
 

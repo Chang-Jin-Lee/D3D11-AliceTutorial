@@ -10,6 +10,6 @@
 - 결과: 머티리얼/텍스처가 적용된 FBX 메시 렌더링
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/ef96322a-786c-411d-b5f6-5e76377455da" width="60%" />
+  <img src="../../docs/media/readme/05-Mesh.png" width="60%" />
 </p>
 

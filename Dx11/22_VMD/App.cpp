@@ -8,6 +8,7 @@
 
 #include "App.h"
 #include "../Common/Helper.h"
+#include "../Common/ReadmeCapture.h"
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -838,6 +839,14 @@ bool App::OnInitialize()
 	LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 0
 
 	m_->m_Models[0]->pos = XMFLOAT3(0, 0.0f, 0.0f);
+	if (ReadmeCapture::IsEnabled())
+	{
+		m_->m_Models[0]->scale = XMFLOAT3(80.0f, 80.0f, 80.0f);
+		m_->m_Models[0]->rotDeg = XMFLOAT3(0.0f, -35.0f, 0.0f);
+		m_->m_Models[0]->autoRotate = true;
+		m_Camera.SetPosition(XMFLOAT3(20.0f, 70.0f, -150.0f));
+		m_Camera.SetRotation(XMFLOAT3(10.0f, -6.0f, 0.0f));
+	}
 
     // 값 타입 매니저 사용(동적 할당 없음)
 	if (!m_->m_SystemInfo.InitSysInfomation(m_->m_pDevice)) return false;

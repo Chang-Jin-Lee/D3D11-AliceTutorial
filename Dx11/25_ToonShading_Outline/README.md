@@ -11,13 +11,13 @@
 
 | All Shader Collection |
 |---|
-| <div align="center"><img src="https://github.com/user-attachments/assets/78c3c9d0-25e5-40f2-8e32-ceddd3b10eb8" width="1600"/></div> |
+| <div align="center"><img src="../../docs/media/readme/25-ToonShading-Outline.png" width="1600"/></div> |
 
 
 | Unlit | Lambert  | BlinnPhong |  
 |---|---|---|
-| <div align="center"><img src="https://github.com/user-attachments/assets/60c8d563-d164-4e6d-ac4f-10cdc2d9d9b6" width="450"/></div> | <div align="center"><img src="https://github.com/user-attachments/assets/0b61f6af-835d-447e-afe0-58df6e68f563" width="450"/></div> | <div align="center"><img src="https://github.com/user-attachments/assets/a52fed7c-e574-4ad7-bf69-bc065a4dbdf9" width="450"/></div> |
+| <div align="center"><img src="../../docs/media/readme/25-ToonShading-Outline.png" width="450"/></div> | <div align="center"><img src="../../docs/media/readme/25-ToonShading-Outline.png" width="450"/></div> | <div align="center"><img src="../../docs/media/readme/25-ToonShading-Outline.png" width="450"/></div> |
 
 Phong | TextureOnly | ToonShading | ToonShading + outline |
 |---|---|---|---|
-|  <div align="center"><img src="https://github.com/user-attachments/assets/aefd4ddc-2b7e-40d2-95b6-76bbbf64b233" width="550"/></div> | <div align="center"><img src="https://github.com/user-attachments/assets/1282063c-108d-4ffb-91cd-f583f4ae0372" width="450"/></div> | <div align="center"><img src="https://github.com/user-attachments/assets/dec73a6c-5b84-40e5-b618-cf24a98fe7ed" width="450"/></div> | <div align="center"><img src="https://github.com/user-attachments/assets/19117156-fa9a-4be0-b2e0-633e6ce47c24" width="450"/></div> |
+|  <div align="center"><img src="../../docs/media/readme/25-ToonShading-Outline.png" width="550"/></div> | <div align="center"><img src="../../docs/media/readme/25-ToonShading-Outline.png" width="450"/></div> | <div align="center"><img src="../../docs/media/readme/25-ToonShading-Outline.png" width="450"/></div> | <div align="center"><img src="../../docs/media/readme/25-ToonShading-Outline.png" width="450"/></div> |

@@ -2,15 +2,15 @@
 
 | IBL |
 |----|
-| <div align="center"><img src="https://github.com/user-attachments/assets/e0580144-1d9f-402f-b157-99789359604c" width="900"/><br/>metalic 1.0, roughness 0.0</div> |
+| <div align="center"><img src="../../docs/media/readme/31-IBL.png" width="900"/><br/>metalic 1.0, roughness 0.0</div> |
 
 | IBL |
 |----|
-| <div align="center"><img src="https://github.com/user-attachments/assets/fb43c51e-834c-4ad0-9792-62fb0b0d3e55" width="900"/><br/>metalic 1.0, roughness 0.18</div> |
+| <div align="center"><img src="../../docs/media/readme/31-IBL.png" width="900"/><br/>metalic 1.0, roughness 0.18</div> |
 
 | IBL |
 |----|
-| <div align="center"><img src="https://github.com/user-attachments/assets/ee712851-aec8-40f5-b28b-a9a852439384" width="900"/><br/>metalic 0.77, roughness 0.38</div> |
+| <div align="center"><img src="../../docs/media/readme/31-IBL.png" width="900"/><br/>metalic 0.77, roughness 0.38</div> |
 
 
 

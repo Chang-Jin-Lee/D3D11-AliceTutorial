@@ -7,10 +7,10 @@
 - 프로젝트: `08_ImguiSystemInfo/`
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/0f465b4b-08e7-4bda-ac14-c265135778c4" width="60%" />
+  <img src="../../docs/media/readme/08-ImguiSystemInfo.png" width="60%" />
 </p>
 
   
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/666463b9-a22a-451e-a741-8a23b65092e5" width="60%" />
+  <img src="../../docs/media/readme/08-ImguiSystemInfo.png" width="60%" />
 </p>
