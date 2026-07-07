@@ -59,6 +59,45 @@
           Condition="Exists('$(TargetDir)$(TargetName).pdb')" />
   </Target>
 
+  <!-- project-local runtime support files -->
+  <Target Name="CopyProjectFilesToCommonBin"
+          AfterTargets="Build"
+          Condition="'@(CopyFileToFolders)'!=''">
+    <Copy SourceFiles="@(CopyFileToFolders->'%(FullPath)')"
+          DestinationFolder="$(CommonBinDir)"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- compiled shader outputs -->
+  <Target Name="CopyCompiledShadersToCommonBin"
+          AfterTargets="Build">
+    <ItemGroup Condition="'@(FxCompile)'!=''">
+      <CompiledShader Include="@(FxCompile->'$(TargetDir)%(Filename).cso')" />
+      <CompiledShader Remove="@(CompiledShader)"
+                      Condition="!Exists('%(CompiledShader.Identity)')" />
+    </ItemGroup>
+
+    <Copy SourceFiles="@(CompiledShader)"
+          DestinationFolder="$(CommonBinDir)"
+          SkipUnchangedFiles="true"
+          Condition="'@(CompiledShader)'!=''" />
+  </Target>
+
+  <!-- runtime shader sources/includes used by projects that compile HLSL at startup -->
+  <Target Name="CopyRuntimeShaderFilesToCommonBin"
+          AfterTargets="Build">
+    <ItemGroup>
+      <RuntimeShaderSource Include="@(FxCompile)" />
+      <RuntimeShaderInclude Include="@(None)"
+                            Condition="'%(Extension)'=='.fxh' Or '%(Extension)'=='.hlsli'" />
+    </ItemGroup>
+
+    <Copy SourceFiles="@(RuntimeShaderSource->'%(FullPath)');@(RuntimeShaderInclude->'%(FullPath)')"
+          DestinationFolder="$(CommonBinDir)"
+          SkipUnchangedFiles="true"
+          Condition="'@(RuntimeShaderSource)'!='' Or '@(RuntimeShaderInclude)'!=''" />
+  </Target>
+
   <!-- repo-local runtime DLLs -->
   <Target Name="CopyThirdPartyRuntimeDlls"
           AfterTargets="Build"
@@ -66,6 +105,10 @@
     <ItemGroup>
       <RuntimeDll Include="$(SolutionDir)third_party\assimp\bin\msvc\assimp-vc143-mt.dll"
                   Condition="Exists('$(SolutionDir)third_party\assimp\bin\msvc\assimp-vc143-mt.dll')" />
+      <RuntimeDll Include="$(SolutionDir)third_party\FMOD\64x\fmod.dll"
+                  Condition="Exists('$(SolutionDir)third_party\FMOD\64x\fmod.dll')" />
+      <RuntimeDll Include="$(SolutionDir)third_party\FMOD\64x\fmodL.dll"
+                  Condition="Exists('$(SolutionDir)third_party\FMOD\64x\fmodL.dll')" />
     </ItemGroup>
 
     <Copy SourceFiles="@(RuntimeDll)"

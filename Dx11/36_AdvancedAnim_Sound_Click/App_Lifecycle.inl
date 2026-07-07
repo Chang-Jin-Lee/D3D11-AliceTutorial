@@ -120,12 +120,25 @@ void App::LoadDataAsync(std::stop_token stoken)
 
 	for (auto& model : m_->m_Models) {
 		if (model)
-			model->modelShading = ShadingMode::PBR;
+			model->modelShading = ShadingMode::BlinnPhong;
 	}
+
+	if (IsReadmeCaptureMode()) {
+		m_->m_UseAdvancedRig = false;
+		m_->m_UseDeferredRendering = false;
+		m_->m_DirLight.ambient = XMFLOAT4(0.35f, 0.35f, 0.35f, 1.0f);
+		m_->m_DirLight.diffuse = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+		m_->m_DirLight.intensity = 2.5f;
+	}
+
+	const bool readmeCaptureMode = IsReadmeCaptureMode();
+	const XMFLOAT3 characterScale(80.0f, 80.0f, 80.0f);
 
 	if (auto* player = modelAt(playerIndex)) {
 		player->pos = XMFLOAT3(0.0f, 0.0f, 0.0f);
-		player->rotDeg = XMFLOAT3(0.0f, 0.0f, 0.0f);
+		player->rotDeg = XMFLOAT3(0.0f, readmeCaptureMode ? -70.0f : 0.0f, 0.0f);
+		player->scale = characterScale;
+		player->autoRotate = readmeCaptureMode;
 		if (player->boneCache.size() > 2)
 			player->boundsBoneIndex = 2;
 	}
@@ -133,14 +146,20 @@ void App::LoadDataAsync(std::stop_token stoken)
 	if (auto* enemy = modelAt(enemy1Index)) {
 		enemy->pos = XMFLOAT3(-180.0f, 0.0f, 140.0f);
 		enemy->rotDeg = XMFLOAT3(0.0f, 130.0f, 0.0f);
+		enemy->scale = characterScale;
+		enemy->autoRotate = readmeCaptureMode;
 	}
 	if (auto* enemy = modelAt(enemy2Index)) {
 		enemy->pos = XMFLOAT3(180.0f, 0.0f, 140.0f);
 		enemy->rotDeg = XMFLOAT3(0.0f, -130.0f, 0.0f);
+		enemy->scale = characterScale;
+		enemy->autoRotate = readmeCaptureMode;
 	}
 	if (auto* enemy = modelAt(enemy3Index)) {
 		enemy->pos = XMFLOAT3(0.0f, 0.0f, -220.0f);
 		enemy->rotDeg = XMFLOAT3(0.0f, 0.0f, 0.0f);
+		enemy->scale = characterScale;
+		enemy->autoRotate = readmeCaptureMode;
 	}
 
 	if (auto* ground = modelAt(groundIndex)) {
@@ -159,7 +178,7 @@ void App::LoadDataAsync(std::stop_token stoken)
 	// ====================================== 큐브  ======================================
 	auto co = std::make_unique<CubeObject>(
 		L"Cube" + std::to_wstring(1),
-		Transform({ 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f }, { 1.0f, 1.0f, 1.0f }),
+		Transform({ -70.0f, 25.0f, 55.0f }, { 0.0f, 25.0f, 0.0f }, { 28.0f, 28.0f, 28.0f }),
 		ECubeType::Texture);
 	for (int i = 0; i < 6; ++i) {
 		co->LoadTexture2DAt(m_->m_pDevice, i, L"..\\Resource\\Image\\Bricks059_1K-JPG_Color.jpg");
@@ -170,14 +189,14 @@ void App::LoadDataAsync(std::stop_token stoken)
 
 	auto co2 = std::make_unique<CubeObject>(
 		L"Cube" + std::to_wstring(2),
-		Transform({ 4.5f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f }, { 2.0f, 2.0f, 2.0f }),
+		Transform({ 80.0f, 25.0f, 75.0f }, { 0.0f, -20.0f, 0.0f }, { 36.0f, 36.0f, 36.0f }),
 		ECubeType::Basic);
 	m_->m_Objects.push_back(std::move(co2));
 
 	// ====================================== 카메라 ======================================
-	m_Camera.SetPosition(XMFLOAT3(14.0f, 114.0f, -108.0f));
+	m_Camera.SetPosition(XMFLOAT3(25.0f, 70.0f, -150.0f));
 	m_Camera.SetSpeed(150.5f);
-	m_Camera.SetRotation(XMFLOAT3(24.0f, -4.5f, 0.0f));
+	m_Camera.SetRotation(XMFLOAT3(10.0f, -7.0f, 0.0f));
 
 	m_->m_OutlineThickness = 0.3f;
 	m_->m_OutlineColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 1);

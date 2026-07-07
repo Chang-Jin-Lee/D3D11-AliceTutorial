@@ -504,17 +504,23 @@ public:
 
         auto ComputeGlobalsFromLocals = [&](const std::vector<XMMATRIX>& locals, std::vector<XMMATRIX>& outGlobals) {
             outGlobals.assign(nodeCount, XMMatrixIdentity());
-        std::vector<uint8_t> done(nodeCount, 0);
-        auto computeNode = [&](auto&& self, int idx) -> void {
-            if (idx < 0 || (size_t)idx >= nodeCount) return;
-            if (done[(size_t)idx]) return;
-                const int pi = m_NodeParents[(size_t)idx];
-            if (pi >= 0) self(self, pi);
-                const XMMATRIX parent = (pi >= 0 && (size_t)pi < nodeCount) ? outGlobals[(size_t)pi] : XMMatrixIdentity();
+            std::vector<uint8_t> visitState(nodeCount, 0);
+            auto computeNode = [&](auto&& self, int idx) -> void {
+                if (idx < 0 || (size_t)idx >= nodeCount) return;
+                uint8_t& state = visitState[(size_t)idx];
+                if (state == 2) return;
+                if (state == 1) return;
+
+                state = 1;
+                int pi = m_NodeParents[(size_t)idx];
+                if (pi == idx || pi < 0 || (size_t)pi >= nodeCount) pi = -1;
+                if (pi >= 0) self(self, pi);
+
+                const XMMATRIX parent = (pi >= 0) ? outGlobals[(size_t)pi] : XMMatrixIdentity();
                 outGlobals[(size_t)idx] = parent * locals[(size_t)idx];
-            done[(size_t)idx] = 1;
-        };
-        for (int i = 0; i < (int)nodeCount; ++i) computeNode(computeNode, i);
+                state = 2;
+            };
+            for (int i = 0; i < (int)nodeCount; ++i) computeNode(computeNode, i);
         };
 
         // --------- 베이스(Idle/Walk/Run) 평가 + 전환 블렌딩 ---------
@@ -887,15 +893,21 @@ private:
 
         // globals = parent * local (memoization)
         m_GlobalMatrices.assign(nodeCount, XMMatrixIdentity());
-        std::vector<uint8_t> done(nodeCount, 0);
+        std::vector<uint8_t> visitState(nodeCount, 0);
         auto computeNode = [&](auto&& self, int idx) -> void {
             if (idx < 0 || (size_t)idx >= nodeCount) return;
-            if (done[(size_t)idx]) return;
-            const int pi = m_NodeParents[(size_t)idx];
+            uint8_t& state = visitState[(size_t)idx];
+            if (state == 2) return;
+            if (state == 1) return;
+
+            state = 1;
+            int pi = m_NodeParents[(size_t)idx];
+            if (pi == idx || pi < 0 || (size_t)pi >= nodeCount) pi = -1;
             if (pi >= 0) self(self, pi);
-            const XMMATRIX parent = (pi >= 0 && (size_t)pi < nodeCount) ? m_GlobalMatrices[(size_t)pi] : XMMatrixIdentity();
+
+            const XMMATRIX parent = (pi >= 0) ? m_GlobalMatrices[(size_t)pi] : XMMatrixIdentity();
             m_GlobalMatrices[(size_t)idx] = parent * locals[(size_t)idx];
-            done[(size_t)idx] = 1;
+            state = 2;
         };
         for (int i = 0; i < (int)nodeCount; ++i) computeNode(computeNode, i);
     }

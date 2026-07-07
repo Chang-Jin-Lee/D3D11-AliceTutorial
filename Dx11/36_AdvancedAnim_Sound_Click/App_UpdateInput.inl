@@ -564,7 +564,7 @@ void App::OnUpdate(const float& dt) {
 		size_t i = 0;
 		for (auto& mdlPtr : m_->m_Models) {
 			auto& mdl = *mdlPtr;
-			if (mdl.autoRotate) {
+			if (mdl.autoRotate && m_bIsGameStarted) {
 				mdl.rotDeg.y += 45.0f * dt;
 				mdl.rotDeg.y = std::fmod(mdl.rotDeg.y + 180.0f, 360.0f) - 180.0f;
 			}
