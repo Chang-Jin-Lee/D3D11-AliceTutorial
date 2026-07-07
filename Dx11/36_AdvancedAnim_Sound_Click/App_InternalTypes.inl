@@ -402,6 +402,13 @@ static bool ComputeLocalAABB(ID3D11Device* device, ID3D11DeviceContext* ctx,
 	return ok;
 }
 
+static bool IsReadmeCaptureMode()
+{
+	char value[16] = {};
+	const DWORD length = GetEnvironmentVariableA("DX11_README_CAPTURE", value, (DWORD)std::size(value));
+	return length > 0 && std::strcmp(value, "0") != 0;
+}
+
 // pImpl 정의
 struct App::Impl {
 	// D3D에서 사용하는 객체

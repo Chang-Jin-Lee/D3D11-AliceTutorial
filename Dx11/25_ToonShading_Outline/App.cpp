@@ -533,44 +533,17 @@ bool App::OnInitialize()
 	if (!m_->m_SystemInfo.InitSysInfomation(m_->m_pDevice)) return false;
 
 
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 0
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 1
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 2
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 3
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 4
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 5
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 6
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 7
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 8
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 9
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 10
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 11
+	constexpr int kToonSampleModelCount = 36;
+	for (int i = 0; i < kToonSampleModelCount; ++i)
+	{
+		LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb");
+	}
 
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 12
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 13
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 14
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 15
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 16
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 17
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 18
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 19
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 20
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 21
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 22
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 23
-
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 24
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 25
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 26
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 27
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 28
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 29
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 30
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 31
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 32
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 33
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 34
-	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\alice_normal_mapping.fbx"); // 35
+	if (m_->m_Models.size() < kToonSampleModelCount)
+	{
+		m_->PushLog("[ERR] Toon sample failed to load public model instances.");
+		return false;
+	}
 
 	// 초기 카메라 위치/속도 설정
 	m_Camera.SetPosition(XMFLOAT3(0.0f, 1.0f, -1.0f));

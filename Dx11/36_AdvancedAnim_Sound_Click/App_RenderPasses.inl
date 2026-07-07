@@ -396,7 +396,9 @@ void App::PassMainScene() {
 		PassDeferredLight();
 
 		m_->m_pDeviceContext->OMSetDepthStencilState(m_->m_pDepthStencilState, 0);
-		PassDebugDraw();
+		if (!IsReadmeCaptureMode()) {
+			PassDebugDraw();
+		}
 
 		// ========== 스카이박스 렌더링 (포워드) ==========
 		// Light 패스가 끝난 후 깊이 버퍼는 G-Buffer의 깊이 정보를 유지하고 있음
@@ -683,7 +685,9 @@ void App::PassMainScene() {
 			m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
 	}
 
-	PassDebugDraw();
+	if (!IsReadmeCaptureMode()) {
+		PassDebugDraw();
+	}
 }
 
 // G-Buffer 패스: 지오메트리 정보를 G-Buffer에 렌더링
@@ -998,25 +1002,30 @@ void App::PassUI() {
 	ImGui_ImplWin32_NewFrame();
 	ImGui::NewFrame();
 
-	RenderControlPannel();
-	RenderSceneCollection();
-	RenderModelPannel();
-	RenderAdvancedRigUI();
-	RenderConsolPannel();
-	m_->m_SystemInfo.RenderUI();
-	RenderSceneImageWindow();
-	RenderDeferredUI();
-	RenderSoundDebugUI();
+	const bool readmeCaptureMode = IsReadmeCaptureMode();
+	if (!readmeCaptureMode) {
+		RenderControlPannel();
+		RenderSceneCollection();
+		RenderModelPannel();
+		RenderAdvancedRigUI();
+		RenderConsolPannel();
+		m_->m_SystemInfo.RenderUI();
+		RenderSceneImageWindow();
+		RenderDeferredUI();
+		RenderSoundDebugUI();
+	}
 	const unsigned int skyboxGeneration = SkyboxAssetManager::GetCompletedGeneration();
 	if (skyboxGeneration != m_->m_SkyboxAssetGeneration) {
 		m_->m_SkyboxAssetGeneration = skyboxGeneration;
 		if (!m_->m_CurrentIBLPath.empty())
 			ChangeIBLSkyBox(m_->m_CurrentIBLPath);
 	}
-	SkyboxAssetManager::RenderStatusUI();
+	if (!readmeCaptureMode) {
+		SkyboxAssetManager::RenderStatusUI();
+	}
 
 	// Sniper UI Overlay
-	if (m_->m_SniperEnabled && m_->m_SniperCharging)
+	if (!readmeCaptureMode && m_->m_SniperEnabled && m_->m_SniperCharging)
 	{
 		ImDrawList* dl = ImGui::GetForegroundDrawList();
 		ImVec2 p = m_->m_SniperAimPos;

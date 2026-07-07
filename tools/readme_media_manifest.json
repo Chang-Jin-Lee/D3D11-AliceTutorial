@@ -40,7 +40,7 @@
     {"number": "33", "name": "Sound Animation Camera Motion", "directory": "33_Sound_Animation_Camera_Motion", "exe": "33_Sound_Animation_Camera_Motion.exe", "image": "33-Sound-Animation-Camera-Motion.png", "delayMs": 3000},
     {"number": "34", "name": "Tone Mapping", "directory": "34_ToneMapping", "exe": "34_ToneMapping.exe", "image": "34-ToneMapping.png", "delayMs": 2500},
     {"number": "35", "name": "Deferred Rendering", "directory": "35_DeferredRendering", "exe": "35_DeferredRendering.exe", "image": "35-DeferredRendering.png", "delayMs": 2500},
-    {"number": "36", "name": "Animation+", "directory": "36_AdvancedAnim_Sound_Click", "exe": "36_AdvancedAnim_Sound_Click.exe", "image": "36-AdvancedAnim-Sound-Click.png", "gif": "36-advanced-anim-sound-click.gif", "delayMs": 4500, "gifSeconds": 4, "gifFps": 10},
+    {"number": "36", "name": "Animation+", "directory": "36_AdvancedAnim_Sound_Click", "exe": "36_AdvancedAnim_Sound_Click.exe", "image": "36-AdvancedAnim-Sound-Click.png", "gif": "36-advanced-anim-sound-click.gif", "delayMs": 4500, "readmeCaptureMode": true, "startClick": true, "postStartDelayMs": 1500, "gifSeconds": 4, "gifFps": 10},
     {"number": "37", "name": "imgui-node-editor demo", "directory": "37_Blueprint", "exe": "37_Blueprint.exe", "image": "37-Blueprint.png", "delayMs": 2000}
   ]
 }

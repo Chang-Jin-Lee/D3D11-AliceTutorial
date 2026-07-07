@@ -29,9 +29,21 @@ public static class ReadmeCaptureWin32 {
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
   [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+  [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
+  [DllImport("user32.dll")] public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo);
+  [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
+  [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hWnd, ref POINT lpPoint);
+  [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+  [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
   public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+  public struct POINT { public int X; public int Y; }
 }
 "@
+}
+try {
+  [void][ReadmeCaptureWin32]::SetProcessDPIAware()
+}
+catch {
 }
 
 $HWND_TOPMOST = [IntPtr]::new(-1)
@@ -39,6 +51,11 @@ $HWND_NOTOPMOST = [IntPtr]::new(-2)
 $SWP_NOSIZE = 0x0001
 $SWP_NOMOVE = 0x0002
 $SWP_SHOWWINDOW = 0x0040
+$MOUSEEVENTF_LEFTDOWN = 0x0002
+$MOUSEEVENTF_LEFTUP = 0x0004
+$WM_LBUTTONDOWN = 0x0201
+$WM_LBUTTONUP = 0x0202
+$MK_LBUTTON = 0x0001
 $PngSignature = [byte[]](0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
 
 function Test-PngOutput {
@@ -89,6 +106,29 @@ function Get-WindowTitle {
   return $builder.ToString()
 }
 
+function Get-ProcessCaptureLabel {
+  param([System.Diagnostics.Process]$Process)
+
+  if ($null -eq $Process) {
+    return 'unknown process'
+  }
+
+  try {
+    if (-not [string]::IsNullOrWhiteSpace($Process.ProcessName)) {
+      return $Process.ProcessName
+    }
+  }
+  catch {
+  }
+
+  try {
+    return "pid $($Process.Id)"
+  }
+  catch {
+    return 'unknown process'
+  }
+}
+
 function Resolve-CaptureWindow {
   param([System.Diagnostics.Process]$Process)
 
@@ -106,7 +146,7 @@ function Resolve-CaptureWindow {
 
     $candidateTitle = Get-WindowTitle -Handle $candidateHandle
     if ($candidateTitle -eq 'Exception') {
-      throw "Process main window is an exception dialog: $($Process.ProcessName)"
+      throw "Process main window is an exception dialog: $(Get-ProcessCaptureLabel -Process $Process)"
     }
 
     $candidateRect = New-Object ReadmeCaptureWin32+RECT
@@ -130,6 +170,10 @@ function Resolve-CaptureWindow {
   }
 
   $Process.Refresh()
+  if ($Process.HasExited) {
+    throw "Process exited before capture: $(Get-ProcessCaptureLabel -Process $Process)"
+  }
+
   if ($null -ne $Process.MainWindowHandle) {
     $mainWindowHandle = [IntPtr]$Process.MainWindowHandle
     & $addCandidate $mainWindowHandle
@@ -150,7 +194,7 @@ function Resolve-CaptureWindow {
   [void][ReadmeCaptureWin32]::EnumWindows($callback, [IntPtr]::Zero)
 
   if ($candidates.Count -eq 0) {
-    throw "Process has no capturable main window: $($Process.ProcessName)"
+    throw "Process has no capturable main window: $(Get-ProcessCaptureLabel -Process $Process)"
   }
 
   $preferred = @($candidates | Where-Object { $_.Title -eq 'GameApp' } | Select-Object -First 1)
@@ -165,19 +209,48 @@ function Resolve-CaptureWindow {
   return $preferred[0]
 }
 
+function Get-CaptureClientRect {
+  param(
+    [IntPtr]$Handle,
+    [object]$FallbackRect
+  )
+
+  $clientRect = New-Object ReadmeCaptureWin32+RECT
+  if ([ReadmeCaptureWin32]::GetClientRect($Handle, [ref]$clientRect)) {
+    $clientWidth = $clientRect.Right - $clientRect.Left
+    $clientHeight = $clientRect.Bottom - $clientRect.Top
+    if ($clientWidth -gt 32 -and $clientHeight -gt 32) {
+      $origin = New-Object ReadmeCaptureWin32+POINT
+      $origin.X = 0
+      $origin.Y = 0
+      if ([ReadmeCaptureWin32]::ClientToScreen($Handle, [ref]$origin)) {
+        return [pscustomobject]@{
+          Left = $origin.X
+          Top = $origin.Y
+          Right = $origin.X + $clientWidth
+          Bottom = $origin.Y + $clientHeight
+        }
+      }
+    }
+  }
+
+  return $FallbackRect
+}
+
 function Capture-WindowPng {
   param([System.Diagnostics.Process]$Process, [string]$OutputPath)
   $Process.Refresh()
-  $handle = [IntPtr]::Zero
-  if ($null -ne $Process.MainWindowHandle) {
-    $handle = [IntPtr]$Process.MainWindowHandle
+  if ($Process.HasExited) {
+    throw "Process exited before capture: $(Get-ProcessCaptureLabel -Process $Process)"
   }
 
-  if ($handle -eq [IntPtr]::Zero) { throw "Process has no main window: $($Process.ProcessName)" }
-  if ($Process.MainWindowTitle -eq 'Exception') { throw "Process main window is an exception dialog: $($Process.ProcessName)" }
+  if ($Process.MainWindowTitle -eq 'Exception') {
+    throw "Process main window is an exception dialog: $(Get-ProcessCaptureLabel -Process $Process)"
+  }
+
   $captureWindow = Resolve-CaptureWindow -Process $Process
   $handle = $captureWindow.Handle
-  $rect = $captureWindow.Rect
+  $rect = Get-CaptureClientRect -Handle $handle -FallbackRect $captureWindow.Rect
   $width = $rect.Right - $rect.Left
   $height = $rect.Bottom - $rect.Top
   if ($width -le 32 -or $height -le 32) { throw "Window rectangle too small: ${width}x${height}" }
@@ -206,7 +279,7 @@ function Capture-WindowPng {
     if (-not $foregrounded) {
       $foregroundHandle = [ReadmeCaptureWin32]::GetForegroundWindow()
       Write-Warning ("Continuing after foreground request was denied for process window: {0} (ShowWindow returned {1}; SetForegroundWindow returned {2}; target handle 0x{3}; foreground handle 0x{4})" -f `
-        $Process.ProcessName,
+        (Get-ProcessCaptureLabel -Process $Process),
         $showWindowResult,
         $lastSetForegroundResult,
         $handle.ToInt64().ToString('X'),
@@ -232,6 +305,57 @@ function Capture-WindowPng {
     if ($null -ne $bitmap) {
       $bitmap.Dispose()
     }
+  }
+}
+
+function Invoke-ProjectStartInteraction {
+  param(
+    [System.Diagnostics.Process]$Process,
+    [object]$Project
+  )
+
+  $startClick = [bool](Get-JsonPropertyValue -Object $Project -Name 'startClick' -DefaultValue $false)
+  if (-not $startClick) {
+    return
+  }
+
+  $Process.Refresh()
+  if ($Process.HasExited) {
+    throw "Process exited before start interaction: $(Get-ProcessCaptureLabel -Process $Process)"
+  }
+
+  $captureWindow = Resolve-CaptureWindow -Process $Process
+  $handle = $captureWindow.Handle
+  $rect = Get-CaptureClientRect -Handle $handle -FallbackRect $captureWindow.Rect
+  $clientRect = New-Object ReadmeCaptureWin32+RECT
+  $clientX = [int](($rect.Right - $rect.Left) / 2)
+  $clientY = [int](($rect.Bottom - $rect.Top) / 2)
+  if ([ReadmeCaptureWin32]::GetClientRect($handle, [ref]$clientRect)) {
+    $clientX = [int](($clientRect.Right - $clientRect.Left) / 2)
+    $clientY = [int](($clientRect.Bottom - $clientRect.Top) / 2)
+  }
+  $x = [int](($rect.Left + $rect.Right) / 2)
+  $y = [int](($rect.Top + $rect.Bottom) / 2)
+
+  [void][ReadmeCaptureWin32]::ShowWindow($handle, 9)
+  [void][ReadmeCaptureWin32]::SetForegroundWindow($handle)
+  [void][ReadmeCaptureWin32]::BringWindowToTop($handle)
+  Start-Sleep -Milliseconds 200
+
+  [void][ReadmeCaptureWin32]::SetCursorPos($x, $y)
+  Start-Sleep -Milliseconds 100
+  [ReadmeCaptureWin32]::mouse_event([uint32]$MOUSEEVENTF_LEFTDOWN, [uint32]$x, [uint32]$y, 0, [UIntPtr]::Zero)
+  Start-Sleep -Milliseconds 60
+  [ReadmeCaptureWin32]::mouse_event([uint32]$MOUSEEVENTF_LEFTUP, [uint32]$x, [uint32]$y, 0, [UIntPtr]::Zero)
+
+  $lParam = [IntPtr]((($clientY -band 0xffff) -shl 16) -bor ($clientX -band 0xffff))
+  [void][ReadmeCaptureWin32]::PostMessage($handle, [uint32]$WM_LBUTTONDOWN, [IntPtr]$MK_LBUTTON, $lParam)
+  Start-Sleep -Milliseconds 60
+  [void][ReadmeCaptureWin32]::PostMessage($handle, [uint32]$WM_LBUTTONUP, [IntPtr]::Zero, $lParam)
+
+  $postStartDelayMs = [int](Get-JsonPropertyValue -Object $Project -Name 'postStartDelayMs' -DefaultValue 1000)
+  if ($postStartDelayMs -gt 0) {
+    Start-Sleep -Milliseconds $postStartDelayMs
   }
 }
 
@@ -512,6 +636,8 @@ $reportRows = New-Object System.Collections.Generic.List[object]
 
 foreach ($project in $selectedProjects) {
     $process = $null
+    $previousReadmeCaptureEnv = $env:DX11_README_CAPTURE
+    $readmeCaptureEnvChanged = $false
     $imagePath = Join-Path $mediaDir $project.image
     $imageReportPath = Convert-ToReportPath -Path $imagePath -RepoRoot $repoRoot
     $exePath = Join-Path $runtimeDir $project.exe
@@ -527,13 +653,30 @@ foreach ($project in $selectedProjects) {
             throw "Executable not found: $(Convert-ToReportPath $exePath $repoRoot)"
         }
 
+        $readmeCaptureMode = [bool](Get-JsonPropertyValue -Object $project -Name 'readmeCaptureMode' -DefaultValue $false)
+        if ($readmeCaptureMode) {
+            $env:DX11_README_CAPTURE = '1'
+            $readmeCaptureEnvChanged = $true
+        }
+
         $process = Start-Process -FilePath $exePath -WorkingDirectory $runtimeDir -PassThru
+        if ($readmeCaptureEnvChanged) {
+            if ($null -eq $previousReadmeCaptureEnv) {
+                Remove-Item Env:\\DX11_README_CAPTURE -ErrorAction SilentlyContinue
+            }
+            else {
+                $env:DX11_README_CAPTURE = $previousReadmeCaptureEnv
+            }
+            $readmeCaptureEnvChanged = $false
+        }
         Wait-MainWindow -Process $process
 
         $delayMs = [int](Get-JsonPropertyValue -Object $project -Name 'delayMs' -DefaultValue $manifestData.defaultDelayMs)
         if ($delayMs -gt 0) {
             Start-Sleep -Milliseconds $delayMs
         }
+
+        Invoke-ProjectStartInteraction -Process $process -Project $project
 
         $process.Refresh()
         Capture-WindowPng -Process $process -OutputPath $imagePath
@@ -559,6 +702,15 @@ foreach ($project in $selectedProjects) {
         Add-ReportRow -Rows $reportRows -Project $project -Output $imageReportPath -Status 'Failure' -Notes $_.Exception.Message
     }
     finally {
+        if ($readmeCaptureEnvChanged) {
+            if ($null -eq $previousReadmeCaptureEnv) {
+                Remove-Item Env:\\DX11_README_CAPTURE -ErrorAction SilentlyContinue
+            }
+            else {
+                $env:DX11_README_CAPTURE = $previousReadmeCaptureEnv
+            }
+        }
+
         if ($null -ne $process -and -not $KeepWindows) {
             try {
                 if (-not $process.HasExited) {
