@@ -66,6 +66,14 @@ void App::LoadDataAsync(std::stop_token stoken)
 		Sound::Load(L"Shoot", L"..\\Resource\\Sound\\Public\\action.wav", Sound::Type::SFX);
 		Sound::Load(L"ShootCharged", L"..\\Resource\\Sound\\Public\\action.wav", Sound::Type::SFX);
 		Sound::Load(L"Reload", L"..\\Resource\\Sound\\Public\\reload.wav", Sound::Type::SFX);
+		m_->m_PublicDemoBgmLoaded = Sound::Load(
+			L"PublicDemoBgm",
+			L"..\\Resource\\Sound\\Public\\bgm_public_demo.mp3",
+			Sound::Type::BGM);
+		m_->m_EnemyIdleAuraLoaded = Sound::Load(
+			L"EnemyIdleAura",
+			L"..\\Resource\\Sound\\Public\\enemy_idle_aura.wav",
+			Sound::Type::SFX);
 	}
 	m_fLoadingProgress = 0.1f;
 
@@ -231,6 +239,14 @@ void App::LoadDataAsync(std::stop_token stoken)
 	loadExternalClip("Shoot_Stance", idleClip);
 	loadExternalClip("Shoot", rollClip);
 	loadExternalClip("Reload", rollClip);
+
+	m_->m_EnemyModelIndices = { enemy1Index, enemy2Index, enemy3Index };
+	m_->m_EnemyIdleRuntimes.clear();
+	m_->m_EnemyIdleRuntimes.reserve(m_->m_EnemyModelIndices.size());
+	for (int enemyIndex : m_->m_EnemyModelIndices)
+	{
+		InitializeEnemyIdleRuntime(enemyIndex);
+	}
 
 	// - The character index is the actual loaded player slot.
 	// - No weapon model is required; socket output is optional.
