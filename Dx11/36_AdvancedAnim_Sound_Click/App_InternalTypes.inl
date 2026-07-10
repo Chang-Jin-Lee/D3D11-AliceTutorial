@@ -654,6 +654,20 @@ struct App::Impl {
 	ExternalAnimationClipLibrary m_ExternalAnimClips;
 	CharacterAnimController m_CharCtrl;
 
+	struct EnemyIdleRuntime
+	{
+		int modelIndex = -1;
+		CharacterAnimator animator;
+		float idleTimeSec = 0.0f;
+		bool initialized = false;
+	};
+
+	std::array<int, 3> m_EnemyModelIndices{ -1, -1, -1 };
+	std::vector<EnemyIdleRuntime> m_EnemyIdleRuntimes;
+	bool m_PublicDemoAudioStarted = false;
+	bool m_PublicDemoBgmLoaded = false;
+	bool m_EnemyIdleAuraLoaded = false;
+
 	// ===================== TPS Camera Follow =====================
 	bool  m_TpsCamAttached = false;     // V키 토글
 	float m_TpsYawRad = 0.0f;

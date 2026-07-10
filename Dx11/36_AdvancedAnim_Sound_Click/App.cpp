@@ -58,6 +58,7 @@
 #include <dxgi1_6.h> // swapchain3 ToneMapping을 위한 것
 #include "../Common/Animation/Animator.h"
 #include "../Common/Animation/CharacterAnimController.h"
+#include <array>
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "d3dcompiler.lib")
@@ -71,6 +72,7 @@ using namespace DirectX::SimpleMath;
 // These files are included here so App::Impl and file-local helpers remain private to this translation unit.
 #include "App_InternalTypes.inl"
 #include "App_Utilities.inl"
+#include "App_PublicDemoRuntime.inl"
 #include "App_Lifecycle.inl"
 #include "App_UpdateInput.inl"
 #include "App_RenderPasses.inl"

@@ -67,6 +67,9 @@ private:
 	bool CreateQuad();
 	void PrepareSkyFaceSRVs();
 	void ChangeSkyboxDDS(const wchar_t* ddsPath);
+	void InitializeEnemyIdleRuntime(int modelIndex);
+	void UpdateEnemyIdleAnimations(float dt);
+	void StartPublicDemoAudioOnce();
 
 private:
 	struct Impl;
