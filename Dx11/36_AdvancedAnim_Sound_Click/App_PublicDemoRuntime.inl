@@ -83,44 +83,46 @@ void App::UpdateEnemyIdleAnimations(float dt)
 		desc.base.layerAlpha = 1.0f;
 
 		runtime.animator.Update(desc);
-		const auto& finalTransforms = runtime.animator.finalTransforms;
-		if (runtime.previousPalette.size() != finalTransforms.size())
+		if (!runtime.paletteMotionLogged && !runtime.paletteStaticWarningLogged)
 		{
-			runtime.previousPalette.resize(finalTransforms.size());
-			for (size_t boneIndex = 0; boneIndex < finalTransforms.size(); ++boneIndex)
-				XMStoreFloat4x4(&runtime.previousPalette[boneIndex], finalTransforms[boneIndex]);
-		}
-		else
-		{
-			float paletteDelta = 0.0f;
-			for (size_t boneIndex = 0; boneIndex < finalTransforms.size(); ++boneIndex)
+			const auto& finalTransforms = runtime.animator.finalTransforms;
+			if (runtime.previousPalette.size() != finalTransforms.size())
 			{
-				const XMMATRIX previous = XMLoadFloat4x4(&runtime.previousPalette[boneIndex]);
-				const XMMATRIX current = finalTransforms[boneIndex];
-				for (int row = 0; row < 4; ++row)
-					paletteDelta += XMVectorGetX(XMVector4LengthSq(XMVectorSubtract(current.r[row], previous.r[row])));
-				XMStoreFloat4x4(&runtime.previousPalette[boneIndex], current);
-			}
-
-			if (paletteDelta > 1e-4f)
-			{
-				runtime.paletteNoMotionSec = 0.0f;
-				if (!runtime.paletteMotionLogged)
-				{
-					m_->PushLog("[OK] Enemy palette moving: model=" + std::to_string(runtime.modelIndex) +
-						" delta=" + std::to_string(paletteDelta));
-					runtime.paletteMotionLogged = true;
-				}
+				runtime.previousPalette.resize(finalTransforms.size());
+				for (size_t boneIndex = 0; boneIndex < finalTransforms.size(); ++boneIndex)
+					XMStoreFloat4x4(&runtime.previousPalette[boneIndex], finalTransforms[boneIndex]);
 			}
 			else
 			{
-				runtime.paletteNoMotionSec += dt;
-				if (runtime.paletteNoMotionSec >= 2.0f && !runtime.paletteStaticWarningLogged)
+				float paletteDelta = 0.0f;
+				for (size_t boneIndex = 0; boneIndex < finalTransforms.size(); ++boneIndex)
 				{
-					m_->PushLog("[WARN] Enemy palette static: model=" + std::to_string(runtime.modelIndex) +
-						" matched=" + std::to_string(runtime.matchedChannelCount) + "/" +
-						std::to_string(runtime.sourceChannelCount));
-					runtime.paletteStaticWarningLogged = true;
+					const XMMATRIX previous = XMLoadFloat4x4(&runtime.previousPalette[boneIndex]);
+					const XMMATRIX current = finalTransforms[boneIndex];
+					for (int row = 0; row < 4; ++row)
+						paletteDelta += XMVectorGetX(XMVector4LengthSq(XMVectorSubtract(current.r[row], previous.r[row])));
+					XMStoreFloat4x4(&runtime.previousPalette[boneIndex], current);
+				}
+
+				if (paletteDelta > 1e-4f)
+				{
+					runtime.paletteNoMotionSec = 0.0f;
+					m_->PushLog("[OK] Enemy palette moving: model=" + std::to_string(runtime.modelIndex) +
+						" delta=" + std::to_string(paletteDelta));
+					runtime.paletteMotionLogged = true;
+					std::vector<XMFLOAT4X4>().swap(runtime.previousPalette);
+				}
+				else
+				{
+					runtime.paletteNoMotionSec += dt;
+					if (runtime.paletteNoMotionSec >= 2.0f)
+					{
+						m_->PushLog("[WARN] Enemy palette static: model=" + std::to_string(runtime.modelIndex) +
+							" matched=" + std::to_string(runtime.matchedChannelCount) + "/" +
+							std::to_string(runtime.sourceChannelCount));
+						runtime.paletteStaticWarningLogged = true;
+						std::vector<XMFLOAT4X4>().swap(runtime.previousPalette);
+					}
 				}
 			}
 		}
