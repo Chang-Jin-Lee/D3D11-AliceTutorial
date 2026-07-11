@@ -660,6 +660,12 @@ struct App::Impl {
 		CharacterAnimator animator;
 		float idleTimeSec = 0.0f;
 		bool initialized = false;
+		std::vector<XMFLOAT4X4> previousPalette;
+		float paletteNoMotionSec = 0.0f;
+		bool paletteMotionLogged = false;
+		bool paletteStaticWarningLogged = false;
+		int matchedChannelCount = 0;
+		int sourceChannelCount = 0;
 	};
 
 	std::array<int, 3> m_EnemyModelIndices{ -1, -1, -1 };
