@@ -124,7 +124,7 @@ public:
 	DirectX::XMFLOAT3 m_cubePos = { -1.5f, 0.0f, 0.0f }; // 루트 변위
 	DirectX::XMFLOAT3 m_cameraPos = { 0.0f, 5.0f, -15.0f }; // 카메라 위치
 	float m_CameraFovDeg = 90.0f;   // FOV(deg)
-	float m_CameraNear = 1.0f;      // Near
+	float m_CameraNear = 0.01f;      // Near
 	float m_CameraFar = 1000.0f;    // Far
 
 	float m_YawDeg = 0.0f;          // 큐브 Yaw
