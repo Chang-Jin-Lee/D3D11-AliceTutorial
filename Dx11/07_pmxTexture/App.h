@@ -87,7 +87,7 @@ public:
 	DirectX::XMFLOAT3 m_RootPos = { -1.5f, 0.0f, 0.0f };
 	DirectX::XMFLOAT3 m_CameraPos = { 0.0f, 5.0f, -15.0f };
 	float m_CameraFovDeg = 90.0f;
-	float m_CameraNear = 1.0f;
+	float m_CameraNear = 0.01f;
 	float m_CameraFar = 1000.0f;
 
 	/*

@@ -17,7 +17,7 @@ static inline void StoreRowMajor(XMFLOAT4X4& dst, FXMMATRIX M)
 Camera::Camera()
 {
 	Reset();
-	SetFrustum(XMConvertToRadians(90.0f), 16.0f / 9.0f, 1.0f, 1000.0f);
+	SetFrustum(XMConvertToRadians(90.0f), 16.0f / 9.0f, 0.01f, 1000.0f);
 }
 
 DirectX::XMFLOAT3 Camera::GetPosition() const
@@ -90,6 +90,8 @@ void Camera::Reset()
 	m_Rotation = XMFLOAT3(0.0f, 0.0f, 0.0f);
 	m_Position = XMFLOAT3(0.0f, 0.0f, -8.0f);
 	m_InputVector = XMFLOAT3(0.0f, 0.0f, 0.0f);
+	m_MoveSpeed = 15.0f;
+	m_NearZ = 0.01f;
 }
 
 void Camera::Update(float elapsedTime)
@@ -267,4 +269,3 @@ XMMATRIX Camera::GetProjMatrixXM() const
 {
 	return XMMatrixPerspectiveFovLH(m_FovYRad, m_Aspect, m_NearZ, m_FarZ);
 }
-

@@ -1117,7 +1117,7 @@ bool App::InitScene()
 	// ì¹´ë©”?¼(View/Proj)ë¡? ?ƒ?ˆ˜ ë²„í¼ë¥? ì¤?ë¹„í•©?‹ˆ?‹¤ (GameApp::m_Camera ?‚¬?š©)
 	m_->m_baseProjection.world = XMMatrixIdentity();
 	// ì¹´ë©”?¼ ì´ˆê¸° ?”„?Ÿ¬?Š¤??? ê°’ë“¤ ?„¤? •
-	m_Camera.SetFrustum(XMConvertToRadians(90.0f), AspectRatio(), 1.0f, 1000.0f);
+	m_Camera.SetFrustum(XMConvertToRadians(90.0f), AspectRatio(), 0.01f, 1000.0f);
 	m_->m_baseProjection.view = XMMatrixTranspose(m_Camera.GetViewMatrixXM());
 	m_->m_baseProjection.proj = XMMatrixTranspose(m_Camera.GetProjMatrixXM());
 	m_->m_baseProjection.worldInvTranspose = XMMatrixInverse(nullptr, XMMatrixTranspose(m_->m_baseProjection.world));

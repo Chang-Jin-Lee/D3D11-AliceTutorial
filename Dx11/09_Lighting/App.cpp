@@ -208,7 +208,7 @@ void App::OnUpdate(const float& dt)
 	XMVECTOR forward = XMVector3Normalize(XMVectorSet(cosf(sPitch) * sinf(sYaw), sinf(sPitch), cosf(sPitch) * cosf(sYaw), 0.0f));
 	XMVECTOR right = XMVector3Normalize(XMVector3Cross(up, forward));
 	XMVECTOR posV = XMVectorSet(m_cameraPos.x, m_cameraPos.y, m_cameraPos.z, 0.0f);
-	float moveSpeed = 5.0f;
+	float moveSpeed = 15.0f;
 	if (rmbDown)
 	{
 		posV = XMVectorAdd(posV, XMVectorScale(forward, d1 * moveSpeed));

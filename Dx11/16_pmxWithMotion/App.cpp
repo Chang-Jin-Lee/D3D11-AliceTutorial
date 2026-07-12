@@ -922,7 +922,7 @@ bool App::InitScene()
 	// 공통 카메라(View/Proj)로 3개의 상수 버퍼 엔트리를 준비합니다
 	m_baseProjection.world = XMMatrixIdentity();
 	// Set camera initial frustum using window aspect
-	m_camera.SetFrustum(XMConvertToRadians(90.0f), AspectRatio(), 1.0f, 1000.0f);
+	m_camera.SetFrustum(XMConvertToRadians(90.0f), AspectRatio(), 0.01f, 1000.0f);
 	m_baseProjection.view = XMMatrixTranspose(m_camera.GetViewMatrixXM());
 	m_baseProjection.proj = XMMatrixTranspose(m_camera.GetProjMatrixXM());
 	m_baseProjection.worldInvTranspose = XMMatrixInverse(nullptr, XMMatrixTranspose(m_baseProjection.world));

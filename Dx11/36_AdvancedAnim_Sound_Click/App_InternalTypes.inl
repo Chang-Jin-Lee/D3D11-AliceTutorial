@@ -630,6 +630,7 @@ struct App::Impl {
 	ID3D11ShaderResourceView* m_pSceneImageSRV = nullptr;
 	ImVec2 m_SceneImageSize = ImVec2(0, 0);
 	bool m_ShowSceneImageWindow = true;
+	bool m_ShowQuickGuideWindow = true;
 	bool m_IsUsingTempImage = false; // 임시 이미지 사용 중인지 여부
 
 	// 씬 변경 팝업 관련
@@ -653,6 +654,26 @@ struct App::Impl {
 
 	ExternalAnimationClipLibrary m_ExternalAnimClips;
 	CharacterAnimController m_CharCtrl;
+
+	struct EnemyIdleRuntime
+	{
+		int modelIndex = -1;
+		CharacterAnimator animator;
+		float idleTimeSec = 0.0f;
+		bool initialized = false;
+		std::vector<XMFLOAT4X4> previousPalette;
+		float paletteNoMotionSec = 0.0f;
+		bool paletteMotionLogged = false;
+		bool paletteStaticWarningLogged = false;
+		int matchedChannelCount = 0;
+		int sourceChannelCount = 0;
+	};
+
+	std::array<int, 3> m_EnemyModelIndices{ -1, -1, -1 };
+	std::vector<EnemyIdleRuntime> m_EnemyIdleRuntimes;
+	bool m_PublicDemoAudioStarted = false;
+	bool m_PublicDemoBgmLoaded = false;
+	bool m_EnemyIdleAuraLoaded = false;
 
 	// ===================== TPS Camera Follow =====================
 	bool  m_TpsCamAttached = false;     // V키 토글

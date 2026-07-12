@@ -592,7 +592,7 @@ bool App::InitScene()
 
 	// 카메라 자동 셋업
 	m_RootPos = XMFLOAT3(0,0,0);
-	m_CameraNear = 0.1f;
+	m_CameraNear = 0.01f;
 	m_CameraFar = max(1000.0f, targetRadius * 20.0f);
 	m_CameraPos = XMFLOAT3(0.0f, targetRadius * 0.5f, -targetRadius * 2.0f);
 

@@ -643,6 +643,9 @@ void App::OnUpdate(const float& dt) {
 
 		}
 
+		UpdateEnemyIdleAnimations(dt);
+		StartPublicDemoAudioOnce();
+
 		// FMOD 갱신 (매 프레임) - 모델 루프 밖에서 1회만 호출해야 한다.
 		Sound::Update();
 

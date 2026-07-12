@@ -547,7 +547,7 @@ bool App::OnInitialize()
 
 	// 초기 카메라 위치/속도 설정
 	m_Camera.SetPosition(XMFLOAT3(0.0f, 1.0f, -1.0f));
-	m_Camera.SetSpeed(4);
+	m_Camera.SetSpeed(15.0f);
 
 	// --------------------------------------------------------------------------------
 	// 위치 설정 (4줄 × 12개, X는 36 간격, Y는 줄마다 -60 간격)
@@ -1510,7 +1510,7 @@ bool App::InitScene()
 	// 카메라(View/Proj)로 상수 버퍼를 준비합니다
 	m_->m_baseProjection.world = XMMatrixIdentity();
 	// 카메라 초기 프러스텀 값들 설정
-	m_Camera.SetFrustum(XMConvertToRadians(90.0f), AspectRatio(), 0.2f, 100.0f);
+	m_Camera.SetFrustum(XMConvertToRadians(90.0f), AspectRatio(), 0.01f, 100.0f);
 	m_->m_baseProjection.view = XMMatrixTranspose(m_Camera.GetViewMatrixXM());
 	m_->m_baseProjection.proj = XMMatrixTranspose(m_Camera.GetProjMatrixXM());
 	m_->m_baseProjection.worldInvTranspose = XMMatrixInverse(nullptr, XMMatrixTranspose(m_->m_baseProjection.world));

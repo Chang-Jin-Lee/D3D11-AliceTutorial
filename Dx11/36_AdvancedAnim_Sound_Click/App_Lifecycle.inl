@@ -66,6 +66,14 @@ void App::LoadDataAsync(std::stop_token stoken)
 		Sound::Load(L"Shoot", L"..\\Resource\\Sound\\Public\\action.wav", Sound::Type::SFX);
 		Sound::Load(L"ShootCharged", L"..\\Resource\\Sound\\Public\\action.wav", Sound::Type::SFX);
 		Sound::Load(L"Reload", L"..\\Resource\\Sound\\Public\\reload.wav", Sound::Type::SFX);
+		m_->m_PublicDemoBgmLoaded = Sound::Load(
+			L"PublicDemoBgm",
+			L"..\\Resource\\Sound\\Public\\bgm_public_demo.mp3",
+			Sound::Type::BGM);
+		m_->m_EnemyIdleAuraLoaded = Sound::Load(
+			L"EnemyIdleAura",
+			L"..\\Resource\\Sound\\Public\\enemy_idle_aura.wav",
+			Sound::Type::SFX);
 	}
 	m_fLoadingProgress = 0.1f;
 
@@ -135,7 +143,7 @@ void App::LoadDataAsync(std::stop_token stoken)
 	const XMFLOAT3 characterScale(80.0f, 80.0f, 80.0f);
 
 	if (auto* player = modelAt(playerIndex)) {
-		player->pos = XMFLOAT3(0.0f, 0.0f, 0.0f);
+		player->pos = XMFLOAT3(-50.0f, 0.0f, -30.0f);
 		player->rotDeg = XMFLOAT3(0.0f, readmeCaptureMode ? -70.0f : 0.0f, 0.0f);
 		player->scale = characterScale;
 		player->autoRotate = readmeCaptureMode;
@@ -144,20 +152,20 @@ void App::LoadDataAsync(std::stop_token stoken)
 	}
 
 	if (auto* enemy = modelAt(enemy1Index)) {
-		enemy->pos = XMFLOAT3(-180.0f, 0.0f, 140.0f);
-		enemy->rotDeg = XMFLOAT3(0.0f, 130.0f, 0.0f);
+		enemy->pos = XMFLOAT3(-145.0f, 0.0f, 100.0f);
+		enemy->rotDeg = XMFLOAT3(0.0f, 10.0f, 0.0f);
 		enemy->scale = characterScale;
 		enemy->autoRotate = readmeCaptureMode;
 	}
 	if (auto* enemy = modelAt(enemy2Index)) {
-		enemy->pos = XMFLOAT3(180.0f, 0.0f, 140.0f);
-		enemy->rotDeg = XMFLOAT3(0.0f, -130.0f, 0.0f);
+		enemy->pos = XMFLOAT3(35.0f, 0.0f, 100.0f);
+		enemy->rotDeg = XMFLOAT3(0.0f, 0.0f, 0.0f);
 		enemy->scale = characterScale;
 		enemy->autoRotate = readmeCaptureMode;
 	}
 	if (auto* enemy = modelAt(enemy3Index)) {
-		enemy->pos = XMFLOAT3(0.0f, 0.0f, -220.0f);
-		enemy->rotDeg = XMFLOAT3(0.0f, 0.0f, 0.0f);
+		enemy->pos = XMFLOAT3(115.0f, 0.0f, 100.0f);
+		enemy->rotDeg = XMFLOAT3(0.0f, -10.0f, 0.0f);
 		enemy->scale = characterScale;
 		enemy->autoRotate = readmeCaptureMode;
 	}
@@ -178,7 +186,7 @@ void App::LoadDataAsync(std::stop_token stoken)
 	// ====================================== 큐브  ======================================
 	auto co = std::make_unique<CubeObject>(
 		L"Cube" + std::to_wstring(1),
-		Transform({ -70.0f, 25.0f, 55.0f }, { 0.0f, 25.0f, 0.0f }, { 28.0f, 28.0f, 28.0f }),
+		Transform({ -220.0f, 25.0f, 45.0f }, { 0.0f, 25.0f, 0.0f }, { 28.0f, 28.0f, 28.0f }),
 		ECubeType::Texture);
 	for (int i = 0; i < 6; ++i) {
 		co->LoadTexture2DAt(m_->m_pDevice, i, L"..\\Resource\\Image\\Bricks059_1K-JPG_Color.jpg");
@@ -189,14 +197,14 @@ void App::LoadDataAsync(std::stop_token stoken)
 
 	auto co2 = std::make_unique<CubeObject>(
 		L"Cube" + std::to_wstring(2),
-		Transform({ 80.0f, 25.0f, 75.0f }, { 0.0f, -20.0f, 0.0f }, { 36.0f, 36.0f, 36.0f }),
+		Transform({ 220.0f, 25.0f, 65.0f }, { 0.0f, -20.0f, 0.0f }, { 36.0f, 36.0f, 36.0f }),
 		ECubeType::Basic);
 	m_->m_Objects.push_back(std::move(co2));
 
 	// ====================================== 카메라 ======================================
-	m_Camera.SetPosition(XMFLOAT3(25.0f, 70.0f, -150.0f));
-	m_Camera.SetSpeed(150.5f);
-	m_Camera.SetRotation(XMFLOAT3(10.0f, -7.0f, 0.0f));
+	m_Camera.SetPosition(XMFLOAT3(0.0f, 65.0f, -220.0f));
+	m_Camera.SetSpeed(15.0f);
+	m_Camera.SetRotation(XMFLOAT3(8.0f, 0.0f, 0.0f));
 
 	m_->m_OutlineThickness = 0.3f;
 	m_->m_OutlineColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 1);
@@ -231,6 +239,14 @@ void App::LoadDataAsync(std::stop_token stoken)
 	loadExternalClip("Shoot_Stance", idleClip);
 	loadExternalClip("Shoot", rollClip);
 	loadExternalClip("Reload", rollClip);
+
+	m_->m_EnemyModelIndices = { enemy1Index, enemy2Index, enemy3Index };
+	m_->m_EnemyIdleRuntimes.clear();
+	m_->m_EnemyIdleRuntimes.reserve(m_->m_EnemyModelIndices.size());
+	for (int enemyIndex : m_->m_EnemyModelIndices)
+	{
+		InitializeEnemyIdleRuntime(enemyIndex);
+	}
 
 	// - The character index is the actual loaded player slot.
 	// - No weapon model is required; socket output is optional.
@@ -614,7 +630,7 @@ bool App::InitScene() {
 	// 카메라(View/Proj)로 상수 버퍼를 준비합니다
 	m_->m_baseProjection.world = XMMatrixIdentity();
 	// 카메라 초기 프러스텀 값들 설정
-	m_Camera.SetFrustum(XMConvertToRadians(90.0f), AspectRatio(), 1.0f, 10000.0f);
+	m_Camera.SetFrustum(XMConvertToRadians(90.0f), AspectRatio(), 0.01f, 10000.0f);
 	m_->m_baseProjection.view = XMMatrixTranspose(m_Camera.GetViewMatrixXM());
 	m_->m_baseProjection.proj = XMMatrixTranspose(m_Camera.GetProjMatrixXM());
 	m_->m_baseProjection.worldInvTranspose =

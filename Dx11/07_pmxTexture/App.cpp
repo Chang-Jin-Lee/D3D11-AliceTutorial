@@ -176,7 +176,7 @@ void App::OnUpdate(const float& dt)
 	XMVECTOR forward = XMVector3Normalize(XMVectorSet(cosf(sPitch)*sinf(sYaw), sinf(sPitch), cosf(sPitch)*cosf(sYaw), 0.0f));
 	XMVECTOR right = XMVector3Normalize(XMVector3Cross(up, forward));
 	XMVECTOR posV = XMVectorSet(m_CameraPos.x, m_CameraPos.y, m_CameraPos.z, 0.0f);
-	float moveSpeed = 5.0f;
+	float moveSpeed = 15.0f;
 	posV = XMVectorAdd(posV, XMVectorScale(forward, d1 * moveSpeed));
 	posV = XMVectorAdd(posV, XMVectorScale(right, d2 * moveSpeed));
 	posV = XMVectorAdd(posV, XMVectorScale(up, d3 * moveSpeed));
@@ -762,7 +762,7 @@ bool App::InitScene()
 	*/
 	// 카메라 자동 셋업
 	m_RootPos = XMFLOAT3(0,0,0);
-	m_CameraNear = 0.1f;
+	m_CameraNear = 0.01f;
 	m_CameraFar = max(1000.0f, targetRadius * 20.0f);
 	m_CameraPos = XMFLOAT3(0.0f, targetRadius * 0.5f, -targetRadius * 2.0f);
 

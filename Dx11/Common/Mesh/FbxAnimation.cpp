@@ -671,8 +671,8 @@ void FbxAnimation::UpdateAndUpload(
 
 	// Fallback: compute on the fly (if not precomputed)
 	if (m_Type == AnimType::Rigid) { UploadRigid(ctx, sc, nodeMap, *bones, *giPtr); return; }
-	if (!sc || m_Current < 0) return;
-	if (m_ChannelDirty && !m_ChannelOfNode.empty()) { RebuildChannelMapIfNeeded(sc, m_Current, nodeMap, m_ChannelOfNode); m_ChannelDirty = false; }
+	if (!sc || (m_Current < 0 && m_Type != AnimType::Skinned)) return;
+	if (m_Current >= 0 && m_ChannelDirty && !m_ChannelOfNode.empty()) { RebuildChannelMapIfNeeded(sc, m_Current, nodeMap, m_ChannelOfNode); m_ChannelDirty = false; }
 	EvaluateGlobals(sc, nodeMap, m_GlobalScratch);
 	m_PaletteScratch.resize(bones->size(), XMMatrixIdentity());
 	XMMATRIX Gi = XMLoadFloat4x4(giPtr);

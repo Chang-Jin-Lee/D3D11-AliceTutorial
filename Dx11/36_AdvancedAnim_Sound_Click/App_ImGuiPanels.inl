@@ -78,6 +78,7 @@
 		ImGui::Separator();
 		ImGui::Text("Camera");
 		{
+			ImGui::Checkbox("Quick Guide", &m_->m_ShowQuickGuideWindow);
 			if (ImGui::Button("Reset")) {
 				m_Camera.Reset();
 			}
@@ -963,6 +964,48 @@ static void DrawTransitionsEditor(const char* layerName, AnimStateMachine& sm)
 	}
 
 	ImGui::PopID();
+}
+
+void App::RenderQuickGuideUI()
+{
+	if (!m_->m_ShowQuickGuideWindow) return;
+
+	ImGui::SetNextWindowPos(ImVec2(620, 240), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(330, 300), ImGuiCond_Always);
+	if (ImGui::Begin("Quick Guide##36QuickGuide", &m_->m_ShowQuickGuideWindow, ImGuiWindowFlags_NoSavedSettings)) {
+		const bool attached = m_->m_TpsCamAttached;
+
+		if (ImGui::Button(attached ? "Detach Camera (V)" : "Attach Camera (V)", ImVec2(-1.0f, 0.0f))) {
+			m_->m_TpsCamAttached = !m_->m_TpsCamAttached;
+			if (m_->m_TpsCamAttached) {
+				const XMFLOAT3 rotDeg = m_Camera.GetRotation();
+				m_->m_TpsYawRad = XMConvertToRadians(rotDeg.y);
+				m_->m_TpsPitchRad = std::clamp(XMConvertToRadians(rotDeg.x),
+					m_->m_TpsPitchMin, m_->m_TpsPitchMax);
+				if (InputSystem::Instance) {
+					m_->m_TpsLastWheel = InputSystem::Instance->m_MouseState.scrollWheelValue;
+				}
+			}
+		}
+
+		if (ImGui::Button("Reset Follow View", ImVec2(-1.0f, 0.0f))) {
+			m_->m_TpsCamAttached = true;
+			m_->m_TpsYawRad = 0.0f;
+			m_->m_TpsPitchRad = XMConvertToRadians(15.0f);
+			m_->m_TpsDist = 220.0f;
+			if (InputSystem::Instance) {
+				m_->m_TpsLastWheel = InputSystem::Instance->m_MouseState.scrollWheelValue;
+			}
+		}
+
+		ImGui::Text("Camera: %s", m_->m_TpsCamAttached ? "attached to player" : "free");
+		ImGui::SeparatorText("Controls");
+		ImGui::BulletText("V: attach camera");
+		ImGui::BulletText("WASD: move, Shift: run");
+		ImGui::BulletText("RMB drag: look, wheel: zoom");
+		ImGui::BulletText("Ctrl: stance, LMB / R: action");
+	}
+	ImGui::End();
 }
 
 void App::RenderAdvancedRigUI()
