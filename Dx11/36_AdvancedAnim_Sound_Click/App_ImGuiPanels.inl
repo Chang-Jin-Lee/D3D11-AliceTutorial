@@ -971,7 +971,7 @@ void App::RenderQuickGuideUI()
 	if (!m_->m_ShowQuickGuideWindow) return;
 
 	ImGui::SetNextWindowPos(ImVec2(620, 240), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(330, 270), ImGuiCond_Always);
+	ImGui::SetNextWindowSize(ImVec2(330, 300), ImGuiCond_Always);
 	if (ImGui::Begin("Quick Guide##36QuickGuide", &m_->m_ShowQuickGuideWindow, ImGuiWindowFlags_NoSavedSettings)) {
 		const bool attached = m_->m_TpsCamAttached;
 
@@ -1000,9 +1000,10 @@ void App::RenderQuickGuideUI()
 
 		ImGui::Text("Camera: %s", m_->m_TpsCamAttached ? "attached to player" : "free");
 		ImGui::SeparatorText("Controls");
-		ImGui::BulletText("V: attach camera, then WASD / Shift");
-		ImGui::BulletText("Right drag: look, wheel: zoom");
-		ImGui::BulletText("Ctrl: stance; LMB / R: action");
+		ImGui::BulletText("V: attach camera");
+		ImGui::BulletText("WASD: move, Shift: run");
+		ImGui::BulletText("RMB drag: look, wheel: zoom");
+		ImGui::BulletText("Ctrl: stance, LMB / R: action");
 	}
 	ImGui::End();
 }
