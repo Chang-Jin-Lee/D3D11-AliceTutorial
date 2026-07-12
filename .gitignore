@@ -400,3 +400,8 @@ imgui.ini
 
 
 Resource/fbx/Study/char/char.fbx
+
+# Runtime skybox bundles downloaded by SkyboxAssetManager.
+Dx11/Resource/Skybox/Bridge/
+Dx11/Resource/Skybox/Indoor/
+Dx11/Resource/Skybox/Sample/
