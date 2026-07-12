@@ -25,6 +25,18 @@ ExternalAnimationClipLibrary& ExternalAnimationClipLibrary::operator=(ExternalAn
 
 namespace
 {
+    aiQuaternion ConvertUnrealRotationToGlb(const aiQuaternion& rotation)
+    {
+        const float halfSqrt = 0.7071067811865476f;
+        const aiQuaternion basis(halfSqrt, halfSqrt, 0.0f, 0.0f);
+        aiQuaternion inverseBasis = basis;
+        inverseBasis.Conjugate();
+
+        aiQuaternion converted = basis * rotation * inverseBasis;
+        converted.Normalize();
+        return converted;
+    }
+
     void ApplyClipTransform(aiAnimation* animation, ExternalAnimationClipTransform transform)
     {
         if (!animation || transform == ExternalAnimationClipTransform::None)
@@ -45,6 +57,12 @@ namespace
                     value.x = original.x * 0.01f;
                     value.y = -original.z * 0.01f;
                     value.z = original.y * 0.01f;
+                }
+
+                for (unsigned keyIndex = 0; keyIndex < channel->mNumRotationKeys; ++keyIndex)
+                {
+                    channel->mRotationKeys[keyIndex].mValue =
+                        ConvertUnrealRotationToGlb(channel->mRotationKeys[keyIndex].mValue);
                 }
             }
         }
