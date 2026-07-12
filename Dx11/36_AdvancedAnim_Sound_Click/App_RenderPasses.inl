@@ -1007,6 +1007,7 @@ void App::PassUI() {
 		RenderControlPannel();
 		RenderSceneCollection();
 		RenderModelPannel();
+		RenderQuickGuideUI();
 		RenderAdvancedRigUI();
 		RenderConsolPannel();
 		m_->m_SystemInfo.RenderUI();

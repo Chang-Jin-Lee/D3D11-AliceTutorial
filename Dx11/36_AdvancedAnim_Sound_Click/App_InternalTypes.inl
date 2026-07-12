@@ -630,6 +630,7 @@ struct App::Impl {
 	ID3D11ShaderResourceView* m_pSceneImageSRV = nullptr;
 	ImVec2 m_SceneImageSize = ImVec2(0, 0);
 	bool m_ShowSceneImageWindow = true;
+	bool m_ShowQuickGuideWindow = true;
 	bool m_IsUsingTempImage = false; // 임시 이미지 사용 중인지 여부
 
 	// 씬 변경 팝업 관련
