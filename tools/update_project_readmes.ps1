@@ -143,7 +143,11 @@ function Assert-GeneratedMarkerTopology([object[]]$States, [string]$Path) {
 }
 
 function Test-SafePathSegment([string]$Value) {
-    return $Value -notmatch '^\.+$' -and $Value -match '^[A-Za-z0-9._-]+$'
+    if ([string]::IsNullOrEmpty($Value) -or [System.Text.RegularExpressions.Regex]::IsMatch($Value, '[\p{C}\s]')) {
+        return $false
+    }
+
+    return -not [System.Text.RegularExpressions.Regex]::IsMatch($Value, '\A\.+\z') -and [System.Text.RegularExpressions.Regex]::IsMatch($Value, '\A[A-Za-z0-9._-]+\z')
 }
 
 function Assert-SafeProjectDirectory([string]$Directory, [object]$Project) {

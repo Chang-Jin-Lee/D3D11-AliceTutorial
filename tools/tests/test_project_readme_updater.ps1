@@ -14,16 +14,21 @@ function Assert-BytesEqual([byte[]]$Expected, [byte[]]$Actual, [string]$Message)
     Assert-True ([System.Collections.StructuralComparisons]::StructuralEqualityComparer.Equals($Expected, $Actual)) $Message
 }
 
-function Invoke-ExpectFailure([scriptblock]$Action, [string]$Message) {
+function Invoke-ExpectFailure([scriptblock]$Action, [string]$Message, [string]$ExpectedError) {
     $failed = $false
+    $errorMessage = ''
     try {
         & $Action
     }
     catch {
         $failed = $true
+        $errorMessage = $_.Exception.Message
     }
 
     Assert-True $failed $Message
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedError)) {
+        Assert-True ($errorMessage -like "*$ExpectedError*") "$Message (expected error containing '$ExpectedError', got '$errorMessage')"
+    }
 }
 
 function Write-FixtureManifest([string]$Path, [object[]]$Projects) {
@@ -116,7 +121,7 @@ try {
         [System.IO.File]::WriteAllText($readme01, $case.Content, [System.Text.UTF8Encoding]::new($false))
         $caseBefore = [System.IO.File]::ReadAllBytes($readme01)
         $selectedBefore = [System.IO.File]::ReadAllBytes($readme02)
-        Invoke-ExpectFailure { & $updater -RepoRoot $fixtureRoot -Manifest $fixtureManifest } "Malformed $($case.Name) marker topology did not fail"
+        Invoke-ExpectFailure { & $updater -RepoRoot $fixtureRoot -Manifest $fixtureManifest } "Malformed $($case.Name) marker topology did not fail" 'README'
         Assert-BytesEqual $caseBefore ([System.IO.File]::ReadAllBytes($readme01)) "Malformed $($case.Name) marker topology changed its README"
         Assert-BytesEqual $selectedBefore ([System.IO.File]::ReadAllBytes($readme02)) "Malformed $($case.Name) marker topology created a partial update"
         Assert-BytesEqual $rootBytes ([System.IO.File]::ReadAllBytes($rootReadme)) "Malformed $($case.Name) marker topology changed root README"
@@ -124,24 +129,24 @@ try {
     }
 
     [System.IO.File]::WriteAllText($readme01, $first, [System.Text.UTF8Encoding]::new($false))
-    foreach ($invalidPath in @('../01_Test', '.', '01 Test', '01_Test"')) {
+    foreach ($invalidPath in @('../01_Test', '.', '01 Test', '01_Test"', ("01_Test" + "`n"), ("01_Test" + "`r`n"))) {
         $invalidProjects = @($projects | ForEach-Object { $_.Clone() })
         $invalidProjects[0].directory = $invalidPath
         Write-FixtureManifest $fixtureManifest $invalidProjects
         $selectedBefore = [System.IO.File]::ReadAllBytes($readme02)
-        Invoke-ExpectFailure { & $updater -RepoRoot $fixtureRoot -Manifest $fixtureManifest } "Unsafe directory '$invalidPath' did not fail"
+        Invoke-ExpectFailure { & $updater -RepoRoot $fixtureRoot -Manifest $fixtureManifest } "Unsafe directory '$invalidPath' did not fail" 'safe path segment'
         Assert-BytesEqual $selectedBefore ([System.IO.File]::ReadAllBytes($readme02)) "Unsafe directory '$invalidPath' changed a selected README"
         Assert-BytesEqual $rootBytes ([System.IO.File]::ReadAllBytes($rootReadme)) "Unsafe directory '$invalidPath' changed root README"
         Assert-BytesEqual $unselectedBytes ([System.IO.File]::ReadAllBytes($unselectedReadme)) "Unsafe directory '$invalidPath' changed unselected README"
     }
 
     foreach ($property in @('image', 'gif', 'infoImage')) {
-        foreach ($invalidPath in @('../outside.png', '/root.png', 'folder\\file.png', 'folder/./image.png', 'folder/../image.png', 'folder/.../image.png', 'has space.png', 'has#fragment.png', 'has"quote.png')) {
+        foreach ($invalidPath in @('../outside.png', '/root.png', 'folder\\file.png', 'folder/./image.png', 'folder/../image.png', 'folder/.../image.png', 'has space.png', 'has#fragment.png', 'has"quote.png', ("trailing-lf.png" + "`n"), ("trailing-crlf.png" + "`r`n"))) {
             $invalidProjects = @($projects | ForEach-Object { $_.Clone() })
             $invalidProjects[0].$property = $invalidPath
             Write-FixtureManifest $fixtureManifest $invalidProjects
             $selectedBefore = [System.IO.File]::ReadAllBytes($readme02)
-            Invoke-ExpectFailure { & $updater -RepoRoot $fixtureRoot -Manifest $fixtureManifest } "Unsafe $property path '$invalidPath' did not fail"
+            Invoke-ExpectFailure { & $updater -RepoRoot $fixtureRoot -Manifest $fixtureManifest } "Unsafe $property path '$invalidPath' did not fail" 'safe relative path'
             Assert-BytesEqual $selectedBefore ([System.IO.File]::ReadAllBytes($readme02)) "Unsafe $property path '$invalidPath' changed a selected README"
             Assert-BytesEqual $rootBytes ([System.IO.File]::ReadAllBytes($rootReadme)) "Unsafe $property path '$invalidPath' changed root README"
             Assert-BytesEqual $unselectedBytes ([System.IO.File]::ReadAllBytes($unselectedReadme)) "Unsafe $property path '$invalidPath' changed unselected README"
