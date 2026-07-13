@@ -1,0 +1,133 @@
+$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot '..\readme_media_common.ps1')
+
+function Assert-True([bool]$Condition, [string]$Message) {
+    if (-not $Condition) { throw $Message }
+}
+
+function Assert-Path([string]$Path, [string]$Message) {
+    Assert-True (Test-Path -LiteralPath $Path) $Message
+}
+
+$archiveScript = Join-Path $PSScriptRoot '..\archive_readme_media.ps1'
+$tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('archive-readme-media-' + [guid]::NewGuid().ToString('N'))
+$fixtureRoot = Join-Path $tempRoot 'fixture'
+$destinationRoot = Join-Path $tempRoot 'destination'
+
+try {
+    New-Item -ItemType Directory -Path $fixtureRoot -Force | Out-Null
+    New-Item -ItemType Directory -Path $destinationRoot -Force | Out-Null
+
+    $sourceFiles = [ordered]@{
+        'README.md' = '# Fixture README'
+        'README_old.md' = '# Older Fixture README'
+        'Dx11/01_Fixture/README.md' = '# Project Fixture README'
+        'docs/media/readme/nested/02.gif' = 'fixture gif bytes'
+    }
+
+    foreach ($relativePath in $sourceFiles.Keys) {
+        $path = Join-Path $fixtureRoot ($relativePath -replace '/', '\')
+        New-Item -ItemType Directory -Path (Split-Path -Parent $path) -Force | Out-Null
+        Set-Content -LiteralPath $path -Value $sourceFiles[$relativePath] -NoNewline
+    }
+
+    $sourcePng = Join-Path $fixtureRoot 'docs\media\readme\01.png'
+    New-Item -ItemType Directory -Path (Split-Path -Parent $sourcePng) -Force | Out-Null
+    [System.IO.File]::WriteAllBytes($sourcePng, [byte[]](0, 1, 2, 3, 255, 254, 253))
+
+    $manifestPath = Join-Path $fixtureRoot 'fixture-manifest.json'
+    $fixtureManifest = [ordered]@{
+        expectedProjectCount = 1
+        captureWidth = 1
+        captureHeight = 1
+        gifWidth = 1
+        gifHeight = 1
+        infoWidth = 1
+        infoHeight = 1
+        captureAttempts = 1
+        gifSeconds = 1
+        gifFps = 1
+        gifMaxBytes = 1
+        projects = @(
+            [ordered]@{
+                number = '01'
+                name = 'Fixture'
+                directory = 'Dx11/01_Fixture'
+                exe = 'Fixture.exe'
+                image = '01.png'
+                gif = '01.gif'
+                infoImage = 'info/01-info.png'
+                gifPhase = 'runtime'
+                title = 'Fixture'
+                summary = 'Archive fixture'
+                tags = @('fixture', 'archive', 'test')
+            }
+        )
+    }
+    $fixtureManifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $manifestPath -NoNewline
+
+    $beforeHashes = @{}
+    foreach ($relativePath in $sourceFiles.Keys + 'docs/media/readme/01.png') {
+        $sourcePath = Join-Path $fixtureRoot ($relativePath -replace '/', '\')
+        $beforeHashes[$relativePath] = (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash
+    }
+    $before = $beforeHashes['docs/media/readme/01.png']
+
+    & $archiveScript -RepoRoot $fixtureRoot -Manifest $manifestPath -DestinationRoot $destinationRoot
+
+    $archives = @(Get-ChildItem -LiteralPath $destinationRoot -Directory)
+    Assert-True ($archives.Count -eq 1) 'exactly one archive directory should be created'
+    $archive = $archives[0]
+    Assert-True ($archive.Name -match '^README_Media_\d{8}_\d{6}$') 'archive directory name is invalid'
+
+    $copy = Join-Path $archive.FullName 'docs\media\readme\01.png'
+    Assert-Path $copy 'archived PNG is missing'
+    if ((Get-FileHash -LiteralPath $copy -Algorithm SHA256).Hash -ne $before) { throw 'archived PNG hash mismatch' }
+    if ((Get-FileHash -LiteralPath $sourcePng -Algorithm SHA256).Hash -ne $before) { throw 'source PNG was modified' }
+
+    Assert-Path (Join-Path $archive.FullName 'docs\media\readme\nested\02.gif') 'nested media was not archived'
+    Assert-Path (Join-Path $archive.FullName 'README.md') 'root README was not archived'
+    Assert-Path (Join-Path $archive.FullName 'README_old.md') 'old root README was not archived'
+    Assert-Path (Join-Path $archive.FullName 'Dx11\01_Fixture\README.md') 'project README path was not preserved'
+
+    $metadataPath = Join-Path $archive.FullName 'archive-manifest.json'
+    Assert-Path $metadataPath 'archive metadata missing'
+    $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
+    Assert-True ($metadata.PSObject.Properties.Name -contains 'createdAt') 'createdAt metadata missing'
+    Assert-True ($metadata.PSObject.Properties.Name -contains 'sourceRoot') 'sourceRoot metadata missing'
+    Assert-True ($metadata.PSObject.Properties.Name -contains 'sourceCommit') 'sourceCommit metadata missing'
+    $createdAt = [DateTimeOffset]::MinValue
+    Assert-True ([DateTimeOffset]::TryParse([string]$metadata.createdAt, [ref]$createdAt)) 'createdAt metadata is invalid'
+    Assert-True ([System.IO.Path]::GetFullPath([string]$metadata.sourceRoot) -eq [System.IO.Path]::GetFullPath($fixtureRoot)) 'sourceRoot metadata mismatch'
+
+    $expectedPaths = @($sourceFiles.Keys + 'docs/media/readme/01.png' | Sort-Object)
+    $actualPaths = @(Get-ChildItem -LiteralPath $archive.FullName -Recurse -File |
+        Where-Object { $_.Name -ne 'archive-manifest.json' } |
+        ForEach-Object { [System.IO.Path]::GetRelativePath($archive.FullName, $_.FullName).Replace('\', '/') } |
+        Sort-Object)
+    Assert-True (($actualPaths -join '|') -eq ($expectedPaths -join '|')) 'archived relative paths mismatch'
+
+    $metadataFiles = @($metadata.files)
+    Assert-True ($metadataFiles.Count -eq $expectedPaths.Count) 'archive file metadata count mismatch'
+    $metadataPaths = @($metadataFiles | ForEach-Object { $_.path })
+    Assert-True (($metadataPaths -join '|') -eq ($expectedPaths -join '|')) 'archive metadata paths are not sorted'
+    foreach ($relativePath in $expectedPaths) {
+        $archivePath = Join-Path $archive.FullName ($relativePath -replace '/', '\')
+        $metadataFile = @($metadataFiles | Where-Object { $_.path -eq $relativePath }) | Select-Object -First 1
+        $actualHash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash
+        Assert-True ($metadataFile.sha256 -eq $actualHash) "archive metadata hash mismatch: $relativePath"
+    }
+
+    foreach ($relativePath in $beforeHashes.Keys) {
+        $sourcePath = Join-Path $fixtureRoot ($relativePath -replace '/', '\')
+        $after = (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash
+        Assert-True ($after -eq $beforeHashes[$relativePath]) "source file was modified: $relativePath"
+    }
+
+    'archive tests passed'
+}
+finally {
+    if (Test-Path -LiteralPath $tempRoot) {
+        Remove-Item -LiteralPath $tempRoot -Recurse -Force
+    }
+}
