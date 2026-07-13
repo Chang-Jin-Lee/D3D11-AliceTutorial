@@ -38,11 +38,34 @@ function Get-InfoImageProjectSelection {
     return $selectedProjects
 }
 
+function Resolve-ManifestMediaPath {
+    param(
+        [Parameter(Mandatory)] [string]$MediaDir,
+        [Parameter(Mandatory)] [string]$ManifestPath,
+        [Parameter(Mandatory)] [string]$PropertyName
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ManifestPath) -or [System.IO.Path]::IsPathRooted($ManifestPath)) {
+        throw "Manifest media path must be relative for ${PropertyName}: $ManifestPath"
+    }
+
+    $fullMediaDir = [System.IO.Path]::GetFullPath($MediaDir)
+    $mediaPrefix = $fullMediaDir.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
+    $resolvedPath = [System.IO.Path]::GetFullPath([System.IO.Path]::Combine($fullMediaDir, $ManifestPath))
+    if (-not $resolvedPath.StartsWith($mediaPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Manifest media path must stay under mediaDir for ${PropertyName}: $ManifestPath"
+    }
+
+    return $resolvedPath
+}
+
 function Get-ReadmeInfoFontFamily {
     $installedFonts = $null
+    $fontFamilies = @()
     try {
         $installedFonts = [System.Drawing.Text.InstalledFontCollection]::new()
-        $fontNames = @($installedFonts.Families | ForEach-Object { $_.Name })
+        $fontFamilies = @($installedFonts.Families)
+        $fontNames = @($fontFamilies | ForEach-Object { $_.Name })
         foreach ($candidate in @('Malgun Gothic', 'Segoe UI')) {
             if ($fontNames -contains $candidate) {
                 return $candidate
@@ -51,6 +74,9 @@ function Get-ReadmeInfoFontFamily {
         return [System.Drawing.FontFamily]::GenericSansSerif.Name
     }
     finally {
+        foreach ($fontFamily in $fontFamilies) {
+            if ($null -ne $fontFamily) { $fontFamily.Dispose() }
+        }
         if ($null -ne $installedFonts) { $installedFonts.Dispose() }
     }
 }
@@ -83,15 +109,81 @@ function New-FittedFont {
     )
 
     for ($size = $MaximumSize; $size -ge $MinimumSize; $size--) {
-        $font = [System.Drawing.Font]::new($Family, [single]$size, $Style, [System.Drawing.GraphicsUnit]::Pixel)
-        $measured = $Graphics.MeasureString($Text, $font, [System.Drawing.SizeF]::new($Width, 10000), $Format)
-        if ($measured.Height -le $Height) {
-            return $font
+        $font = $null
+        try {
+            $font = [System.Drawing.Font]::new($Family, [single]$size, $Style, [System.Drawing.GraphicsUnit]::Pixel)
+            $measured = $Graphics.MeasureString($Text, $font, [System.Drawing.SizeF]::new($Width, 10000), $Format)
+            if ($measured.Height -le $Height) {
+                $result = $font
+                $font = $null
+                return $result
+            }
         }
-        $font.Dispose()
+        finally {
+            if ($null -ne $font) { $font.Dispose() }
+        }
     }
 
     return [System.Drawing.Font]::new($Family, [single]$MinimumSize, $Style, [System.Drawing.GraphicsUnit]::Pixel)
+}
+
+function New-ReadmeInfoTagLayout {
+    param(
+        [Parameter(Mandatory)] [System.Drawing.Graphics]$Graphics,
+        [Parameter(Mandatory)] [string[]]$Tags,
+        [Parameter(Mandatory)] [string]$FontFamily,
+        [Parameter(Mandatory)] [System.Drawing.Rectangle]$Bounds
+    )
+
+    $format = $null
+    try {
+        $format = [System.Drawing.StringFormat]::new()
+        $format.Trimming = [System.Drawing.StringTrimming]::None
+        foreach ($size in 17..11) {
+            $font = $null
+            $keepFont = $false
+            try {
+                $font = [System.Drawing.Font]::new($FontFamily, [single]$size, [System.Drawing.FontStyle]::Regular, [System.Drawing.GraphicsUnit]::Pixel)
+                $pillHeight = [int][Math]::Ceiling($font.GetHeight($Graphics)) + 10
+                $items = [System.Collections.Generic.List[object]]::new()
+                $x = $Bounds.X
+                $y = $Bounds.Y
+                $fits = $true
+                foreach ($tag in $Tags) {
+                    $measured = $Graphics.MeasureString([string]$tag, $font, [System.Drawing.SizeF]::new(10000, 10000), $format)
+                    $pillWidth = [int][Math]::Ceiling($measured.Width) + 22
+                    if ($pillWidth -gt $Bounds.Width) {
+                        $fits = $false
+                        break
+                    }
+                    if ($x + $pillWidth -gt $Bounds.Right -and $x -ne $Bounds.X) {
+                        $x = $Bounds.X
+                        $y += $pillHeight + 4
+                    }
+                    if ($y + $pillHeight -gt $Bounds.Bottom) {
+                        $fits = $false
+                        break
+                    }
+                    $items.Add([pscustomobject]@{
+                        Text = [string]$tag
+                        Bounds = [System.Drawing.Rectangle]::new($x, $y, $pillWidth, $pillHeight)
+                    })
+                    $x += $pillWidth + 4
+                }
+                if ($fits -and $items.Count -eq $Tags.Count) {
+                    $keepFont = $true
+                    return [pscustomobject]@{ Font = $font; Items = $items.ToArray() }
+                }
+            }
+            finally {
+                if (-not $keepFont -and $null -ne $font) { $font.Dispose() }
+            }
+        }
+        throw "Tags do not fit inside the information image panel for project metadata."
+    }
+    finally {
+        if ($null -ne $format) { $format.Dispose() }
+    }
 }
 
 function Draw-ReadmeInfoTags {
@@ -102,38 +194,26 @@ function Draw-ReadmeInfoTags {
         [Parameter(Mandatory)] [System.Drawing.Rectangle]$Bounds
     )
 
-    $font = $null
+    $layout = $null
     $textBrush = $null
     $fillBrush = $null
     $borderPen = $null
     try {
-        $font = [System.Drawing.Font]::new($FontFamily, 17, [System.Drawing.FontStyle]::Regular, [System.Drawing.GraphicsUnit]::Pixel)
+        $layout = New-ReadmeInfoTagLayout -Graphics $Graphics -Tags $Tags -FontFamily $FontFamily -Bounds $Bounds
         $textBrush = [System.Drawing.SolidBrush]::new([System.Drawing.Color]::FromArgb(236, 242, 248))
         $fillBrush = [System.Drawing.SolidBrush]::new([System.Drawing.Color]::FromArgb(46, 70, 82))
         $borderPen = [System.Drawing.Pen]::new([System.Drawing.Color]::FromArgb(92, 150, 170), 1)
-        $x = $Bounds.X
-        $y = $Bounds.Y
-        $rowHeight = 38
-        foreach ($tag in @($Tags | Select-Object -First 5)) {
-            $measured = $Graphics.MeasureString([string]$tag, $font)
-            $tagWidth = [Math]::Min($Bounds.Width, [int][Math]::Ceiling($measured.Width) + 28)
-            if ($x + $tagWidth -gt $Bounds.Right -and $x -ne $Bounds.X) {
-                $x = $Bounds.X
-                $y += $rowHeight + 10
-            }
-            if ($y + $rowHeight -gt $Bounds.Bottom) { break }
-            $tagBounds = [System.Drawing.Rectangle]::new($x, $y, $tagWidth, $rowHeight)
-            $Graphics.FillRectangle($fillBrush, $tagBounds)
-            $Graphics.DrawRectangle($borderPen, $tagBounds)
-            $Graphics.DrawString([string]$tag, $font, $textBrush, $x + 14, $y + 8)
-            $x += $tagWidth + 10
+        foreach ($item in $layout.Items) {
+            $Graphics.FillRectangle($fillBrush, $item.Bounds)
+            $Graphics.DrawRectangle($borderPen, $item.Bounds)
+            $Graphics.DrawString($item.Text, $layout.Font, $textBrush, [System.Drawing.RectangleF]::new($item.Bounds.X + 11, $item.Bounds.Y + 5, $item.Bounds.Width - 22, $item.Bounds.Height - 10))
         }
     }
     finally {
         if ($null -ne $borderPen) { $borderPen.Dispose() }
         if ($null -ne $fillBrush) { $fillBrush.Dispose() }
         if ($null -ne $textBrush) { $textBrush.Dispose() }
-        if ($null -ne $font) { $font.Dispose() }
+        if ($null -ne $layout -and $null -ne $layout.Font) { $layout.Font.Dispose() }
     }
 }
 
@@ -189,12 +269,12 @@ function New-ReadmeInfoImage {
         $numberFont = [System.Drawing.Font]::new($FontFamily, 20, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
         $graphics.DrawString(('PROJECT {0}' -f $Project.number), $numberFont, $mutedBrush, [System.Drawing.RectangleF]::new(1062, 88, 460, 30), $format)
 
-        $titleFont = New-FittedFont -Graphics $graphics -Text ([string]$Project.title) -Family $FontFamily -Style ([System.Drawing.FontStyle]::Bold) -MaximumSize 46 -MinimumSize 32 -Width 460 -Height 170 -Format $format
-        $graphics.DrawString([string]$Project.title, $titleFont, $textBrush, [System.Drawing.RectangleF]::new(1062, 132, 460, 170), $format)
+        $titleFont = New-FittedFont -Graphics $graphics -Text ([string]$Project.title) -Family $FontFamily -Style ([System.Drawing.FontStyle]::Bold) -MaximumSize 46 -MinimumSize 32 -Width 460 -Height 130 -Format $format
+        $graphics.DrawString([string]$Project.title, $titleFont, $textBrush, [System.Drawing.RectangleF]::new(1062, 132, 460, 130), $format)
 
-        $summaryFont = New-FittedFont -Graphics $graphics -Text ([string]$Project.summary) -Family $FontFamily -Style ([System.Drawing.FontStyle]::Regular) -MaximumSize 25 -MinimumSize 18 -Width 460 -Height 130 -Format $format
-        $graphics.DrawString([string]$Project.summary, $summaryFont, $mutedBrush, [System.Drawing.RectangleF]::new(1062, 324, 460, 130), $format)
-        Draw-ReadmeInfoTags -Graphics $graphics -Tags @($Project.tags) -FontFamily $FontFamily -Bounds ([System.Drawing.Rectangle]::new(1062, 480, 460, 78))
+        $summaryFont = New-FittedFont -Graphics $graphics -Text ([string]$Project.summary) -Family $FontFamily -Style ([System.Drawing.FontStyle]::Regular) -MaximumSize 25 -MinimumSize 18 -Width 460 -Height 106 -Format $format
+        $graphics.DrawString([string]$Project.summary, $summaryFont, $mutedBrush, [System.Drawing.RectangleF]::new(1062, 278, 460, 106), $format)
+        Draw-ReadmeInfoTags -Graphics $graphics -Tags @($Project.tags) -FontFamily $FontFamily -Bounds ([System.Drawing.Rectangle]::new(1062, 414, 460, 144))
 
         $outputDirectory = Split-Path -Parent $OutputPath
         New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
@@ -222,13 +302,16 @@ $manifestErrors = @(Test-ReadmeMediaManifest -Manifest $manifestData -RepoRoot $
 if ($manifestErrors.Count -gt 0) {
     throw "README media manifest validation failed: $($manifestErrors -join '; ')"
 }
+if ([int]$manifestData.infoWidth -ne 1600 -or [int]$manifestData.infoHeight -ne 640) {
+    throw 'README information image dimensions must be 1600x640.'
+}
 
 $mediaDir = Resolve-ReadmeMediaPath -RepoRoot $repoRoot -Path ([string]$manifestData.mediaDir)
 $fontFamily = Get-ReadmeInfoFontFamily
 $selectedProjects = @(Get-InfoImageProjectSelection -Manifest $manifestData -ProjectNumber $ProjectNumber -All:$All)
 foreach ($project in $selectedProjects) {
-    $sourcePath = Resolve-ReadmeMediaPath -RepoRoot $mediaDir -Path ([string]$project.image)
-    $outputPath = Resolve-ReadmeMediaPath -RepoRoot $mediaDir -Path ([string]$project.infoImage)
+    $sourcePath = Resolve-ManifestMediaPath -MediaDir $mediaDir -ManifestPath ([string]$project.image) -PropertyName 'project.image'
+    $outputPath = Resolve-ManifestMediaPath -MediaDir $mediaDir -ManifestPath ([string]$project.infoImage) -PropertyName 'project.infoImage'
     if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
         throw "Screenshot not found for project $($project.number): $sourcePath"
     }

@@ -10,6 +10,27 @@ $ErrorActionPreference = 'Stop'
 
 Add-Type -AssemblyName System.Drawing
 
+function Resolve-ManifestMediaPath {
+    param(
+        [Parameter(Mandatory)] [string]$MediaDir,
+        [Parameter(Mandatory)] [string]$ManifestPath,
+        [Parameter(Mandatory)] [string]$PropertyName
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ManifestPath) -or [System.IO.Path]::IsPathRooted($ManifestPath)) {
+        throw "Manifest media path must be relative for ${PropertyName}: $ManifestPath"
+    }
+
+    $fullMediaDir = [System.IO.Path]::GetFullPath($MediaDir)
+    $mediaPrefix = $fullMediaDir.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
+    $resolvedPath = [System.IO.Path]::GetFullPath([System.IO.Path]::Combine($fullMediaDir, $ManifestPath))
+    if (-not $resolvedPath.StartsWith($mediaPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Manifest media path must stay under mediaDir for ${PropertyName}: $ManifestPath"
+    }
+
+    return $resolvedPath
+}
+
 function Get-ReviewAspectFitRectangle {
     param(
         [Parameter(Mandatory)] [System.Drawing.Image]$Image,
@@ -82,7 +103,8 @@ function New-ReadmeReviewSheet {
             $sourceImage = $null
             try {
                 $sourceName = if ($Kind -eq 'gif') { [string]$project.gif } else { [string]$project.image }
-                $sourcePath = Resolve-ReadmeMediaPath -RepoRoot $MediaDir -Path $sourceName
+                $propertyName = if ($Kind -eq 'gif') { 'project.gif' } else { 'project.image' }
+                $sourcePath = Resolve-ManifestMediaPath -MediaDir $MediaDir -ManifestPath $sourceName -PropertyName $propertyName
                 if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
                     throw "Missing $Kind source for project $($project.number): $sourcePath"
                 }
