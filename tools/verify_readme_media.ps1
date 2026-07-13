@@ -1,40 +1,704 @@
+[CmdletBinding()]
+param(
+    [string]$RepoRoot,
+    [string]$Manifest
+)
+
 $ErrorActionPreference = 'Stop'
 
-$repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
-Push-Location $repoRoot
+. (Join-Path $PSScriptRoot 'readme_media_common.ps1')
+Add-Type -AssemblyName System.Drawing
+
+function Add-VerificationError {
+    param(
+        [System.Collections.Generic.List[string]]$Errors,
+        [string]$Message
+    )
+
+    $null = $Errors.Add($Message)
+}
+
+function Resolve-ContainedRelativePath {
+    param(
+        [string]$BasePath,
+        [string]$RelativePath,
+        [string]$Label,
+        [System.Collections.Generic.List[string]]$Errors
+    )
+
+    if ([string]::IsNullOrWhiteSpace($RelativePath) -or [System.IO.Path]::IsPathRooted($RelativePath)) {
+        Add-VerificationError $Errors "$Label must be a contained relative path"
+        return $null
+    }
+
+    try {
+        $baseFullPath = [System.IO.Path]::GetFullPath($BasePath)
+        $candidate = [System.IO.Path]::GetFullPath((Join-Path $baseFullPath $RelativePath))
+        $relative = [System.IO.Path]::GetRelativePath($baseFullPath, $candidate)
+        if ([System.IO.Path]::IsPathRooted($relative) -or $relative -match '^\.\.([\\/]|$)') {
+            Add-VerificationError $Errors "$Label must be contained in $baseFullPath"
+            return $null
+        }
+
+        return $candidate
+    }
+    catch {
+        Add-VerificationError $Errors "$Label must be a contained relative path: $($_.Exception.Message)"
+        return $null
+    }
+}
+
+function Test-BytePrefix {
+    param([string]$Path, [byte[]]$Expected)
+
+    $stream = $null
+    try {
+        $stream = [System.IO.File]::OpenRead($Path)
+        if ($stream.Length -lt $Expected.Length) { return $false }
+        foreach ($expectedByte in $Expected) {
+            if ($stream.ReadByte() -ne $expectedByte) { return $false }
+        }
+        return $true
+    }
+    finally {
+        if ($null -ne $stream) { $stream.Dispose() }
+    }
+}
+
+function Get-SampledRgb {
+    param(
+        [System.Drawing.Bitmap]$Bitmap,
+        [int]$Columns = 32,
+        [int]$Rows = 18
+    )
+
+    $samples = [int[]]::new($Columns * $Rows)
+    $sampleIndex = 0
+    for ($row = 0; $row -lt $Rows; $row++) {
+        $y = [math]::Min($Bitmap.Height - 1, [int][math]::Floor((($row + 0.5) * $Bitmap.Height) / $Rows))
+        for ($column = 0; $column -lt $Columns; $column++) {
+            $x = [math]::Min($Bitmap.Width - 1, [int][math]::Floor((($column + 0.5) * $Bitmap.Width) / $Columns))
+            $color = $Bitmap.GetPixel($x, $y)
+            $samples[$sampleIndex++] = ($color.R -shl 16) -bor ($color.G -shl 8) -bor $color.B
+        }
+    }
+
+    return $samples
+}
+
+function Get-LuminanceVariance {
+    param([int[]]$RgbSamples)
+
+    if ($RgbSamples.Count -eq 0) { return 0.0 }
+    $luminances = [double[]]::new($RgbSamples.Count)
+    $sum = 0.0
+    for ($index = 0; $index -lt $RgbSamples.Count; $index++) {
+        $rgb = $RgbSamples[$index]
+        $red = ($rgb -shr 16) -band 0xFF
+        $green = ($rgb -shr 8) -band 0xFF
+        $blue = $rgb -band 0xFF
+        $luminance = (0.2126 * $red) + (0.7152 * $green) + (0.0722 * $blue)
+        $luminances[$index] = $luminance
+        $sum += $luminance
+    }
+
+    $mean = $sum / $RgbSamples.Count
+    $squaredDifference = 0.0
+    foreach ($luminance in $luminances) {
+        $difference = $luminance - $mean
+        $squaredDifference += $difference * $difference
+    }
+    return $squaredDifference / $RgbSamples.Count
+}
+
+function Test-PngMedia {
+    param(
+        [string]$Path,
+        [int]$ExpectedWidth,
+        [int]$ExpectedHeight,
+        [string]$Label,
+        [System.Collections.Generic.List[string]]$Errors
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        Add-VerificationError $Errors "$Label missing: $Path"
+        return
+    }
+    if ((Get-Item -LiteralPath $Path).Length -eq 0) {
+        Add-VerificationError $Errors "$Label is empty: $Path"
+        return
+    }
+
+    $pngSignature = [byte[]](0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
+    if (-not (Test-BytePrefix -Path $Path -Expected $pngSignature)) {
+        Add-VerificationError $Errors "$Label has an invalid PNG signature: $Path"
+        return
+    }
+
+    $bitmap = $null
+    try {
+        $bitmap = [System.Drawing.Bitmap]::new($Path)
+        if ($bitmap.Width -ne $ExpectedWidth -or $bitmap.Height -ne $ExpectedHeight) {
+            Add-VerificationError $Errors "$Label dimensions are $($bitmap.Width)x$($bitmap.Height); expected ${ExpectedWidth}x${ExpectedHeight}: $Path"
+        }
+
+        $samples = @(Get-SampledRgb -Bitmap $bitmap)
+        $uniqueColors = [System.Collections.Generic.HashSet[int]]::new()
+        foreach ($sample in $samples) { $null = $uniqueColors.Add($sample) }
+        if ($uniqueColors.Count -lt 8) {
+            Add-VerificationError $Errors "$Label sampled color count is $($uniqueColors.Count); expected at least 8: $Path"
+        }
+
+        $variance = Get-LuminanceVariance -RgbSamples $samples
+        if ($variance -le 4.0) {
+            Add-VerificationError $Errors ("$Label luminance variance is {0:F3}; expected above 4.0: $Path" -f $variance)
+        }
+    }
+    catch {
+        Add-VerificationError $Errors "$Label decode failed: $Path ($($_.Exception.Message))"
+    }
+    finally {
+        if ($null -ne $bitmap) { $bitmap.Dispose() }
+    }
+}
+
+function Test-GifMedia {
+    param(
+        [string]$Path,
+        [string]$Label,
+        [System.Collections.Generic.List[string]]$Errors
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        Add-VerificationError $Errors "$Label missing: $Path"
+        return
+    }
+
+    $fileLength = (Get-Item -LiteralPath $Path).Length
+    if ($fileLength -eq 0) {
+        Add-VerificationError $Errors "$Label is empty: $Path"
+        return
+    }
+    if ($fileLength -gt 5242880) {
+        Add-VerificationError $Errors "$Label size is $fileLength bytes; expected at most 5242880 bytes: $Path"
+    }
+
+    $isGif87a = Test-BytePrefix -Path $Path -Expected ([System.Text.Encoding]::ASCII.GetBytes('GIF87a'))
+    $isGif89a = Test-BytePrefix -Path $Path -Expected ([System.Text.Encoding]::ASCII.GetBytes('GIF89a'))
+    if (-not $isGif87a -and -not $isGif89a) {
+        Add-VerificationError $Errors "$Label has an invalid GIF signature: $Path"
+        return
+    }
+
+    $image = $null
+    try {
+        $image = [System.Drawing.Image]::FromFile($Path)
+        if ($image.Width -ne 800 -or $image.Height -ne 450) {
+            Add-VerificationError $Errors "$Label dimensions are $($image.Width)x$($image.Height); expected 800x450: $Path"
+        }
+
+        $frameDimension = [System.Drawing.Imaging.FrameDimension]::new($image.FrameDimensionsList[0])
+        $frameCount = $image.GetFrameCount($frameDimension)
+        if ($frameCount -lt 2) {
+            Add-VerificationError $Errors "$Label frame count is $frameCount; expected at least 2: $Path"
+        }
+
+        $totalDelaySeconds = $null
+        try {
+            $delayBytes = $image.GetPropertyItem(0x5100).Value
+            if ($delayBytes.Length -lt ($frameCount * 4)) {
+                Add-VerificationError $Errors "$Label decoded delay table is incomplete: $Path"
+            }
+            else {
+                $totalDelayHundredths = [uint64]0
+                for ($index = 0; $index -lt $frameCount; $index++) {
+                    $totalDelayHundredths += [System.BitConverter]::ToUInt32($delayBytes, $index * 4)
+                }
+                $totalDelaySeconds = $totalDelayHundredths / 100.0
+                if ($totalDelaySeconds -lt 3.5 -or $totalDelaySeconds -gt 5.5) {
+                    Add-VerificationError $Errors ("$Label total decoded delay is {0:F2}s; expected 3.5-5.5s: $Path" -f $totalDelaySeconds)
+                }
+            }
+        }
+        catch {
+            Add-VerificationError $Errors "$Label decoded delay is unavailable: $Path"
+        }
+
+        $null = $image.SelectActiveFrame($frameDimension, 0)
+        $firstBitmap = $null
+        try {
+            $firstBitmap = [System.Drawing.Bitmap]::new($image)
+            $firstSamples = @(Get-SampledRgb -Bitmap $firstBitmap)
+        }
+        finally {
+            if ($null -ne $firstBitmap) { $firstBitmap.Dispose() }
+        }
+
+        $maximumChangedRatio = 0.0
+        for ($frameIndex = 1; $frameIndex -lt $frameCount; $frameIndex++) {
+            $null = $image.SelectActiveFrame($frameDimension, $frameIndex)
+            $frameBitmap = $null
+            try {
+                $frameBitmap = [System.Drawing.Bitmap]::new($image)
+                $frameSamples = @(Get-SampledRgb -Bitmap $frameBitmap)
+                $changed = 0
+                for ($sampleIndex = 0; $sampleIndex -lt $firstSamples.Count; $sampleIndex++) {
+                    if ($firstSamples[$sampleIndex] -ne $frameSamples[$sampleIndex]) { $changed++ }
+                }
+                $changedRatio = $changed / [double]$firstSamples.Count
+                if ($changedRatio -gt $maximumChangedRatio) { $maximumChangedRatio = $changedRatio }
+            }
+            finally {
+                if ($null -ne $frameBitmap) { $frameBitmap.Dispose() }
+            }
+        }
+
+        if ($maximumChangedRatio -le 0.002) {
+            Add-VerificationError $Errors ("$Label sampled motion is {0:F3}%; expected above 0.2%: $Path" -f ($maximumChangedRatio * 100.0))
+        }
+    }
+    catch {
+        Add-VerificationError $Errors "$Label decode failed: $Path ($($_.Exception.Message))"
+    }
+    finally {
+        if ($null -ne $image) { $image.Dispose() }
+    }
+}
+
+function Get-ReadmeText {
+    param([string]$Path)
+
+    $bytes = [System.IO.File]::ReadAllBytes($Path)
+    $offset = 0
+    if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
+        $encoding = [System.Text.UTF8Encoding]::new($true, $true)
+        $offset = 3
+    }
+    elseif ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE) {
+        $encoding = [System.Text.UnicodeEncoding]::new($false, $true, $true)
+        $offset = 2
+    }
+    elseif ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFE -and $bytes[1] -eq 0xFF) {
+        $encoding = [System.Text.UnicodeEncoding]::new($true, $true, $true)
+        $offset = 2
+    }
+    else {
+        $encoding = [System.Text.UTF8Encoding]::new($false, $true)
+    }
+
+    try {
+        return $encoding.GetString($bytes, $offset, $bytes.Length - $offset)
+    }
+    catch [System.Text.DecoderFallbackException] {
+        [System.Text.Encoding]::RegisterProvider([System.Text.CodePagesEncodingProvider]::Instance)
+        $cp949 = [System.Text.Encoding]::GetEncoding(949, [System.Text.EncoderExceptionFallback]::new(), [System.Text.DecoderExceptionFallback]::new())
+        return $cp949.GetString($bytes)
+    }
+}
+
+function Get-MarkerDetails {
+    param([string]$Content, [string]$Name)
+
+    $start = "<!-- $Name`:START -->"
+    $end = "<!-- $Name`:END -->"
+    $startMatches = [regex]::Matches($Content, [regex]::Escape($start))
+    $endMatches = [regex]::Matches($Content, [regex]::Escape($end))
+    return [pscustomobject]@{
+        Name = $Name
+        Start = $start
+        End = $end
+        StartCount = $startMatches.Count
+        EndCount = $endMatches.Count
+        StartIndex = $Content.IndexOf($start, [System.StringComparison]::Ordinal)
+        EndIndex = $Content.IndexOf($end, [System.StringComparison]::Ordinal)
+    }
+}
+
+function Get-MarkerBlock {
+    param([string]$Content, [object]$Details)
+
+    if ($Details.StartCount -ne 1 -or $Details.EndCount -ne 1 -or $Details.EndIndex -lt $Details.StartIndex) {
+        return $null
+    }
+    $length = $Details.EndIndex + $Details.End.Length - $Details.StartIndex
+    return $Content.Substring($Details.StartIndex, $length).Replace("`r`n", "`n")
+}
+
+function New-ExpectedNavigationBlock {
+    param([string]$Marker, [object[]]$Projects, [int]$Index)
+
+    $previous = if ($Index -eq 0) { '이전' } else { "[이전](../$($Projects[$Index - 1].directory)/README.md)" }
+    $next = if ($Index -eq ($Projects.Count - 1)) { '다음' } else { "[다음](../$($Projects[$Index + 1].directory)/README.md)" }
+    return @(
+        "<!-- $Marker`:START -->"
+        '<div align="center">'
+        ''
+        "$previous | [메인](../../README.md) | [상위](../) | $next"
+        ''
+        '</div>'
+        "<!-- $Marker`:END -->"
+    ) -join "`n"
+}
+
+function Test-ProjectReadme {
+    param(
+        [string]$Path,
+        [object]$Project,
+        [object[]]$Projects,
+        [int]$Index,
+        [System.Collections.Generic.List[string]]$Errors
+    )
+
+    $number = [string]$Project.number
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        Add-VerificationError $Errors "Project README missing for $number`: $Path"
+        return
+    }
+
+    try {
+        $content = Get-ReadmeText $Path
+    }
+    catch {
+        Add-VerificationError $Errors "Project README decode failed for $number`: $($_.Exception.Message)"
+        return
+    }
+
+    $markerNames = @('README-NAV-TOP', 'README-INFO', 'README-RUNTIME', 'README-NAV-BOTTOM')
+    $details = @($markerNames | ForEach-Object { Get-MarkerDetails -Content $content -Name $_ })
+    foreach ($detail in $details) {
+        if ($detail.StartCount -ne 1 -or $detail.EndCount -ne 1) {
+            Add-VerificationError $Errors "Project README $number marker $($detail.Name) must have exactly one start/end pair"
+        }
+        elseif ($detail.EndIndex -lt $detail.StartIndex) {
+            Add-VerificationError $Errors "Project README $number marker $($detail.Name) is reversed"
+        }
+    }
+
+    $completeDetails = @($details | Where-Object { $_.StartCount -eq 1 -and $_.EndCount -eq 1 -and $_.EndIndex -gt $_.StartIndex })
+    if ($completeDetails.Count -eq $details.Count) {
+        $orderedStarts = @($details.StartIndex)
+        for ($orderIndex = 1; $orderIndex -lt $orderedStarts.Count; $orderIndex++) {
+            if ($orderedStarts[$orderIndex] -le $orderedStarts[$orderIndex - 1]) {
+                Add-VerificationError $Errors "Project README $number generated blocks are not in the required order"
+                break
+            }
+        }
+
+        $expectedBlocks = @{
+            'README-NAV-TOP' = New-ExpectedNavigationBlock -Marker 'README-NAV-TOP' -Projects $Projects -Index $Index
+            'README-INFO' = @(
+                '<!-- README-INFO:START -->'
+                ('<p align="center"><img src="../../docs/media/readme/{0}" width="100%" /></p>' -f $Project.infoImage)
+                '<!-- README-INFO:END -->'
+            ) -join "`n"
+            'README-RUNTIME' = @(
+                '<!-- README-RUNTIME:START -->'
+                '## 실행 화면'
+                ''
+                '| Screenshot | GIF |'
+                '|---|---|'
+                ('| <img src="../../docs/media/readme/{0}" width="100%" /> | <img src="../../docs/media/readme/{1}" width="100%" /> |' -f $Project.image, $Project.gif)
+                '<!-- README-RUNTIME:END -->'
+            ) -join "`n"
+            'README-NAV-BOTTOM' = New-ExpectedNavigationBlock -Marker 'README-NAV-BOTTOM' -Projects $Projects -Index $Index
+        }
+
+        foreach ($detail in $details) {
+            $actualBlock = Get-MarkerBlock -Content $content -Details $detail
+            if ($actualBlock -cne $expectedBlocks[$detail.Name]) {
+                Add-VerificationError $Errors "Project README $number generated block is incorrect: $($detail.Name)"
+            }
+        }
+    }
+
+    $preservedBody = $content
+    foreach ($detail in $details) {
+        $pattern = '(?s)' + [regex]::Escape($detail.Start) + '.*?' + [regex]::Escape($detail.End)
+        $preservedBody = [regex]::Replace($preservedBody, $pattern, '')
+    }
+    if ($preservedBody.Trim().Length -lt 50) {
+        Add-VerificationError $Errors "Project README $number preserved non-generated body is shorter than 50 characters"
+    }
+}
+
+function Split-MarkdownRow {
+    param([string]$Line)
+
+    $trimmed = $Line.Trim()
+    if ($trimmed.StartsWith('|')) { $trimmed = $trimmed.Substring(1) }
+    if ($trimmed.EndsWith('|')) { $trimmed = $trimmed.Substring(0, $trimmed.Length - 1) }
+
+    $cells = [System.Collections.Generic.List[string]]::new()
+    $cell = [System.Text.StringBuilder]::new()
+    for ($index = 0; $index -lt $trimmed.Length; $index++) {
+        $character = $trimmed[$index]
+        if ($character -eq '\' -and $index + 1 -lt $trimmed.Length -and $trimmed[$index + 1] -eq '|') {
+            $null = $cell.Append('|')
+            $index++
+        }
+        elseif ($character -eq '|') {
+            $cells.Add($cell.ToString().Trim())
+            $null = $cell.Clear()
+        }
+        else {
+            $null = $cell.Append($character)
+        }
+    }
+    $cells.Add($cell.ToString().Trim())
+    return $cells.ToArray()
+}
+
+function Get-CaptureReportRows {
+    param(
+        [string]$Content,
+        [System.Collections.Generic.List[string]]$Errors
+    )
+
+    $lines = @($Content -split "`r?`n")
+    $headerIndex = -1
+    for ($index = 0; $index -lt $lines.Count; $index++) {
+        if ($lines[$index] -match '^\s*\|' -and $lines[$index] -match '\bProject\b' -and $lines[$index] -match '\bStatus\b') {
+            $headerIndex = $index
+            break
+        }
+    }
+    if ($headerIndex -lt 0) {
+        Add-VerificationError $Errors 'capture report is missing a Project/Status table header'
+        return @()
+    }
+
+    $headers = @(Split-MarkdownRow $lines[$headerIndex])
+    foreach ($requiredHeader in @('Project', 'Output', 'Status')) {
+        if ($requiredHeader -notin $headers) {
+            Add-VerificationError $Errors "capture report is missing the $requiredHeader column"
+        }
+    }
+
+    $rows = [System.Collections.Generic.List[object]]::new()
+    for ($index = $headerIndex + 2; $index -lt $lines.Count; $index++) {
+        if ($lines[$index] -notmatch '^\s*\|') { break }
+        $cells = @(Split-MarkdownRow $lines[$index])
+        if ($cells.Count -ne $headers.Count) {
+            Add-VerificationError $Errors "capture report row has $($cells.Count) cells; expected $($headers.Count): $($lines[$index])"
+            continue
+        }
+        $row = [ordered]@{}
+        for ($cellIndex = 0; $cellIndex -lt $headers.Count; $cellIndex++) {
+            $row[$headers[$cellIndex]] = $cells[$cellIndex]
+        }
+        $rows.Add([pscustomobject]$row)
+    }
+    return $rows.ToArray()
+}
+
+function Test-CaptureReport {
+    param(
+        [string]$Path,
+        [object[]]$Projects,
+        [string]$MediaDir,
+        [System.Collections.Generic.List[string]]$Errors
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        Add-VerificationError $Errors "capture report missing: $Path"
+        return
+    }
+
+    try {
+        $rows = @(Get-CaptureReportRows -Content (Get-ReadmeText $Path) -Errors $Errors)
+    }
+    catch {
+        Add-VerificationError $Errors "capture report decode failed: $($_.Exception.Message)"
+        return
+    }
+
+    foreach ($project in $Projects) {
+        $number = [string]$project.number
+        $projectRows = @($rows | Where-Object { [string]$_.Project -eq $number })
+        if ($projectRows.Count -eq 0) {
+            Add-VerificationError $Errors "capture report has no final status for project $number"
+            continue
+        }
+
+        $hasAttemptColumn = $null -ne $projectRows[0].PSObject.Properties['Attempt']
+        $maximumAttempt = 0
+        if ($hasAttemptColumn) {
+            foreach ($row in $projectRows) {
+                $parsedAttempt = 0
+                if (-not [int]::TryParse([string]$row.Attempt, [ref]$parsedAttempt)) {
+                    Add-VerificationError $Errors "capture report has an invalid attempt for project $number`: $($row.Attempt)"
+                    $parsedAttempt = -1
+                }
+                elseif ($parsedAttempt -gt $maximumAttempt) {
+                    $maximumAttempt = $parsedAttempt
+                }
+                $row | Add-Member -NotePropertyName VerificationAttempt -NotePropertyValue $parsedAttempt -Force
+            }
+            $finalRows = @($projectRows | Where-Object { $_.VerificationAttempt -eq $maximumAttempt })
+        }
+        else {
+            $finalRows = $projectRows
+        }
+
+        $nonSuccessRows = @($finalRows | Where-Object { [string]$_.Status -cne 'Success' })
+        if ($nonSuccessRows.Count -gt 0) {
+            $statuses = @($nonSuccessRows.Status | Select-Object -Unique) -join ', '
+            Add-VerificationError $Errors "capture report final status for project $number is not Success: $statuses"
+        }
+
+        $successOutputs = @($finalRows | Where-Object { [string]$_.Status -ceq 'Success' } | ForEach-Object { ([string]$_.Output).Replace('\', '/').TrimStart('./') })
+        foreach ($mediaName in @([string]$project.image, [string]$project.gif)) {
+            $expectedOutput = (($MediaDir.TrimEnd('/')) + '/' + $mediaName).Replace('\', '/')
+            if ($expectedOutput -notin $successOutputs) {
+                Add-VerificationError $Errors "capture report final Success outputs for project $number are incomplete: missing $expectedOutput"
+            }
+        }
+    }
+}
+
+function Test-RootReadme {
+    param(
+        [string]$Path,
+        [object[]]$Projects,
+        [string]$MediaDir,
+        [System.Collections.Generic.List[string]]$Errors
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        Add-VerificationError $Errors "Root README missing: $Path"
+        return
+    }
+
+    try {
+        $content = Get-ReadmeText $Path
+    }
+    catch {
+        Add-VerificationError $Errors "Root README decode failed: $($_.Exception.Message)"
+        return
+    }
+
+    if ($content -match 'github\.com/user-attachments') {
+        Add-VerificationError $Errors 'Root README still references github.com/user-attachments'
+    }
+
+    $normalizedMediaDir = $MediaDir.Replace('\', '/').TrimEnd('/')
+    $expectedFeaturedGifs = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+    foreach ($project in $Projects) {
+        $pngReference = "$normalizedMediaDir/$($project.image)"
+        if (-not $content.Contains($pngReference, [System.StringComparison]::Ordinal)) {
+            Add-VerificationError $Errors "Root README missing PNG reference: $pngReference"
+        }
+
+        $gifReference = "$normalizedMediaDir/$($project.gif)"
+        $isFeatured = $null -ne $project.PSObject.Properties['rootFeaturedGif'] -and [bool]$project.rootFeaturedGif
+        if ($isFeatured) {
+            $null = $expectedFeaturedGifs.Add($gifReference)
+            if (-not $content.Contains($gifReference, [System.StringComparison]::Ordinal)) {
+                Add-VerificationError $Errors "Root README missing featured GIF reference: $gifReference"
+            }
+        }
+    }
+
+    $gifPattern = [regex]::Escape($normalizedMediaDir + '/') + '[A-Za-z0-9._/-]+\.gif'
+    $rootGifReferences = @([regex]::Matches($content, $gifPattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase) | ForEach-Object { $_.Value } | Select-Object -Unique)
+    foreach ($gifReference in $rootGifReferences) {
+        if (-not $expectedFeaturedGifs.Contains($gifReference)) {
+            Add-VerificationError $Errors "Root README has an unexpected root GIF reference: $gifReference"
+        }
+    }
+}
+
+if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
+    $RepoRoot = Split-Path -Parent $PSScriptRoot
+}
+$RepoRoot = [System.IO.Path]::GetFullPath($RepoRoot)
+$errors = [System.Collections.Generic.List[string]]::new()
+
+if (-not (Test-Path -LiteralPath $RepoRoot -PathType Container)) {
+    Add-VerificationError $errors "Repository root not found: $RepoRoot"
+}
+
+if ([string]::IsNullOrWhiteSpace($Manifest)) {
+    $Manifest = 'tools/readme_media_manifest.json'
+}
+
+$manifestData = $null
 try {
-  $manifest = Get-Content -Raw tools\readme_media_manifest.json | ConvertFrom-Json
-  $missing = New-Object System.Collections.Generic.List[string]
-  foreach ($project in $manifest.projects) {
-    $image = Join-Path $manifest.mediaDir $project.image
-    if (-not (Test-Path -LiteralPath $image)) { $missing.Add($image) }
-    elseif ((Get-Item -LiteralPath $image).Length -le 0) { $missing.Add("$image is empty") }
-  }
-  $gifProjects = @($manifest.projects | Where-Object { $null -ne $_.PSObject.Properties['gif'] -and -not [string]::IsNullOrWhiteSpace([string]$_.gif) })
-  foreach ($project in $gifProjects) {
-    $gifPath = Join-Path $manifest.mediaDir $project.gif
-    if (-not (Test-Path -LiteralPath $gifPath)) { $missing.Add($gifPath) }
-    elseif ((Get-Item -LiteralPath $gifPath).Length -le 0) { $missing.Add("$gifPath is empty") }
-  }
-  if (-not (Test-Path -LiteralPath README_old.md)) { $missing.Add("README_old.md") }
-  $readme = Get-Content -Raw README.md
-  if ($readme -match 'github\.com/user-attachments') { $missing.Add("README.md still references github.com/user-attachments") }
-  foreach ($project in $manifest.projects) {
-    if ($readme -notmatch [regex]::Escape("docs/media/readme/$($project.image)")) {
-      $missing.Add("README.md missing docs/media/readme/$($project.image)")
+    $manifestData = Get-ReadmeMediaManifest -ManifestPath $Manifest -RepoRoot $RepoRoot
+}
+catch {
+    Add-VerificationError $errors $_.Exception.Message
+}
+
+if ($null -ne $manifestData) {
+    try {
+        foreach ($manifestError in @(Test-ReadmeMediaManifest -Manifest $manifestData -RepoRoot $RepoRoot)) {
+            Add-VerificationError $errors "Manifest: $manifestError"
+        }
     }
-  }
-  foreach ($project in $gifProjects) {
-    if ($readme -notmatch [regex]::Escape("docs/media/readme/$($project.gif)")) {
-      $missing.Add("README.md missing docs/media/readme/$($project.gif)")
+    catch {
+        Add-VerificationError $errors "Manifest validation failed: $($_.Exception.Message)"
     }
-  }
-  if ($missing.Count -gt 0) {
-    $missing | ForEach-Object { Write-Error -Message $_ -ErrorAction Continue }
+
+    $requiredDimensions = [ordered]@{
+        captureWidth = 1600
+        captureHeight = 900
+        gifWidth = 800
+        gifHeight = 450
+        infoWidth = 1600
+        infoHeight = 640
+        gifMaxBytes = 5242880
+    }
+    foreach ($property in $requiredDimensions.Keys) {
+        $actualValue = [int64]0
+        if ($null -eq $manifestData.PSObject.Properties[$property] -or
+            -not [int64]::TryParse([string]$manifestData.$property, [ref]$actualValue) -or
+            $actualValue -ne $requiredDimensions[$property]) {
+            Add-VerificationError $errors "Manifest $property must be exactly $($requiredDimensions[$property])"
+        }
+    }
+
+    $projects = @($manifestData.projects)
+    $mediaDirPath = Resolve-ContainedRelativePath -BasePath $RepoRoot -RelativePath ([string]$manifestData.mediaDir) -Label 'Manifest mediaDir' -Errors $errors
+    $dx11Root = Join-Path $RepoRoot 'Dx11'
+
+    for ($index = 0; $index -lt $projects.Count; $index++) {
+        $project = $projects[$index]
+        $number = if ($null -ne $project.PSObject.Properties['number']) { [string]$project.number } else { '<unknown>' }
+        $projectDirectory = Resolve-ContainedRelativePath -BasePath $dx11Root -RelativePath ([string]$project.directory) -Label "Project $number directory" -Errors $errors
+        $imagePath = $null
+        $gifPath = $null
+        $infoPath = $null
+        if ($null -ne $mediaDirPath) {
+            $imagePath = Resolve-ContainedRelativePath -BasePath $mediaDirPath -RelativePath ([string]$project.image) -Label "Project $number image path" -Errors $errors
+            $gifPath = Resolve-ContainedRelativePath -BasePath $mediaDirPath -RelativePath ([string]$project.gif) -Label "Project $number GIF path" -Errors $errors
+            $infoPath = Resolve-ContainedRelativePath -BasePath $mediaDirPath -RelativePath ([string]$project.infoImage) -Label "Project $number info path" -Errors $errors
+        }
+
+        if ($null -ne $imagePath) { Test-PngMedia -Path $imagePath -ExpectedWidth 1600 -ExpectedHeight 900 -Label "Project $number PNG" -Errors $errors }
+        if ($null -ne $infoPath) { Test-PngMedia -Path $infoPath -ExpectedWidth 1600 -ExpectedHeight 640 -Label "Project $number info PNG" -Errors $errors }
+        if ($null -ne $gifPath) { Test-GifMedia -Path $gifPath -Label "Project $number GIF" -Errors $errors }
+        if ($null -ne $projectDirectory) {
+            Test-ProjectReadme -Path (Join-Path $projectDirectory 'README.md') -Project $project -Projects $projects -Index $index -Errors $errors
+        }
+    }
+
+    $normalizedMediaDir = ([string]$manifestData.mediaDir).Replace('\', '/').TrimEnd('/')
+    Test-RootReadme -Path (Join-Path $RepoRoot 'README.md') -Projects $projects -MediaDir $normalizedMediaDir -Errors $errors
+    if ($null -ne $mediaDirPath) {
+        Test-CaptureReport -Path (Join-Path $mediaDirPath 'capture-report.md') -Projects $projects -MediaDir $normalizedMediaDir -Errors $errors
+    }
+}
+
+if (-not (Test-Path -LiteralPath (Join-Path $RepoRoot 'README_old.md') -PathType Leaf)) {
+    Add-VerificationError $errors 'README_old.md is missing'
+}
+
+if ($errors.Count -gt 0) {
+    foreach ($verificationError in $errors) {
+        Write-Output "ERROR: $verificationError"
+    }
     exit 1
-  }
-  "README media verification passed"
 }
-finally {
-  Pop-Location
-}
+
+'README media verification passed'

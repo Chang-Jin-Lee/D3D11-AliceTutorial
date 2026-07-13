@@ -40,6 +40,8 @@ Dx11/36_AdvancedAnim_Sound_Click/    대표 통합 데모
 
 ### 프로젝트 바로가기
 
+각 프로젝트 README에서 새 실행 스크린샷과 짧은 GIF를 함께 확인할 수 있습니다.
+
 - 이미지를 클릭하거나, 아래 각 번호/이름을 클릭해도 해당 디렉토리로 이동합니다
 
 | [1. RenderingQuadangle](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/Dx11/01_RenderingQuadangle) | [2. RenderingCube](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/Dx11/02_RenderingCube) | [3. RenderingMeshAndSceneGraph](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/Dx11/03_RenderingMeshAndSceneGraph) | [4. RenderingMeshWithTexture](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/Dx11/04_RenderingMeshWithTexture) |
