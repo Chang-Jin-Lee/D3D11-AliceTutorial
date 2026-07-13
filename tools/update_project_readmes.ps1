@@ -103,8 +103,63 @@ function Get-MarkerState([string]$Content, [string]$Name) {
         Name = $Name
         Start = $start
         End = $end
+        StartIndex = $Content.IndexOf($start, [System.StringComparison]::Ordinal)
+        EndIndex = $Content.IndexOf($end, [System.StringComparison]::Ordinal)
         StartCount = $startCount
         EndCount = $endCount
+    }
+}
+
+function Assert-GeneratedMarkerTopology([object[]]$States, [string]$Path) {
+    $orderedNames = @('README-NAV-TOP', 'README-INFO', 'README-RUNTIME', 'README-NAV-BOTTOM')
+    $stateByName = @{}
+    foreach ($state in $States) {
+        $stateByName[$state.Name] = $state
+        if ($state.StartIndex -ge $state.EndIndex) {
+            throw "README has reversed generated marker pair: $Path ($($state.Name))"
+        }
+    }
+
+    for ($left = 0; $left -lt $States.Count; $left++) {
+        for ($right = $left + 1; $right -lt $States.Count; $right++) {
+            $first = $States[$left]
+            $second = $States[$right]
+            if ($first.StartIndex -lt $second.EndIndex -and $second.StartIndex -lt $first.EndIndex) {
+                throw "README has overlapping generated marker intervals: $Path ($($first.Name), $($second.Name))"
+            }
+        }
+    }
+
+    $previousIndex = -1
+    foreach ($name in $orderedNames) {
+        $state = $stateByName[$name]
+        foreach ($index in @($state.StartIndex, $state.EndIndex)) {
+            if ($index -le $previousIndex) {
+                throw "README generated markers are not in required order: $Path"
+            }
+            $previousIndex = $index
+        }
+    }
+}
+
+function Test-SafePathSegment([string]$Value) {
+    return $Value -notmatch '^\.+$' -and $Value -match '^[A-Za-z0-9._-]+$'
+}
+
+function Assert-SafeProjectDirectory([string]$Directory, [object]$Project) {
+    if (-not (Test-SafePathSegment $Directory)) {
+        throw "Manifest project directory is not a safe path segment: $Directory ($($Project.number))"
+    }
+}
+
+function Assert-SafeMediaPath([string]$Path, [string]$Property, [object]$Project) {
+    if ([System.IO.Path]::IsPathRooted($Path) -or $Path.StartsWith('/') -or $Path.Contains('\')) {
+        throw "Manifest project $Property is not a safe relative path: $Path ($($Project.number))"
+    }
+
+    $segments = [System.Text.RegularExpressions.Regex]::Split($Path, '/')
+    if ($segments.Count -eq 0 -or @($segments | Where-Object { -not (Test-SafePathSegment $_) }).Count -ne 0) {
+        throw "Manifest project $Property is not a safe relative path: $Path ($($Project.number))"
     }
 }
 
@@ -183,8 +238,14 @@ foreach ($project in $projects) {
             throw "Manifest project is missing $($property): $($project.number)"
         }
     }
+
+    Assert-SafeProjectDirectory ([string]$project.directory) $project
+    foreach ($property in @('image', 'gif', 'infoImage')) {
+        Assert-SafeMediaPath ([string]$project.$property) $property $project
+    }
 }
 
+$markerNames = @('README-NAV-TOP', 'README-INFO', 'README-RUNTIME', 'README-NAV-BOTTOM')
 $updates = foreach ($index in 0..($projects.Count - 1)) {
     $project = $projects[$index]
     $readmePath = Join-Path $RepoRoot (Join-Path 'Dx11' (Join-Path $project.directory 'README.md'))
@@ -200,13 +261,17 @@ $updates = foreach ($index in 0..($projects.Count - 1)) {
         'README-RUNTIME' = New-RuntimeBlock $project $newline
         'README-NAV-BOTTOM' = New-NavigationBlock 'README-NAV-BOTTOM' $projects $index $newline
     }
-    $states = @($blocks.Keys | Sort-Object | ForEach-Object { Get-MarkerState $document.Content $_ })
+    $states = @($markerNames | ForEach-Object { Get-MarkerState $document.Content $_ })
     $hasNoBlocks = @($states | Where-Object { $_.StartCount -eq 0 -and $_.EndCount -eq 0 }).Count -eq $states.Count
     $hasCompleteBlocks = @($states | Where-Object { $_.StartCount -eq 1 -and $_.EndCount -eq 1 }).Count -eq $states.Count
 
     if (-not $hasNoBlocks -and -not $hasCompleteBlocks) {
         $invalidMarkers = $states | Where-Object { $_.StartCount -ne 1 -or $_.EndCount -ne 1 } | ForEach-Object { $_.Name }
         throw "README has incomplete or duplicate generated markers: $readmePath ($($invalidMarkers -join ', '))"
+    }
+
+    if ($hasCompleteBlocks) {
+        Assert-GeneratedMarkerTopology $states $readmePath
     }
 
     if ($hasNoBlocks) {
