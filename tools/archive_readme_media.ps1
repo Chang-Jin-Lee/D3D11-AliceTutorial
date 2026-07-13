@@ -64,6 +64,14 @@ $DestinationRoot = [System.IO.Path]::GetFullPath($DestinationRoot)
 if (-not (Test-Path -LiteralPath $RepoRoot -PathType Container)) {
     throw "Repository root not found: $RepoRoot"
 }
+$repoRootBoundary = $RepoRoot.TrimEnd(
+    [System.IO.Path]::DirectorySeparatorChar,
+    [System.IO.Path]::AltDirectorySeparatorChar
+) + [System.IO.Path]::DirectorySeparatorChar
+if ($DestinationRoot.Equals($RepoRoot, [System.StringComparison]::OrdinalIgnoreCase) -or
+    $DestinationRoot.StartsWith($repoRootBoundary, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "DestinationRoot must be outside RepoRoot: $DestinationRoot"
+}
 
 $manifestObject = Get-ReadmeMediaManifest -ManifestPath $Manifest -RepoRoot $RepoRoot
 $manifestErrors = @(Test-ReadmeMediaManifest -Manifest $manifestObject -RepoRoot $RepoRoot)

@@ -31,6 +31,10 @@ try {
         Set-Content -LiteralPath $path -Value $sourceFiles[$relativePath] -NoNewline
     }
 
+    $excludedProjectReadme = Join-Path $fixtureRoot 'Dx11\16_pmxWithMotion\README.md'
+    New-Item -ItemType Directory -Path (Split-Path -Parent $excludedProjectReadme) -Force | Out-Null
+    Set-Content -LiteralPath $excludedProjectReadme -Value '# Excluded project README' -NoNewline
+
     $sourcePng = Join-Path $fixtureRoot 'docs\media\readme\01.png'
     New-Item -ItemType Directory -Path (Split-Path -Parent $sourcePng) -Force | Out-Null
     [System.IO.File]::WriteAllBytes($sourcePng, [byte[]](0, 1, 2, 3, 255, 254, 253))
@@ -67,7 +71,8 @@ try {
     $fixtureManifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $manifestPath -NoNewline
 
     $beforeHashes = @{}
-    foreach ($relativePath in $sourceFiles.Keys + 'docs/media/readme/01.png') {
+    $trackedSourcePaths = @($sourceFiles.Keys + 'docs/media/readme/01.png' + 'Dx11/16_pmxWithMotion/README.md')
+    foreach ($relativePath in $trackedSourcePaths) {
         $sourcePath = Join-Path $fixtureRoot ($relativePath -replace '/', '\')
         $beforeHashes[$relativePath] = (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash
     }
@@ -89,6 +94,7 @@ try {
     Assert-Path (Join-Path $archive.FullName 'README.md') 'root README was not archived'
     Assert-Path (Join-Path $archive.FullName 'README_old.md') 'old root README was not archived'
     Assert-Path (Join-Path $archive.FullName 'Dx11\01_Fixture\README.md') 'project README path was not preserved'
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $archive.FullName 'Dx11\16_pmxWithMotion\README.md'))) 'unlisted project README was archived'
 
     $metadataPath = Join-Path $archive.FullName 'archive-manifest.json'
     Assert-Path $metadataPath 'archive metadata missing'
@@ -122,6 +128,22 @@ try {
         $sourcePath = Join-Path $fixtureRoot ($relativePath -replace '/', '\')
         $after = (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash
         Assert-True ($after -eq $beforeHashes[$relativePath]) "source file was modified: $relativePath"
+    }
+
+    $inRepoDestination = Join-Path $fixtureRoot 'docs\media\readme\archive-target'
+    $inRepoThrew = $false
+    try {
+        & $archiveScript -RepoRoot $fixtureRoot -Manifest $manifestPath -DestinationRoot $inRepoDestination
+    }
+    catch {
+        $inRepoThrew = $true
+    }
+    Assert-True $inRepoThrew 'in-repository destination should be rejected'
+    Assert-True (-not (Test-Path -LiteralPath $inRepoDestination)) 'rejected destination directory was created'
+    foreach ($relativePath in $beforeHashes.Keys) {
+        $sourcePath = Join-Path $fixtureRoot ($relativePath -replace '/', '\')
+        $after = (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash
+        Assert-True ($after -eq $beforeHashes[$relativePath]) "source file changed after rejected destination: $relativePath"
     }
 
     'archive tests passed'
