@@ -1,3 +1,15 @@
+<!-- README-NAV-TOP:START -->
+<div align="center">
+
+[이전](../31_IBL/README.md) | [메인](../../README.md) | [상위](../) | [다음](../33_Sound_Animation_Camera_Motion/README.md)
+
+</div>
+<!-- README-NAV-TOP:END -->
+
+<!-- README-INFO:START -->
+<p align="center"><img src="../../docs/media/readme/info/32-Sound-FMOD-info.png" width="100%" /></p>
+<!-- README-INFO:END -->
+
 ### 32. FMOD + 애니메이션 동기화
 
 ## Screenshot
@@ -76,3 +88,19 @@ mdl.animator.SetPlaying(play);
 if (play) Sound::Play();
 else      Sound::Pause(true);
 ```
+
+<!-- README-RUNTIME:START -->
+## 실행 화면
+
+| Screenshot | GIF |
+|---|---|
+| <img src="../../docs/media/readme/32-Sound-FMOD.png" width="100%" /> | <img src="../../docs/media/readme/32-Sound-FMOD.gif" width="100%" /> |
+<!-- README-RUNTIME:END -->
+
+<!-- README-NAV-BOTTOM:START -->
+<div align="center">
+
+[이전](../31_IBL/README.md) | [메인](../../README.md) | [상위](../) | [다음](../33_Sound_Animation_Camera_Motion/README.md)
+
+</div>
+<!-- README-NAV-BOTTOM:END -->

@@ -1,3 +1,15 @@
+<!-- README-NAV-TOP:START -->
+<div align="center">
+
+[이전](../10_StaticCube_SkyBox/README.md) | [메인](../../README.md) | [상위](../) | [다음](../12_Lighting_BlinnPhong/README.md)
+
+</div>
+<!-- README-NAV-TOP:END -->
+
+<!-- README-INFO:START -->
+<p align="center"><img src="../../docs/media/readme/info/11-Live2D-info.png" width="100%" /></p>
+<!-- README-INFO:END -->
+
 ## 11. Live2D (11_Live2D)
 
 - 이미지를 클릭하면 이동합니다
@@ -41,3 +53,19 @@
 <p align="center">
   <img src="../../docs/media/readme/11-Live2D.png" width="60%" />
 </p>
+
+<!-- README-RUNTIME:START -->
+## 실행 화면
+
+| Screenshot | GIF |
+|---|---|
+| <img src="../../docs/media/readme/11-Live2D.png" width="100%" /> | <img src="../../docs/media/readme/11-Live2D.gif" width="100%" /> |
+<!-- README-RUNTIME:END -->
+
+<!-- README-NAV-BOTTOM:START -->
+<div align="center">
+
+[이전](../10_StaticCube_SkyBox/README.md) | [메인](../../README.md) | [상위](../) | [다음](../12_Lighting_BlinnPhong/README.md)
+
+</div>
+<!-- README-NAV-BOTTOM:END -->

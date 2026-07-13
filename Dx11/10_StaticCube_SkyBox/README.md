@@ -1,3 +1,15 @@
+<!-- README-NAV-TOP:START -->
+<div align="center">
+
+[이전](../09_Lighting/README.md) | [메인](../../README.md) | [상위](../) | [다음](../11_Live2D/README.md)
+
+</div>
+<!-- README-NAV-TOP:END -->
+
+<!-- README-INFO:START -->
+<p align="center"><img src="../../docs/media/readme/info/10-StaticCube-SkyBox-info.png" width="100%" /></p>
+<!-- README-INFO:END -->
+
 ## 10. Static Cube SkyBox (10_StaticCube_SkyBox)
 - 내용 : 정적 큐브 메시로 스카이박스를 구성해 배경으로 렌더링
 - 주요 구현
@@ -25,3 +37,19 @@
 <p align="center">
   <img src="../../docs/media/readme/10-StaticCube-SkyBox.png" width="60%" />
 </p>
+
+<!-- README-RUNTIME:START -->
+## 실행 화면
+
+| Screenshot | GIF |
+|---|---|
+| <img src="../../docs/media/readme/10-StaticCube-SkyBox.png" width="100%" /> | <img src="../../docs/media/readme/10-StaticCube-SkyBox.gif" width="100%" /> |
+<!-- README-RUNTIME:END -->
+
+<!-- README-NAV-BOTTOM:START -->
+<div align="center">
+
+[이전](../09_Lighting/README.md) | [메인](../../README.md) | [상위](../) | [다음](../11_Live2D/README.md)
+
+</div>
+<!-- README-NAV-BOTTOM:END -->

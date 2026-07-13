@@ -1,3 +1,15 @@
+<!-- README-NAV-TOP:START -->
+<div align="center">
+
+[이전](../34_ToneMapping/README.md) | [메인](../../README.md) | [상위](../) | [다음](../36_AdvancedAnim_Sound_Click/README.md)
+
+</div>
+<!-- README-NAV-TOP:END -->
+
+<!-- README-INFO:START -->
+<p align="center"><img src="../../docs/media/readme/info/35-DeferredRendering-info.png" width="100%" /></p>
+<!-- README-INFO:END -->
+
 # 35. Deferred Rendering
 
 ## Screenshot
@@ -49,3 +61,19 @@ PassClear
 - MRT(Multiple Render Targets) 사용
 - 디버그 UI로 렌더 타겟 내용을 검증하는 흐름
 - 36번 예제에서 애니메이션, 사운드, UI와 결합되기 전의 순수 Deferred Rendering 단계
+
+<!-- README-RUNTIME:START -->
+## 실행 화면
+
+| Screenshot | GIF |
+|---|---|
+| <img src="../../docs/media/readme/35-DeferredRendering.png" width="100%" /> | <img src="../../docs/media/readme/35-DeferredRendering.gif" width="100%" /> |
+<!-- README-RUNTIME:END -->
+
+<!-- README-NAV-BOTTOM:START -->
+<div align="center">
+
+[이전](../34_ToneMapping/README.md) | [메인](../../README.md) | [상위](../) | [다음](../36_AdvancedAnim_Sound_Click/README.md)
+
+</div>
+<!-- README-NAV-BOTTOM:END -->

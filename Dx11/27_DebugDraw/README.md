@@ -1,3 +1,15 @@
+<!-- README-NAV-TOP:START -->
+<div align="center">
+
+[이전](../26_ShadowMap_PCF/README.md) | [메인](../../README.md) | [상위](../) | [다음](../28_Scene_Shared3DModel_Animation/README.md)
+
+</div>
+<!-- README-NAV-TOP:END -->
+
+<!-- README-INFO:START -->
+<p align="center"><img src="../../docs/media/readme/info/27-DebugDraw-info.png" width="100%" /></p>
+<!-- README-INFO:END -->
+
 ## 27. debug draw box (27_DebugDraw)
 
 - 내용 : AABB Bounding Box를 그린 예제입니다
@@ -16,3 +28,18 @@
 |---|
 | <div align="center"><img src="../../docs/media/readme/27-DebugDraw.png" width="600"/></div> |
 
+<!-- README-RUNTIME:START -->
+## 실행 화면
+
+| Screenshot | GIF |
+|---|---|
+| <img src="../../docs/media/readme/27-DebugDraw.png" width="100%" /> | <img src="../../docs/media/readme/27-DebugDraw.gif" width="100%" /> |
+<!-- README-RUNTIME:END -->
+
+<!-- README-NAV-BOTTOM:START -->
+<div align="center">
+
+[이전](../26_ShadowMap_PCF/README.md) | [메인](../../README.md) | [상위](../) | [다음](../28_Scene_Shared3DModel_Animation/README.md)
+
+</div>
+<!-- README-NAV-BOTTOM:END -->
