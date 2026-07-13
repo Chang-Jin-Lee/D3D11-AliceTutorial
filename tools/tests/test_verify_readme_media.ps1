@@ -68,10 +68,49 @@ function New-PatternPng([string]$Path, [int]$Width, [int]$Height, [int]$FrameInd
     }
 }
 
+function New-TransparentHiddenColorPng([string]$Path, [int]$Width, [int]$Height, [int]$FrameIndex = 0) {
+    $bitmap = $null
+    try {
+        $bitmap = [System.Drawing.Bitmap]::new($Width, $Height, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+        for ($row = 0; $row -lt 18; $row++) {
+            $y = [math]::Min($Height - 1, [int][math]::Floor((($row + 0.5) * $Height) / 18))
+            for ($column = 0; $column -lt 32; $column++) {
+                $x = [math]::Min($Width - 1, [int][math]::Floor((($column + 0.5) * $Width) / 32))
+                $value = $column + ($row * 32) + ($FrameIndex * 17) + 1
+                $color = [System.Drawing.Color]::FromArgb(0, (37 * $value) % 256, (83 * $value) % 256, (149 * $value) % 256)
+                $bitmap.SetPixel($x, $y, $color)
+            }
+        }
+        $bitmap.Save($Path, [System.Drawing.Imaging.ImageFormat]::Png)
+    }
+    finally {
+        if ($null -ne $bitmap) { $bitmap.Dispose() }
+    }
+}
+
+function New-AlphaMotionFrame([string]$Path, [bool]$Opaque) {
+    $bitmap = $null
+    $graphics = $null
+    try {
+        $bitmap = [System.Drawing.Bitmap]::new(800, 450, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+        $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+        $graphics.CompositingMode = [System.Drawing.Drawing2D.CompositingMode]::SourceCopy
+        $alpha = if ($Opaque) { 255 } else { 0 }
+        $graphics.Clear([System.Drawing.Color]::FromArgb($alpha, 0, 0, 0))
+        $bitmap.Save($Path, [System.Drawing.Imaging.ImageFormat]::Png)
+    }
+    finally {
+        if ($null -ne $graphics) { $graphics.Dispose() }
+        if ($null -ne $bitmap) { $bitmap.Dispose() }
+    }
+}
+
 function New-OneFrameGif([string]$Path) {
     $bitmap = $null
     try {
-        $bitmap = [System.Drawing.Bitmap]::new(640, 360)
+        $bitmap = [System.Drawing.Bitmap]::new(800, 450)
+        $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+        try { $graphics.Clear([System.Drawing.Color]::Crimson) } finally { $graphics.Dispose() }
         $bitmap.Save($Path, [System.Drawing.Imaging.ImageFormat]::Gif)
     }
     finally {
@@ -79,7 +118,7 @@ function New-OneFrameGif([string]$Path) {
     }
 }
 
-function New-MovingGif([string]$Path, [string]$FramesDir) {
+function New-MovingGif([string]$Path, [string]$FramesDir, [double]$FrameRate = 2) {
     if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
         throw 'ffmpeg is required to build the real multi-frame GIF fixture'
     }
@@ -87,8 +126,26 @@ function New-MovingGif([string]$Path, [string]$FramesDir) {
     for ($index = 0; $index -lt 8; $index++) {
         New-PatternPng -Path (Join-Path $FramesDir ("frame-{0:D2}.png" -f $index)) -Width 800 -Height 450 -FrameIndex $index
     }
-    & ffmpeg -hide_banner -loglevel error -y -framerate 2 -start_number 0 -i (Join-Path $FramesDir 'frame-%02d.png') -loop 0 $Path
+    & ffmpeg -hide_banner -loglevel error -y -framerate $FrameRate -start_number 0 -i (Join-Path $FramesDir 'frame-%02d.png') -loop 0 $Path
     if ($LASTEXITCODE -ne 0) { throw "ffmpeg fixture encoding failed with exit code $LASTEXITCODE" }
+}
+
+function New-TransparentHiddenColorGif([string]$Path, [string]$FramesDir) {
+    $null = New-Item -ItemType Directory -Path $FramesDir -Force
+    for ($index = 0; $index -lt 8; $index++) {
+        New-TransparentHiddenColorPng -Path (Join-Path $FramesDir ("frame-{0:D2}.png" -f $index)) -Width 800 -Height 450 -FrameIndex $index
+    }
+    & ffmpeg -hide_banner -loglevel error -y -framerate 2 -start_number 0 -i (Join-Path $FramesDir 'frame-%02d.png') -filter_complex '[0:v]split[s0][s1];[s0]palettegen=reserve_transparent=1[p];[s1][p]paletteuse=alpha_threshold=128' -loop 0 $Path
+    if ($LASTEXITCODE -ne 0) { throw "ffmpeg transparent GIF fixture encoding failed with exit code $LASTEXITCODE" }
+}
+
+function New-AlphaMotionGif([string]$Path, [string]$FramesDir) {
+    $null = New-Item -ItemType Directory -Path $FramesDir -Force
+    for ($index = 0; $index -lt 8; $index++) {
+        New-AlphaMotionFrame -Path (Join-Path $FramesDir ("frame-{0:D2}.png" -f $index)) -Opaque ($index -ge 4)
+    }
+    & ffmpeg -hide_banner -loglevel error -y -framerate 2 -start_number 0 -i (Join-Path $FramesDir 'frame-%02d.png') -filter_complex '[0:v]split[s0][s1];[s0]palettegen=reserve_transparent=1[p];[s1][p]paletteuse=alpha_threshold=128' -loop 0 $Path
+    if ($LASTEXITCODE -ne 0) { throw "ffmpeg alpha-motion GIF fixture encoding failed with exit code $LASTEXITCODE" }
 }
 
 function Invoke-Verifier([string]$Script, [string]$RepoRoot, [string]$Manifest) {
@@ -127,6 +184,12 @@ function Assert-FailedWith([object]$Result, [string[]]$Patterns, [string]$Messag
     }
 }
 
+function Assert-OutputExcludes([object]$Result, [string[]]$Patterns, [string]$Message) {
+    foreach ($pattern in $Patterns) {
+        Assert-True ($Result.Output -notmatch $pattern) "$Message (unexpected '$pattern' in output: $($Result.Output))"
+    }
+}
+
 Add-Type -AssemblyName System.Drawing
 
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
@@ -141,6 +204,8 @@ $infoPath = Join-Path $mediaDir 'info/01-Test-info.png'
 $reportPath = Join-Path $mediaDir 'capture-report.md'
 $projectReadmePath = Join-Path $projectDir 'README.md'
 $rootReadmePath = Join-Path $fixtureRoot 'README.md'
+$outsideRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("verify-readme-media-outside-" + [guid]::NewGuid().ToString('N'))
+$junctionPath = Join-Path $fixtureRoot 'linked-media'
 
 $project = [ordered]@{
     number = '01'
@@ -240,9 +305,92 @@ try {
 | Project | Attempt | Exe | Output | Status | Dimensions | Bytes | Notes |
 |---|---:|---|---|---|---|---:|---|
 | 01 | 1 | 01_Test.exe | 01_Test.exe | Failure |  |  | first attempt failed \| retrying |
-| 01 | 2 | 01_Test.exe | docs/media/readme/01-Test.png | Success | 1600x900 | 1000 | PNG captured |
-| 01 | 2 | 01_Test.exe | docs/media/readme/01-Test.gif | Success | 800x450 | 2000 | GIF captured |
+| 01 | 2 | 01_Test.exe | 01_Test.exe | Failure | ends-with-\\|  | even backslash run before delimiter |
+| 01 | 3 | 01_Test.exe | docs/media/readme/01-Test.png | Success | 1600x900 | 1000 | PNG captured |
+| 01 | 3 | 01_Test.exe | docs/media/readme/01-Test.gif | Success | 800x450 | 2000 | GIF captured |
 '@
+
+    $validRootReadme = Get-Content -Raw -LiteralPath $rootReadmePath
+    $validReport = Get-Content -Raw -LiteralPath $reportPath
+    $validGifBackup = Join-Path $fixtureRoot 'valid-01-Test.gif'
+    Copy-Item -LiteralPath $gifPath -Destination $validGifBackup
+
+    Write-FixtureManifest -Path $manifestPath -Manifest $manifest
+    $baseline = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
+    Assert-True ($baseline.ExitCode -eq 0) "odd/even escaped-pipe report with a later successful attempt failed: $($baseline.Output)"
+
+    New-OneFrameGif -Path $gifPath
+    $frameCountFailure = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
+    Assert-FailedWith -Result $frameCountFailure -Patterns @('GIF frame count is 1; expected at least 2') -Message 'independent GIF frame-count diagnostic was not emitted'
+    Copy-Item -LiteralPath $validGifBackup -Destination $gifPath -Force
+
+    New-MovingGif -Path $gifPath -FramesDir (Join-Path $fixtureRoot 'short-gif-frames') -FrameRate 8
+    $durationFailure = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
+    Assert-FailedWith -Result $durationFailure -Patterns @('GIF total decoded delay.*expected 3\.5-5\.5s') -Message 'independent GIF duration diagnostic was not emitted'
+    Copy-Item -LiteralPath $validGifBackup -Destination $gifPath -Force
+
+    $oversizeStream = [System.IO.File]::Open($gifPath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+    try { $oversizeStream.SetLength(5242881) } finally { $oversizeStream.Dispose() }
+    $sizeFailure = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
+    Assert-FailedWith -Result $sizeFailure -Patterns @('GIF size is 5242881 bytes; expected at most 5242880 bytes') -Message 'independent GIF size-cap diagnostic was not emitted'
+    Copy-Item -LiteralPath $validGifBackup -Destination $gifPath -Force
+
+    New-TransparentHiddenColorPng -Path $imagePath -Width 1600 -Height 900
+    $transparentPng = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
+    Assert-FailedWith -Result $transparentPng -Patterns @('PNG sampled color count is 1; expected at least 8', 'PNG luminance variance is 0\.000; expected above 4\.0') -Message 'transparent hidden-color PNG affected visible sampling'
+    New-PatternPng -Path $imagePath -Width 1600 -Height 900
+
+    New-TransparentHiddenColorGif -Path $gifPath -FramesDir (Join-Path $fixtureRoot 'transparent-hidden-gif-frames')
+    $transparentGif = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
+    Assert-FailedWith -Result $transparentGif -Patterns @('GIF sampled motion is 0\.000%; expected above 0\.2%') -Message 'transparent hidden-color GIF affected visible motion sampling'
+    Assert-OutputExcludes -Result $transparentGif -Patterns @('GIF frame count', 'GIF total decoded delay') -Message 'transparent hidden-color GIF regression was not isolated to motion'
+    Copy-Item -LiteralPath $validGifBackup -Destination $gifPath -Force
+
+    New-AlphaMotionGif -Path $gifPath -FramesDir (Join-Path $fixtureRoot 'alpha-motion-gif-frames')
+    $alphaMotion = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
+    Assert-True ($alphaMotion.ExitCode -eq 0) "alpha-only visible GIF motion was not counted: $($alphaMotion.Output)"
+    Copy-Item -LiteralPath $validGifBackup -Destination $gifPath -Force
+
+    Write-Utf8File -Path $rootReadmePath -Content ($validRootReadme + "`n<img src=`"assets/local-other.gif`" />`n")
+    $otherLocalGif = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
+    Assert-FailedWith -Result $otherLocalGif -Patterns @('unexpected root GIF reference: assets/local-other\.gif') -Message 'local non-mediaDir root GIF embed was not rejected'
+    Write-Utf8File -Path $rootReadmePath -Content ($validRootReadme + "`n![external demo](https://example.com/demo.gif)`n")
+    $externalGif = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
+    Assert-FailedWith -Result $externalGif -Patterns @('unexpected root GIF reference: https://example\.com/demo\.gif') -Message 'external root GIF embed was not rejected'
+    Write-Utf8File -Path $rootReadmePath -Content @'
+# Fixture root
+
+<img src="docs/media/readme/01-Test.png" />
+Featured path as text only: docs/media/readme/01-Test.gif
+'@
+    $featuredTextOnly = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
+    Assert-FailedWith -Result $featuredTextOnly -Patterns @('missing featured GIF embed: docs/media/readme/01-Test\.gif') -Message 'plain text incorrectly satisfied the featured GIF embed requirement'
+    Write-Utf8File -Path $rootReadmePath -Content $validRootReadme
+
+    Remove-Item -LiteralPath $infoPath -Force
+    $lockedStream = [System.IO.File]::Open($imagePath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::None)
+    try {
+        $lockedMedia = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
+    }
+    finally {
+        $lockedStream.Dispose()
+    }
+    Assert-FailedWith -Result $lockedMedia -Patterns @('PNG validation failed.*being used by another process', 'info PNG missing') -Message 'locked media I/O did not aggregate a second independent diagnostic'
+    New-PatternPng -Path $infoPath -Width 1600 -Height 640
+
+    $null = New-Item -ItemType Directory -Path $outsideRoot -Force
+    Write-Utf8File -Path (Join-Path $outsideRoot 'sentinel.txt') -Content "outside target must survive junction cleanup`n"
+    [System.IO.File]::WriteAllBytes((Join-Path $outsideRoot '01-Test.png'), [byte[]](0x47, 0x49, 0x46, 0x38, 0x39, 0x61))
+    $null = New-Item -ItemType Junction -Path $junctionPath -Target $outsideRoot
+    $junctionManifest = $manifest | ConvertTo-Json -Depth 10 | ConvertFrom-Json
+    $junctionManifest.mediaDir = 'linked-media'
+    Write-FixtureManifest -Path $manifestPath -Manifest $junctionManifest
+    $junctionResult = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
+    Assert-FailedWith -Result $junctionResult -Patterns @('Manifest mediaDir.*reparse point') -Message 'junction traversal was not rejected canonically'
+    Assert-OutputExcludes -Result $junctionResult -Patterns @('invalid PNG signature') -Message 'verifier read media through the outside junction'
+    Remove-Item -LiteralPath $junctionPath -Force
+    Assert-True (Test-Path -LiteralPath (Join-Path $outsideRoot 'sentinel.txt') -PathType Leaf) 'junction cleanup removed the outside target'
+    Write-FixtureManifest -Path $manifestPath -Manifest $manifest
 
     $unsafeProjectManifest = $manifest | ConvertTo-Json -Depth 10 | ConvertFrom-Json
     $unsafeProjectManifest.projects[0].image = '../outside.png'
@@ -263,6 +411,9 @@ try {
     Assert-FailedWith -Result $unfeatured -Patterns @('unexpected root GIF') -Message 'unfeatured root GIF was not rejected'
 
     Write-FixtureManifest -Path $manifestPath -Manifest $manifest
+    Write-Utf8File -Path $rootReadmePath -Content $validRootReadme
+    Write-Utf8File -Path $reportPath -Content $validReport
+    Copy-Item -LiteralPath $validGifBackup -Destination $gifPath -Force
     $valid = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
     Assert-True ($valid.ExitCode -eq 0) "valid fixture failed verification: $($valid.Output)"
     Assert-True ($valid.Output -match 'README media verification passed') 'valid fixture did not print the success message'
@@ -270,7 +421,13 @@ try {
     'README media verifier tests passed'
 }
 finally {
+    if (Test-Path -LiteralPath $junctionPath) {
+        Remove-Item -LiteralPath $junctionPath -Force
+    }
     if (Test-Path -LiteralPath $fixtureRoot) {
         Remove-Item -LiteralPath $fixtureRoot -Recurse -Force
+    }
+    if (Test-Path -LiteralPath $outsideRoot) {
+        Remove-Item -LiteralPath $outsideRoot -Recurse -Force
     }
 }

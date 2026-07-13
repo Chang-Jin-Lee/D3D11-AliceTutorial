@@ -18,10 +18,59 @@ function Add-VerificationError {
     $null = $Errors.Add($Message)
 }
 
+function Test-NoExistingReparsePoint {
+    param(
+        [string]$ContainmentRoot,
+        [string]$TargetPath,
+        [string]$Label,
+        [System.Collections.Generic.List[string]]$Errors
+    )
+
+    try {
+        $rootFullPath = [System.IO.Path]::GetFullPath($ContainmentRoot)
+        $targetFullPath = [System.IO.Path]::GetFullPath($TargetPath)
+        $relative = [System.IO.Path]::GetRelativePath($rootFullPath, $targetFullPath)
+        if ([System.IO.Path]::IsPathRooted($relative) -or $relative -match '^\.\.([\\/]|$)') {
+            Add-VerificationError $Errors "$Label must be contained in $rootFullPath"
+            return $false
+        }
+
+        $pathsToInspect = [System.Collections.Generic.List[string]]::new()
+        $pathsToInspect.Add($rootFullPath)
+        $currentPath = $rootFullPath
+        if ($relative -ne '.') {
+            foreach ($segment in @($relative -split '[\\/]')) {
+                $currentPath = Join-Path $currentPath $segment
+                $pathsToInspect.Add($currentPath)
+            }
+        }
+
+        foreach ($pathToInspect in $pathsToInspect) {
+            try {
+                $item = Get-Item -LiteralPath $pathToInspect -Force -ErrorAction Stop
+            }
+            catch [System.Management.Automation.ItemNotFoundException] {
+                continue
+            }
+            if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+                Add-VerificationError $Errors "$Label contains a reparse point: $pathToInspect"
+                return $false
+            }
+        }
+
+        return $true
+    }
+    catch {
+        Add-VerificationError $Errors "$Label canonical containment check failed: $($_.Exception.Message)"
+        return $false
+    }
+}
+
 function Resolve-ContainedRelativePath {
     param(
         [string]$BasePath,
         [string]$RelativePath,
+        [string]$ContainmentRoot,
         [string]$Label,
         [System.Collections.Generic.List[string]]$Errors
     )
@@ -37,6 +86,10 @@ function Resolve-ContainedRelativePath {
         $relative = [System.IO.Path]::GetRelativePath($baseFullPath, $candidate)
         if ([System.IO.Path]::IsPathRooted($relative) -or $relative -match '^\.\.([\\/]|$)') {
             Add-VerificationError $Errors "$Label must be contained in $baseFullPath"
+            return $null
+        }
+
+        if (-not (Test-NoExistingReparsePoint -ContainmentRoot $ContainmentRoot -TargetPath $candidate -Label $Label -Errors $Errors)) {
             return $null
         }
 
@@ -79,7 +132,11 @@ function Get-SampledRgb {
         for ($column = 0; $column -lt $Columns; $column++) {
             $x = [math]::Min($Bitmap.Width - 1, [int][math]::Floor((($column + 0.5) * $Bitmap.Width) / $Columns))
             $color = $Bitmap.GetPixel($x, $y)
-            $samples[$sampleIndex++] = ($color.R -shl 16) -bor ($color.G -shl 8) -bor $color.B
+            $inverseAlpha = 255 - $color.A
+            $red = [int][math]::Round((($color.R * $color.A) + (255 * $inverseAlpha)) / 255.0)
+            $green = [int][math]::Round((($color.G * $color.A) + (255 * $inverseAlpha)) / 255.0)
+            $blue = [int][math]::Round((($color.B * $color.A) + (255 * $inverseAlpha)) / 255.0)
+            $samples[$sampleIndex++] = ($red -shl 16) -bor ($green -shl 8) -bor $blue
         }
     }
 
@@ -225,32 +282,18 @@ function Test-GifMedia {
         }
 
         $null = $image.SelectActiveFrame($frameDimension, 0)
-        $firstBitmap = $null
-        try {
-            $firstBitmap = [System.Drawing.Bitmap]::new($image)
-            $firstSamples = @(Get-SampledRgb -Bitmap $firstBitmap)
-        }
-        finally {
-            if ($null -ne $firstBitmap) { $firstBitmap.Dispose() }
-        }
+        $firstSamples = @(Get-SampledRgb -Bitmap ([System.Drawing.Bitmap]$image))
 
         $maximumChangedRatio = 0.0
         for ($frameIndex = 1; $frameIndex -lt $frameCount; $frameIndex++) {
             $null = $image.SelectActiveFrame($frameDimension, $frameIndex)
-            $frameBitmap = $null
-            try {
-                $frameBitmap = [System.Drawing.Bitmap]::new($image)
-                $frameSamples = @(Get-SampledRgb -Bitmap $frameBitmap)
-                $changed = 0
-                for ($sampleIndex = 0; $sampleIndex -lt $firstSamples.Count; $sampleIndex++) {
-                    if ($firstSamples[$sampleIndex] -ne $frameSamples[$sampleIndex]) { $changed++ }
-                }
-                $changedRatio = $changed / [double]$firstSamples.Count
-                if ($changedRatio -gt $maximumChangedRatio) { $maximumChangedRatio = $changedRatio }
+            $frameSamples = @(Get-SampledRgb -Bitmap ([System.Drawing.Bitmap]$image))
+            $changed = 0
+            for ($sampleIndex = 0; $sampleIndex -lt $firstSamples.Count; $sampleIndex++) {
+                if ($firstSamples[$sampleIndex] -ne $frameSamples[$sampleIndex]) { $changed++ }
             }
-            finally {
-                if ($null -ne $frameBitmap) { $frameBitmap.Dispose() }
-            }
+            $changedRatio = $changed / [double]$firstSamples.Count
+            if ($changedRatio -gt $maximumChangedRatio) { $maximumChangedRatio = $changedRatio }
         }
 
         if ($maximumChangedRatio -le 0.002) {
@@ -430,18 +473,27 @@ function Split-MarkdownRow {
 
     $cells = [System.Collections.Generic.List[string]]::new()
     $cell = [System.Text.StringBuilder]::new()
+    $backslashRun = 0
     for ($index = 0; $index -lt $trimmed.Length; $index++) {
         $character = $trimmed[$index]
-        if ($character -eq '\' -and $index + 1 -lt $trimmed.Length -and $trimmed[$index + 1] -eq '|') {
-            $null = $cell.Append('|')
-            $index++
+        if ($character -eq '\') {
+            $null = $cell.Append($character)
+            $backslashRun++
         }
         elseif ($character -eq '|') {
-            $cells.Add($cell.ToString().Trim())
-            $null = $cell.Clear()
+            if (($backslashRun % 2) -eq 1) {
+                $cell.Length--
+                $null = $cell.Append('|')
+            }
+            else {
+                $cells.Add($cell.ToString().Trim())
+                $null = $cell.Clear()
+            }
+            $backslashRun = 0
         }
         else {
             $null = $cell.Append($character)
+            $backslashRun = 0
         }
     }
     $cells.Add($cell.ToString().Trim())
@@ -556,6 +608,29 @@ function Test-CaptureReport {
     }
 }
 
+function Get-RootGifEmbeds {
+    param([string]$Content)
+
+    $embeds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+    $htmlPattern = '(?is)<img\b[^>]*?\bsrc\s*=\s*(?:"(?<double>[^"]+)"|''(?<single>[^'']+)''|(?<bare>[^\s>]+))'
+    foreach ($match in [regex]::Matches($Content, $htmlPattern)) {
+        $target = if ($match.Groups['double'].Success) { $match.Groups['double'].Value } elseif ($match.Groups['single'].Success) { $match.Groups['single'].Value } else { $match.Groups['bare'].Value }
+        if ($target.EndsWith('.gif', [System.StringComparison]::OrdinalIgnoreCase)) {
+            $null = $embeds.Add($target)
+        }
+    }
+
+    $markdownPattern = '(?is)!\[[^\]]*\]\(\s*(?:<(?<angle>[^>]+)>|(?<plain>[^\s\)]+))'
+    foreach ($match in [regex]::Matches($Content, $markdownPattern)) {
+        $target = if ($match.Groups['angle'].Success) { $match.Groups['angle'].Value } else { $match.Groups['plain'].Value }
+        if ($target.EndsWith('.gif', [System.StringComparison]::OrdinalIgnoreCase)) {
+            $null = $embeds.Add($target)
+        }
+    }
+
+    return @($embeds)
+}
+
 function Test-RootReadme {
     param(
         [string]$Path,
@@ -583,6 +658,8 @@ function Test-RootReadme {
 
     $normalizedMediaDir = $MediaDir.Replace('\', '/').TrimEnd('/')
     $expectedFeaturedGifs = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+    $rootGifEmbeds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+    foreach ($gifEmbed in @(Get-RootGifEmbeds -Content $content)) { $null = $rootGifEmbeds.Add($gifEmbed) }
     foreach ($project in $Projects) {
         $pngReference = "$normalizedMediaDir/$($project.image)"
         if (-not $content.Contains($pngReference, [System.StringComparison]::Ordinal)) {
@@ -593,15 +670,13 @@ function Test-RootReadme {
         $isFeatured = $null -ne $project.PSObject.Properties['rootFeaturedGif'] -and [bool]$project.rootFeaturedGif
         if ($isFeatured) {
             $null = $expectedFeaturedGifs.Add($gifReference)
-            if (-not $content.Contains($gifReference, [System.StringComparison]::Ordinal)) {
-                Add-VerificationError $Errors "Root README missing featured GIF reference: $gifReference"
+            if (-not $rootGifEmbeds.Contains($gifReference)) {
+                Add-VerificationError $Errors "Root README missing featured GIF embed: $gifReference"
             }
         }
     }
 
-    $gifPattern = [regex]::Escape($normalizedMediaDir + '/') + '[A-Za-z0-9._/-]+\.gif'
-    $rootGifReferences = @([regex]::Matches($content, $gifPattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase) | ForEach-Object { $_.Value } | Select-Object -Unique)
-    foreach ($gifReference in $rootGifReferences) {
+    foreach ($gifReference in $rootGifEmbeds) {
         if (-not $expectedFeaturedGifs.Contains($gifReference)) {
             Add-VerificationError $Errors "Root README has an unexpected root GIF reference: $gifReference"
         }
@@ -631,15 +706,6 @@ catch {
 }
 
 if ($null -ne $manifestData) {
-    try {
-        foreach ($manifestError in @(Test-ReadmeMediaManifest -Manifest $manifestData -RepoRoot $RepoRoot)) {
-            Add-VerificationError $errors "Manifest: $manifestError"
-        }
-    }
-    catch {
-        Add-VerificationError $errors "Manifest validation failed: $($_.Exception.Message)"
-    }
-
     $requiredDimensions = [ordered]@{
         captureWidth = 1600
         captureHeight = 900
@@ -659,38 +725,86 @@ if ($null -ne $manifestData) {
     }
 
     $projects = @($manifestData.projects)
-    $mediaDirPath = Resolve-ContainedRelativePath -BasePath $RepoRoot -RelativePath ([string]$manifestData.mediaDir) -Label 'Manifest mediaDir' -Errors $errors
+    $mediaDirPath = Resolve-ContainedRelativePath -BasePath $RepoRoot -RelativePath ([string]$manifestData.mediaDir) -ContainmentRoot $RepoRoot -Label 'Manifest mediaDir' -Errors $errors
+    $runtimeDirPath = Resolve-ContainedRelativePath -BasePath $RepoRoot -RelativePath ([string]$manifestData.runtimeDir) -ContainmentRoot $RepoRoot -Label 'Manifest runtimeDir' -Errors $errors
     $dx11Root = Join-Path $RepoRoot 'Dx11'
+    $resolvedProjects = [System.Collections.Generic.List[object]]::new()
 
     for ($index = 0; $index -lt $projects.Count; $index++) {
         $project = $projects[$index]
         $number = if ($null -ne $project.PSObject.Properties['number']) { [string]$project.number } else { '<unknown>' }
-        $projectDirectory = Resolve-ContainedRelativePath -BasePath $dx11Root -RelativePath ([string]$project.directory) -Label "Project $number directory" -Errors $errors
+        $projectDirectory = Resolve-ContainedRelativePath -BasePath $dx11Root -RelativePath ([string]$project.directory) -ContainmentRoot $RepoRoot -Label "Project $number directory" -Errors $errors
+        $projectReadmePath = $null
+        if ($null -ne $projectDirectory) {
+            $projectReadmePath = Resolve-ContainedRelativePath -BasePath $projectDirectory -RelativePath 'README.md' -ContainmentRoot $RepoRoot -Label "Project $number README path" -Errors $errors
+        }
         $imagePath = $null
         $gifPath = $null
         $infoPath = $null
         if ($null -ne $mediaDirPath) {
-            $imagePath = Resolve-ContainedRelativePath -BasePath $mediaDirPath -RelativePath ([string]$project.image) -Label "Project $number image path" -Errors $errors
-            $gifPath = Resolve-ContainedRelativePath -BasePath $mediaDirPath -RelativePath ([string]$project.gif) -Label "Project $number GIF path" -Errors $errors
-            $infoPath = Resolve-ContainedRelativePath -BasePath $mediaDirPath -RelativePath ([string]$project.infoImage) -Label "Project $number info path" -Errors $errors
+            $imagePath = Resolve-ContainedRelativePath -BasePath $mediaDirPath -RelativePath ([string]$project.image) -ContainmentRoot $RepoRoot -Label "Project $number image path" -Errors $errors
+            $gifPath = Resolve-ContainedRelativePath -BasePath $mediaDirPath -RelativePath ([string]$project.gif) -ContainmentRoot $RepoRoot -Label "Project $number GIF path" -Errors $errors
+            $infoPath = Resolve-ContainedRelativePath -BasePath $mediaDirPath -RelativePath ([string]$project.infoImage) -ContainmentRoot $RepoRoot -Label "Project $number info path" -Errors $errors
         }
 
-        if ($null -ne $imagePath) { Test-PngMedia -Path $imagePath -ExpectedWidth 1600 -ExpectedHeight 900 -Label "Project $number PNG" -Errors $errors }
-        if ($null -ne $infoPath) { Test-PngMedia -Path $infoPath -ExpectedWidth 1600 -ExpectedHeight 640 -Label "Project $number info PNG" -Errors $errors }
-        if ($null -ne $gifPath) { Test-GifMedia -Path $gifPath -Label "Project $number GIF" -Errors $errors }
-        if ($null -ne $projectDirectory) {
-            Test-ProjectReadme -Path (Join-Path $projectDirectory 'README.md') -Project $project -Projects $projects -Index $index -Errors $errors
+        $resolvedProjects.Add([pscustomobject]@{
+            ProjectDirectory = $projectDirectory
+            ProjectReadme = $projectReadmePath
+            Image = $imagePath
+            Gif = $gifPath
+            Info = $infoPath
+        })
+    }
+
+    $hasRejectedProjectTarget = @($resolvedProjects | Where-Object { $null -eq $_.ProjectReadme }).Count -gt 0
+    if ($null -ne $runtimeDirPath -and $null -ne $mediaDirPath -and -not $hasRejectedProjectTarget) {
+        try {
+            foreach ($manifestError in @(Test-ReadmeMediaManifest -Manifest $manifestData -RepoRoot $RepoRoot)) {
+                Add-VerificationError $errors "Manifest: $manifestError"
+            }
+        }
+        catch {
+            Add-VerificationError $errors "Manifest validation failed: $($_.Exception.Message)"
+        }
+    }
+
+    for ($index = 0; $index -lt $projects.Count; $index++) {
+        $project = $projects[$index]
+        $number = if ($null -ne $project.PSObject.Properties['number']) { [string]$project.number } else { '<unknown>' }
+        $resolved = $resolvedProjects[$index]
+
+        if ($null -ne $resolved.Image) {
+            try { Test-PngMedia -Path $resolved.Image -ExpectedWidth 1600 -ExpectedHeight 900 -Label "Project $number PNG" -Errors $errors }
+            catch { Add-VerificationError $errors "Project $number PNG validation failed: $($resolved.Image) ($($_.Exception.Message))" }
+        }
+        if ($null -ne $resolved.Info) {
+            try { Test-PngMedia -Path $resolved.Info -ExpectedWidth 1600 -ExpectedHeight 640 -Label "Project $number info PNG" -Errors $errors }
+            catch { Add-VerificationError $errors "Project $number info PNG validation failed: $($resolved.Info) ($($_.Exception.Message))" }
+        }
+        if ($null -ne $resolved.Gif) {
+            try { Test-GifMedia -Path $resolved.Gif -Label "Project $number GIF" -Errors $errors }
+            catch { Add-VerificationError $errors "Project $number GIF validation failed: $($resolved.Gif) ($($_.Exception.Message))" }
+        }
+        if ($null -ne $resolved.ProjectReadme) {
+            Test-ProjectReadme -Path $resolved.ProjectReadme -Project $project -Projects $projects -Index $index -Errors $errors
         }
     }
 
     $normalizedMediaDir = ([string]$manifestData.mediaDir).Replace('\', '/').TrimEnd('/')
-    Test-RootReadme -Path (Join-Path $RepoRoot 'README.md') -Projects $projects -MediaDir $normalizedMediaDir -Errors $errors
+    $rootReadmePath = Resolve-ContainedRelativePath -BasePath $RepoRoot -RelativePath 'README.md' -ContainmentRoot $RepoRoot -Label 'Root README path' -Errors $errors
+    if ($null -ne $rootReadmePath) {
+        Test-RootReadme -Path $rootReadmePath -Projects $projects -MediaDir $normalizedMediaDir -Errors $errors
+    }
     if ($null -ne $mediaDirPath) {
-        Test-CaptureReport -Path (Join-Path $mediaDirPath 'capture-report.md') -Projects $projects -MediaDir $normalizedMediaDir -Errors $errors
+        $reportPath = Resolve-ContainedRelativePath -BasePath $mediaDirPath -RelativePath 'capture-report.md' -ContainmentRoot $RepoRoot -Label 'Capture report path' -Errors $errors
+        if ($null -ne $reportPath) {
+            Test-CaptureReport -Path $reportPath -Projects $projects -MediaDir $normalizedMediaDir -Errors $errors
+        }
     }
 }
 
-if (-not (Test-Path -LiteralPath (Join-Path $RepoRoot 'README_old.md') -PathType Leaf)) {
+$oldReadmePath = Resolve-ContainedRelativePath -BasePath $RepoRoot -RelativePath 'README_old.md' -ContainmentRoot $RepoRoot -Label 'README_old path' -Errors $errors
+if ($null -ne $oldReadmePath -and -not (Test-Path -LiteralPath $oldReadmePath -PathType Leaf)) {
     Add-VerificationError $errors 'README_old.md is missing'
 }
 
