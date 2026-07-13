@@ -7,6 +7,23 @@ param(
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'readme_media_common.ps1')
 
+function Normalize-DirectoryPath {
+    param(
+        [Parameter(Mandatory)] [string]$Path
+    )
+
+    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    $pathRoot = [System.IO.Path]::GetPathRoot($fullPath)
+    if ($fullPath.Length -gt $pathRoot.Length) {
+        $fullPath = $fullPath.TrimEnd(
+            [System.IO.Path]::DirectorySeparatorChar,
+            [System.IO.Path]::AltDirectorySeparatorChar
+        )
+    }
+
+    return $fullPath
+}
+
 function Assert-UnderRoot {
     param(
         [Parameter(Mandatory)] [string]$Target,
@@ -15,16 +32,19 @@ function Assert-UnderRoot {
     )
 
     $targetFull = [System.IO.Path]::GetFullPath($Target)
-    $rootFull = [System.IO.Path]::GetFullPath($Root).TrimEnd(
-        [System.IO.Path]::DirectorySeparatorChar,
-        [System.IO.Path]::AltDirectorySeparatorChar
-    )
+    $rootFull = Normalize-DirectoryPath -Path $Root
 
     if ($targetFull.Equals($rootFull, [System.StringComparison]::OrdinalIgnoreCase)) {
         return $targetFull
     }
 
-    $rootPrefix = $rootFull + [System.IO.Path]::DirectorySeparatorChar
+    $rootPrefix = if ($rootFull.EndsWith([System.IO.Path]::DirectorySeparatorChar) -or
+        $rootFull.EndsWith([System.IO.Path]::AltDirectorySeparatorChar)) {
+        $rootFull
+    }
+    else {
+        $rootFull + [System.IO.Path]::DirectorySeparatorChar
+    }
     if (-not $targetFull.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
         throw "$Label path escaped root: $targetFull (root: $rootFull)"
     }
@@ -59,15 +79,18 @@ function Get-ArchiveRelativePath {
     return [System.IO.Path]::GetRelativePath($ArchiveRoot, $Path).Replace('\', '/')
 }
 
-$RepoRoot = [System.IO.Path]::GetFullPath($RepoRoot)
-$DestinationRoot = [System.IO.Path]::GetFullPath($DestinationRoot)
+$RepoRoot = Normalize-DirectoryPath -Path $RepoRoot
+$DestinationRoot = Normalize-DirectoryPath -Path $DestinationRoot
 if (-not (Test-Path -LiteralPath $RepoRoot -PathType Container)) {
     throw "Repository root not found: $RepoRoot"
 }
-$repoRootBoundary = $RepoRoot.TrimEnd(
-    [System.IO.Path]::DirectorySeparatorChar,
-    [System.IO.Path]::AltDirectorySeparatorChar
-) + [System.IO.Path]::DirectorySeparatorChar
+$repoRootBoundary = if ($RepoRoot.EndsWith([System.IO.Path]::DirectorySeparatorChar) -or
+    $RepoRoot.EndsWith([System.IO.Path]::AltDirectorySeparatorChar)) {
+    $RepoRoot
+}
+else {
+    $RepoRoot + [System.IO.Path]::DirectorySeparatorChar
+}
 if ($DestinationRoot.Equals($RepoRoot, [System.StringComparison]::OrdinalIgnoreCase) -or
     $DestinationRoot.StartsWith($repoRootBoundary, [System.StringComparison]::OrdinalIgnoreCase)) {
     throw "DestinationRoot must be outside RepoRoot: $DestinationRoot"

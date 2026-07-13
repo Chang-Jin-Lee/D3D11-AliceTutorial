@@ -146,6 +146,29 @@ try {
         Assert-True ($after -eq $beforeHashes[$relativePath]) "source file changed after rejected destination: $relativePath"
     }
 
+    $rootDirectoriesBefore = @(Get-ChildItem -LiteralPath $fixtureRoot -Directory |
+        ForEach-Object { [System.IO.Path]::GetFullPath($_.FullName) } |
+        Sort-Object)
+    $trailingRepoRoot = $fixtureRoot + [System.IO.Path]::DirectorySeparatorChar
+    $sameRootDestination = $fixtureRoot
+    $sameRootThrew = $false
+    try {
+        & $archiveScript -RepoRoot $trailingRepoRoot -Manifest $manifestPath -DestinationRoot $sameRootDestination
+    }
+    catch {
+        $sameRootThrew = $true
+    }
+    Assert-True $sameRootThrew 'equivalent repository destination should be rejected'
+    $rootDirectoriesAfter = @(Get-ChildItem -LiteralPath $fixtureRoot -Directory |
+        ForEach-Object { [System.IO.Path]::GetFullPath($_.FullName) } |
+        Sort-Object)
+    Assert-True (($rootDirectoriesAfter -join '|') -eq ($rootDirectoriesBefore -join '|')) 'equivalent destination created a directory'
+    foreach ($relativePath in $beforeHashes.Keys) {
+        $sourcePath = Join-Path $fixtureRoot ($relativePath -replace '/', '\')
+        $after = (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash
+        Assert-True ($after -eq $beforeHashes[$relativePath]) "source file changed after equivalent destination: $relativePath"
+    }
+
     'archive tests passed'
 }
 finally {
