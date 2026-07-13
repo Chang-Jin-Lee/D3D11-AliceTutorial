@@ -49,7 +49,11 @@ function Test-ReadmeMediaPositiveInteger {
     param([object] $Value)
 
     try {
-        return [int]$Value -gt 0
+        $number = [double]$Value
+        return -not [double]::IsNaN($number) -and
+            -not [double]::IsInfinity($number) -and
+            [math]::Truncate($number) -eq $number -and
+            $number -gt 0
     }
     catch {
         return $false
@@ -60,8 +64,8 @@ function Test-ReadmeMediaNumber {
     param([object] $Value)
 
     try {
-        $null = [double]$Value
-        return $true
+        $number = [double]$Value
+        return -not [double]::IsNaN($number) -and -not [double]::IsInfinity($number)
     }
     catch {
         return $false

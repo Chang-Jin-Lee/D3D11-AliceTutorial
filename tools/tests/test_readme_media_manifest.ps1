@@ -27,4 +27,27 @@ foreach ($project in $manifest.projects) {
     Assert-True ($project.infoImage -match '^info/.+-info\.png$') "missing info image path: $($project.number)"
 }
 
+function Copy-ReadmeMediaManifest([object]$SourceManifest) {
+    return $SourceManifest | ConvertTo-Json -Depth 10 | ConvertFrom-Json
+}
+
+$regressionFailures = [System.Collections.Generic.List[string]]::new()
+foreach ($invalidAtMs in @('NaN', 'Infinity', '-Infinity')) {
+    $invalidManifest = Copy-ReadmeMediaManifest $manifest
+    $invalidManifest.projects[2].gifActions[0].atMs = $invalidAtMs
+    $invalidErrors = @(Test-ReadmeMediaManifest -Manifest $invalidManifest -RepoRoot $repoRoot)
+    if ($invalidErrors -notcontains 'malformed action timing: 03') {
+        $null = $regressionFailures.Add("$invalidAtMs must be rejected as malformed action timing")
+    }
+}
+
+$fractionalManifest = Copy-ReadmeMediaManifest $manifest
+$fractionalManifest.captureWidth = 1600.5
+$fractionalErrors = @(Test-ReadmeMediaManifest -Manifest $fractionalManifest -RepoRoot $repoRoot)
+if ($fractionalErrors -notcontains 'invalid manifest value: captureWidth') {
+    $null = $regressionFailures.Add('fractional captureWidth must be rejected')
+}
+
+Assert-True ($regressionFailures.Count -eq 0) ($regressionFailures -join "`n")
+
 'manifest contract tests passed'
