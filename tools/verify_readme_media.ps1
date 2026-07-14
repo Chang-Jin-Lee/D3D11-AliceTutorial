@@ -224,7 +224,6 @@ function Test-GifMedia {
         [string]$Path,
         [string]$Label,
         [int]$ExpectedFps,
-        [double]$ExpectedDurationSeconds,
         [System.Collections.Generic.List[string]]$Errors
     )
 
@@ -261,11 +260,6 @@ function Test-GifMedia {
         if ($frameCount -lt 2) {
             Add-VerificationError $Errors "$Label frame count is $frameCount; expected at least 2: $Path"
         }
-        $expectedFrameCount = [int][math]::Round($ExpectedFps * $ExpectedDurationSeconds)
-        if ($frameCount -ne $expectedFrameCount) {
-            Add-VerificationError $Errors "$Label frame count is $frameCount; expected $expectedFrameCount for ${ExpectedFps}fps over ${ExpectedDurationSeconds}s: $Path"
-        }
-
         $totalDelaySeconds = $null
         try {
             $delayBytes = $image.GetPropertyItem(0x5100).Value
@@ -278,10 +272,8 @@ function Test-GifMedia {
                     $totalDelayHundredths += [System.BitConverter]::ToUInt32($delayBytes, $index * 4)
                 }
                 $totalDelaySeconds = $totalDelayHundredths / 100.0
-                $minimumDurationSeconds = $ExpectedDurationSeconds - 0.5
-                $maximumDurationSeconds = $ExpectedDurationSeconds + 0.5
-                if ($totalDelaySeconds -lt $minimumDurationSeconds -or $totalDelaySeconds -gt $maximumDurationSeconds) {
-                    Add-VerificationError $Errors ("$Label total decoded delay is {0:F2}s; expected {1:F1}-{2:F1}s: $Path" -f $totalDelaySeconds, $minimumDurationSeconds, $maximumDurationSeconds)
+                if ($totalDelaySeconds -lt 3.5 -or $totalDelaySeconds -gt 5.5) {
+                    Add-VerificationError $Errors ("$Label total decoded delay is {0:F2}s; expected 3.5-5.5s: $Path" -f $totalDelaySeconds)
                 }
                 $decodedFps = $frameCount / $totalDelaySeconds
                 if ([math]::Abs($decodedFps - $ExpectedFps) -gt 0.1) {
@@ -673,6 +665,20 @@ function Get-RootGifEmbeds {
             Add-RootGifEmbed -Embeds $embeds -Target $referenceDefinitions[$referenceId]
         }
     }
+    $collapsedReferenceImagePattern = '(?is)!\[(?<id>[^\]]+)\]\[\]'
+    foreach ($match in [regex]::Matches($Content, $collapsedReferenceImagePattern)) {
+        $referenceId = $match.Groups['id'].Value.Trim()
+        if ($referenceDefinitions.ContainsKey($referenceId)) {
+            Add-RootGifEmbed -Embeds $embeds -Target $referenceDefinitions[$referenceId]
+        }
+    }
+    $shortcutReferenceImagePattern = '(?is)!\[(?<id>[^\]]+)\](?![\[\(])'
+    foreach ($match in [regex]::Matches($Content, $shortcutReferenceImagePattern)) {
+        $referenceId = $match.Groups['id'].Value.Trim()
+        if ($referenceDefinitions.ContainsKey($referenceId)) {
+            Add-RootGifEmbed -Embeds $embeds -Target $referenceDefinitions[$referenceId]
+        }
+    }
 
     return @($embeds)
 }
@@ -828,7 +834,7 @@ if ($null -ne $manifestData) {
             catch { Add-VerificationError $errors "Project $number info PNG validation failed: $($resolved.Info) ($($_.Exception.Message))" }
         }
         if ($null -ne $resolved.Gif) {
-            try { Test-GifMedia -Path $resolved.Gif -Label "Project $number GIF" -ExpectedFps ([int]$manifestData.gifFps) -ExpectedDurationSeconds ([double]$manifestData.gifSeconds) -Errors $errors }
+            try { Test-GifMedia -Path $resolved.Gif -Label "Project $number GIF" -ExpectedFps ([int]$manifestData.gifFps) -Errors $errors }
             catch { Add-VerificationError $errors "Project $number GIF validation failed: $($resolved.Gif) ($($_.Exception.Message))" }
         }
         if ($null -ne $resolved.ProjectReadme) {

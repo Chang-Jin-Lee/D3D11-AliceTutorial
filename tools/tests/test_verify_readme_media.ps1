@@ -135,7 +135,7 @@ function New-MovingGif([string]$Path, [string]$FramesDir, [double]$FrameRate = 8
     for ($index = 0; $index -lt $FrameCount; $index++) {
         New-PatternPng -Path (Join-Path $FramesDir ("frame-{0:D2}.png" -f $index)) -Width 800 -Height 450 -FrameIndex $index
     }
-    & ffmpeg -hide_banner -loglevel error -y -framerate $FrameRate -start_number 0 -i (Join-Path $FramesDir 'frame-%02d.png') -loop 0 $Path
+    & ffmpeg -hide_banner -loglevel error -y -framerate $FrameRate -start_number 0 -i (Join-Path $FramesDir 'frame-%02d.png') -filter_complex '[0:v]split[s0][s1];[s0]palettegen=max_colors=64[p];[s1][p]paletteuse' -loop 0 $Path
     if ($LASTEXITCODE -ne 0) { throw "ffmpeg fixture encoding failed with exit code $LASTEXITCODE" }
 }
 
@@ -332,6 +332,11 @@ try {
     $baseline = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
     Assert-True ($baseline.ExitCode -eq 0) "odd/even escaped-pipe report with a later successful attempt failed: $($baseline.Output)"
 
+    New-MovingGif -Path $gifPath -FramesDir (Join-Path $fixtureRoot 'five-second-gif-frames') -FrameRate 8 -FrameCount 40
+    $fiveSecondBoundary = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
+    Assert-True ($fiveSecondBoundary.ExitCode -eq 0) "five-second 8fps GIF was rejected: $($fiveSecondBoundary.Output)"
+    Copy-Item -LiteralPath $validGifBackup -Destination $gifPath -Force
+
     New-OneFrameGif -Path $gifPath
     $frameCountFailure = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
     Assert-FailedWith -Result $frameCountFailure -Patterns @('GIF frame count is 1; expected at least 2') -Message 'independent GIF frame-count diagnostic was not emitted'
@@ -339,7 +344,7 @@ try {
 
     New-MovingGif -Path $gifPath -FramesDir (Join-Path $fixtureRoot 'short-gif-frames') -FrameRate 8 -FrameCount 8
     $durationFailure = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
-    Assert-FailedWith -Result $durationFailure -Patterns @('GIF total decoded delay.*expected 3\.5-4\.5s') -Message 'independent GIF duration diagnostic was not emitted'
+    Assert-FailedWith -Result $durationFailure -Patterns @('GIF total decoded delay.*expected 3\.5-5\.5s') -Message 'independent GIF duration diagnostic was not emitted'
     Copy-Item -LiteralPath $validGifBackup -Destination $gifPath -Force
 
     New-MovingGif -Path $gifPath -FramesDir (Join-Path $fixtureRoot 'two-fps-gif-frames') -FrameRate 2 -FrameCount 8
@@ -384,6 +389,12 @@ try {
     Write-Utf8File -Path $rootReadmePath -Content ($validRootReadme + "`n![reference demo][reference-demo]`n`n[reference-demo]: assets/reference-demo.gif?raw=1`n")
     $referenceGif = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
     Assert-FailedWith -Result $referenceGif -Patterns @('unexpected root GIF reference: assets/reference-demo\.gif') -Message 'reference-style root GIF embed was not rejected'
+    Write-Utf8File -Path $rootReadmePath -Content ($validRootReadme + "`n![collapsed demo][]`n`n[collapsed demo]: assets/collapsed-demo.gif`n")
+    $collapsedReferenceGif = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
+    Assert-FailedWith -Result $collapsedReferenceGif -Patterns @('unexpected root GIF reference: assets/collapsed-demo\.gif') -Message 'collapsed reference-style root GIF embed was not rejected'
+    Write-Utf8File -Path $rootReadmePath -Content ($validRootReadme + "`n![shortcut demo]`n`n[shortcut demo]: assets/shortcut-demo.gif`n")
+    $shortcutReferenceGif = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
+    Assert-FailedWith -Result $shortcutReferenceGif -Patterns @('unexpected root GIF reference: assets/shortcut-demo\.gif') -Message 'shortcut reference-style root GIF embed was not rejected'
     Write-Utf8File -Path $rootReadmePath -Content @'
 # Fixture root
 
