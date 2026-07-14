@@ -137,8 +137,17 @@ foreach ($project in @($manifestObject.projects)) {
     Copy-ArchiveFile -RelativePath $projectRelativePath -RepoRoot $RepoRoot -ArchiveRoot $archiveRoot
 }
 
-$sourceCommit = (& git -C $RepoRoot rev-parse HEAD 2>$null | Select-Object -First 1)
-if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace([string]$sourceCommit)) {
+$sourceCommitOutput = $null
+$sourceCommitExitCode = 1
+try {
+    $sourceCommitOutput = & git -C $RepoRoot rev-parse HEAD 2>$null
+    $sourceCommitExitCode = $LASTEXITCODE
+}
+catch {
+    $sourceCommitOutput = $null
+}
+$sourceCommit = $sourceCommitOutput | Select-Object -First 1
+if ($sourceCommitExitCode -ne 0 -or [string]::IsNullOrWhiteSpace([string]$sourceCommit)) {
     $sourceCommit = $null
 }
 else {

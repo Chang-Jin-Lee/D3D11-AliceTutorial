@@ -13,10 +13,12 @@ $archiveScript = Join-Path $PSScriptRoot '..\archive_readme_media.ps1'
 $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('archive-readme-media-' + [guid]::NewGuid().ToString('N'))
 $fixtureRoot = Join-Path $tempRoot 'fixture'
 $destinationRoot = Join-Path $tempRoot 'destination'
+$nonGitDestinationRoot = Join-Path $tempRoot 'non-git-destination'
 
 try {
     New-Item -ItemType Directory -Path $fixtureRoot -Force | Out-Null
     New-Item -ItemType Directory -Path $destinationRoot -Force | Out-Null
+    New-Item -ItemType Directory -Path $nonGitDestinationRoot -Force | Out-Null
 
     $sourceFiles = [ordered]@{
         'README.md' = '# Fixture README'
@@ -70,6 +72,23 @@ try {
     }
     $fixtureManifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $manifestPath -NoNewline
 
+    $LASTEXITCODE = $null
+    & $archiveScript -RepoRoot $fixtureRoot -Manifest $manifestPath -DestinationRoot $nonGitDestinationRoot
+    $nonGitArchive = @(Get-ChildItem -LiteralPath $nonGitDestinationRoot -Directory) | Select-Object -First 1
+    $nonGitMetadata = Get-Content -LiteralPath (Join-Path $nonGitArchive.FullName 'archive-manifest.json') -Raw | ConvertFrom-Json
+    Assert-True ($null -eq $nonGitMetadata.sourceCommit) 'non-Git sourceCommit metadata should be null'
+
+    & git init --quiet $fixtureRoot
+    Assert-True ($LASTEXITCODE -eq 0) 'fixture Git repository initialization failed'
+    & git -C $fixtureRoot -c user.name='Archive Test' -c user.email='archive-test@example.invalid' add -- .
+    Assert-True ($LASTEXITCODE -eq 0) 'fixture Git add failed'
+    & git -C $fixtureRoot -c user.name='Archive Test' -c user.email='archive-test@example.invalid' commit --quiet -m 'test fixture'
+    Assert-True ($LASTEXITCODE -eq 0) 'fixture Git commit failed'
+    $expectedSourceCommitOutput = & git -C $fixtureRoot rev-parse HEAD
+    $expectedSourceCommitExitCode = $LASTEXITCODE
+    Assert-True ($expectedSourceCommitExitCode -eq 0) 'fixture Git rev-parse failed'
+    $expectedSourceCommit = ([string]($expectedSourceCommitOutput | Select-Object -First 1)).Trim()
+
     $beforeHashes = @{}
     $trackedSourcePaths = @($sourceFiles.Keys + 'docs/media/readme/01.png' + 'Dx11/16_pmxWithMotion/README.md')
     foreach ($relativePath in $trackedSourcePaths) {
@@ -78,6 +97,7 @@ try {
     }
     $before = $beforeHashes['docs/media/readme/01.png']
 
+    $LASTEXITCODE = $null
     & $archiveScript -RepoRoot $fixtureRoot -Manifest $manifestPath -DestinationRoot $destinationRoot
 
     $archives = @(Get-ChildItem -LiteralPath $destinationRoot -Directory)
@@ -105,6 +125,7 @@ try {
     $createdAt = [DateTimeOffset]::MinValue
     Assert-True ([DateTimeOffset]::TryParse([string]$metadata.createdAt, [ref]$createdAt)) 'createdAt metadata is invalid'
     Assert-True ([System.IO.Path]::GetFullPath([string]$metadata.sourceRoot) -eq [System.IO.Path]::GetFullPath($fixtureRoot)) 'sourceRoot metadata mismatch'
+    Assert-True ([string]$metadata.sourceCommit -eq $expectedSourceCommit) "sourceCommit metadata mismatch: expected $expectedSourceCommit, got $($metadata.sourceCommit)"
 
     $expectedPaths = @($sourceFiles.Keys + 'docs/media/readme/01.png' | Sort-Object)
     $actualPaths = @(Get-ChildItem -LiteralPath $archive.FullName -Recurse -File |
