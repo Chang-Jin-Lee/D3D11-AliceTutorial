@@ -223,6 +223,8 @@ function Test-GifMedia {
     param(
         [string]$Path,
         [string]$Label,
+        [int]$ExpectedFps,
+        [double]$ExpectedDurationSeconds,
         [System.Collections.Generic.List[string]]$Errors
     )
 
@@ -259,6 +261,10 @@ function Test-GifMedia {
         if ($frameCount -lt 2) {
             Add-VerificationError $Errors "$Label frame count is $frameCount; expected at least 2: $Path"
         }
+        $expectedFrameCount = [int][math]::Round($ExpectedFps * $ExpectedDurationSeconds)
+        if ($frameCount -ne $expectedFrameCount) {
+            Add-VerificationError $Errors "$Label frame count is $frameCount; expected $expectedFrameCount for ${ExpectedFps}fps over ${ExpectedDurationSeconds}s: $Path"
+        }
 
         $totalDelaySeconds = $null
         try {
@@ -272,8 +278,14 @@ function Test-GifMedia {
                     $totalDelayHundredths += [System.BitConverter]::ToUInt32($delayBytes, $index * 4)
                 }
                 $totalDelaySeconds = $totalDelayHundredths / 100.0
-                if ($totalDelaySeconds -lt 3.5 -or $totalDelaySeconds -gt 5.5) {
-                    Add-VerificationError $Errors ("$Label total decoded delay is {0:F2}s; expected 3.5-5.5s: $Path" -f $totalDelaySeconds)
+                $minimumDurationSeconds = $ExpectedDurationSeconds - 0.5
+                $maximumDurationSeconds = $ExpectedDurationSeconds + 0.5
+                if ($totalDelaySeconds -lt $minimumDurationSeconds -or $totalDelaySeconds -gt $maximumDurationSeconds) {
+                    Add-VerificationError $Errors ("$Label total decoded delay is {0:F2}s; expected {1:F1}-{2:F1}s: $Path" -f $totalDelaySeconds, $minimumDurationSeconds, $maximumDurationSeconds)
+                }
+                $decodedFps = $frameCount / $totalDelaySeconds
+                if ([math]::Abs($decodedFps - $ExpectedFps) -gt 0.1) {
+                    Add-VerificationError $Errors ("$Label frame cadence is {0:F2}fps; expected {1:F2}fps: $Path" -f $decodedFps, $ExpectedFps)
                 }
             }
         }
@@ -469,7 +481,15 @@ function Split-MarkdownRow {
 
     $trimmed = $Line.Trim()
     if ($trimmed.StartsWith('|')) { $trimmed = $trimmed.Substring(1) }
-    if ($trimmed.EndsWith('|')) { $trimmed = $trimmed.Substring(0, $trimmed.Length - 1) }
+    if ($trimmed.EndsWith('|')) {
+        $trailingBackslashRun = 0
+        for ($index = $trimmed.Length - 2; $index -ge 0 -and $trimmed[$index] -eq '\'; $index--) {
+            $trailingBackslashRun++
+        }
+        if (($trailingBackslashRun % 2) -eq 0) {
+            $trimmed = $trimmed.Substring(0, $trimmed.Length - 1)
+        }
+    }
 
     $cells = [System.Collections.Generic.List[string]]::new()
     $cell = [System.Text.StringBuilder]::new()
@@ -608,6 +628,22 @@ function Test-CaptureReport {
     }
 }
 
+function Add-RootGifEmbed {
+    param(
+        [System.Collections.Generic.HashSet[string]]$Embeds,
+        [string]$Target
+    )
+
+    $normalizedTarget = $Target.Trim()
+    $suffixIndex = $normalizedTarget.IndexOfAny([char[]]'?#')
+    if ($suffixIndex -ge 0) {
+        $normalizedTarget = $normalizedTarget.Substring(0, $suffixIndex)
+    }
+    if ($normalizedTarget.EndsWith('.gif', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $null = $Embeds.Add($normalizedTarget)
+    }
+}
+
 function Get-RootGifEmbeds {
     param([string]$Content)
 
@@ -615,16 +651,26 @@ function Get-RootGifEmbeds {
     $htmlPattern = '(?is)<img\b[^>]*?\bsrc\s*=\s*(?:"(?<double>[^"]+)"|''(?<single>[^'']+)''|(?<bare>[^\s>]+))'
     foreach ($match in [regex]::Matches($Content, $htmlPattern)) {
         $target = if ($match.Groups['double'].Success) { $match.Groups['double'].Value } elseif ($match.Groups['single'].Success) { $match.Groups['single'].Value } else { $match.Groups['bare'].Value }
-        if ($target.EndsWith('.gif', [System.StringComparison]::OrdinalIgnoreCase)) {
-            $null = $embeds.Add($target)
-        }
+        Add-RootGifEmbed -Embeds $embeds -Target $target
     }
 
     $markdownPattern = '(?is)!\[[^\]]*\]\(\s*(?:<(?<angle>[^>]+)>|(?<plain>[^\s\)]+))'
     foreach ($match in [regex]::Matches($Content, $markdownPattern)) {
         $target = if ($match.Groups['angle'].Success) { $match.Groups['angle'].Value } else { $match.Groups['plain'].Value }
-        if ($target.EndsWith('.gif', [System.StringComparison]::OrdinalIgnoreCase)) {
-            $null = $embeds.Add($target)
+        Add-RootGifEmbed -Embeds $embeds -Target $target
+    }
+
+    $referenceDefinitions = [System.Collections.Generic.Dictionary[string, string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $definitionPattern = '(?im)^\s{0,3}\[(?<id>[^\]]+)\]:\s*(?:<(?<angle>[^>]+)>|(?<plain>\S+))'
+    foreach ($match in [regex]::Matches($Content, $definitionPattern)) {
+        $target = if ($match.Groups['angle'].Success) { $match.Groups['angle'].Value } else { $match.Groups['plain'].Value }
+        $referenceDefinitions[$match.Groups['id'].Value.Trim()] = $target
+    }
+    $referenceImagePattern = '(?is)!\[[^\]]*\]\[(?<id>[^\]]+)\]'
+    foreach ($match in [regex]::Matches($Content, $referenceImagePattern)) {
+        $referenceId = $match.Groups['id'].Value.Trim()
+        if ($referenceDefinitions.ContainsKey($referenceId)) {
+            Add-RootGifEmbed -Embeds $embeds -Target $referenceDefinitions[$referenceId]
         }
     }
 
@@ -782,7 +828,7 @@ if ($null -ne $manifestData) {
             catch { Add-VerificationError $errors "Project $number info PNG validation failed: $($resolved.Info) ($($_.Exception.Message))" }
         }
         if ($null -ne $resolved.Gif) {
-            try { Test-GifMedia -Path $resolved.Gif -Label "Project $number GIF" -Errors $errors }
+            try { Test-GifMedia -Path $resolved.Gif -Label "Project $number GIF" -ExpectedFps ([int]$manifestData.gifFps) -ExpectedDurationSeconds ([double]$manifestData.gifSeconds) -Errors $errors }
             catch { Add-VerificationError $errors "Project $number GIF validation failed: $($resolved.Gif) ($($_.Exception.Message))" }
         }
         if ($null -ne $resolved.ProjectReadme) {

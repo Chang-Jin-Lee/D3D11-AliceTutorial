@@ -4,6 +4,15 @@ function Assert-True([bool]$Condition, [string]$Message) {
     if (-not $Condition) { throw $Message }
 }
 
+function Invoke-ProductionMarkdownRowParser([string]$Script, [string]$Line) {
+    $source = Get-Content -Raw -LiteralPath $Script
+    $start = $source.IndexOf('function Split-MarkdownRow {', [System.StringComparison]::Ordinal)
+    $end = $source.IndexOf('function Get-CaptureReportRows {', [System.StringComparison]::Ordinal)
+    Assert-True ($start -ge 0 -and $end -gt $start) 'could not locate Split-MarkdownRow in verifier source'
+    Invoke-Expression $source.Substring($start, $end - $start)
+    return @(Split-MarkdownRow $Line)
+}
+
 function Write-Utf8File([string]$Path, [string]$Content) {
     $parent = Split-Path -Parent $Path
     if (-not (Test-Path -LiteralPath $parent -PathType Container)) {
@@ -118,12 +127,12 @@ function New-OneFrameGif([string]$Path) {
     }
 }
 
-function New-MovingGif([string]$Path, [string]$FramesDir, [double]$FrameRate = 2) {
+function New-MovingGif([string]$Path, [string]$FramesDir, [double]$FrameRate = 8, [int]$FrameCount = 32) {
     if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
         throw 'ffmpeg is required to build the real multi-frame GIF fixture'
     }
     $null = New-Item -ItemType Directory -Path $FramesDir -Force
-    for ($index = 0; $index -lt 8; $index++) {
+    for ($index = 0; $index -lt $FrameCount; $index++) {
         New-PatternPng -Path (Join-Path $FramesDir ("frame-{0:D2}.png" -f $index)) -Width 800 -Height 450 -FrameIndex $index
     }
     & ffmpeg -hide_banner -loglevel error -y -framerate $FrameRate -start_number 0 -i (Join-Path $FramesDir 'frame-%02d.png') -loop 0 $Path
@@ -132,19 +141,19 @@ function New-MovingGif([string]$Path, [string]$FramesDir, [double]$FrameRate = 2
 
 function New-TransparentHiddenColorGif([string]$Path, [string]$FramesDir) {
     $null = New-Item -ItemType Directory -Path $FramesDir -Force
-    for ($index = 0; $index -lt 8; $index++) {
+    for ($index = 0; $index -lt 32; $index++) {
         New-TransparentHiddenColorPng -Path (Join-Path $FramesDir ("frame-{0:D2}.png" -f $index)) -Width 800 -Height 450 -FrameIndex $index
     }
-    & ffmpeg -hide_banner -loglevel error -y -framerate 2 -start_number 0 -i (Join-Path $FramesDir 'frame-%02d.png') -filter_complex '[0:v]split[s0][s1];[s0]palettegen=reserve_transparent=1[p];[s1][p]paletteuse=alpha_threshold=128' -loop 0 $Path
+    & ffmpeg -hide_banner -loglevel error -y -framerate 8 -start_number 0 -i (Join-Path $FramesDir 'frame-%02d.png') -filter_complex '[0:v]split[s0][s1];[s0]palettegen=reserve_transparent=1[p];[s1][p]paletteuse=alpha_threshold=128' -loop 0 $Path
     if ($LASTEXITCODE -ne 0) { throw "ffmpeg transparent GIF fixture encoding failed with exit code $LASTEXITCODE" }
 }
 
 function New-AlphaMotionGif([string]$Path, [string]$FramesDir) {
     $null = New-Item -ItemType Directory -Path $FramesDir -Force
-    for ($index = 0; $index -lt 8; $index++) {
+    for ($index = 0; $index -lt 32; $index++) {
         New-AlphaMotionFrame -Path (Join-Path $FramesDir ("frame-{0:D2}.png" -f $index)) -Opaque ($index -ge 4)
     }
-    & ffmpeg -hide_banner -loglevel error -y -framerate 2 -start_number 0 -i (Join-Path $FramesDir 'frame-%02d.png') -filter_complex '[0:v]split[s0][s1];[s0]palettegen=reserve_transparent=1[p];[s1][p]paletteuse=alpha_threshold=128' -loop 0 $Path
+    & ffmpeg -hide_banner -loglevel error -y -framerate 8 -start_number 0 -i (Join-Path $FramesDir 'frame-%02d.png') -filter_complex '[0:v]split[s0][s1];[s0]palettegen=reserve_transparent=1[p];[s1][p]paletteuse=alpha_threshold=128' -loop 0 $Path
     if ($LASTEXITCODE -ne 0) { throw "ffmpeg alpha-motion GIF fixture encoding failed with exit code $LASTEXITCODE" }
 }
 
@@ -194,6 +203,10 @@ Add-Type -AssemblyName System.Drawing
 
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $verifier = Join-Path $repoRoot 'tools/verify_readme_media.ps1'
+$trailingEscapedPipe = @(Invoke-ProductionMarkdownRowParser -Script $verifier -Line '| 01 | 3 | 01_Test.exe | docs/media/readme/01-Test.gif | Success | 800x450 | 2000 | trailing escaped pipe \|')
+Assert-True ($trailingEscapedPipe.Count -eq 8) "trailing escaped-pipe row parsed as $($trailingEscapedPipe.Count) cells instead of 8"
+Assert-True ($trailingEscapedPipe[-1] -ceq 'trailing escaped pipe |') "trailing escaped pipe was corrupted: '$($trailingEscapedPipe[-1])'"
+
 $fixtureRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("verify-readme-media-" + [guid]::NewGuid().ToString('N'))
 $manifestPath = Join-Path $fixtureRoot 'tools/readme_media_manifest.json'
 $mediaDir = Join-Path $fixtureRoot 'docs/media/readme'
@@ -324,9 +337,14 @@ try {
     Assert-FailedWith -Result $frameCountFailure -Patterns @('GIF frame count is 1; expected at least 2') -Message 'independent GIF frame-count diagnostic was not emitted'
     Copy-Item -LiteralPath $validGifBackup -Destination $gifPath -Force
 
-    New-MovingGif -Path $gifPath -FramesDir (Join-Path $fixtureRoot 'short-gif-frames') -FrameRate 8
+    New-MovingGif -Path $gifPath -FramesDir (Join-Path $fixtureRoot 'short-gif-frames') -FrameRate 8 -FrameCount 8
     $durationFailure = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
-    Assert-FailedWith -Result $durationFailure -Patterns @('GIF total decoded delay.*expected 3\.5-5\.5s') -Message 'independent GIF duration diagnostic was not emitted'
+    Assert-FailedWith -Result $durationFailure -Patterns @('GIF total decoded delay.*expected 3\.5-4\.5s') -Message 'independent GIF duration diagnostic was not emitted'
+    Copy-Item -LiteralPath $validGifBackup -Destination $gifPath -Force
+
+    New-MovingGif -Path $gifPath -FramesDir (Join-Path $fixtureRoot 'two-fps-gif-frames') -FrameRate 2 -FrameCount 8
+    $cadenceFailure = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
+    Assert-FailedWith -Result $cadenceFailure -Patterns @('GIF frame cadence is 2\.00fps; expected 8\.00fps') -Message 'independent GIF cadence diagnostic was not emitted'
     Copy-Item -LiteralPath $validGifBackup -Destination $gifPath -Force
 
     $oversizeStream = [System.IO.File]::Open($gifPath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
@@ -357,6 +375,25 @@ try {
     Write-Utf8File -Path $rootReadmePath -Content ($validRootReadme + "`n![external demo](https://example.com/demo.gif)`n")
     $externalGif = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
     Assert-FailedWith -Result $externalGif -Patterns @('unexpected root GIF reference: https://example\.com/demo\.gif') -Message 'external root GIF embed was not rejected'
+    Write-Utf8File -Path $rootReadmePath -Content ($validRootReadme + "`n![query demo](assets/query-demo.gif?raw=1)`n")
+    $queryGif = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
+    Assert-FailedWith -Result $queryGif -Patterns @('unexpected root GIF reference: assets/query-demo\.gif') -Message 'query-suffixed root GIF embed was not rejected'
+    Write-Utf8File -Path $rootReadmePath -Content ($validRootReadme + "`n![fragment demo](assets/fragment-demo.gif#preview)`n")
+    $fragmentGif = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
+    Assert-FailedWith -Result $fragmentGif -Patterns @('unexpected root GIF reference: assets/fragment-demo\.gif') -Message 'fragment-suffixed root GIF embed was not rejected'
+    Write-Utf8File -Path $rootReadmePath -Content ($validRootReadme + "`n![reference demo][reference-demo]`n`n[reference-demo]: assets/reference-demo.gif?raw=1`n")
+    $referenceGif = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
+    Assert-FailedWith -Result $referenceGif -Patterns @('unexpected root GIF reference: assets/reference-demo\.gif') -Message 'reference-style root GIF embed was not rejected'
+    Write-Utf8File -Path $rootReadmePath -Content @'
+# Fixture root
+
+<img src="docs/media/readme/01-Test.png" />
+![featured][featured-demo]
+
+[featured-demo]: docs/media/readme/01-Test.gif?raw=1
+'@
+    $featuredReference = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
+    Assert-True ($featuredReference.ExitCode -eq 0) "reference-style featured GIF embed was not accepted: $($featuredReference.Output)"
     Write-Utf8File -Path $rootReadmePath -Content @'
 # Fixture root
 
