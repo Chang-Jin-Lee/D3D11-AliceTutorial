@@ -26,7 +26,8 @@ catch {
     if ($_.Exception.Message -notmatch 'Project number not found') { throw }
 }
 
-Assert-True (@($project36[0].preCaptureActions).Count -eq 2) 'project 36 start actions missing'
+$project36ActionTypes = @($project36[0].preCaptureActions | ForEach-Object { $_.type })
+Assert-True (($project36ActionTypes -join ',') -eq 'click,wait') 'project 36 start actions missing or reordered'
 $sway = @($mediaManifest.projects | Where-Object { @($_.gifActions).Count -eq 4 })
 Assert-True ($sway.Count -ge 1) 'camera sway actions missing'
 
@@ -52,6 +53,28 @@ $messageSink = {
 }.GetNewClosure()
 $session = [pscustomobject]@{ Handle = [IntPtr]42; ClientWidth = 1600; ClientHeight = 900 }
 $pressedKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+
+$noActionProjects = @(
+    [pscustomobject]@{ Name = 'missing property'; Project = [pscustomobject]@{} },
+    [pscustomobject]@{ Name = 'explicit null'; Project = [pscustomobject]@{ preCaptureActions = $null } },
+    [pscustomobject]@{ Name = 'empty array'; Project = [pscustomobject]@{ preCaptureActions = @() } }
+)
+foreach ($case in $noActionProjects) {
+    try {
+        Invoke-PreCaptureActions -CaptureSession $session -Project $case.Project -PressedKeys $pressedKeys
+    }
+    catch {
+        throw "pre-capture actions must ignore $($case.Name): $($_.Exception.Message)"
+    }
+}
+
+$validActionKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+$validActionProject = [pscustomobject]@{
+    preCaptureActions = @([pscustomobject]@{ type = 'keyDown'; key = 'W' })
+}
+Invoke-PreCaptureActions -CaptureSession $session -Project $validActionProject -PressedKeys $validActionKeys
+Assert-True ($validActionKeys.Contains('W')) 'valid pre-capture action was not dispatched'
+Release-CaptureKeys -CaptureSession $session -PressedKeys $validActionKeys
 
 Invoke-CaptureAction -CaptureSession $session -Action ([pscustomobject]@{ type = 'click'; x = 0.5; y = 0.5 }) -PressedKeys $pressedKeys -MessageSink $messageSink
 Assert-True ($messageLog.Count -eq 2) 'one click must emit exactly two window messages'

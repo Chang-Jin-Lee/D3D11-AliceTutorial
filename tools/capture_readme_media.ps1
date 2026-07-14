@@ -543,6 +543,9 @@ function Invoke-PreCaptureActions {
     )
 
     foreach ($action in @($Project.preCaptureActions)) {
+        if ($null -eq $action) {
+            continue
+        }
         Invoke-CaptureAction -CaptureSession $CaptureSession -Action $action -PressedKeys $PressedKeys -AllowWait
     }
 }
