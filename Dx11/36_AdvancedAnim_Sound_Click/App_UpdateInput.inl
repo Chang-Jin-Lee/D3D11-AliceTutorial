@@ -79,6 +79,10 @@ void App::OnUpdate(const float& dt) {
 		}
 		return;
 	}
+	if (IsReadmeCaptureMode())
+	{
+		m_bIsGameStarted = true;
+	}
 
 	// ====================================== 사운드 중첩 재생 테스트 (1, 2, 3 숫자 키) ======================================
 	if (InputSystem::Instance)

@@ -8,6 +8,7 @@
 
 #include "App.h"
 #include "../Common/Helper.h"
+#include "../Common/ReadmeCapture.h"
 #include <d3dcompiler.h>
 #include <directxtk/WICTextureLoader.h>
 #include <directxtk/DDSTextureLoader.h>
@@ -107,6 +108,11 @@ bool App::OnInitialize()
 	if(!InitImGui()) return false;
 
 	if (!InitTexture()) return false;
+
+	if (ReadmeCapture::IsEnabled())
+	{
+		m_RotateCube = true;
+	}
 
 	if (!m_SystemInfo.InitSysInfomation(m_pDevice)) return false;
 
@@ -286,6 +292,7 @@ void App::OnRender()
 
 
 	// ============================== 스카이박스 렌더 ==============================
+	if (!ReadmeCapture::IsEnabled())
 	{
 		UINT stride = m_VertextBufferStride;
 		UINT offset = m_VertextBufferOffset;

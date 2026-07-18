@@ -1,3 +1,15 @@
+<!-- README-NAV-TOP:START -->
+<div align="center">
+
+이전 | [메인](../../README.md) | [상위](../) | [다음](../02_RenderingCube/README.md)
+
+</div>
+<!-- README-NAV-TOP:END -->
+
+<!-- README-INFO:START -->
+<p align="center"><img src="../../docs/media/readme/info/01-RenderingQuadangle-info.png" width="100%" /></p>
+<!-- README-INFO:END -->
+
 
 ## 01. RenderingQuadangle
 - 내용: NDC 좌표계를 기반으로 두 개의 삼각형을 그려 사각형을 렌더링  
@@ -12,3 +24,19 @@
 </p>
 
 ---
+
+<!-- README-RUNTIME:START -->
+## 실행 화면
+
+| Screenshot | GIF |
+|---|---|
+| <img src="../../docs/media/readme/01-RenderingQuadangle.png" width="100%" /> | <img src="../../docs/media/readme/01-RenderingQuadangle.gif" width="100%" /> |
+<!-- README-RUNTIME:END -->
+
+<!-- README-NAV-BOTTOM:START -->
+<div align="center">
+
+이전 | [메인](../../README.md) | [상위](../) | [다음](../02_RenderingCube/README.md)
+
+</div>
+<!-- README-NAV-BOTTOM:END -->

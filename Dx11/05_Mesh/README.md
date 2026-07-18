@@ -1,3 +1,15 @@
+<!-- README-NAV-TOP:START -->
+<div align="center">
+
+[이전](../04_RenderingMeshWithTexture/README.md) | [메인](../../README.md) | [상위](../) | [다음](../06_pmx/README.md)
+
+</div>
+<!-- README-NAV-TOP:END -->
+
+<!-- README-INFO:START -->
+<p align="center"><img src="../../docs/media/readme/info/05-Mesh-info.png" width="100%" /></p>
+<!-- README-INFO:END -->
+
 ## 05. Mesh (FBX)
 - 내용: FBX 메시를 로드해 머티리얼별 서브셋을 렌더링
 - 주요 구현:
@@ -13,3 +25,18 @@
   <img src="../../docs/media/readme/05-Mesh.png" width="60%" />
 </p>
 
+<!-- README-RUNTIME:START -->
+## 실행 화면
+
+| Screenshot | GIF |
+|---|---|
+| <img src="../../docs/media/readme/05-Mesh.png" width="100%" /> | <img src="../../docs/media/readme/05-Mesh.gif" width="100%" /> |
+<!-- README-RUNTIME:END -->
+
+<!-- README-NAV-BOTTOM:START -->
+<div align="center">
+
+[이전](../04_RenderingMeshWithTexture/README.md) | [메인](../../README.md) | [상위](../) | [다음](../06_pmx/README.md)
+
+</div>
+<!-- README-NAV-BOTTOM:END -->

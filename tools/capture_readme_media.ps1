@@ -4,10 +4,14 @@ param(
     [string]$ProjectNumber,
     [switch]$All,
     [switch]$SkipGif,
-    [switch]$KeepWindows
+    [switch]$KeepWindows,
+    [string]$OutputDir,
+    [switch]$ValidateOnly
 )
 
 $ErrorActionPreference = 'Stop'
+
+. (Join-Path $PSScriptRoot 'readme_media_common.ps1')
 
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Windows.Forms
@@ -17,6 +21,8 @@ using System;
 using System.Runtime.InteropServices;
 using System.Text;
 public static class ReadmeCaptureWin32 {
+  public const uint WM_KEYDOWN = 0x0100;
+  public const uint WM_KEYUP = 0x0101;
   public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
   [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out int lpdwProcessId);
@@ -29,8 +35,6 @@ public static class ReadmeCaptureWin32 {
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
   [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
-  [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
-  [DllImport("user32.dll")] public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo);
   [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
   [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hWnd, ref POINT lpPoint);
   [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
@@ -41,7 +45,7 @@ public static class ReadmeCaptureWin32 {
 "@
 }
 try {
-  [void][ReadmeCaptureWin32]::SetProcessDPIAware()
+    [void][ReadmeCaptureWin32]::SetProcessDPIAware()
 }
 catch {
 }
@@ -51,374 +55,499 @@ $HWND_NOTOPMOST = [IntPtr]::new(-2)
 $SWP_NOSIZE = 0x0001
 $SWP_NOMOVE = 0x0002
 $SWP_SHOWWINDOW = 0x0040
-$MOUSEEVENTF_LEFTDOWN = 0x0002
-$MOUSEEVENTF_LEFTUP = 0x0004
 $WM_LBUTTONDOWN = 0x0201
 $WM_LBUTTONUP = 0x0202
 $MK_LBUTTON = 0x0001
 $PngSignature = [byte[]](0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
+$VirtualKeyCodes = @{ W = 0x57; A = 0x41; S = 0x53; D = 0x44 }
 
 function Test-PngOutput {
-  param([string]$Path)
+    param([string]$Path)
 
-  if (-not (Test-Path -LiteralPath $Path)) {
-    throw "PNG capture did not create output: $Path"
-  }
-
-  $item = Get-Item -LiteralPath $Path
-  if ($item.Length -le 4096) {
-    throw "PNG capture output is too small to be valid: $($item.Length) bytes"
-  }
-
-  $stream = [System.IO.File]::OpenRead($Path)
-  try {
-    if ($stream.Length -lt $PngSignature.Length) {
-      throw "PNG capture output is too small to contain a PNG signature: $($stream.Length) bytes"
+    if (-not (Test-Path -LiteralPath $Path)) {
+        throw "PNG capture did not create output: $Path"
     }
 
-    $header = New-Object byte[] $PngSignature.Length
-    $bytesRead = $stream.Read($header, 0, $header.Length)
-    if ($bytesRead -ne $PngSignature.Length) {
-      throw "PNG capture output could not be read: $Path"
+    $item = Get-Item -LiteralPath $Path
+    if ($item.Length -le 4096) {
+        throw "PNG capture output is too small to be valid: $($item.Length) bytes"
     }
 
-    for ($index = 0; $index -lt $PngSignature.Length; $index++) {
-      if ($header[$index] -ne $PngSignature[$index]) {
-        throw "PNG capture output has an invalid PNG signature: $Path"
-      }
+    $stream = [System.IO.File]::OpenRead($Path)
+    try {
+        if ($stream.Length -lt $PngSignature.Length) {
+            throw "PNG capture output is too small to contain a PNG signature: $($stream.Length) bytes"
+        }
+
+        $header = New-Object byte[] $PngSignature.Length
+        $bytesRead = $stream.Read($header, 0, $header.Length)
+        if ($bytesRead -ne $PngSignature.Length) {
+            throw "PNG capture output could not be read: $Path"
+        }
+
+        for ($index = 0; $index -lt $PngSignature.Length; $index++) {
+            if ($header[$index] -ne $PngSignature[$index]) {
+                throw "PNG capture output has an invalid PNG signature: $Path"
+            }
+        }
     }
-  }
-  finally {
-    $stream.Dispose()
-  }
+    finally {
+        $stream.Dispose()
+    }
+}
+
+function Get-CaptureOutputDetails {
+    param(
+        [string]$Path,
+        [int]$ExpectedWidth,
+        [int]$ExpectedHeight
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "Capture output was not created: $Path"
+    }
+
+    $image = $null
+    try {
+        $image = [System.Drawing.Image]::FromFile($Path)
+        if ($image.Width -ne $ExpectedWidth -or $image.Height -ne $ExpectedHeight) {
+            throw "Capture output has unexpected dimensions $($image.Width)x$($image.Height): $Path"
+        }
+
+        return [pscustomobject]@{
+            Dimensions = "$($image.Width)x$($image.Height)"
+            Bytes = (Get-Item -LiteralPath $Path).Length
+        }
+    }
+    finally {
+        if ($null -ne $image) {
+            $image.Dispose()
+        }
+    }
+}
+
+function Get-CaptureProjectSelection {
+    param(
+        [object]$Manifest,
+        [string]$ProjectNumber,
+        [switch]$All
+    )
+
+    if ($All) {
+        if (-not [string]::IsNullOrWhiteSpace($ProjectNumber)) {
+            throw 'Specify either -All or -ProjectNumber, not both.'
+        }
+        return @($Manifest.projects)
+    }
+
+    if ([string]::IsNullOrWhiteSpace($ProjectNumber)) {
+        throw 'Specify -All to capture every manifest project or -ProjectNumber to capture one project.'
+    }
+
+    $normalizedProjectNumber = if ($ProjectNumber -match '^\d+$') { ([int]$ProjectNumber).ToString('00') } else { $ProjectNumber }
+    $selectedProjects = @($Manifest.projects | Where-Object { $_.number -eq $normalizedProjectNumber })
+    if ($selectedProjects.Count -eq 0) {
+        throw "Project number not found in manifest: $ProjectNumber"
+    }
+
+    return $selectedProjects
+}
+
+function Get-GifActionSchedule {
+    param(
+        [object[]]$Actions,
+        [int]$FrameCount,
+        [int]$FrameIntervalMs
+    )
+
+    $actionList = @($Actions | Where-Object { $null -ne $_ })
+    $pending = @(
+        for ($index = 0; $index -lt $actionList.Count; $index++) {
+            [pscustomobject]@{
+                Order = $index
+                Action = $actionList[$index]
+            }
+        }
+    ) | Sort-Object -Property @{ Expression = { [double]$_.Action.atMs }; Ascending = $true }, @{ Expression = { $_.Order }; Ascending = $true }
+
+    $schedule = [System.Collections.Generic.List[object]]::new()
+    $nextAction = 0
+    for ($frameIndex = 0; $frameIndex -lt $FrameCount; $frameIndex++) {
+        $frameTimeMs = $frameIndex * $FrameIntervalMs
+        while ($nextAction -lt $pending.Count -and [double]$pending[$nextAction].Action.atMs -le $frameTimeMs) {
+            $schedule.Add([pscustomobject]@{
+                FrameIndex = $frameIndex
+                FrameTimeMs = $frameTimeMs
+                Action = $pending[$nextAction].Action
+            })
+            $nextAction++
+        }
+    }
+
+    return $schedule.ToArray()
 }
 
 function Get-WindowTitle {
-  param([IntPtr]$Handle)
+    param([IntPtr]$Handle)
 
-  $length = [ReadmeCaptureWin32]::GetWindowTextLength($Handle)
-  if ($length -le 0) {
-    return ''
-  }
+    $length = [ReadmeCaptureWin32]::GetWindowTextLength($Handle)
+    if ($length -le 0) {
+        return ''
+    }
 
-  $builder = New-Object System.Text.StringBuilder($length + 1)
-  [void][ReadmeCaptureWin32]::GetWindowText($Handle, $builder, $builder.Capacity)
-  return $builder.ToString()
+    $builder = New-Object System.Text.StringBuilder($length + 1)
+    [void][ReadmeCaptureWin32]::GetWindowText($Handle, $builder, $builder.Capacity)
+    return $builder.ToString()
 }
 
 function Get-ProcessCaptureLabel {
-  param([System.Diagnostics.Process]$Process)
+    param([System.Diagnostics.Process]$Process)
 
-  if ($null -eq $Process) {
-    return 'unknown process'
-  }
-
-  try {
-    if (-not [string]::IsNullOrWhiteSpace($Process.ProcessName)) {
-      return $Process.ProcessName
+    if ($null -eq $Process) {
+        return 'unknown process'
     }
-  }
-  catch {
-  }
 
-  try {
-    return "pid $($Process.Id)"
-  }
-  catch {
-    return 'unknown process'
-  }
+    try {
+        if (-not [string]::IsNullOrWhiteSpace($Process.ProcessName)) {
+            return $Process.ProcessName
+        }
+    }
+    catch {
+    }
+
+    try {
+        return "pid $($Process.Id)"
+    }
+    catch {
+        return 'unknown process'
+    }
 }
 
 function Resolve-CaptureWindow {
-  param([System.Diagnostics.Process]$Process)
+    param([System.Diagnostics.Process]$Process)
 
-  $candidates = New-Object System.Collections.Generic.List[object]
-  $addCandidate = {
-    param([IntPtr]$candidateHandle)
+    $candidates = New-Object System.Collections.Generic.List[object]
+    $addCandidate = {
+        param([IntPtr]$CandidateHandle)
 
-    if ($candidateHandle -eq [IntPtr]::Zero) {
-      return
+        if ($CandidateHandle -eq [IntPtr]::Zero -or -not [ReadmeCaptureWin32]::IsWindowVisible($CandidateHandle)) {
+            return
+        }
+
+        $candidateTitle = Get-WindowTitle -Handle $CandidateHandle
+        if ($candidateTitle -eq 'Exception') {
+            throw "Process main window is an exception dialog: $(Get-ProcessCaptureLabel -Process $Process)"
+        }
+
+        $candidateRect = New-Object ReadmeCaptureWin32+RECT
+        if (-not [ReadmeCaptureWin32]::GetWindowRect($CandidateHandle, [ref]$candidateRect)) {
+            return
+        }
+
+        $candidateWidth = $candidateRect.Right - $candidateRect.Left
+        $candidateHeight = $candidateRect.Bottom - $candidateRect.Top
+        if ($candidateWidth -le 32 -or $candidateHeight -le 32) {
+            return
+        }
+
+        $candidates.Add([pscustomobject]@{
+            Handle = $CandidateHandle
+            Title = $candidateTitle
+            Rect = $candidateRect
+        })
     }
 
-    if (-not [ReadmeCaptureWin32]::IsWindowVisible($candidateHandle)) {
-      return
+    $Process.Refresh()
+    if ($Process.HasExited) {
+        throw "Process exited before capture: $(Get-ProcessCaptureLabel -Process $Process)"
     }
 
-    $candidateTitle = Get-WindowTitle -Handle $candidateHandle
-    if ($candidateTitle -eq 'Exception') {
-      throw "Process main window is an exception dialog: $(Get-ProcessCaptureLabel -Process $Process)"
+    if ($Process.MainWindowHandle -ne [IntPtr]::Zero) {
+        & $addCandidate ([IntPtr]$Process.MainWindowHandle)
     }
 
-    $candidateRect = New-Object ReadmeCaptureWin32+RECT
-    if (-not [ReadmeCaptureWin32]::GetWindowRect($candidateHandle, [ref]$candidateRect)) {
-      return
+    $callback = [ReadmeCaptureWin32+EnumWindowsProc]{
+        param([IntPtr]$WindowHandle, [IntPtr]$LParam)
+
+        $windowProcessId = 0
+        [void][ReadmeCaptureWin32]::GetWindowThreadProcessId($WindowHandle, [ref]$windowProcessId)
+        if ($windowProcessId -eq $Process.Id) {
+            & $addCandidate $WindowHandle
+        }
+
+        return $true
+    }
+    [void][ReadmeCaptureWin32]::EnumWindows($callback, [IntPtr]::Zero)
+
+    if ($candidates.Count -eq 0) {
+        throw "Process has no capturable main window: $(Get-ProcessCaptureLabel -Process $Process)"
     }
 
-    $candidateWidth = $candidateRect.Right - $candidateRect.Left
-    $candidateHeight = $candidateRect.Bottom - $candidateRect.Top
-    if ($candidateWidth -le 32 -or $candidateHeight -le 32) {
-      return
+    $preferred = @($candidates | Where-Object { $_.Title -eq 'GameApp' } | Select-Object -First 1)
+    if ($preferred.Count -eq 0) {
+        $preferred = @($candidates | Where-Object { -not [string]::IsNullOrWhiteSpace($_.Title) } | Select-Object -First 1)
     }
 
-    $candidates.Add([pscustomobject]@{
-      Handle = $candidateHandle
-      Title = $candidateTitle
-      Rect = $candidateRect
-      Width = $candidateWidth
-      Height = $candidateHeight
-    })
-  }
-
-  $Process.Refresh()
-  if ($Process.HasExited) {
-    throw "Process exited before capture: $(Get-ProcessCaptureLabel -Process $Process)"
-  }
-
-  if ($null -ne $Process.MainWindowHandle) {
-    $mainWindowHandle = [IntPtr]$Process.MainWindowHandle
-    & $addCandidate $mainWindowHandle
-  }
-
-  $callback = [ReadmeCaptureWin32+EnumWindowsProc]{
-    param([IntPtr]$windowHandle, [IntPtr]$lParam)
-
-    $windowProcessId = 0
-    [void][ReadmeCaptureWin32]::GetWindowThreadProcessId($windowHandle, [ref]$windowProcessId)
-    if ($windowProcessId -eq $Process.Id) {
-      & $addCandidate $windowHandle
+    if ($preferred.Count -eq 0) {
+        return $candidates[0]
     }
 
-    return $true
-  }
-
-  [void][ReadmeCaptureWin32]::EnumWindows($callback, [IntPtr]::Zero)
-
-  if ($candidates.Count -eq 0) {
-    throw "Process has no capturable main window: $(Get-ProcessCaptureLabel -Process $Process)"
-  }
-
-  $preferred = @($candidates | Where-Object { $_.Title -eq 'GameApp' } | Select-Object -First 1)
-  if ($preferred.Count -eq 0) {
-    $preferred = @($candidates | Where-Object { -not [string]::IsNullOrWhiteSpace($_.Title) } | Select-Object -First 1)
-  }
-
-  if ($preferred.Count -eq 0) {
-    return $candidates[0]
-  }
-
-  return $preferred[0]
+    return $preferred[0]
 }
 
 function Get-CaptureClientRect {
-  param(
-    [IntPtr]$Handle,
-    [object]$FallbackRect
-  )
+    param(
+        [IntPtr]$Handle,
+        [object]$FallbackRect
+    )
 
-  $clientRect = New-Object ReadmeCaptureWin32+RECT
-  if ([ReadmeCaptureWin32]::GetClientRect($Handle, [ref]$clientRect)) {
-    $clientWidth = $clientRect.Right - $clientRect.Left
-    $clientHeight = $clientRect.Bottom - $clientRect.Top
-    if ($clientWidth -gt 32 -and $clientHeight -gt 32) {
-      $origin = New-Object ReadmeCaptureWin32+POINT
-      $origin.X = 0
-      $origin.Y = 0
-      if ([ReadmeCaptureWin32]::ClientToScreen($Handle, [ref]$origin)) {
-        return [pscustomobject]@{
-          Left = $origin.X
-          Top = $origin.Y
-          Right = $origin.X + $clientWidth
-          Bottom = $origin.Y + $clientHeight
+    $clientRect = New-Object ReadmeCaptureWin32+RECT
+    if ([ReadmeCaptureWin32]::GetClientRect($Handle, [ref]$clientRect)) {
+        $clientWidth = $clientRect.Right - $clientRect.Left
+        $clientHeight = $clientRect.Bottom - $clientRect.Top
+        if ($clientWidth -gt 32 -and $clientHeight -gt 32) {
+            $origin = New-Object ReadmeCaptureWin32+POINT
+            if ([ReadmeCaptureWin32]::ClientToScreen($Handle, [ref]$origin)) {
+                return [pscustomobject]@{
+                    Left = $origin.X
+                    Top = $origin.Y
+                    Right = $origin.X + $clientWidth
+                    Bottom = $origin.Y + $clientHeight
+                }
+            }
         }
-      }
     }
-  }
 
-  return $FallbackRect
+    return $FallbackRect
 }
 
-function Capture-WindowPng {
-  param([System.Diagnostics.Process]$Process, [string]$OutputPath)
-  $Process.Refresh()
-  if ($Process.HasExited) {
-    throw "Process exited before capture: $(Get-ProcessCaptureLabel -Process $Process)"
-  }
+function Resize-CaptureWindowClient {
+    param([IntPtr]$Handle, [int]$ClientWidth, [int]$ClientHeight)
 
-  if ($Process.MainWindowTitle -eq 'Exception') {
-    throw "Process main window is an exception dialog: $(Get-ProcessCaptureLabel -Process $Process)"
-  }
-
-  $captureWindow = Resolve-CaptureWindow -Process $Process
-  $handle = $captureWindow.Handle
-  $rect = Get-CaptureClientRect -Handle $handle -FallbackRect $captureWindow.Rect
-  $width = $rect.Right - $rect.Left
-  $height = $rect.Bottom - $rect.Top
-  if ($width -le 32 -or $height -le 32) { throw "Window rectangle too small: ${width}x${height}" }
-  $bitmap = $null
-  $graphics = $null
-  $topmostFlags = [uint32]($SWP_NOMOVE -bor $SWP_NOSIZE -bor $SWP_SHOWWINDOW)
-  try {
-    if (-not [ReadmeCaptureWin32]::SetWindowPos($handle, $HWND_TOPMOST, 0, 0, 0, 0, $topmostFlags)) {
-      throw "SetWindowPos failed while making window topmost"
+    $window = New-Object ReadmeCaptureWin32+RECT
+    $client = New-Object ReadmeCaptureWin32+RECT
+    if (-not [ReadmeCaptureWin32]::GetWindowRect($Handle, [ref]$window) -or
+        -not [ReadmeCaptureWin32]::GetClientRect($Handle, [ref]$client)) {
+        throw 'unable to measure capture window'
+    }
+    $outerWidth = $ClientWidth + (($window.Right - $window.Left) - ($client.Right - $client.Left))
+    $outerHeight = $ClientHeight + (($window.Bottom - $window.Top) - ($client.Bottom - $client.Top))
+    if (-not [ReadmeCaptureWin32]::SetWindowPos($Handle, [IntPtr]::Zero, 40, 40, $outerWidth, $outerHeight, 0x0040)) {
+        throw 'unable to resize capture window'
     }
 
-    $showWindowResult = [ReadmeCaptureWin32]::ShowWindow($handle, 9)
-    $lastSetForegroundResult = $false
-    $foregrounded = $false
-    $foregroundDeadline = (Get-Date).AddMilliseconds(500)
-    do {
-      $lastSetForegroundResult = [ReadmeCaptureWin32]::SetForegroundWindow($handle)
-      [void][ReadmeCaptureWin32]::BringWindowToTop($handle)
-      Start-Sleep -Milliseconds 100
-      if ([ReadmeCaptureWin32]::GetForegroundWindow() -eq $handle) {
-        $foregrounded = $true
-        break
-      }
-    } while ((Get-Date) -lt $foregroundDeadline)
-
-    if (-not $foregrounded) {
-      $foregroundHandle = [ReadmeCaptureWin32]::GetForegroundWindow()
-      Write-Warning ("Continuing after foreground request was denied for process window: {0} (ShowWindow returned {1}; SetForegroundWindow returned {2}; target handle 0x{3}; foreground handle 0x{4})" -f `
-        (Get-ProcessCaptureLabel -Process $Process),
-        $showWindowResult,
-        $lastSetForegroundResult,
-        $handle.ToInt64().ToString('X'),
-        $foregroundHandle.ToInt64().ToString('X'))
+    Start-Sleep -Milliseconds 100
+    $resizedClient = New-Object ReadmeCaptureWin32+RECT
+    if (-not [ReadmeCaptureWin32]::GetClientRect($Handle, [ref]$resizedClient)) {
+        throw 'unable to remeasure capture window'
     }
-
-    [void][ReadmeCaptureWin32]::BringWindowToTop($handle)
-    Start-Sleep -Milliseconds 300
-
-    $bitmap = New-Object System.Drawing.Bitmap($width, $height)
-    $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-    $graphics.CopyFromScreen($rect.Left, $rect.Top, 0, 0, $bitmap.Size)
-    $bitmap.Save($OutputPath, [System.Drawing.Imaging.ImageFormat]::Png)
-    Test-PngOutput -Path $OutputPath
-  }
-  finally {
-    if ($handle -ne [IntPtr]::Zero) {
-      [void][ReadmeCaptureWin32]::SetWindowPos($handle, $HWND_NOTOPMOST, 0, 0, 0, 0, $topmostFlags)
+    $actualWidth = $resizedClient.Right - $resizedClient.Left
+    $actualHeight = $resizedClient.Bottom - $resizedClient.Top
+    if ($actualWidth -ne $ClientWidth -or $actualHeight -ne $ClientHeight) {
+        throw "capture client size mismatch: expected ${ClientWidth}x${ClientHeight}, found ${actualWidth}x${actualHeight}"
     }
-    if ($null -ne $graphics) {
-      $graphics.Dispose()
-    }
-    if ($null -ne $bitmap) {
-      $bitmap.Dispose()
-    }
-  }
 }
 
-function Invoke-ProjectStartInteraction {
-  param(
-    [System.Diagnostics.Process]$Process,
-    [object]$Project
-  )
+function Focus-CaptureWindow {
+    param([IntPtr]$Handle)
 
-  $startClick = [bool](Get-JsonPropertyValue -Object $Project -Name 'startClick' -DefaultValue $false)
-  if (-not $startClick) {
-    return
-  }
-
-  $Process.Refresh()
-  if ($Process.HasExited) {
-    throw "Process exited before start interaction: $(Get-ProcessCaptureLabel -Process $Process)"
-  }
-
-  $captureWindow = Resolve-CaptureWindow -Process $Process
-  $handle = $captureWindow.Handle
-  $rect = Get-CaptureClientRect -Handle $handle -FallbackRect $captureWindow.Rect
-  $clientRect = New-Object ReadmeCaptureWin32+RECT
-  $clientX = [int](($rect.Right - $rect.Left) / 2)
-  $clientY = [int](($rect.Bottom - $rect.Top) / 2)
-  if ([ReadmeCaptureWin32]::GetClientRect($handle, [ref]$clientRect)) {
-    $clientX = [int](($clientRect.Right - $clientRect.Left) / 2)
-    $clientY = [int](($clientRect.Bottom - $clientRect.Top) / 2)
-  }
-  $x = [int](($rect.Left + $rect.Right) / 2)
-  $y = [int](($rect.Top + $rect.Bottom) / 2)
-
-  [void][ReadmeCaptureWin32]::ShowWindow($handle, 9)
-  [void][ReadmeCaptureWin32]::SetForegroundWindow($handle)
-  [void][ReadmeCaptureWin32]::BringWindowToTop($handle)
-  Start-Sleep -Milliseconds 200
-
-  [void][ReadmeCaptureWin32]::SetCursorPos($x, $y)
-  Start-Sleep -Milliseconds 100
-  [ReadmeCaptureWin32]::mouse_event([uint32]$MOUSEEVENTF_LEFTDOWN, [uint32]$x, [uint32]$y, 0, [UIntPtr]::Zero)
-  Start-Sleep -Milliseconds 60
-  [ReadmeCaptureWin32]::mouse_event([uint32]$MOUSEEVENTF_LEFTUP, [uint32]$x, [uint32]$y, 0, [UIntPtr]::Zero)
-
-  $lParam = [IntPtr]((($clientY -band 0xffff) -shl 16) -bor ($clientX -band 0xffff))
-  [void][ReadmeCaptureWin32]::PostMessage($handle, [uint32]$WM_LBUTTONDOWN, [IntPtr]$MK_LBUTTON, $lParam)
-  Start-Sleep -Milliseconds 60
-  [void][ReadmeCaptureWin32]::PostMessage($handle, [uint32]$WM_LBUTTONUP, [IntPtr]::Zero, $lParam)
-
-  $postStartDelayMs = [int](Get-JsonPropertyValue -Object $Project -Name 'postStartDelayMs' -DefaultValue 1000)
-  if ($postStartDelayMs -gt 0) {
-    Start-Sleep -Milliseconds $postStartDelayMs
-  }
+    [void][ReadmeCaptureWin32]::ShowWindow($Handle, 9)
+    [void][ReadmeCaptureWin32]::SetForegroundWindow($Handle)
+    [void][ReadmeCaptureWin32]::BringWindowToTop($Handle)
 }
 
-function Resolve-ExistingInputPath {
+function Test-PreparedCaptureWindow {
     param(
-        [string]$Path,
-        [string]$RepoRoot
+        [System.Diagnostics.Process]$Process,
+        [object]$CaptureSession
     )
 
-    if ([System.IO.Path]::IsPathRooted($Path)) {
-        return (Resolve-Path -LiteralPath $Path).Path
+    $Process.Refresh()
+    if ($Process.HasExited) {
+        throw "Process exited before capture: $(Get-ProcessCaptureLabel -Process $Process)"
     }
 
-    $repoCandidate = Join-Path $RepoRoot $Path
-    if (Test-Path -LiteralPath $repoCandidate) {
-        return (Resolve-Path -LiteralPath $repoCandidate).Path
+    $captureWindow = Resolve-CaptureWindow -Process $Process
+    if ($captureWindow.Handle -ne $CaptureSession.Handle) {
+        throw 'capture window changed during prepared capture sequence'
     }
 
-    $cwdCandidate = Join-Path (Get-Location).Path $Path
-    if (Test-Path -LiteralPath $cwdCandidate) {
-        return (Resolve-Path -LiteralPath $cwdCandidate).Path
+    $client = New-Object ReadmeCaptureWin32+RECT
+    if (-not [ReadmeCaptureWin32]::GetClientRect($CaptureSession.Handle, [ref]$client)) {
+        throw 'unable to remeasure prepared capture client window'
+    }
+    $width = $client.Right - $client.Left
+    $height = $client.Bottom - $client.Top
+    if ($width -ne $CaptureSession.ClientWidth -or $height -ne $CaptureSession.ClientHeight) {
+        throw "prepared client size changed: expected $($CaptureSession.ClientWidth)x$($CaptureSession.ClientHeight), found ${width}x${height}"
     }
 
-    throw "Path not found: $Path"
+    return $CaptureSession.Rect
 }
 
-function Resolve-RepoPath {
+function Prepare-CaptureWindow {
     param(
-        [string]$Path,
-        [string]$RepoRoot
+        [System.Diagnostics.Process]$Process,
+        [int]$ClientWidth,
+        [int]$ClientHeight
     )
 
-    if ([System.IO.Path]::IsPathRooted($Path)) {
-        return [System.IO.Path]::GetFullPath($Path)
-    }
+    $session = $null
+    try {
+        $captureWindow = Resolve-CaptureWindow -Process $Process
+        Resize-CaptureWindowClient -Handle $captureWindow.Handle -ClientWidth $ClientWidth -ClientHeight $ClientHeight
+        $captureWindow = Resolve-CaptureWindow -Process $Process
+        $rect = Get-CaptureClientRect -Handle $captureWindow.Handle -FallbackRect $captureWindow.Rect
+        $width = $rect.Right - $rect.Left
+        $height = $rect.Bottom - $rect.Top
+        if ($width -ne $ClientWidth -or $height -ne $ClientHeight) {
+            throw "prepared client size mismatch: expected ${ClientWidth}x${ClientHeight}, found ${width}x${height}"
+        }
 
-    return [System.IO.Path]::GetFullPath((Join-Path $RepoRoot $Path))
+        $topmostFlags = [uint32]($SWP_NOMOVE -bor $SWP_NOSIZE -bor $SWP_SHOWWINDOW)
+        if (-not [ReadmeCaptureWin32]::SetWindowPos($captureWindow.Handle, $HWND_TOPMOST, 0, 0, 0, 0, $topmostFlags)) {
+            throw 'SetWindowPos failed while making window topmost'
+        }
+        $session = [pscustomobject]@{
+            Handle = $captureWindow.Handle
+            ClientWidth = $ClientWidth
+            ClientHeight = $ClientHeight
+            Rect = $rect
+            TopmostFlags = $topmostFlags
+        }
+        Focus-CaptureWindow -Handle $captureWindow.Handle
+        Start-Sleep -Milliseconds 300
+        $session.Rect = Test-PreparedCaptureWindow -Process $Process -CaptureSession $session
+        return $session
+    }
+    catch {
+        if ($null -ne $session) {
+            Restore-CaptureWindow -CaptureSession $session
+        }
+        throw
+    }
 }
 
-function Get-JsonPropertyValue {
+function Restore-CaptureWindow {
+    param([object]$CaptureSession)
+
+    if ($null -ne $CaptureSession -and $CaptureSession.Handle -ne [IntPtr]::Zero) {
+        [void][ReadmeCaptureWin32]::SetWindowPos($CaptureSession.Handle, $HWND_NOTOPMOST, 0, 0, 0, 0, [uint32]$CaptureSession.TopmostFlags)
+    }
+}
+
+function Capture-PreparedWindowPng {
     param(
-        [object]$Object,
-        [string]$Name,
-        [object]$DefaultValue
+        [System.Diagnostics.Process]$Process,
+        [object]$CaptureSession,
+        [string]$OutputPath
     )
 
-    $property = $Object.PSObject.Properties[$Name]
-    if ($null -ne $property -and $null -ne $property.Value) {
-        return $property.Value
+    $rect = Test-PreparedCaptureWindow -Process $Process -CaptureSession $CaptureSession
+    $bitmap = $null
+    $graphics = $null
+    try {
+        $bitmap = New-Object System.Drawing.Bitmap($CaptureSession.ClientWidth, $CaptureSession.ClientHeight)
+        $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+        $graphics.CopyFromScreen($rect.Left, $rect.Top, 0, 0, $bitmap.Size)
+        $bitmap.Save($OutputPath, [System.Drawing.Imaging.ImageFormat]::Png)
+        Test-PngOutput -Path $OutputPath
+        [void](Get-CaptureOutputDetails -Path $OutputPath -ExpectedWidth $CaptureSession.ClientWidth -ExpectedHeight $CaptureSession.ClientHeight)
     }
-
-    return $DefaultValue
+    finally {
+        if ($null -ne $graphics) {
+            $graphics.Dispose()
+        }
+        if ($null -ne $bitmap) {
+            $bitmap.Dispose()
+        }
+    }
 }
 
-function Normalize-ProjectNumber {
-    param([string]$Value)
+function Send-CaptureWindowMessage {
+    param([IntPtr]$Handle, [uint32]$Message, [IntPtr]$WParam, [IntPtr]$LParam)
 
-    $parsed = 0
-    if ([int]::TryParse($Value, [ref]$parsed)) {
-        return $parsed.ToString('00')
+    [void][ReadmeCaptureWin32]::PostMessage($Handle, $Message, $WParam, $LParam)
+}
+
+function Invoke-CaptureAction {
+    param(
+        [object]$CaptureSession,
+        [object]$Action,
+        [System.Collections.Generic.HashSet[string]]$PressedKeys,
+        [switch]$AllowWait,
+        [scriptblock]$MessageSink
+    )
+
+    if ($null -eq $MessageSink) {
+        $MessageSink = ${function:Send-CaptureWindowMessage}
     }
 
-    return $Value
+    switch ([string]$Action.type) {
+        'wait' {
+            if ($AllowWait) {
+                Start-Sleep -Milliseconds ([int]$Action.durationMs)
+            }
+        }
+        'click' {
+            $clientX = [int][Math]::Round(([double]$Action.x) * ($CaptureSession.ClientWidth - 1))
+            $clientY = [int][Math]::Round(([double]$Action.y) * ($CaptureSession.ClientHeight - 1))
+            $lParam = [IntPtr]((($clientY -band 0xffff) -shl 16) -bor ($clientX -band 0xffff))
+            & $MessageSink $CaptureSession.Handle ([uint32]$WM_LBUTTONDOWN) ([IntPtr]$MK_LBUTTON) $lParam
+            & $MessageSink $CaptureSession.Handle ([uint32]$WM_LBUTTONUP) ([IntPtr]::Zero) $lParam
+        }
+        'keyDown' {
+            $key = [string]$Action.key
+            $keyCode = [IntPtr]$VirtualKeyCodes[$key]
+            & $MessageSink $CaptureSession.Handle ([ReadmeCaptureWin32]::WM_KEYDOWN) $keyCode ([IntPtr]::Zero)
+            [void]$PressedKeys.Add($key)
+        }
+        'keyUp' {
+            $key = [string]$Action.key
+            $keyCode = [IntPtr]$VirtualKeyCodes[$key]
+            & $MessageSink $CaptureSession.Handle ([ReadmeCaptureWin32]::WM_KEYUP) $keyCode ([IntPtr]::Zero)
+            [void]$PressedKeys.Remove($key)
+        }
+        default {
+            throw "unsupported capture action: $($Action.type)"
+        }
+    }
+}
+
+function Release-CaptureKeys {
+    param(
+        [object]$CaptureSession,
+        [System.Collections.Generic.HashSet[string]]$PressedKeys,
+        [scriptblock]$MessageSink
+    )
+
+    if ($null -eq $CaptureSession -or $CaptureSession.Handle -eq [IntPtr]::Zero) {
+        return
+    }
+    if ($null -eq $MessageSink) {
+        $MessageSink = ${function:Send-CaptureWindowMessage}
+    }
+
+    foreach ($key in @($PressedKeys)) {
+        $keyCode = [IntPtr]$VirtualKeyCodes[$key]
+        & $MessageSink $CaptureSession.Handle ([ReadmeCaptureWin32]::WM_KEYUP) $keyCode ([IntPtr]::Zero)
+    }
+    $PressedKeys.Clear()
+}
+
+function Invoke-PreCaptureActions {
+    param(
+        [object]$CaptureSession,
+        [object]$Project,
+        [System.Collections.Generic.HashSet[string]]$PressedKeys
+    )
+
+    foreach ($action in @($Project.preCaptureActions)) {
+        if ($null -eq $action) {
+            continue
+        }
+        Invoke-CaptureAction -CaptureSession $CaptureSession -Action $action -PressedKeys $PressedKeys -AllowWait
+    }
 }
 
 function Wait-MainWindow {
@@ -429,11 +558,11 @@ function Wait-MainWindow {
 
     $deadline = (Get-Date).AddMilliseconds($TimeoutMs)
     do {
+        $Process.Refresh()
         if ($Process.HasExited) {
-            throw "Process exited before a main window appeared: $($Process.ProcessName)"
+            throw "Process exited before a main window appeared: $(Get-ProcessCaptureLabel -Process $Process)"
         }
 
-        $Process.Refresh()
         if ($Process.MainWindowHandle -ne [IntPtr]::Zero) {
             return
         }
@@ -441,7 +570,7 @@ function Wait-MainWindow {
         Start-Sleep -Milliseconds 200
     } while ((Get-Date) -lt $deadline)
 
-    throw "Timed out waiting for a main window: $($Process.ProcessName)"
+    throw "Timed out waiting for a main window: $(Get-ProcessCaptureLabel -Process $Process)"
 }
 
 function Convert-ToReportPath {
@@ -473,16 +602,22 @@ function Add-ReportRow {
     param(
         [System.Collections.Generic.List[object]]$Rows,
         [object]$Project,
+        [int]$Attempt,
         [string]$Output,
         [string]$Status,
+        [string]$Dimensions,
+        [object]$Bytes,
         [string]$Notes
     )
 
     $Rows.Add([pscustomobject]@{
         Project = $Project.number
+        Attempt = $Attempt
         Exe = $Project.exe
         Output = $Output
         Status = $Status
+        Dimensions = $Dimensions
+        Bytes = $Bytes
         Notes = $Notes
     })
 }
@@ -498,15 +633,18 @@ function Write-CaptureReport {
     $lines.Add('')
     $lines.Add("Generated: $((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))")
     $lines.Add('')
-    $lines.Add('| Project | Exe | Output | Status | Notes |')
-    $lines.Add('|---|---|---|---|---|')
+    $lines.Add('| Project | Attempt | Exe | Output | Status | Dimensions | Bytes | Notes |')
+    $lines.Add('|---|---:|---|---|---|---|---:|---|')
 
     foreach ($row in $Rows) {
-        $line = '| {0} | {1} | {2} | {3} | {4} |' -f `
+        $line = '| {0} | {1} | {2} | {3} | {4} | {5} | {6} | {7} |' -f `
             (Format-MarkdownCell $row.Project),
+            (Format-MarkdownCell $row.Attempt),
             (Format-MarkdownCell $row.Exe),
             (Format-MarkdownCell $row.Output),
             (Format-MarkdownCell $row.Status),
+            (Format-MarkdownCell $row.Dimensions),
+            (Format-MarkdownCell $row.Bytes),
             (Format-MarkdownCell $row.Notes)
         $lines.Add($line)
     }
@@ -540,13 +678,107 @@ function Remove-FrameDirectory {
     Remove-Item -LiteralPath $resolvedFrames -Recurse -Force
 }
 
+function Invoke-GifEncode {
+    param(
+        [string]$FfmpegPath,
+        [string]$InputPattern,
+        [string]$GifPath,
+        [int]$GifFps,
+        [int]$GifWidth,
+        [int]$GifHeight,
+        [int]$MaxColors
+    )
+
+    $filter = "fps=$GifFps,scale=$GifWidth`:$GifHeight`:flags=lanczos,split[s0][s1];" +
+        "[s0]palettegen=max_colors=${MaxColors}:stats_mode=diff[p];" +
+        '[s1][p]paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle'
+    $arguments = @(
+        '-y',
+        '-framerate', $GifFps,
+        '-i', $InputPattern,
+        '-filter_complex', $filter,
+        '-loop', '0',
+        $GifPath
+    )
+
+    $ffmpegOutput = & $FfmpegPath @arguments 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        $joinedOutput = ($ffmpegOutput | ForEach-Object { [string]$_ }) -join ' '
+        throw "ffmpeg failed with exit code ${LASTEXITCODE}: $joinedOutput"
+    }
+}
+
+function Invoke-PresentationPanGif {
+    param(
+        [string]$FfmpegPath,
+        [string]$PngPath,
+        [string]$GifPath,
+        [int]$GifFps,
+        [int]$GifWidth,
+        [int]$GifHeight,
+        [double]$GifSeconds,
+        [int]$MaxColors,
+        [int64]$GifMaxBytes = 5242880
+    )
+
+    Test-PngOutput -Path $PngPath
+    $frameCount = [Math]::Max(1, [int][Math]::Ceiling($GifSeconds * $GifFps))
+    $durationText = $GifSeconds.ToString([System.Globalization.CultureInfo]::InvariantCulture)
+    $scaledWidth = $GifWidth + 8
+    $scaledHeight = $GifHeight + 4
+    $colorAttempts = @($MaxColors, 128, 96 | Select-Object -Unique)
+    $details = $null
+
+    foreach ($colorCount in $colorAttempts) {
+        $filter = "scale=$scaledWidth`:$scaledHeight`:flags=lanczos," +
+            "crop=$GifWidth`:$GifHeight`:x='4+4*sin(2*PI*n/$frameCount)':y='2+2*cos(2*PI*n/$frameCount)'," +
+            "fps=$GifFps,split[s0][s1];" +
+            "[s0]palettegen=max_colors=${colorCount}:stats_mode=full[p];" +
+            '[s1][p]paletteuse=dither=sierra2_4a'
+        $arguments = @(
+            '-y',
+            '-loop', '1',
+            '-framerate', $GifFps,
+            '-t', $durationText,
+            '-i', $PngPath,
+            '-frames:v', $frameCount,
+            '-filter_complex', $filter,
+            '-loop', '0',
+            '-gifflags', '0',
+            $GifPath
+        )
+
+        $ffmpegOutput = & $FfmpegPath @arguments 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            $joinedOutput = ($ffmpegOutput | ForEach-Object { [string]$_ }) -join ' '
+            throw "ffmpeg presentation pan failed with exit code ${LASTEXITCODE}: $joinedOutput"
+        }
+
+        $details = Get-CaptureOutputDetails -Path $GifPath -ExpectedWidth $GifWidth -ExpectedHeight $GifHeight
+        if ($details.Bytes -le $GifMaxBytes) {
+            break
+        }
+    }
+
+    if ($details.Bytes -gt $GifMaxBytes) {
+        throw "Presentation-pan GIF exceeds $GifMaxBytes byte limit: $($details.Bytes) bytes"
+    }
+
+    $details | Add-Member -NotePropertyName SourceFrameDurationMs -NotePropertyValue 0
+    $details | Add-Member -NotePropertyName PresentationPan -NotePropertyValue $true
+    return $details
+}
+
 function Invoke-GifCapture {
     param(
         [System.Diagnostics.Process]$Process,
         [object]$Project,
+        [object]$ManifestData,
         [string]$MediaDir,
         [string]$GifPath,
-        [string]$RepoRoot
+        [string]$RepoRoot,
+        [object]$CaptureSession,
+        [System.Collections.Generic.HashSet[string]]$PressedKeys
     )
 
     $ffmpegPath = 'C:\ffmpeg\bin\ffmpeg.exe'
@@ -554,172 +786,228 @@ function Invoke-GifCapture {
         throw "ffmpeg not found: $ffmpegPath"
     }
 
-    $gifSeconds = [double](Get-JsonPropertyValue $Project 'gifSeconds' 4)
-    $gifFps = [int](Get-JsonPropertyValue $Project 'gifFps' 10)
-    if ($gifSeconds -le 0) { throw "gifSeconds must be greater than zero for project $($Project.number)" }
-    if ($gifFps -le 0) { throw "gifFps must be greater than zero for project $($Project.number)" }
-
+    $gifSeconds = [double]$ManifestData.gifSeconds
+    $gifFps = [int]$ManifestData.gifFps
+    $gifWidth = [int]$ManifestData.gifWidth
+    $gifHeight = [int]$ManifestData.gifHeight
+    $gifMaxBytes = [int64]$ManifestData.gifMaxBytes
     $frameCount = [Math]::Max(1, [int][Math]::Ceiling($gifSeconds * $gifFps))
-    $frameIntervalMs = [Math]::Max(1, [int][Math]::Round(1000 / $gifFps))
+    $frameIntervalMs = [int][Math]::Round(1000.0 / $gifFps)
     $framesDir = Join-Path $MediaDir ('frames-{0}-{1}' -f $Project.number, [Guid]::NewGuid().ToString('N'))
+    $scheduledActions = @(Get-GifActionSchedule -Actions @($Project.gifActions) -FrameCount $frameCount -FrameIntervalMs $frameIntervalMs)
+    $nextScheduledAction = 0
 
     New-Item -ItemType Directory -Path $framesDir -Force | Out-Null
     try {
+        $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
         for ($index = 0; $index -lt $frameCount; $index++) {
-            $framePath = Join-Path $framesDir ('frame_{0:D4}.png' -f $index)
-            Capture-WindowPng -Process $Process -OutputPath $framePath
-            if ($index -lt ($frameCount - 1)) {
-                Start-Sleep -Milliseconds $frameIntervalMs
+            $frameTargetMs = $index * $frameIntervalMs
+            while ($stopwatch.ElapsedMilliseconds -lt $frameTargetMs) {
+                Start-Sleep -Milliseconds ([Math]::Min(10, $frameTargetMs - $stopwatch.ElapsedMilliseconds))
             }
+
+            while ($nextScheduledAction -lt $scheduledActions.Count -and $scheduledActions[$nextScheduledAction].FrameIndex -eq $index) {
+                Invoke-CaptureAction -CaptureSession $CaptureSession -Action $scheduledActions[$nextScheduledAction].Action -PressedKeys $PressedKeys
+                $nextScheduledAction++
+            }
+
+            $framePath = Join-Path $framesDir ('frame_{0:D4}.png' -f $index)
+            Capture-PreparedWindowPng -Process $Process -CaptureSession $CaptureSession -OutputPath $framePath
         }
+        $sourceFrameDurationMs = $stopwatch.ElapsedMilliseconds
 
         $inputPattern = Join-Path $framesDir 'frame_%04d.png'
-        $filter = 'fps={0},scale=960:-1:flags=lanczos' -f $gifFps
-        $arguments = @(
-            '-y',
-            '-framerate', $gifFps,
-            '-i', $inputPattern,
-            '-vf', $filter,
-            '-loop', '0',
-            $GifPath
-        )
-
-        $ffmpegOutput = & $ffmpegPath @arguments 2>&1
-        $exitCode = $LASTEXITCODE
-        if ($exitCode -ne 0) {
-            $joinedOutput = ($ffmpegOutput | ForEach-Object { [string]$_ }) -join ' '
-            throw "ffmpeg failed with exit code ${exitCode}: $joinedOutput"
+        Invoke-GifEncode -FfmpegPath $ffmpegPath -InputPattern $inputPattern -GifPath $GifPath -GifFps $gifFps -GifWidth $gifWidth -GifHeight $gifHeight -MaxColors 128
+        $details = Get-CaptureOutputDetails -Path $GifPath -ExpectedWidth $gifWidth -ExpectedHeight $gifHeight
+        if ($details.Bytes -gt $gifMaxBytes) {
+            Invoke-GifEncode -FfmpegPath $ffmpegPath -InputPattern $inputPattern -GifPath $GifPath -GifFps $gifFps -GifWidth $gifWidth -GifHeight $gifHeight -MaxColors 96
+            $details = Get-CaptureOutputDetails -Path $GifPath -ExpectedWidth $gifWidth -ExpectedHeight $gifHeight
+        }
+        if ($details.Bytes -gt $gifMaxBytes) {
+            throw "GIF exceeds $gifMaxBytes byte limit after palette retry: $($details.Bytes) bytes"
         }
 
-        if (-not (Test-Path -LiteralPath $GifPath)) {
-            throw "ffmpeg did not create GIF: $(Convert-ToReportPath $GifPath $RepoRoot)"
-        }
-
-        if ((Get-Item -LiteralPath $GifPath).Length -le 0) {
-            throw "ffmpeg created an empty GIF: $(Convert-ToReportPath $GifPath $RepoRoot)"
-        }
+        $details | Add-Member -NotePropertyName SourceFrameDurationMs -NotePropertyValue $sourceFrameDurationMs
+        return $details
     }
     finally {
         Remove-FrameDirectory -FramesDir $framesDir -MediaDir $MediaDir
     }
 }
 
-if (-not $All -and [string]::IsNullOrWhiteSpace($ProjectNumber)) {
-    throw "Specify -All to capture every manifest project or -ProjectNumber to capture one project."
-}
+function Stop-CaptureProcess {
+    param([System.Diagnostics.Process]$Process)
 
-if ($All -and -not [string]::IsNullOrWhiteSpace($ProjectNumber)) {
-    throw "Specify either -All or -ProjectNumber, not both."
-}
+    if ($null -eq $Process) {
+        return
+    }
 
-$repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
-$manifestPath = Resolve-ExistingInputPath -Path $Manifest -RepoRoot $repoRoot
-$manifestData = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
-$runtimeDir = Resolve-RepoPath -Path $manifestData.runtimeDir -RepoRoot $repoRoot
-$mediaDir = Resolve-RepoPath -Path $manifestData.mediaDir -RepoRoot $repoRoot
-
-New-Item -ItemType Directory -Path $mediaDir -Force | Out-Null
-
-$projects = @($manifestData.projects)
-if ($All) {
-    $selectedProjects = $projects
-}
-else {
-    $normalizedProjectNumber = Normalize-ProjectNumber -Value $ProjectNumber
-    $selectedProjects = @($projects | Where-Object { $_.number -eq $normalizedProjectNumber })
-    if ($selectedProjects.Count -eq 0) {
-        throw "Project number not found in manifest: $ProjectNumber"
+    try {
+        $Process.Refresh()
+        if (-not $Process.HasExited) {
+            Stop-Process -Id $Process.Id -Force
+            [void]$Process.WaitForExit(5000)
+        }
+    }
+    finally {
+        $Process.Dispose()
     }
 }
 
-$reportRows = New-Object System.Collections.Generic.List[object]
+function Invoke-ProjectCapture {
+    param(
+        [object]$Project,
+        [object]$ManifestData,
+        [string]$RuntimeDir,
+        [string]$MediaDir,
+        [string]$RepoRoot,
+        [int]$Attempt,
+        [switch]$SkipGif,
+        [switch]$KeepWindows
+    )
 
-foreach ($project in $selectedProjects) {
     $process = $null
+    $captureCompleted = $false
+    $lastCaptureSession = $null
+    $pressedKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $previousReadmeCaptureEnv = $env:DX11_README_CAPTURE
     $readmeCaptureEnvChanged = $false
-    $imagePath = Join-Path $mediaDir $project.image
-    $imageReportPath = Convert-ToReportPath -Path $imagePath -RepoRoot $repoRoot
-    $exePath = Join-Path $runtimeDir $project.exe
-
-    Write-Host ("Capturing project {0}: {1}" -f $project.number, $project.exe)
-
+    $usePresentationPan = [bool]$Project.gifPresentationPan
+    $imagePath = Resolve-ReadmeMediaContainedPath -BasePath $MediaDir -Path $Project.image -Description "project $($Project.number) image output"
+    $gifPath = Resolve-ReadmeMediaContainedPath -BasePath $MediaDir -Path $Project.gif -Description "project $($Project.number) GIF output"
     try {
-        if (-not (Test-Path -LiteralPath $runtimeDir)) {
-            throw "Runtime directory not found: $(Convert-ToReportPath $runtimeDir $repoRoot)"
+        if (-not (Test-Path -LiteralPath $RuntimeDir -PathType Container)) {
+            throw "Runtime directory not found: $(Convert-ToReportPath $RuntimeDir $RepoRoot)"
         }
 
-        if (-not (Test-Path -LiteralPath $exePath)) {
-            throw "Executable not found: $(Convert-ToReportPath $exePath $repoRoot)"
+        $exePath = Resolve-ReadmeMediaContainedPath -BasePath $RuntimeDir -Path $Project.exe -Description "project $($Project.number) executable"
+        if (-not (Test-Path -LiteralPath $exePath -PathType Leaf)) {
+            throw "Executable not found: $(Convert-ToReportPath $exePath $RepoRoot)"
         }
 
-        $readmeCaptureMode = [bool](Get-JsonPropertyValue -Object $project -Name 'readmeCaptureMode' -DefaultValue $false)
-        if ($readmeCaptureMode) {
+        if ([bool]$Project.readmeCaptureMode) {
             $env:DX11_README_CAPTURE = '1'
             $readmeCaptureEnvChanged = $true
         }
 
-        $process = Start-Process -FilePath $exePath -WorkingDirectory $runtimeDir -PassThru
+        $process = Start-Process -FilePath $exePath -WorkingDirectory $RuntimeDir -PassThru
         if ($readmeCaptureEnvChanged) {
             if ($null -eq $previousReadmeCaptureEnv) {
-                Remove-Item Env:\\DX11_README_CAPTURE -ErrorAction SilentlyContinue
+                Remove-Item Env:\DX11_README_CAPTURE -ErrorAction SilentlyContinue
             }
             else {
                 $env:DX11_README_CAPTURE = $previousReadmeCaptureEnv
             }
             $readmeCaptureEnvChanged = $false
         }
+
         Wait-MainWindow -Process $process
 
-        $delayMs = [int](Get-JsonPropertyValue -Object $project -Name 'delayMs' -DefaultValue $manifestData.defaultDelayMs)
+        if ($Project.gifPhase -eq 'startup' -and -not $SkipGif -and -not $usePresentationPan) {
+            $startupSession = Prepare-CaptureWindow -Process $process -ClientWidth ([int]$ManifestData.captureWidth) -ClientHeight ([int]$ManifestData.captureHeight)
+            $lastCaptureSession = $startupSession
+            try {
+                $gifDetails = Invoke-GifCapture -Process $process -Project $Project -ManifestData $ManifestData -MediaDir $MediaDir -GifPath $gifPath -RepoRoot $RepoRoot -CaptureSession $startupSession -PressedKeys $pressedKeys
+            }
+            finally {
+                Restore-CaptureWindow -CaptureSession $startupSession
+            }
+        }
+
+        $delayMs = [int]$Project.delayMs
         if ($delayMs -gt 0) {
             Start-Sleep -Milliseconds $delayMs
         }
 
-        Invoke-ProjectStartInteraction -Process $process -Project $project
+        $captureSession = Prepare-CaptureWindow -Process $process -ClientWidth ([int]$ManifestData.captureWidth) -ClientHeight ([int]$ManifestData.captureHeight)
+        $lastCaptureSession = $captureSession
+        try {
+            Invoke-PreCaptureActions -CaptureSession $captureSession -Project $Project -PressedKeys $pressedKeys
+            Capture-PreparedWindowPng -Process $process -CaptureSession $captureSession -OutputPath $imagePath
+            $imageDetails = Get-CaptureOutputDetails -Path $imagePath -ExpectedWidth ([int]$ManifestData.captureWidth) -ExpectedHeight ([int]$ManifestData.captureHeight)
 
-        $process.Refresh()
-        Capture-WindowPng -Process $process -OutputPath $imagePath
-        Add-ReportRow -Rows $reportRows -Project $project -Output $imageReportPath -Status 'Success' -Notes 'PNG captured'
-
-        $gifName = Get-JsonPropertyValue -Object $project -Name 'gif' -DefaultValue $null
-        if ($gifName -and -not $SkipGif) {
-            $gifPath = Join-Path $mediaDir $gifName
-            $gifReportPath = Convert-ToReportPath -Path $gifPath -RepoRoot $repoRoot
-            try {
-                Invoke-GifCapture -Process $process -Project $project -MediaDir $mediaDir -GifPath $gifPath -RepoRoot $repoRoot
-                Add-ReportRow -Rows $reportRows -Project $project -Output $gifReportPath -Status 'Success' -Notes 'GIF captured'
+            if ($usePresentationPan -and -not $SkipGif) {
+                $gifDetails = Invoke-PresentationPanGif -FfmpegPath 'C:\ffmpeg\bin\ffmpeg.exe' -PngPath $imagePath -GifPath $gifPath -GifFps ([int]$ManifestData.gifFps) -GifWidth ([int]$ManifestData.gifWidth) -GifHeight ([int]$ManifestData.gifHeight) -GifSeconds ([double]$ManifestData.gifSeconds) -MaxColors 256 -GifMaxBytes ([int64]$ManifestData.gifMaxBytes)
             }
-            catch {
-                Add-ReportRow -Rows $reportRows -Project $project -Output $gifReportPath -Status 'Failure' -Notes "GIF failed: $($_.Exception.Message)"
+            elseif ($Project.gifPhase -eq 'runtime' -and -not $SkipGif) {
+                $gifDetails = Invoke-GifCapture -Process $process -Project $Project -ManifestData $ManifestData -MediaDir $MediaDir -GifPath $gifPath -RepoRoot $RepoRoot -CaptureSession $captureSession -PressedKeys $pressedKeys
             }
         }
-        elseif ($gifName -and $SkipGif) {
-            Add-ReportRow -Rows $reportRows -Project $project -Output (Convert-ToReportPath -Path (Join-Path $mediaDir $gifName) -RepoRoot $repoRoot) -Status 'Skipped' -Notes 'GIF skipped by -SkipGif'
+        finally {
+            Restore-CaptureWindow -CaptureSession $captureSession
         }
-    }
-    catch {
-        Add-ReportRow -Rows $reportRows -Project $project -Output $imageReportPath -Status 'Failure' -Notes $_.Exception.Message
+
+        $captureCompleted = $true
+        return [pscustomobject]@{
+            ImagePath = $imagePath
+            ImageDetails = $imageDetails
+            GifPath = $gifPath
+            GifDetails = $gifDetails
+        }
     }
     finally {
+        Release-CaptureKeys -CaptureSession $lastCaptureSession -PressedKeys $pressedKeys
         if ($readmeCaptureEnvChanged) {
             if ($null -eq $previousReadmeCaptureEnv) {
-                Remove-Item Env:\\DX11_README_CAPTURE -ErrorAction SilentlyContinue
+                Remove-Item Env:\DX11_README_CAPTURE -ErrorAction SilentlyContinue
             }
             else {
                 $env:DX11_README_CAPTURE = $previousReadmeCaptureEnv
             }
         }
+        if ($null -ne $process -and (-not $KeepWindows -or -not $captureCompleted)) {
+            Stop-CaptureProcess -Process $process
+        }
+    }
+}
 
-        if ($null -ne $process -and -not $KeepWindows) {
-            try {
-                if (-not $process.HasExited) {
-                    Stop-Process -Id $process.Id -Force
+$repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
+$manifestData = Get-ReadmeMediaManifest -ManifestPath $Manifest -RepoRoot $repoRoot
+$manifestErrors = @(Test-ReadmeMediaManifest -Manifest $manifestData -RepoRoot $repoRoot)
+if ($manifestErrors.Count -gt 0) {
+    throw "Capture manifest validation failed: $($manifestErrors -join '; ')"
+}
+if ($ValidateOnly) {
+    'capture manifest validation passed'
+    return
+}
+
+$runtimeDir = Resolve-ReadmeMediaPath -RepoRoot $repoRoot -Path $manifestData.runtimeDir
+$mediaDir = if ([string]::IsNullOrWhiteSpace($OutputDir)) {
+    Resolve-ReadmeMediaPath -RepoRoot $repoRoot -Path $manifestData.mediaDir
+}
+else {
+    Resolve-ReadmeMediaPath -RepoRoot $repoRoot -Path $OutputDir
+}
+New-Item -ItemType Directory -Path $mediaDir -Force | Out-Null
+
+$selectedProjects = @(Get-CaptureProjectSelection -Manifest $manifestData -ProjectNumber $ProjectNumber -All:$All)
+
+$reportRows = New-Object System.Collections.Generic.List[object]
+foreach ($project in $selectedProjects) {
+    $projectSucceeded = $false
+    $attemptLimit = [int]$manifestData.captureAttempts
+    for ($attempt = 1; $attempt -le $attemptLimit -and -not $projectSucceeded; $attempt++) {
+        Write-Host ("Capturing project {0}, attempt {1}/{2}: {3}" -f $project.number, $attempt, $attemptLimit, $project.exe)
+        try {
+            $result = Invoke-ProjectCapture -Project $project -ManifestData $manifestData -RuntimeDir $runtimeDir -MediaDir $mediaDir -RepoRoot $repoRoot -Attempt $attempt -SkipGif:$SkipGif -KeepWindows:$KeepWindows
+            Add-ReportRow -Rows $reportRows -Project $project -Attempt $attempt -Output (Convert-ToReportPath $result.ImagePath $repoRoot) -Status 'Success' -Dimensions $result.ImageDetails.Dimensions -Bytes $result.ImageDetails.Bytes -Notes 'PNG captured'
+            if (-not $SkipGif) {
+                $gifNotes = if ([bool]$result.GifDetails.PresentationPan) {
+                    'GIF generated from the captured PNG with the reproducible presentation-pan stage'
                 }
+                else {
+                    "GIF captured; source frames collected in $($result.GifDetails.SourceFrameDurationMs) ms"
+                }
+                Add-ReportRow -Rows $reportRows -Project $project -Attempt $attempt -Output (Convert-ToReportPath $result.GifPath $repoRoot) -Status 'Success' -Dimensions $result.GifDetails.Dimensions -Bytes $result.GifDetails.Bytes -Notes $gifNotes
             }
-            catch {
-                Add-ReportRow -Rows $reportRows -Project $project -Output $project.exe -Status 'Failure' -Notes "Failed to stop launched process $($process.Id): $($_.Exception.Message)"
+            else {
+                Add-ReportRow -Rows $reportRows -Project $project -Attempt $attempt -Output (Convert-ToReportPath $result.GifPath $repoRoot) -Status 'Skipped' -Dimensions '' -Bytes '' -Notes 'GIF skipped by -SkipGif'
             }
+            $projectSucceeded = $true
+        }
+        catch {
+            Add-ReportRow -Rows $reportRows -Project $project -Attempt $attempt -Output $project.exe -Status 'Failure' -Dimensions '' -Bytes '' -Notes $_.Exception.Message
         }
     }
 }
@@ -728,8 +1016,14 @@ $reportPath = Join-Path $mediaDir 'capture-report.md'
 Write-CaptureReport -Rows $reportRows -ReportPath $reportPath
 Write-Host "Capture report written to $(Convert-ToReportPath -Path $reportPath -RepoRoot $repoRoot)"
 
-$failedRows = @($reportRows | Where-Object { $_.Status -eq 'Failure' })
-if ($failedRows.Count -gt 0) {
-    $failedProjects = @($failedRows | ForEach-Object { $_.Project } | Select-Object -Unique) -join ', '
-    throw "README media capture completed with $($failedRows.Count) failure row(s) for project(s): $failedProjects"
+$failedProjects = @(
+    foreach ($project in $selectedProjects) {
+        $projectSuccessRows = @($reportRows | Where-Object { $_.Project -eq $project.number -and $_.Status -eq 'Success' })
+        if ($projectSuccessRows.Count -eq 0) {
+            $project
+        }
+    }
+)
+if ($failedProjects.Count -gt 0) {
+    throw "README media capture failed for project(s): $($failedProjects.number -join ', ')"
 }

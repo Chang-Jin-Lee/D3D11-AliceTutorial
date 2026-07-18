@@ -1,3 +1,15 @@
+<!-- README-NAV-TOP:START -->
+<div align="center">
+
+[이전](../22_VMD/README.md) | [메인](../../README.md) | [상위](../) | [다음](../24_Skinned_With_Bone_Structure/README.md)
+
+</div>
+<!-- README-NAV-TOP:END -->
+
+<!-- README-INFO:START -->
+<p align="center"><img src="../../docs/media/readme/info/23-Rigid-Animation-info.png" width="100%" /></p>
+<!-- README-INFO:END -->
+
 ## 23. Rigid, Skinned Animation (23_Rigid_Animation)
 
 - 내용 : Rigid, Skinned Animation 분기처리를 합니다
@@ -15,3 +27,19 @@
 | Animation - Static Mesh |
 |---|
 | <div align="center"><img src="../../docs/media/readme/23-Rigid-Animation.png" width="600"/></div> |
+
+<!-- README-RUNTIME:START -->
+## 실행 화면
+
+| Screenshot | GIF |
+|---|---|
+| <img src="../../docs/media/readme/23-Rigid-Animation.png" width="100%" /> | <img src="../../docs/media/readme/23-Rigid-Animation.gif" width="100%" /> |
+<!-- README-RUNTIME:END -->
+
+<!-- README-NAV-BOTTOM:START -->
+<div align="center">
+
+[이전](../22_VMD/README.md) | [메인](../../README.md) | [상위](../) | [다음](../24_Skinned_With_Bone_Structure/README.md)
+
+</div>
+<!-- README-NAV-BOTTOM:END -->
