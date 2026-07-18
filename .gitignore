@@ -405,3 +405,6 @@ Resource/fbx/Study/char/char.fbx
 Dx11/Resource/Skybox/Bridge/
 Dx11/Resource/Skybox/Indoor/
 Dx11/Resource/Skybox/Sample/
+
+# Codex isolated implementation worktrees.
+.worktrees/

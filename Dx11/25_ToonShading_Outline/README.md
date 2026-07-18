@@ -1,3 +1,15 @@
+<!-- README-NAV-TOP:START -->
+<div align="center">
+
+[이전](../24_Skinned_With_Bone_Structure/README.md) | [메인](../../README.md) | [상위](../) | [다음](../26_ShadowMap_PCF/README.md)
+
+</div>
+<!-- README-NAV-TOP:END -->
+
+<!-- README-INFO:START -->
+<p align="center"><img src="../../docs/media/readme/info/25-ToonShading-Outline-info.png" width="100%" /></p>
+<!-- README-INFO:END -->
+
 ## 25. ToonShading Outline (25_ToonShading_Outline)
 
 - 내용 : ToonShading과 Outline을 보여주는 예제입니다. 이전 쉐이더들과 한눈에 비교할 수 있게 배치했습니다.
@@ -21,3 +33,19 @@
 Phong | TextureOnly | ToonShading | ToonShading + outline |
 |---|---|---|---|
 |  <div align="center"><img src="../../docs/media/readme/25-ToonShading-Outline.png" width="550"/></div> | <div align="center"><img src="../../docs/media/readme/25-ToonShading-Outline.png" width="450"/></div> | <div align="center"><img src="../../docs/media/readme/25-ToonShading-Outline.png" width="450"/></div> | <div align="center"><img src="../../docs/media/readme/25-ToonShading-Outline.png" width="450"/></div> |
+
+<!-- README-RUNTIME:START -->
+## 실행 화면
+
+| Screenshot | GIF |
+|---|---|
+| <img src="../../docs/media/readme/25-ToonShading-Outline.png" width="100%" /> | <img src="../../docs/media/readme/25-ToonShading-Outline.gif" width="100%" /> |
+<!-- README-RUNTIME:END -->
+
+<!-- README-NAV-BOTTOM:START -->
+<div align="center">
+
+[이전](../24_Skinned_With_Bone_Structure/README.md) | [메인](../../README.md) | [상위](../) | [다음](../26_ShadowMap_PCF/README.md)
+
+</div>
+<!-- README-NAV-BOTTOM:END -->

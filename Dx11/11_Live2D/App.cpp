@@ -21,6 +21,7 @@
 
 #include "App.h"
 #include "../Common/Helper.h"
+#include "../Common/ReadmeCapture.h"
 #include <d3dcompiler.h>
 #include <directxtk/WICTextureLoader.h>
 #include <thread>
@@ -632,13 +633,44 @@ void App::OnRender()
 	* @details : model3.json 파일 선택 → 모델/텍스처 로드 및 마스크 버퍼 준비
 	*/
 // ============================== Live2D 로더/상태 UI ==============================
-	ImGui::SetNextWindowSize(ImVec2(250,280), ImGuiCond_Once);
-	if (ImGui::Begin("Live2D"))
+	const bool readmeCaptureMode = ReadmeCapture::IsEnabled();
+	if (readmeCaptureMode)
 	{
-		ImGui::Text("Camera");
-		ImGui::DragFloat3("Camera Pos (x,y,z)", &m_CameraPos.x, 0.1f);
-		ImGui::SliderFloat("Camera FOV (deg)", &m_CameraFovDeg, 30.0f, 120.0f);
-		ImGui::DragFloatRange2("Near/Far", &m_CameraNear, &m_CameraFar, 0.1f, 0.01f, 5000.0f, "Near: %.2f", "Far: %.2f");
+		ImGui::SetNextWindowPos(ImVec2(70.0f, 80.0f), ImGuiCond_Always);
+		ImGui::SetNextWindowSize(ImVec2(760.0f, 520.0f), ImGuiCond_Always);
+	}
+	else
+	{
+		ImGui::SetNextWindowSize(ImVec2(250,280), ImGuiCond_Once);
+	}
+	const ImGuiWindowFlags live2dWindowFlags = readmeCaptureMode
+		? ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse
+		: ImGuiWindowFlags_None;
+	if (ImGui::Begin("Live2D", nullptr, live2dWindowFlags))
+	{
+		if (readmeCaptureMode)
+		{
+			ImGui::SetWindowFontScale(1.35f);
+			ImGui::TextUnformatted("Live2D Cubism Runtime");
+			ImGui::SetWindowFontScale(1.0f);
+			ImGui::TextWrapped("A functional D3D11 loader for user-supplied Cubism model3.json packages.");
+			ImGui::Spacing();
+			ImGui::SeparatorText("Runtime status");
+			ImGui::BulletText("Cubism Framework: Ready");
+			ImGui::BulletText("D3D11 renderer: Ready");
+			ImGui::BulletText("Model: Not loaded");
+			ImGui::ProgressBar(1.0f, ImVec2(-1.0f, 0.0f), "Runtime initialized");
+			ImGui::Spacing();
+			ImGui::TextWrapped("No redistributable Live2D model is bundled. Select a model3.json file and the loader will bind its textures, motions, physics, and clipping masks.");
+			ImGui::Spacing();
+		}
+		else
+		{
+			ImGui::Text("Camera");
+			ImGui::DragFloat3("Camera Pos (x,y,z)", &m_CameraPos.x, 0.1f);
+			ImGui::SliderFloat("Camera FOV (deg)", &m_CameraFovDeg, 30.0f, 120.0f);
+			ImGui::DragFloatRange2("Near/Far", &m_CameraNear, &m_CameraFar, 0.1f, 0.01f, 5000.0f, "Near: %.2f", "Far: %.2f");
+		}
 
 		// Live2D: model3.json 선택 및 상태 표시
 		ImGui::Separator();
@@ -682,7 +714,7 @@ void App::OnRender()
 			}
 		}
 		if (!m_L2DModelJsonPath.empty()) { ImGui::Text("Model: %ls", m_L2DModelJsonPath.c_str()); }
-		ImGui::Text("Status: %s", m_L2DStatus.empty() ? "-" : m_L2DStatus.c_str());
+		ImGui::Text("Status: %s", readmeCaptureMode ? "Waiting for model3.json" : (m_L2DStatus.empty() ? "-" : m_L2DStatus.c_str()));
 
         // 외부 모션 추가 버튼
         if (m_L2DLoaded && m_L2D)

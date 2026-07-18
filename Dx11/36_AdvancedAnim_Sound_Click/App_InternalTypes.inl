@@ -624,8 +624,8 @@ struct App::Impl {
 	int m_SpawnTotal = 0;
 
 	// 씬 이미지 창 관련
-	std::wstring m_CurrentSceneImagePath = L"..\\Resource\\Image\\SceneA.png";
-	std::wstring m_OriginalSceneImagePath = L"..\\Resource\\Image\\SceneA.png"; // 원본 이미지 경로
+	std::wstring m_CurrentSceneImagePath = L"..\\Resource\\Image\\Public\\Comic\\01.png";
+	std::wstring m_OriginalSceneImagePath = L"..\\Resource\\Image\\Public\\Comic\\01.png"; // 원본 이미지 경로
 	std::wstring m_TempSceneImagePath;      // 임시 이미지 경로
 	ID3D11ShaderResourceView* m_pSceneImageSRV = nullptr;
 	ImVec2 m_SceneImageSize = ImVec2(0, 0);

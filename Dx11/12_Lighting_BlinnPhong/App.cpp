@@ -8,6 +8,7 @@
 
 #include "App.h"
 #include "../Common/Helper.h"
+#include "../Common/ReadmeCapture.h"
 #include <d3dcompiler.h>
 #include <directxtk/WICTextureLoader.h>
 #include <directxtk/DDSTextureLoader.h>
@@ -333,6 +334,7 @@ void App::OnRender()
 
 
 	// ============================== 스카이박스 렌더 ==============================
+	if (!ReadmeCapture::IsEnabled())
 	{
 		UINT stride = m_VertextBufferStride;
 		UINT offset = m_VertextBufferOffset;

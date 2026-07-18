@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "SkyboxAssetManager.h"
+#include "ReadmeCapture.h"
 
 #include <atomic>
 #include <cstdlib>
@@ -328,6 +329,11 @@ bool SkyboxAssetManager::HasIBLAssetSet(const std::wstring& pathPrefix)
 
 void SkyboxAssetManager::EnsureSkyboxAssetsAsync()
 {
+	if (ReadmeCapture::IsEnabled())
+	{
+		return;
+	}
+
 	StartDownload(false);
 }
 
@@ -368,6 +374,11 @@ namespace
 
 void SkyboxAssetManager::RenderStatusUI()
 {
+	if (ReadmeCapture::IsEnabled())
+	{
+		return;
+	}
+
 	const SkyboxAssetDownloadState state = GetState();
 	if (state == SkyboxAssetDownloadState::Idle || state == SkyboxAssetDownloadState::Ready)
 	{

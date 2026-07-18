@@ -1,3 +1,15 @@
+<!-- README-NAV-TOP:START -->
+<div align="center">
+
+[이전](../19_MultiModels/README.md) | [메인](../../README.md) | [상위](../) | [다음](../21_MultiModels_With_Animations/README.md)
+
+</div>
+<!-- README-NAV-TOP:END -->
+
+<!-- README-INFO:START -->
+<p align="center"><img src="../../docs/media/readme/info/20-Depth-And-Alpha-Issue-info.png" width="100%" /></p>
+<!-- README-INFO:END -->
+
 ## 20. Depth Buffer and Alpha Blending artifact (20_Depth_And_Alpha_Issue)
 
 - 내용 : Depth Buffer and Alpha Blending artifact가 일어나는 상황을 보여주는 예제입니다.
@@ -15,3 +27,19 @@
 | Depth Buffer and Alpha Blending artifact | Depth Buffer and Alpha Blending artifact |
 |---|---|
 | <img src="../../docs/media/readme/20-Depth-And-Alpha-Issue.png" width="1026" height="600" /> | <img src="../../docs/media/readme/20-Depth-And-Alpha-Issue.png" width="1026" height="600" /> |
+
+<!-- README-RUNTIME:START -->
+## 실행 화면
+
+| Screenshot | GIF |
+|---|---|
+| <img src="../../docs/media/readme/20-Depth-And-Alpha-Issue.png" width="100%" /> | <img src="../../docs/media/readme/20-Depth-And-Alpha-Issue.gif" width="100%" /> |
+<!-- README-RUNTIME:END -->
+
+<!-- README-NAV-BOTTOM:START -->
+<div align="center">
+
+[이전](../19_MultiModels/README.md) | [메인](../../README.md) | [상위](../) | [다음](../21_MultiModels_With_Animations/README.md)
+
+</div>
+<!-- README-NAV-BOTTOM:END -->
