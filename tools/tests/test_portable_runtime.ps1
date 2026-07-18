@@ -68,6 +68,60 @@ Assert-Contains -Text $targets -Expected 'DestinationFolder="$(TargetDir)"' `
 Assert-Contains -Text $targets -Expected 'DestinationFolder="$(CommonBinDir)"' `
     -Message 'Directory.Build.targets does not copy runtime DLLs to the common bin directory.'
 
+$live2DRelative = 'Dx11/Resource/Live2D/Skeleton_Model'
+$live2DDir = Join-Path $repoRoot $live2DRelative
+$expectedLive2DFiles = @(
+    'Skeleton_Model.model3.json',
+    'Skeleton_Model.moc3',
+    'Skeleton_Model.cdi3.json',
+    'Skeleton_Model.2048/texture_00.png',
+    'README.md'
+)
+
+foreach ($relativeFile in $expectedLive2DFiles) {
+    $assetPath = Join-Path $live2DDir $relativeFile
+    Assert-True -Condition (Test-Path -LiteralPath $assetPath -PathType Leaf) `
+        -Message "Live2D sample asset is missing: $live2DRelative/$relativeFile"
+    if (Test-Path -LiteralPath $assetPath -PathType Leaf) {
+        Assert-True -Condition ((Get-Item -LiteralPath $assetPath).Length -gt 0) `
+            -Message "Live2D sample asset is empty: $live2DRelative/$relativeFile"
+    }
+}
+
+$modelJsonPath = Join-Path $live2DDir 'Skeleton_Model.model3.json'
+if (Test-Path -LiteralPath $modelJsonPath -PathType Leaf) {
+    $modelSettings = Get-Content -Raw -LiteralPath $modelJsonPath | ConvertFrom-Json
+    $modelReferences = [System.Collections.Generic.List[string]]::new()
+    $modelReferences.Add([string]$modelSettings.FileReferences.Moc)
+    foreach ($texture in @($modelSettings.FileReferences.Textures)) {
+        $modelReferences.Add([string]$texture)
+    }
+    if ($modelSettings.FileReferences.DisplayInfo) {
+        $modelReferences.Add([string]$modelSettings.FileReferences.DisplayInfo)
+    }
+
+    foreach ($modelReference in $modelReferences) {
+        Assert-True -Condition (-not [string]::IsNullOrWhiteSpace($modelReference)) `
+            -Message 'Live2D model3.json contains an empty file reference.'
+        if (-not [string]::IsNullOrWhiteSpace($modelReference)) {
+            $referencedPath = Join-Path $live2DDir $modelReference
+            Assert-True -Condition (Test-Path -LiteralPath $referencedPath -PathType Leaf) `
+                -Message "Live2D model3.json reference is missing: $modelReference"
+        }
+    }
+}
+
+$provenancePath = Join-Path $live2DDir 'README.md'
+if (Test-Path -LiteralPath $provenancePath -PathType Leaf) {
+    $provenance = Get-Content -Raw -LiteralPath $provenancePath
+    Assert-Contains -Text $provenance `
+        -Expected 'https://github.com/BluePengcho/Open_Source_Hand_Tracking_Live2D_Model' `
+        -Message 'Live2D provenance README does not name the upstream repository.'
+    Assert-Contains -Text $provenance `
+        -Expected '994c4719f081a3f219b62abbeb4a4b43543a48b8' `
+        -Message 'Live2D provenance README does not pin the upstream commit.'
+}
+
 if ($script:Failures.Count -gt 0) {
     Write-Host 'Portable runtime verification failed:'
     foreach ($failure in $script:Failures) {

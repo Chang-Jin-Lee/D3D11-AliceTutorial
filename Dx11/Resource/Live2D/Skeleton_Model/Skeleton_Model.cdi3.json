@@ -1,0 +1,247 @@
+{
+	"Version": 3,
+	"Parameters": [
+		{
+			"Id": "LeftUpperArmExtend",
+			"GroupId": "ParamGroup",
+			"Name": "LeftUpperArmExtend"
+		},
+		{
+			"Id": "LeftForearmExtend",
+			"GroupId": "ParamGroup",
+			"Name": "LeftForearmExtend"
+		},
+		{
+			"Id": "LeftUpperArmRotation",
+			"GroupId": "ParamGroup",
+			"Name": "LeftUpperArmRotation"
+		},
+		{
+			"Id": "LeftForearmRotation",
+			"GroupId": "ParamGroup",
+			"Name": "LeftForearmRotation"
+		},
+		{
+			"Id": "RightUpperArmExtend",
+			"GroupId": "ParamGroup3",
+			"Name": "RightUpperArmExtend"
+		},
+		{
+			"Id": "RightForearmExtend",
+			"GroupId": "ParamGroup3",
+			"Name": "RightForearmExtend"
+		},
+		{
+			"Id": "RightUpperArmRotation",
+			"GroupId": "ParamGroup3",
+			"Name": "RightUpperArmRotation"
+		},
+		{
+			"Id": "RightForearmRotation",
+			"GroupId": "ParamGroup3",
+			"Name": "RightForearmRotation"
+		},
+		{
+			"Id": "HandRightAngleZ",
+			"GroupId": "ParamGroup4",
+			"Name": "HandRightAngleZ"
+		},
+		{
+			"Id": "HandRightAngleX",
+			"GroupId": "ParamGroup4",
+			"Name": "HandRightAngleX"
+		},
+		{
+			"Id": "HandRightFinger_1_Thumb",
+			"GroupId": "ParamGroup4",
+			"Name": "HandRightFinger_1_Thumb"
+		},
+		{
+			"Id": "HandRightFinger_2_Index",
+			"GroupId": "ParamGroup4",
+			"Name": "HandRightFinger_2_Index"
+		},
+		{
+			"Id": "HandRightFinger_3_Middle",
+			"GroupId": "ParamGroup4",
+			"Name": "HandRightFinger_3_Middle"
+		},
+		{
+			"Id": "HandRightFinger_4_Ring",
+			"GroupId": "ParamGroup4",
+			"Name": "HandRightFinger_4_Ring"
+		},
+		{
+			"Id": "HandRightFinger_5_Pinky",
+			"GroupId": "ParamGroup4",
+			"Name": "HandRightFinger_5_Pinky"
+		},
+		{
+			"Id": "HandRightRotation_2_Index",
+			"GroupId": "ParamGroup4",
+			"Name": "HandRightRotation_2_Index"
+		},
+		{
+			"Id": "HandRightRotation_3_Middle",
+			"GroupId": "ParamGroup4",
+			"Name": "HandRightRotation_3_Middle"
+		},
+		{
+			"Id": "HandRightRotation_4_Ring",
+			"GroupId": "ParamGroup4",
+			"Name": "HandRightRotation_4_Ring"
+		},
+		{
+			"Id": "HandRightRotation_5_Pinky",
+			"GroupId": "ParamGroup4",
+			"Name": "HandRightRotation_5_Pinky"
+		},
+		{
+			"Id": "HandLeftAngleZ",
+			"GroupId": "ParamGroup2",
+			"Name": "HandLeftAngleZ"
+		},
+		{
+			"Id": "HandLeftAngleX",
+			"GroupId": "ParamGroup2",
+			"Name": "HandLeftAngleX"
+		},
+		{
+			"Id": "HandLeftFinger_1_Thumb",
+			"GroupId": "ParamGroup2",
+			"Name": "HandLeftFinger_1_Thumb"
+		},
+		{
+			"Id": "HandLeftFinger_2_Index",
+			"GroupId": "ParamGroup2",
+			"Name": "HandLeftFinger_2_Index"
+		},
+		{
+			"Id": "HandLeftFinger_3_Middle",
+			"GroupId": "ParamGroup2",
+			"Name": "HandLeftFinger_3_Middle"
+		},
+		{
+			"Id": "HandLeftFinger_4_Ring",
+			"GroupId": "ParamGroup2",
+			"Name": "HandLeftFinger_4_Ring"
+		},
+		{
+			"Id": "HandLeftFinger_5_Pinky",
+			"GroupId": "ParamGroup2",
+			"Name": "HandLeftFinger_5_Pinky"
+		},
+		{
+			"Id": "HandLeftRotation_2_Index",
+			"GroupId": "ParamGroup2",
+			"Name": "HandLeftRotation_2_Index"
+		},
+		{
+			"Id": "HandLeftRotation_3_Middle",
+			"GroupId": "ParamGroup2",
+			"Name": "HandLeftRotation_3_Middle"
+		},
+		{
+			"Id": "HandLeftRotation_4_Ring",
+			"GroupId": "ParamGroup2",
+			"Name": "HandLeftRotation_4_Ring"
+		},
+		{
+			"Id": "HandLeftRotation_5_Pinky",
+			"GroupId": "ParamGroup2",
+			"Name": "HandLeftRotation_5_Pinky"
+		}
+	],
+	"ParameterGroups": [
+		{
+			"Id": "ParamGroup",
+			"GroupId": "",
+			"Name": "Left Arm"
+		},
+		{
+			"Id": "ParamGroup3",
+			"GroupId": "",
+			"Name": "Right Arm"
+		},
+		{
+			"Id": "ParamGroup4",
+			"GroupId": "",
+			"Name": "Right Hand"
+		},
+		{
+			"Id": "ParamGroup2",
+			"GroupId": "",
+			"Name": "Left Hand"
+		}
+	],
+	"Parts": [
+		{
+			"Id": "Part10",
+			"Name": "Right Arm"
+		},
+		{
+			"Id": "Part8",
+			"Name": "Left Arm"
+		},
+		{
+			"Id": "Head",
+			"Name": "Head"
+		},
+		{
+			"Id": "Part15",
+			"Name": "Right Leg"
+		},
+		{
+			"Id": "Part16",
+			"Name": "Left Leg"
+		},
+		{
+			"Id": "Part11",
+			"Name": "R Hand"
+		},
+		{
+			"Id": "Part9",
+			"Name": "L Hand"
+		},
+		{
+			"Id": "Part18",
+			"Name": "R Thumb"
+		},
+		{
+			"Id": "Part23",
+			"Name": "R Index Finger"
+		},
+		{
+			"Id": "Part19",
+			"Name": "R Middle Finger"
+		},
+		{
+			"Id": "Part24",
+			"Name": "R Ring Finger"
+		},
+		{
+			"Id": "Part25",
+			"Name": "R Pinky"
+		},
+		{
+			"Id": "Part14",
+			"Name": "L Thumb"
+		},
+		{
+			"Id": "Part20",
+			"Name": "L Index Finger"
+		},
+		{
+			"Id": "Part17",
+			"Name": "L Middle Finger"
+		},
+		{
+			"Id": "Part21",
+			"Name": "L Ring Finger"
+		},
+		{
+			"Id": "Part22",
+			"Name": "L Pinky"
+		}
+	]
+}
