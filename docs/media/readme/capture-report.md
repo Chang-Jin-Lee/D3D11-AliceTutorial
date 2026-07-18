@@ -5,7 +5,7 @@ Generated: 2026-07-18 03:15:35
 | Project | Attempt | Exe | Output | Status | Dimensions | Bytes | Notes |
 |---|---:|---|---|---|---|---:|---|
 | 01 | 1 | 01_RenderingQuadangle.exe | docs/media/readme/01-RenderingQuadangle.png | Success | 1600x900 | 220682 | PNG captured |
-| 01 | 1 | 01_RenderingQuadangle.exe | docs/media/readme/01-RenderingQuadangle.gif | Success | 800x450 | 1559892 | GIF polished with a subtle presentation pan over captured runtime frames |
+| 01 | 1 | 01_RenderingQuadangle.exe | docs/media/readme/01-RenderingQuadangle.gif | Success | 800x450 | 1324657 | GIF generated from the captured PNG with the reproducible presentation-pan stage |
 | 02 | 1 | 02_RenderingCube.exe | docs/media/readme/02-RenderingCube.png | Success | 1600x900 | 206148 | PNG captured |
 | 02 | 1 | 02_RenderingCube.exe | docs/media/readme/02-RenderingCube.gif | Success | 800x450 | 183614 | GIF captured; source frames collected in 3928 ms |
 | 03 | 1 | 03_RenderingMeshAndSceneGraph.exe | docs/media/readme/03-RenderingMeshAndSceneGraph.png | Success | 1600x900 | 197171 | PNG captured |
@@ -59,7 +59,7 @@ Generated: 2026-07-18 03:15:35
 | 27 | 1 | 27_DebugDraw.exe | docs/media/readme/27-DebugDraw.png | Success | 1600x900 | 362339 | PNG captured |
 | 27 | 1 | 27_DebugDraw.exe | docs/media/readme/27-DebugDraw.gif | Success | 800x450 | 959167 | GIF captured; source frames collected in 3922 ms |
 | 28 | 1 | 28_Scene_Shared3DModel_Animation.exe | docs/media/readme/28-Scene-Shared3DModel-Animation.png | Success | 1600x900 | 166473 | PNG captured |
-| 28 | 1 | 28_Scene_Shared3DModel_Animation.exe | docs/media/readme/28-Scene-Shared3DModel-Animation.gif | Success | 800x450 | 2353410 | GIF polished with a subtle presentation pan over captured runtime frames |
+| 28 | 1 | 28_Scene_Shared3DModel_Animation.exe | docs/media/readme/28-Scene-Shared3DModel-Animation.gif | Success | 800x450 | 1363883 | GIF generated from the captured PNG with the reproducible presentation-pan stage |
 | 29 | 1 | 29_MousePicking.exe | docs/media/readme/29-MousePicking.png | Success | 1600x900 | 163912 | PNG captured |
 | 29 | 1 | 29_MousePicking.exe | docs/media/readme/29-MousePicking.gif | Success | 800x450 | 232161 | GIF captured; source frames collected in 3930 ms |
 | 30 | 1 | 30_PBR_BRDF.exe | docs/media/readme/30-PBR-BRDF.png | Success | 1600x900 | 328725 | PNG captured |
@@ -68,8 +68,8 @@ Generated: 2026-07-18 03:15:35
 | 31 | 1 | 31_IBL.exe | docs/media/readme/31-IBL.gif | Success | 800x450 | 324407 | GIF captured; source frames collected in 3919 ms |
 | 32 | 1 | 32_Sound_FMOD.exe | docs/media/readme/32-Sound-FMOD.png | Success | 1600x900 | 316667 | PNG captured |
 | 32 | 1 | 32_Sound_FMOD.exe | docs/media/readme/32-Sound-FMOD.gif | Success | 800x450 | 325288 | GIF captured; source frames collected in 3917 ms |
-| 33 | 1 | 33_Sound_Animation_Camera_Motion.exe | docs/media/readme/33-Sound-Animation-Camera-Motion.png | Success | 1600x900 | 316770 | PNG captured |
-| 33 | 1 | 33_Sound_Animation_Camera_Motion.exe | docs/media/readme/33-Sound-Animation-Camera-Motion.gif | Success | 800x450 | 2257656 | GIF polished with a subtle presentation pan over captured runtime frames |
+| 33 | 1 | 33_Sound_Animation_Camera_Motion.exe | docs/media/readme/33-Sound-Animation-Camera-Motion.png | Success | 1600x900 | 207818 | PNG captured in the interactive desktop session |
+| 33 | 1 | 33_Sound_Animation_Camera_Motion.exe | docs/media/readme/33-Sound-Animation-Camera-Motion.gif | Success | 800x450 | 1417659 | GIF generated from the captured PNG with the reproducible presentation-pan stage |
 | 34 | 1 | 34_ToneMapping.exe | docs/media/readme/34-ToneMapping.png | Success | 1600x900 | 257385 | PNG captured |
 | 34 | 1 | 34_ToneMapping.exe | docs/media/readme/34-ToneMapping.gif | Success | 800x450 | 292890 | GIF captured; source frames collected in 3924 ms |
 | 35 | 1 | 35_DeferredRendering.exe | docs/media/readme/35-DeferredRendering.png | Success | 1600x900 | 257372 | PNG captured |
@@ -77,4 +77,4 @@ Generated: 2026-07-18 03:15:35
 | 36 | 1 | 36_AdvancedAnim_Sound_Click.exe | docs/media/readme/36-AdvancedAnim-Sound-Click.png | Success | 1600x900 | 167278 | PNG captured |
 | 36 | 1 | 36_AdvancedAnim_Sound_Click.exe | docs/media/readme/36-advanced-anim-sound-click.gif | Success | 800x450 | 357403 | GIF captured; source frames collected in 3922 ms |
 | 37 | 1 | 37_Blueprint.exe | docs/media/readme/37-Blueprint.png | Success | 1600x900 | 73509 | PNG captured |
-| 37 | 1 | 37_Blueprint.exe | docs/media/readme/37-Blueprint.gif | Success | 800x450 | 2453183 | GIF polished with a subtle presentation pan over captured runtime frames |
+| 37 | 1 | 37_Blueprint.exe | docs/media/readme/37-Blueprint.gif | Success | 800x450 | 1056576 | GIF generated from the captured PNG with the reproducible presentation-pan stage |

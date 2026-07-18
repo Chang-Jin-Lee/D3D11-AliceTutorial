@@ -485,7 +485,7 @@ struct App::Impl {
 	int                          m_SpawnTotal = 0;
 
 	// 씬 이미지 창 관련
-	std::wstring                 m_CurrentSceneImagePath = L"..\\Resource\\Image\\SceneA.png";
+	std::wstring                 m_CurrentSceneImagePath = L"..\\Resource\\Image\\Public\\Comic\\01.png";
 	ID3D11ShaderResourceView*    m_pSceneImageSRV = nullptr;
 	ImVec2                       m_SceneImageSize = ImVec2(0, 0);
 	bool                         m_ShowSceneImageWindow = true;
@@ -991,7 +991,7 @@ void App::OnUpdate(const float& dt)
 			m_->PushLog("[Scene Change] Change Scane to <SceneA>");
 			m_SceneIndex = 0;
 			// 씬 이미지 경로 변경
-			m_->m_CurrentSceneImagePath = L"..\\Resource\\Image\\SceneA.png";
+			m_->m_CurrentSceneImagePath = L"..\\Resource\\Image\\Public\\Comic\\01.png";
 			LoadSceneImage(m_->m_CurrentSceneImagePath);
 			// 팝업 표시
 			m_->m_ShowScenePopup = true;
@@ -1459,11 +1459,14 @@ void App::OnRender()
 	ImGui::NewFrame();
 
 	RenderControlPannel();
-	RenderSceneCollection();
-	RenderModelPannel();
-	RenderConsolPannel();
-	m_->m_SystemInfo.RenderUI();
-	RenderSceneImageWindow();
+	if (!ReadmeCapture::IsEnabled())
+	{
+		RenderSceneCollection();
+		RenderModelPannel();
+		RenderConsolPannel();
+		m_->m_SystemInfo.RenderUI();
+		RenderSceneImageWindow();
+	}
 	const unsigned int skyboxGeneration = SkyboxAssetManager::GetCompletedGeneration();
 	if (skyboxGeneration != m_->m_SkyboxAssetGeneration)
 	{

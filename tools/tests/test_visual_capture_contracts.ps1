@@ -7,6 +7,8 @@ function Assert-True([bool]$Condition, [string]$Message) {
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $manifestPath = Join-Path $repoRoot 'tools\readme_media_manifest.json'
 $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
+$readmeCaptureSource = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'Dx11\Common\ReadmeCapture.h')
+Assert-True ($readmeCaptureSource -match 'static\s+const\s+bool\s+enabled\s*=\s*\[\]') 'README capture mode must be cached instead of reading the environment every frame'
 
 function Get-Project([string]$Number) {
     $project = @($manifest.projects | Where-Object { $_.number -eq $Number })

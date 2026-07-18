@@ -1313,7 +1313,7 @@ void App::RenderWaitingUI()
 						m_->m_OriginalSceneImagePath = m_->m_CurrentSceneImagePath;
 
 						bool isSceneA = (m_SceneIndex == 0);
-						m_->m_TempSceneImagePath = isSceneA ? L"..\\Resource\\Image\\SceneB.png" : L"..\\Resource\\Image\\SceneA.png";
+						m_->m_TempSceneImagePath = isSceneA ? L"..\\Resource\\Image\\Public\\Comic\\02.png" : L"..\\Resource\\Image\\Public\\Comic\\01.png";
 						m_->m_ScenePopupMessage = isSceneA ? Utf8FromWString(L"안녕하세요 토끼씨!") : Utf8FromWString(L"기뻐요 토끼씨!");
 
 						LoadSceneImage(m_->m_TempSceneImagePath);
@@ -1467,12 +1467,12 @@ void App::RenderSceneImageWindow() {
 					// 현재 씬에 따라 다른 임시 이미지와 메시지 설정
 					if (m_SceneIndex == 0) {
 						// SceneA일 때 SceneB 이미지로 변경
-						m_->m_TempSceneImagePath = L"..\\Resource\\Image\\SceneB.png";
+						m_->m_TempSceneImagePath = L"..\\Resource\\Image\\Public\\Comic\\02.png";
 						m_->m_ScenePopupMessage = Utf8FromWString(L"안녕하세요 토끼씨!");
 					}
 					else {
 						// SceneB일 때 SceneA 이미지로 변경
-						m_->m_TempSceneImagePath = L"..\\Resource\\Image\\SceneA.png";
+						m_->m_TempSceneImagePath = L"..\\Resource\\Image\\Public\\Comic\\01.png";
 						m_->m_ScenePopupMessage = Utf8FromWString(L"기뻐요 토끼씨!");
 					}
 

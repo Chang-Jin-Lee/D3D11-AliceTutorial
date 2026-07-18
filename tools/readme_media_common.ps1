@@ -203,6 +203,10 @@ function Test-ReadmeMediaManifest {
         if ($project.gifPhase -notin $validGifPhases) {
             $null = $errors.Add("unsupported gif phase: $number")
         }
+        if ((Test-ReadmeMediaManifestProperty -Object $project -Name 'gifPresentationPan') -and
+            $project.gifPresentationPan -isnot [bool]) {
+            $null = $errors.Add("invalid gifPresentationPan flag: $number")
+        }
 
         if (Test-ReadmeMediaManifestProperty -Object $project -Name 'directory') {
             $projectDirectory = Resolve-ReadmeMediaPath -RepoRoot $projectRoot -Path $project.directory

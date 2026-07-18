@@ -602,9 +602,9 @@ struct App::Impl {
 	int m_SpawnTotal = 0;
 
 	// 씬 이미지 창 관련
-	std::wstring m_CurrentSceneImagePath = L"..\\Resource\\Image\\SceneA.png";
+	std::wstring m_CurrentSceneImagePath = L"..\\Resource\\Image\\Public\\Comic\\01.png";
 	std::wstring m_OriginalSceneImagePath =
-		L"..\\Resource\\Image\\SceneA.png"; // 원본 이미지 경로
+		L"..\\Resource\\Image\\Public\\Comic\\01.png"; // 원본 이미지 경로
 	std::wstring m_TempSceneImagePath;      // 임시 이미지 경로
 	ID3D11ShaderResourceView* m_pSceneImageSRV = nullptr;
 	ImVec2 m_SceneImageSize = ImVec2(0, 0);
@@ -3904,12 +3904,12 @@ void App::RenderSceneImageWindow() {
 					// 현재 씬에 따라 다른 임시 이미지와 메시지 설정
 					if (m_SceneIndex == 0) {
 						// SceneA일 때 SceneB 이미지로 변경
-						m_->m_TempSceneImagePath = L"..\\Resource\\Image\\SceneB.png";
+						m_->m_TempSceneImagePath = L"..\\Resource\\Image\\Public\\Comic\\02.png";
 						m_->m_ScenePopupMessage = Utf8FromWString(L"안녕하세요 토끼씨!");
 					}
 					else {
 						// SceneB일 때 SceneA 이미지로 변경
-						m_->m_TempSceneImagePath = L"..\\Resource\\Image\\SceneA.png";
+						m_->m_TempSceneImagePath = L"..\\Resource\\Image\\Public\\Comic\\01.png";
 						m_->m_ScenePopupMessage = Utf8FromWString(L"기뻐요 토끼씨!");
 					}
 

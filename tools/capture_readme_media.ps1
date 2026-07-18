@@ -708,6 +708,67 @@ function Invoke-GifEncode {
     }
 }
 
+function Invoke-PresentationPanGif {
+    param(
+        [string]$FfmpegPath,
+        [string]$PngPath,
+        [string]$GifPath,
+        [int]$GifFps,
+        [int]$GifWidth,
+        [int]$GifHeight,
+        [double]$GifSeconds,
+        [int]$MaxColors,
+        [int64]$GifMaxBytes = 5242880
+    )
+
+    Test-PngOutput -Path $PngPath
+    $frameCount = [Math]::Max(1, [int][Math]::Ceiling($GifSeconds * $GifFps))
+    $durationText = $GifSeconds.ToString([System.Globalization.CultureInfo]::InvariantCulture)
+    $scaledWidth = $GifWidth + 8
+    $scaledHeight = $GifHeight + 4
+    $colorAttempts = @($MaxColors, 128, 96 | Select-Object -Unique)
+    $details = $null
+
+    foreach ($colorCount in $colorAttempts) {
+        $filter = "scale=$scaledWidth`:$scaledHeight`:flags=lanczos," +
+            "crop=$GifWidth`:$GifHeight`:x='4+4*sin(2*PI*n/$frameCount)':y='2+2*cos(2*PI*n/$frameCount)'," +
+            "fps=$GifFps,split[s0][s1];" +
+            "[s0]palettegen=max_colors=${colorCount}:stats_mode=full[p];" +
+            '[s1][p]paletteuse=dither=sierra2_4a'
+        $arguments = @(
+            '-y',
+            '-loop', '1',
+            '-framerate', $GifFps,
+            '-t', $durationText,
+            '-i', $PngPath,
+            '-frames:v', $frameCount,
+            '-filter_complex', $filter,
+            '-loop', '0',
+            '-gifflags', '0',
+            $GifPath
+        )
+
+        $ffmpegOutput = & $FfmpegPath @arguments 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            $joinedOutput = ($ffmpegOutput | ForEach-Object { [string]$_ }) -join ' '
+            throw "ffmpeg presentation pan failed with exit code ${LASTEXITCODE}: $joinedOutput"
+        }
+
+        $details = Get-CaptureOutputDetails -Path $GifPath -ExpectedWidth $GifWidth -ExpectedHeight $GifHeight
+        if ($details.Bytes -le $GifMaxBytes) {
+            break
+        }
+    }
+
+    if ($details.Bytes -gt $GifMaxBytes) {
+        throw "Presentation-pan GIF exceeds $GifMaxBytes byte limit: $($details.Bytes) bytes"
+    }
+
+    $details | Add-Member -NotePropertyName SourceFrameDurationMs -NotePropertyValue 0
+    $details | Add-Member -NotePropertyName PresentationPan -NotePropertyValue $true
+    return $details
+}
+
 function Invoke-GifCapture {
     param(
         [System.Diagnostics.Process]$Process,
@@ -811,6 +872,7 @@ function Invoke-ProjectCapture {
     $pressedKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $previousReadmeCaptureEnv = $env:DX11_README_CAPTURE
     $readmeCaptureEnvChanged = $false
+    $usePresentationPan = [bool]$Project.gifPresentationPan
     $imagePath = Join-Path $MediaDir $Project.image
     $gifPath = Join-Path $MediaDir $Project.gif
     try {
@@ -841,7 +903,7 @@ function Invoke-ProjectCapture {
 
         Wait-MainWindow -Process $process
 
-        if ($Project.gifPhase -eq 'startup' -and -not $SkipGif) {
+        if ($Project.gifPhase -eq 'startup' -and -not $SkipGif -and -not $usePresentationPan) {
             $startupSession = Prepare-CaptureWindow -Process $process -ClientWidth ([int]$ManifestData.captureWidth) -ClientHeight ([int]$ManifestData.captureHeight)
             $lastCaptureSession = $startupSession
             try {
@@ -864,7 +926,10 @@ function Invoke-ProjectCapture {
             Capture-PreparedWindowPng -Process $process -CaptureSession $captureSession -OutputPath $imagePath
             $imageDetails = Get-CaptureOutputDetails -Path $imagePath -ExpectedWidth ([int]$ManifestData.captureWidth) -ExpectedHeight ([int]$ManifestData.captureHeight)
 
-            if ($Project.gifPhase -eq 'runtime' -and -not $SkipGif) {
+            if ($usePresentationPan -and -not $SkipGif) {
+                $gifDetails = Invoke-PresentationPanGif -FfmpegPath 'C:\ffmpeg\bin\ffmpeg.exe' -PngPath $imagePath -GifPath $gifPath -GifFps ([int]$ManifestData.gifFps) -GifWidth ([int]$ManifestData.gifWidth) -GifHeight ([int]$ManifestData.gifHeight) -GifSeconds ([double]$ManifestData.gifSeconds) -MaxColors 256 -GifMaxBytes ([int64]$ManifestData.gifMaxBytes)
+            }
+            elseif ($Project.gifPhase -eq 'runtime' -and -not $SkipGif) {
                 $gifDetails = Invoke-GifCapture -Process $process -Project $Project -ManifestData $ManifestData -MediaDir $MediaDir -GifPath $gifPath -RepoRoot $RepoRoot -CaptureSession $captureSession -PressedKeys $pressedKeys
             }
         }
@@ -928,7 +993,13 @@ foreach ($project in $selectedProjects) {
             $result = Invoke-ProjectCapture -Project $project -ManifestData $manifestData -RuntimeDir $runtimeDir -MediaDir $mediaDir -RepoRoot $repoRoot -Attempt $attempt -SkipGif:$SkipGif -KeepWindows:$KeepWindows
             Add-ReportRow -Rows $reportRows -Project $project -Attempt $attempt -Output (Convert-ToReportPath $result.ImagePath $repoRoot) -Status 'Success' -Dimensions $result.ImageDetails.Dimensions -Bytes $result.ImageDetails.Bytes -Notes 'PNG captured'
             if (-not $SkipGif) {
-                Add-ReportRow -Rows $reportRows -Project $project -Attempt $attempt -Output (Convert-ToReportPath $result.GifPath $repoRoot) -Status 'Success' -Dimensions $result.GifDetails.Dimensions -Bytes $result.GifDetails.Bytes -Notes ("GIF captured; source frames collected in {0} ms" -f $result.GifDetails.SourceFrameDurationMs)
+                $gifNotes = if ([bool]$result.GifDetails.PresentationPan) {
+                    'GIF generated from the captured PNG with the reproducible presentation-pan stage'
+                }
+                else {
+                    "GIF captured; source frames collected in $($result.GifDetails.SourceFrameDurationMs) ms"
+                }
+                Add-ReportRow -Rows $reportRows -Project $project -Attempt $attempt -Output (Convert-ToReportPath $result.GifPath $repoRoot) -Status 'Success' -Dimensions $result.GifDetails.Dimensions -Bytes $result.GifDetails.Bytes -Notes $gifNotes
             }
             else {
                 Add-ReportRow -Rows $reportRows -Project $project -Attempt $attempt -Output (Convert-ToReportPath $result.GifPath $repoRoot) -Status 'Skipped' -Dimensions '' -Bytes '' -Notes 'GIF skipped by -SkipGif'
