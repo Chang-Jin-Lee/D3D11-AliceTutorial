@@ -141,6 +141,19 @@ Assert-Contains -Text $live2DSource `
     -Expected 'LoadLive2DModel(file);' `
     -Message 'The model file picker does not use the shared load helper.'
 
+$live2DReadme = Read-RepoText -RelativePath 'Dx11/11_Live2D/README.md'
+$thirdPartyReadme = Read-RepoText -RelativePath 'Dx11/third_party/README.md'
+
+Assert-Contains -Text $live2DReadme -Expected 'Skeleton_Model.model3.json' `
+    -Message '11_Live2D README does not document the bundled startup model.'
+Assert-Contains -Text $live2DReadme `
+    -Expected 'https://github.com/BluePengcho/Open_Source_Hand_Tracking_Live2D_Model' `
+    -Message '11_Live2D README does not document the sample model source.'
+Assert-Contains -Text $thirdPartyReadme -Expected 'assimp-vc143-mt.dll' `
+    -Message 'third_party README does not document the tracked Assimp runtime DLL.'
+Assert-Contains -Text $thirdPartyReadme -Expected 'Directory.Build.targets' `
+    -Message 'third_party README does not document the shared DLL copy target.'
+
 if ($script:Failures.Count -gt 0) {
     Write-Host 'Portable runtime verification failed:'
     foreach ($failure in $script:Failures) {

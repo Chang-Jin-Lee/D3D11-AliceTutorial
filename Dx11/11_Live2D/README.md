@@ -7,6 +7,10 @@
 | <div align="center">[<img src="../../docs/media/readme/11-Live2D.png" width="450"/>](https://www.youtube.com/watch?v=rGQOzdTvPmI)<br/></div> | <div align="center">[<img src="../../docs/media/readme/11-Live2D.png" width="230"/>](https://velog.io/@whoamicj/DX11Live2D-11Live2D-Live2D-CubismSDK)<br/></div> |
 
 - 내용: D3D11 + Live2D Cubism 데모. model3.json 로드, 텍스처 바인딩, 마스크 처리, 모션 재생, ImGui 제어 구현.
+- 기본 예제 모델: 실행 시 `../Resource/Live2D/Skeleton_Model/Skeleton_Model.model3.json`을 자동으로 로드합니다.
+  - 원본: https://github.com/BluePengcho/Open_Source_Hand_Tracking_Live2D_Model
+  - 라이선스/출처 기록: `Dx11/Resource/Live2D/Skeleton_Model/README.md`
+  - “Open model3.json” 버튼으로 다른 Cubism 모델을 계속 선택할 수 있습니다.
 - 참고: SDK 경로 설정이 가장 어렵습니다. Framework.lib, src 등의 경로를 잘 보고 설정하세요.
 - 주요 구현:
   - Cubism Framework 연동: InitializeConstantSettings, GenerateShader, StartFrame/EndFrame 호출로 D3D11 파이프라인과 동작 연계
@@ -32,7 +36,7 @@
   - DLL: 실행 폴더에 `Live2DCubismCore.dll` 필요
   - Shader: `FrameworkShaders/CubismEffect.fx`가 실행 경로 기준으로 읽히도록 배치
 - 사용법:
-  1) 앱 실행 후 “Open model3.json”으로 모델 선택
+  1) 앱 실행 시 번들된 `Skeleton_Model.model3.json`이 자동 로드됩니다. 다른 모델은 “Open model3.json”으로 선택합니다.
   2) 모션: Group 선택 → 리스트/슬라이더로 모션 선택 → Play
   3) 외부 모션 추가: “Add Motion JSON...” 클릭 → `*.motion3.json` 선택(auto/extra에 반영)
   4) Parameters/Parts에서 슬라이더로 실시간 조정(이름/인덱스 표시)
