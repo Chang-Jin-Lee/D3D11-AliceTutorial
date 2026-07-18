@@ -28,6 +28,11 @@ x86/
 [Aa][Rr][Mm]64/
 bld/
 [Bb]in/
+
+# Repo-local Assimp runtime required by model-loading samples.
+!Dx11/third_party/assimp/bin/
+!Dx11/third_party/assimp/bin/msvc/
+!Dx11/third_party/assimp/bin/msvc/assimp-vc143-mt.dll
 [Oo]bj/
 [Ll]og/
 [Ll]ogs/
