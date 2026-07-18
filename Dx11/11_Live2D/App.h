@@ -127,6 +127,7 @@ public:
 	void UninitScene();
 
 private:
+	bool LoadLive2DModel(const std::wstring& model3Path);
 	bool InitEffect();								// 쉐이더를 읽어오는 함수는 따로 구현
 
 	// 시스템 정보(FPS/RAM/VRAM) 업데이트

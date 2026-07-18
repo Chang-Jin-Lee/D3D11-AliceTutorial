@@ -42,6 +42,9 @@
 #include <string>
 namespace
 {
+    constexpr wchar_t kDefaultLive2DModelPath[] =
+        L"..\\Resource\\Live2D\\Skeleton_Model\\Skeleton_Model.model3.json";
+
     std::string ToUtf8Bytes(const std::filesystem::path& path)
     {
         const auto u8 = path.u8string();
@@ -516,7 +519,65 @@ bool App::OnInitialize()
 		}
 	}
 
+	LoadLive2DModel(kDefaultLive2DModelPath);
+
 	return true;
+}
+
+bool App::LoadLive2DModel(const std::wstring& model3Path)
+{
+    m_L2DModelJsonPath = model3Path;
+    m_L2DRequested = true;
+
+    for (auto* texture : m_L2DTexSRVs)
+    {
+        SAFE_RELEASE(texture);
+    }
+    m_L2DTexSRVs.clear();
+    m_L2DTexSizes.clear();
+    m_L2DMotionGroups.clear();
+    m_L2DMotionGroupIndex = 0;
+    m_L2DMotionIndex = 0;
+
+    delete m_L2D;
+    m_L2D = nullptr;
+    m_L2DLoaded = false;
+
+    if (!m_L2DReady)
+    {
+        m_L2DStatus = "Live2D is not initialized";
+        return false;
+    }
+
+    m_L2D = new MinimalUserModel();
+    if (!m_L2D->LoadFromModel3(model3Path) ||
+        !m_L2D->LoadAndBindTextures(m_pDevice))
+    {
+        delete m_L2D;
+        m_L2D = nullptr;
+        m_L2DStatus = "Model load failed";
+        return false;
+    }
+
+    m_L2DLoaded = true;
+    m_L2DStatus = "Model loaded";
+    m_L2DMotionGroups = m_L2D->motionGroups;
+
+    if (auto* renderer = m_L2D->GetRenderer<Rendering::CubismRenderer_D3D11>())
+    {
+        renderer->UseHighPrecisionMask(false);
+        renderer->SetClippingMaskBufferSize(256.0f, 256.0f);
+        const int renderTextureCount = renderer->GetRenderTextureCount();
+        for (int index = 0; index < renderTextureCount; ++index)
+        {
+            renderer->GetMaskBuffer(0, index)->CreateOffscreenSurface(
+                m_pDevice,
+                256,
+                256);
+        }
+    }
+
+    return true;
 }
 
 /*
@@ -652,33 +713,7 @@ void App::OnRender()
 			ofn.lpstrFile = file; ofn.nMaxFile = 1024; ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
 			if (GetOpenFileNameW(&ofn))
 			{
-				m_L2DModelJsonPath = file; m_L2DRequested = true; m_L2DStatus = "선택됨";
-				for (auto* p : m_L2DTexSRVs) { SAFE_RELEASE(p); }
-				m_L2DTexSRVs.clear(); m_L2DTexSizes.clear();
-				// 실제 모델 로드
-				if (m_L2DReady)
-				{
-					delete m_L2D; m_L2D=nullptr; m_L2DLoaded=false; m_L2DMotionGroups.clear();
-					m_L2D = new MinimalUserModel();
-					if (m_L2D->LoadFromModel3(m_L2DModelJsonPath) && m_L2D->LoadAndBindTextures(m_pDevice))
-					{
-						m_L2DLoaded = true; m_L2DStatus = "모델 로드 완료";
-						m_L2DMotionGroups = m_L2D->motionGroups;
-						// 마스크 렌더 타깃 보장: 크기/정밀도 설정
-						if (auto* r = m_L2D->GetRenderer<Rendering::CubismRenderer_D3D11>())
-						{
-							r->UseHighPrecisionMask(false);
-							r->SetClippingMaskBufferSize(256.0f, 256.0f);
-							// 마스크용 오프스크린 버퍼 미리 생성 (백버퍼셋=0)
-							int rtc = r->GetRenderTextureCount();
-							for (int i = 0; i < rtc; ++i)
-							{
-								r->GetMaskBuffer(0, i)->CreateOffscreenSurface(m_pDevice, 256, 256);
-							}
-						}
-					}
-					else { m_L2DStatus = "모델 로드 실패"; }
-				}
+				LoadLive2DModel(file);
 			}
 		}
 		if (!m_L2DModelJsonPath.empty()) { ImGui::Text("Model: %ls", m_L2DModelJsonPath.c_str()); }

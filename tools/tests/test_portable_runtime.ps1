@@ -122,6 +122,25 @@ if (Test-Path -LiteralPath $provenancePath -PathType Leaf) {
         -Message 'Live2D provenance README does not pin the upstream commit.'
 }
 
+$live2DHeader = Read-RepoText -RelativePath 'Dx11/11_Live2D/App.h'
+$live2DSource = Read-RepoText -RelativePath 'Dx11/11_Live2D/App.cpp'
+
+Assert-Contains -Text $live2DHeader `
+    -Expected 'bool LoadLive2DModel(const std::wstring& model3Path);' `
+    -Message 'App.h does not declare the shared Live2D load helper.'
+Assert-Contains -Text $live2DSource `
+    -Expected 'L"..\\Resource\\Live2D\\Skeleton_Model\\Skeleton_Model.model3.json"' `
+    -Message 'App.cpp does not name the bundled Live2D startup model.'
+Assert-Matches -Text $live2DSource `
+    -Pattern 'bool\s+App::LoadLive2DModel\s*\(const\s+std::wstring&\s+model3Path\)' `
+    -Message 'App.cpp does not define App::LoadLive2DModel.'
+Assert-Contains -Text $live2DSource `
+    -Expected 'LoadLive2DModel(kDefaultLive2DModelPath);' `
+    -Message 'OnInitialize does not load the bundled Live2D model.'
+Assert-Contains -Text $live2DSource `
+    -Expected 'LoadLive2DModel(file);' `
+    -Message 'The model file picker does not use the shared load helper.'
+
 if ($script:Failures.Count -gt 0) {
     Write-Host 'Portable runtime verification failed:'
     foreach ($failure in $script:Failures) {
