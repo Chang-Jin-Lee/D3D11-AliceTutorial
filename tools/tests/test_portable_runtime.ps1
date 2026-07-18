@@ -60,6 +60,42 @@ $trackedFiles = @(& git -C $repoRoot ls-files -- $assimpRelative)
 Assert-True -Condition ($trackedFiles -contains $assimpRelative) `
     -Message 'Assimp runtime DLL is not tracked by Git.'
 
+$assimpOutputRelatives = @(
+    'Dx11/bin/assimp-vc143-mt.dll',
+    'Dx11/x64/Debug/assimp-vc143-mt.dll',
+    'Dx11/x64/Release/assimp-vc143-mt.dll'
+)
+
+$canonicalAssimpHash = $null
+if (Test-Path -LiteralPath $assimpDll -PathType Leaf) {
+    $canonicalAssimpHash = (Get-FileHash -LiteralPath $assimpDll -Algorithm SHA256).Hash
+}
+
+foreach ($outputRelative in $assimpOutputRelatives) {
+    $outputDll = Join-Path $repoRoot $outputRelative
+    Assert-True -Condition (Test-Path -LiteralPath $outputDll -PathType Leaf) `
+        -Message "Assimp output runtime DLL is missing: $outputRelative"
+
+    & git -C $repoRoot check-ignore --quiet -- $outputRelative
+    $outputIgnoredExitCode = $LASTEXITCODE
+    Assert-True -Condition ($outputIgnoredExitCode -ne 0) `
+        -Message "Assimp output runtime DLL is still ignored by Git: $outputRelative"
+
+    $trackedOutputFiles = @(& git -C $repoRoot ls-files -- $outputRelative)
+    Assert-True -Condition ($trackedOutputFiles -contains $outputRelative) `
+        -Message "Assimp output runtime DLL is not tracked by Git: $outputRelative"
+
+    if (Test-Path -LiteralPath $outputDll -PathType Leaf) {
+        Assert-True -Condition ((Get-Item -LiteralPath $outputDll).Length -gt 0) `
+            -Message "Assimp output runtime DLL is empty: $outputRelative"
+        if ($canonicalAssimpHash) {
+            $outputHash = (Get-FileHash -LiteralPath $outputDll -Algorithm SHA256).Hash
+            Assert-True -Condition ($outputHash -eq $canonicalAssimpHash) `
+                -Message "Assimp output runtime DLL differs from the canonical DLL: $outputRelative"
+        }
+    }
+}
+
 $targets = Get-Content -Raw -LiteralPath $targetsPath
 Assert-Contains -Text $targets -Expected 'assimp\bin\msvc\assimp-vc143-mt.dll' `
     -Message 'Directory.Build.targets does not name the Assimp runtime DLL.'

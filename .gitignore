@@ -33,6 +33,19 @@ bld/
 !Dx11/third_party/assimp/bin/
 !Dx11/third_party/assimp/bin/msvc/
 !Dx11/third_party/assimp/bin/msvc/assimp-vc143-mt.dll
+
+# Keep the runtime beside already-built x64 executables after git pull.
+!Dx11/bin/
+Dx11/bin/*
+!Dx11/bin/assimp-vc143-mt.dll
+!Dx11/x64/
+Dx11/x64/*
+!Dx11/x64/Debug/
+Dx11/x64/Debug/*
+!Dx11/x64/Debug/assimp-vc143-mt.dll
+!Dx11/x64/Release/
+Dx11/x64/Release/*
+!Dx11/x64/Release/assimp-vc143-mt.dll
 [Oo]bj/
 [Ll]og/
 [Ll]ogs/
