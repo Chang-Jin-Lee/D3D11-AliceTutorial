@@ -11,6 +11,54 @@ function Resolve-ReadmeMediaPath {
     return [System.IO.Path]::GetFullPath((Join-Path $RepoRoot $Path))
 }
 
+function Test-ReadmeMediaSafeRelativePath {
+    param([object] $Value)
+
+    if ($Value -isnot [string] -or [string]::IsNullOrWhiteSpace($Value) -or
+        [System.IO.Path]::IsPathRooted($Value) -or $Value.Contains(':')) {
+        return $false
+    }
+
+    foreach ($segment in @($Value -split '[\\/]')) {
+        if ([string]::IsNullOrWhiteSpace($segment) -or $segment -in @('.', '..') -or
+            $segment.IndexOfAny([System.IO.Path]::GetInvalidFileNameChars()) -ge 0) {
+            return $false
+        }
+    }
+
+    return $true
+}
+
+function Resolve-ReadmeMediaContainedPath {
+    param(
+        [Parameter(Mandatory)] [string] $BasePath,
+        [Parameter(Mandatory)] [string] $Path,
+        [Parameter(Mandatory)] [string] $Description
+    )
+
+    if (-not (Test-ReadmeMediaSafeRelativePath -Value $Path)) {
+        throw "$Description must be a safe relative path: $Path"
+    }
+
+    $baseFullPath = [System.IO.Path]::GetFullPath($BasePath).TrimEnd(
+        [System.IO.Path]::DirectorySeparatorChar,
+        [System.IO.Path]::AltDirectorySeparatorChar)
+    $candidatePath = [System.IO.Path]::GetFullPath((Join-Path $baseFullPath $Path))
+    $basePrefix = $baseFullPath + [System.IO.Path]::DirectorySeparatorChar
+    $comparison = if ([System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT) {
+        [System.StringComparison]::OrdinalIgnoreCase
+    }
+    else {
+        [System.StringComparison]::Ordinal
+    }
+
+    if (-not $candidatePath.StartsWith($basePrefix, $comparison)) {
+        throw "$Description resolves outside its base directory: $Path"
+    }
+
+    return $candidatePath
+}
+
 function Get-ReadmeMediaManifest {
     param(
         [Parameter(Mandatory)] [string] $ManifestPath,
@@ -182,6 +230,12 @@ function Test-ReadmeMediaManifest {
                 $null -eq $project.$property -or
                 ($project.$property -is [string] -and [string]::IsNullOrWhiteSpace($project.$property))) {
                 $null = $errors.Add("missing metadata '$property': $number")
+            }
+        }
+        foreach ($property in @('directory', 'exe', 'image', 'gif', 'infoImage')) {
+            if ((Test-ReadmeMediaManifestProperty -Object $project -Name $property) -and
+                -not (Test-ReadmeMediaSafeRelativePath -Value $project.$property)) {
+                $null = $errors.Add("invalid safe relative path '$property': $number")
             }
         }
 

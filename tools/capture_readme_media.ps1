@@ -873,14 +873,14 @@ function Invoke-ProjectCapture {
     $previousReadmeCaptureEnv = $env:DX11_README_CAPTURE
     $readmeCaptureEnvChanged = $false
     $usePresentationPan = [bool]$Project.gifPresentationPan
-    $imagePath = Join-Path $MediaDir $Project.image
-    $gifPath = Join-Path $MediaDir $Project.gif
+    $imagePath = Resolve-ReadmeMediaContainedPath -BasePath $MediaDir -Path $Project.image -Description "project $($Project.number) image output"
+    $gifPath = Resolve-ReadmeMediaContainedPath -BasePath $MediaDir -Path $Project.gif -Description "project $($Project.number) GIF output"
     try {
         if (-not (Test-Path -LiteralPath $RuntimeDir -PathType Container)) {
             throw "Runtime directory not found: $(Convert-ToReportPath $RuntimeDir $RepoRoot)"
         }
 
-        $exePath = Join-Path $RuntimeDir $Project.exe
+        $exePath = Resolve-ReadmeMediaContainedPath -BasePath $RuntimeDir -Path $Project.exe -Description "project $($Project.number) executable"
         if (-not (Test-Path -LiteralPath $exePath -PathType Leaf)) {
             throw "Executable not found: $(Convert-ToReportPath $exePath $RepoRoot)"
         }

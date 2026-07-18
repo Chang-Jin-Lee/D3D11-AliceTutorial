@@ -48,6 +48,35 @@ if ($fractionalErrors -notcontains 'invalid manifest value: captureWidth') {
     $null = $regressionFailures.Add('fractional captureWidth must be rejected')
 }
 
+foreach ($invalidPath in @(
+    @{ Property = 'exe'; Value = '..\outside.exe' },
+    @{ Property = 'image'; Value = '..\outside.png' },
+    @{ Property = 'gif'; Value = '..\outside.gif' },
+    @{ Property = 'infoImage'; Value = 'info\..\outside-info.png' },
+    @{ Property = 'directory'; Value = '..\outside-project' },
+    @{ Property = 'exe'; Value = 'C:\outside.exe' }
+)) {
+    $invalidManifest = Copy-ReadmeMediaManifest $manifest
+    $invalidManifest.projects[0].($invalidPath.Property) = $invalidPath.Value
+    $invalidErrors = @(Test-ReadmeMediaManifest -Manifest $invalidManifest -RepoRoot $repoRoot)
+    $expectedError = "invalid safe relative path '$($invalidPath.Property)': 01"
+    if ($invalidErrors -notcontains $expectedError) {
+        $null = $regressionFailures.Add("$($invalidPath.Property) path '$($invalidPath.Value)' must be rejected")
+    }
+}
+
 Assert-True ($regressionFailures.Count -eq 0) ($regressionFailures -join "`n")
+
+$containedImage = Resolve-ReadmeMediaContainedPath -BasePath (Join-Path $repoRoot 'docs\media\readme') -Path '01-fixture.png' -Description 'image output'
+Assert-True ($containedImage -eq (Join-Path $repoRoot 'docs\media\readme\01-fixture.png')) 'contained media path was resolved incorrectly'
+
+$traversalRejected = $false
+try {
+    $null = Resolve-ReadmeMediaContainedPath -BasePath (Join-Path $repoRoot 'docs\media\readme') -Path '..\outside.png' -Description 'image output'
+}
+catch {
+    $traversalRejected = $_.Exception.Message -match 'safe relative path'
+}
+Assert-True $traversalRejected 'capture path containment accepted traversal'
 
 'manifest contract tests passed'
