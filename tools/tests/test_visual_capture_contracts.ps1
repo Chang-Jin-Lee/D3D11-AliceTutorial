@@ -25,6 +25,16 @@ foreach ($number in @('12', '13', '25', '30')) {
     Assert-True ($gifActions.Count -eq 0) "project $number must use intrinsic scene motion instead of camera input"
 }
 
+$project07 = Get-Project '07'
+$project07Actions = @($project07.gifActions | Where-Object { $null -ne $_ })
+Assert-True ($project07Actions.Count -eq 4) 'project 07 must keep one short right/left camera movement pair'
+foreach ($key in @('D', 'A')) {
+    $keyActions = @($project07Actions | Where-Object { $_.key -eq $key } | Sort-Object atMs)
+    Assert-True ($keyActions.Count -eq 2) "project 07 must define one keyDown/keyUp pair for $key"
+    Assert-True ($keyActions[0].type -eq 'keyDown' -and $keyActions[1].type -eq 'keyUp') "project 07 $key actions must remain ordered"
+    Assert-True (([int]$keyActions[1].atMs - [int]$keyActions[0].atMs) -le 250) "project 07 $key camera movement must not exceed 250 ms at speed 15"
+}
+
 foreach ($captureProject in @(
     @{ Number = '12'; Source = 'Dx11\12_Lighting_BlinnPhong\App.cpp' },
     @{ Number = '13'; Source = 'Dx11\13_LineRenderer_AxisDebug\App.cpp' }
