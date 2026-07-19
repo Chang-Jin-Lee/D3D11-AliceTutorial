@@ -51,7 +51,7 @@ if (Test-Path -LiteralPath $assimpDll -PathType Leaf) {
         -Message 'Assimp runtime DLL is empty.'
 }
 
-& git -C $repoRoot check-ignore --quiet -- $assimpRelative
+& git -C $repoRoot check-ignore --quiet --no-index -- $assimpRelative
 $ignoredExitCode = $LASTEXITCODE
 Assert-True -Condition ($ignoredExitCode -ne 0) `
     -Message 'Assimp runtime DLL is still ignored by Git.'
@@ -76,7 +76,7 @@ foreach ($outputRelative in $assimpOutputRelatives) {
     Assert-True -Condition (Test-Path -LiteralPath $outputDll -PathType Leaf) `
         -Message "Assimp output runtime DLL is missing: $outputRelative"
 
-    & git -C $repoRoot check-ignore --quiet -- $outputRelative
+    & git -C $repoRoot check-ignore --quiet --no-index -- $outputRelative
     $outputIgnoredExitCode = $LASTEXITCODE
     Assert-True -Condition ($outputIgnoredExitCode -ne 0) `
         -Message "Assimp output runtime DLL is still ignored by Git: $outputRelative"
