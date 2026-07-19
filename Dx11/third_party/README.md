@@ -11,7 +11,13 @@ This folder contains repo-local dependencies used to keep the tutorial solution 
 | FMOD | Existing SDK files | Used by sound samples. |
 | Cubism SDK | Existing SDK files | Used by the Live2D sample. |
 
-`Directory.Build.targets` copies `assimp-vc143-mt.dll` from `third_party/assimp/bin/msvc` to each executable output directory and to `Dx11/bin` after a successful build.
+`assimp-vc143-mt.dll` is also tracked at `Dx11/bin`, `Dx11/x64/Debug`, and
+`Dx11/x64/Release`. These pull-time copies keep existing x64 executables
+launchable with F5 even when Visual Studio skips a rebuild.
+
+`Directory.Build.targets` refreshes the same DLL from
+`third_party/assimp/bin/msvc` to each executable output directory and to
+`Dx11/bin` after a successful build.
 
 `imgui-node-editor` is a git submodule used by `37_Blueprint`.
 Run `git submodule update --init --recursive` before building that project.

@@ -189,6 +189,12 @@ Assert-Contains -Text $thirdPartyReadme -Expected 'assimp-vc143-mt.dll' `
     -Message 'third_party README does not document the tracked Assimp runtime DLL.'
 Assert-Contains -Text $thirdPartyReadme -Expected 'Directory.Build.targets' `
     -Message 'third_party README does not document the shared DLL copy target.'
+Assert-Contains -Text $thirdPartyReadme -Expected 'Dx11/x64/Debug' `
+    -Message 'third_party README does not document the tracked Debug runtime copy.'
+Assert-Contains -Text $thirdPartyReadme -Expected 'Dx11/x64/Release' `
+    -Message 'third_party README does not document the tracked Release runtime copy.'
+Assert-Contains -Text $thirdPartyReadme -Expected 'Visual Studio skips a rebuild' `
+    -Message 'third_party README does not explain the pull-and-F5 runtime contract.'
 
 if ($script:Failures.Count -gt 0) {
     Write-Host 'Portable runtime verification failed:'
