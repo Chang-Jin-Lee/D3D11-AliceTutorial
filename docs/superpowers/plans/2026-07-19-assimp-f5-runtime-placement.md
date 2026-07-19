@@ -296,4 +296,3 @@ git rev-parse origin/main
 ~~~
 
 Expected: `## main...origin/main`, otherwise empty status, and identical SHAs.
-
