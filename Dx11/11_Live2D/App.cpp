@@ -567,15 +567,6 @@ bool App::LoadLive2DModel(const std::wstring& model3Path)
     if (auto* renderer = m_L2D->GetRenderer<Rendering::CubismRenderer_D3D11>())
     {
         renderer->UseHighPrecisionMask(false);
-        renderer->SetClippingMaskBufferSize(256.0f, 256.0f);
-        const int renderTextureCount = renderer->GetRenderTextureCount();
-        for (int index = 0; index < renderTextureCount; ++index)
-        {
-            renderer->GetMaskBuffer(0, index)->CreateOffscreenSurface(
-                m_pDevice,
-                256,
-                256);
-        }
     }
 
     return true;
