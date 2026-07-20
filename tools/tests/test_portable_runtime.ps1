@@ -24,6 +24,16 @@ function Assert-Contains {
     Assert-True -Condition $Text.Contains($Expected) -Message $Message
 }
 
+function Assert-NotContains {
+    param(
+        [string]$Text,
+        [string]$Unexpected,
+        [string]$Message
+    )
+
+    Assert-True -Condition (-not $Text.Contains($Unexpected)) -Message $Message
+}
+
 function Assert-Matches {
     param(
         [string]$Text,
@@ -176,6 +186,76 @@ Assert-Contains -Text $live2DSource `
 Assert-Contains -Text $live2DSource `
     -Expected 'LoadLive2DModel(file);' `
     -Message 'The model file picker does not use the shared load helper.'
+Assert-NotContains -Text $live2DSource -Unexpected 'GetRenderTextureCount()' `
+    -Message '11_Live2D still queries a mask renderer that is absent for no-mask models.'
+Assert-NotContains -Text $live2DSource -Unexpected 'GetMaskBuffer(' `
+    -Message '11_Live2D still creates Cubism mask surfaces manually.'
+
+$defaultModelProjects = @(
+    '17_fbx_pmx_obj_WithPhong',
+    '18_fbx_Animation',
+    '19_MultiModels',
+    '20_Depth_And_Alpha_Issue',
+    '21_MultiModels_With_Animations',
+    '23_Rigid_Animation',
+    '24_Skinned_With_Bone_Structure'
+)
+$defaultModelLoad = 'LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb")'
+
+foreach ($project in $defaultModelProjects) {
+    $source = Read-RepoText -RelativePath "Dx11/$project/App.cpp"
+    Assert-Contains -Text $source -Expected $defaultModelLoad `
+        -Message "$project does not load the bundled public player on startup."
+}
+
+$toonSource = Read-RepoText -RelativePath 'Dx11/25_ToonShading_Outline/App.cpp'
+$animationHeader = Read-RepoText -RelativePath 'Dx11/Common/Mesh/FbxAnimation.h'
+$animationSource = Read-RepoText -RelativePath 'Dx11/Common/Mesh/FbxAnimation.cpp'
+
+Assert-Contains -Text $animationHeader -Expected 'void SetExternalClip(const aiAnimation* clip, const std::string& name);' `
+    -Message 'FbxAnimation does not expose the external clip entry point.'
+Assert-Contains -Text $animationSource -Expected 'm_Clips.push_back(clip);' `
+    -Message 'FbxAnimation does not retain the caller-owned external clip pointer.'
+Assert-Contains -Text $toonSource -Expected '../Common/Animation/ExternalAnimationClipLibrary.h' `
+    -Message '25_ToonShading_Outline does not include the external animation library.'
+Assert-Contains -Text $toonSource -Expected 'Animations\\anim_Idle.fbx' `
+    -Message '25_ToonShading_Outline does not name the tracked Idle animation.'
+Assert-Contains -Text $toonSource -Expected 'ExternalAnimationClipTransform::UnrealCmZUpToGlbMeters' `
+    -Message '25_ToonShading_Outline does not convert the Unreal FBX clip to GLB units.'
+Assert-Contains -Text $toonSource -Expected 'LoadModelFromFile(kDefaultModelPath, true)' `
+    -Message '25_ToonShading_Outline does not opt bundled startup models into Idle.'
+Assert-Contains -Text $toonSource -Expected 'SetExternalClip(m_->m_DefaultIdleClip, "Idle")' `
+    -Message '25_ToonShading_Outline does not attach Idle to startup animators.'
+
+$characterScaleContracts = @{
+    '26_ShadowMap_PCF' = @('const XMFLOAT3 characterScale(100.0f, 100.0f, 100.0f)')
+    '27_DebugDraw' = @('const XMFLOAT3 characterScale(100.0f, 100.0f, 100.0f)')
+    '28_Scene_Shared3DModel_Animation' = @('player.scale = XMFLOAT3(100.0f, 100.0f, 100.0f)', 'mdl.scale = XMFLOAT3(100.0f, 100.0f, 100.0f)')
+    '29_MousePicking' = @('player.scale = XMFLOAT3(100.0f, 100.0f, 100.0f)', 'mdl.scale = XMFLOAT3(100.0f, 100.0f, 100.0f)')
+    '30_PBR_BRDF' = @('player.scale = XMFLOAT3(100.0f, 100.0f, 100.0f)', 'enemy.scale = XMFLOAT3(100.0f, 100.0f, 100.0f)', 'mdl.scale = XMFLOAT3(100.0f, 100.0f, 100.0f)')
+    '31_IBL' = @('player.scale = XMFLOAT3(100.0f, 100.0f, 100.0f)', 'enemy.scale = XMFLOAT3(50.0f, 50.0f, 50.0f)')
+    '32_Sound_FMOD' = @('player.scale = XMFLOAT3(100.0f, 100.0f, 100.0f)', 'enemy.scale = XMFLOAT3(50.0f, 50.0f, 50.0f)')
+    '33_Sound_Animation_Camera_Motion' = @('player.scale = XMFLOAT3(100.0f, 100.0f, 100.0f)', 'enemy.scale = XMFLOAT3(50.0f, 50.0f, 50.0f)')
+    '34_ToneMapping' = @('player.scale = XMFLOAT3(100.0f, 100.0f, 100.0f)')
+    '35_DeferredRendering' = @('player.scale = XMFLOAT3(100.0f, 100.0f, 100.0f)')
+}
+
+foreach ($project in $characterScaleContracts.Keys) {
+    $source = Read-RepoText -RelativePath "Dx11/$project/App.cpp"
+    foreach ($expectedScale in $characterScaleContracts[$project]) {
+        Assert-Contains -Text $source -Expected $expectedScale `
+            -Message "$project is missing character scale contract: $expectedScale"
+    }
+}
+
+$advancedPanels = Read-RepoText -RelativePath 'Dx11/36_AdvancedAnim_Sound_Click/App_ImGuiPanels.inl'
+Assert-Contains -Text $advancedPanels `
+    -Expected 'const bool showSoundDebug = ImGui::Begin("Sound Debug");' `
+    -Message '36_AdvancedAnim_Sound_Click does not record the Sound Debug Begin result.'
+Assert-Contains -Text $advancedPanels -Expected 'if (showSoundDebug)' `
+    -Message '36_AdvancedAnim_Sound_Click does not conditionally draw Sound Debug contents.'
+Assert-NotContains -Text $advancedPanels -Unexpected 'if (ImGui::Begin("Sound Debug"))' `
+    -Message '36_AdvancedAnim_Sound_Click still has the unsafe inline Begin/End pattern.'
 
 $live2DReadme = Read-RepoText -RelativePath 'Dx11/11_Live2D/README.md'
 $thirdPartyReadme = Read-RepoText -RelativePath 'Dx11/third_party/README.md'
