@@ -72,6 +72,7 @@ public:
 		std::vector<DirectX::XMFLOAT4X4>& outGlobal) const;
 	void UploadPalette(ID3D11DeviceContext* ctx, const std::vector<DirectX::XMMATRIX>& pal);
 private:
+	void ResetActiveClipState();
 
 	// Precompute all clips at load-time to avoid per-frame evaluation
 	void PrecomputeAll(

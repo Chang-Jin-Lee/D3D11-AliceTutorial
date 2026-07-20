@@ -2150,9 +2150,9 @@ void App::RenderModelPannel()
 			ImGui::Checkbox("Auto Rotate (Yaw)", &mdl.autoRotate);
             if (mdl.source == ModelSource::FBX && mdl.shared && mdl.shared->fbx)
             {
-                if (mdl.shared->fbx->HasAnimations())
+				const auto& names = mdl.animator.GetNames();
+                if (!names.empty())
 				{
-                    const auto& names = mdl.shared->fbx->GetAnimationNames();
                     if (mdl.uiSelectedAnim < 0 || mdl.uiSelectedAnim >= (int)names.size()) mdl.uiSelectedAnim = mdl.animator.GetCurrentIndex();
 					ImGui::Text("FBX Animations");
 					if (ImGui::BeginListBox("##AnimList", ImVec2(-FLT_MIN, 4 * ImGui::GetTextLineHeightWithSpacing())))

@@ -21,29 +21,40 @@ void FbxAnimation::Clear()
 {
 	SAFE_RELEASE(m_pBoneCB);
 	m_pBoneCB = nullptr;
-	m_Clips.clear();
-	m_Names.clear(); m_DurationSec.clear(); m_TicksPerSec.clear();
-	m_Current = -1; m_TimeSec = 0.0; m_Playing = false; m_Type = AnimType::None;
+	ResetActiveClipState();
+	m_Type = AnimType::None;
     m_Scene = nullptr; m_NodeIndexOfName.clear(); m_BoneNames = nullptr; m_BoneOffsets = nullptr; m_GlobalInverse = nullptr;
-    m_ChannelOfNode.clear(); m_ChannelDirty = true; m_GlobalScratch.clear(); m_PaletteScratch.clear();
+    m_ChannelOfNode.clear(); m_GlobalScratch.clear(); m_PaletteScratch.clear();
     // Optimized traversal caches
     m_NodePtrByIndex.clear();
     m_ParentIndexByIndex.clear();
     m_BoneNodeIndices.clear();
-    m_Precomputed.clear();
+}
+
+void FbxAnimation::ResetActiveClipState()
+{
+	m_Clips.clear();
+	m_Names.clear();
+	m_DurationSec.clear();
+	m_TicksPerSec.clear();
+	m_Precomputed.clear();
+	m_Current = -1;
+	m_TimeSec = 0.0;
+	m_Playing = false;
+	m_ChannelOfNode.assign(m_NodeIndexOfName.size(), nullptr);
+	m_ChannelDirty = true;
 }
 
 void FbxAnimation::InitMetadata(const aiScene* scene)
 {
-	m_Clips.clear();
-	m_Names.clear(); m_DurationSec.clear(); m_TicksPerSec.clear();
-	if (!scene) return;
-	if (scene->mNumAnimations == 0) return;
+	ResetActiveClipState();
+	if (!scene || scene->mNumAnimations == 0) return;
 	m_Clips.reserve(scene->mNumAnimations);
 	for (unsigned i = 0; i < scene->mNumAnimations; ++i)
 	{
 		if (scene->mAnimations[i]) m_Clips.push_back(scene->mAnimations[i]);
 	}
+	if (m_Clips.empty()) return;
 	m_Names.reserve(m_Clips.size());
 	m_DurationSec.reserve(m_Clips.size());
 	m_TicksPerSec.reserve(m_Clips.size());
@@ -57,20 +68,12 @@ void FbxAnimation::InitMetadata(const aiScene* scene)
 		m_TicksPerSec.push_back(tps);
 		m_DurationSec.push_back(durSec);
 	}
-	m_Current = 0; m_TimeSec = 0.0; m_Playing = false;
+	m_Current = 0;
 }
 
 void FbxAnimation::SetExternalClip(const aiAnimation* clip, const std::string& name)
 {
-    m_Clips.clear();
-    m_Names.clear();
-    m_DurationSec.clear();
-    m_TicksPerSec.clear();
-    m_Precomputed.clear();
-    m_Current = -1;
-    m_TimeSec = 0.0;
-    m_ChannelDirty = true;
-
+    ResetActiveClipState();
     if (!clip) return;
 
     const double ticksPerSec = clip->mTicksPerSecond != 0.0 ? clip->mTicksPerSecond : 25.0;
