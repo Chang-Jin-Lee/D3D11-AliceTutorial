@@ -35,7 +35,7 @@ public:
 	void RenderWidgetUI();
 
 	// ·Î´õ API
-	bool LoadModelFromFile(const std::wstring& pathW);
+	bool LoadModelFromFile(const std::wstring& pathW, bool useDefaultIdle = false);
 	void UnloadModel();
 
 private:

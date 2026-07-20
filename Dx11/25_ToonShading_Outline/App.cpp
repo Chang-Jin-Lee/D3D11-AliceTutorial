@@ -25,6 +25,7 @@
 #include "../Common/SystemInfomation.h"
 #include "../Common/Mesh/FbxModel.h"
 #include "../Common/Mesh/FbxAnimation.h"
+#include "../Common/Animation/ExternalAnimationClipLibrary.h"
 #include "../Common/ObjManager.h"
 #include "../Common/PmxManager.h"
 #include <dxgi1_4.h>
@@ -104,6 +105,7 @@ struct ModelEntry
 	// 인스턴스 전용 애니메이터/머티리얼
 	FbxAnimation animator; // FBX 전용: per-instance bone palette
 	bool animatorInited = false;
+	bool useDefaultIdle = false;
 	Material instanceMaterial { {1,1,1,1}, {1,1,1,1}, {1,1,1,32}, {0,0,0,0} };
 	bool useInstanceMaterial = false;
 
@@ -387,6 +389,8 @@ struct App::Impl {
 
     // 모델 로딩 및 렌더링 FBX/OBJ/PMX
     RenderMode                    m_RenderMode = RenderMode::None;
+    ExternalAnimationClipLibrary m_ExternalAnimations;
+    const aiAnimation*            m_DefaultIdleClip = nullptr;
     std::vector<std::unique_ptr<ModelEntry>> m_Models;            // 모델들
     ID3D11ShaderResourceView*     m_pFallbackWhite = nullptr;
     ID3D11ShaderResourceView*     m_pFallbackNormal = nullptr;
@@ -533,10 +537,30 @@ bool App::OnInitialize()
 	if (!m_->m_SystemInfo.InitSysInfomation(m_->m_pDevice)) return false;
 
 
+	constexpr const wchar_t* kDefaultModelPath = L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb";
+	constexpr const wchar_t* kDefaultIdlePath = L"..\\Resource\\fbx\\Public\\MyAlice\\Animations\\anim_Idle.fbx";
+
+	std::string idleError;
+	if (!m_->m_ExternalAnimations.LoadClip(
+			"Idle",
+			kDefaultIdlePath,
+			&idleError,
+			ExternalAnimationClipTransform::UnrealCmZUpToGlbMeters))
+	{
+		m_->PushLog("[ERR] Failed to load default Idle animation: " + idleError);
+		return false;
+	}
+	m_->m_DefaultIdleClip = m_->m_ExternalAnimations.Get("Idle");
+	if (!m_->m_DefaultIdleClip)
+	{
+		m_->PushLog("[ERR] Default Idle animation was loaded without a clip.");
+		return false;
+	}
+
 	constexpr int kToonSampleModelCount = 36;
 	for (int i = 0; i < kToonSampleModelCount; ++i)
 	{
-		LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb");
+		if (!LoadModelFromFile(kDefaultModelPath, true)) return false;
 	}
 
 	if (m_->m_Models.size() < kToonSampleModelCount)
@@ -637,50 +661,13 @@ bool App::OnInitialize()
 	m_->m_Models[35]->modelShading = ShadingMode::Unlit;        m_->m_Models[35]->outlineEnabled = true;
 
 	// --------------------------------------------------------------------------------
-	// 애니메이션 실행 설정
-	// 1줄: index 2, 재생
-	// 2줄: index 3, 재생
-	// 3줄: index 4, 재생
+	// All three rows compare materials and outlines while playing the same Idle clip.
 	// --------------------------------------------------------------------------------
-	// 1줄 (0..11)
-	m_->m_Models[0]->animator.SetCurrentIndex(0);  m_->m_Models[0]->uiAnimPlaying = true;
-	m_->m_Models[1]->animator.SetCurrentIndex(0);  m_->m_Models[1]->uiAnimPlaying = true;
-	m_->m_Models[2]->animator.SetCurrentIndex(0);  m_->m_Models[2]->uiAnimPlaying = true;
-	m_->m_Models[3]->animator.SetCurrentIndex(0);  m_->m_Models[3]->uiAnimPlaying = true;
-	m_->m_Models[4]->animator.SetCurrentIndex(0);  m_->m_Models[4]->uiAnimPlaying = true;
-	m_->m_Models[5]->animator.SetCurrentIndex(0);  m_->m_Models[5]->uiAnimPlaying = true;
-	m_->m_Models[6]->animator.SetCurrentIndex(0);  m_->m_Models[6]->uiAnimPlaying = true;
-	m_->m_Models[7]->animator.SetCurrentIndex(0);  m_->m_Models[7]->uiAnimPlaying = true;
-	m_->m_Models[8]->animator.SetCurrentIndex(0);  m_->m_Models[8]->uiAnimPlaying = true;
-	m_->m_Models[9]->animator.SetCurrentIndex(0);  m_->m_Models[9]->uiAnimPlaying = true;
-	m_->m_Models[10]->animator.SetCurrentIndex(0); m_->m_Models[10]->uiAnimPlaying = true;
-	m_->m_Models[11]->animator.SetCurrentIndex(0); m_->m_Models[11]->uiAnimPlaying = true;
-	// 2줄 (12..23)
-	m_->m_Models[12]->animator.SetCurrentIndex(2);  m_->m_Models[12]->uiAnimPlaying = true;
-	m_->m_Models[13]->animator.SetCurrentIndex(2);  m_->m_Models[13]->uiAnimPlaying = true;
-	m_->m_Models[14]->animator.SetCurrentIndex(2);  m_->m_Models[14]->uiAnimPlaying = true;
-	m_->m_Models[15]->animator.SetCurrentIndex(2);  m_->m_Models[15]->uiAnimPlaying = true;
-	m_->m_Models[16]->animator.SetCurrentIndex(2);  m_->m_Models[16]->uiAnimPlaying = true;
-	m_->m_Models[17]->animator.SetCurrentIndex(2);  m_->m_Models[17]->uiAnimPlaying = true;
-	m_->m_Models[18]->animator.SetCurrentIndex(2);  m_->m_Models[18]->uiAnimPlaying = true;
-	m_->m_Models[19]->animator.SetCurrentIndex(2);  m_->m_Models[19]->uiAnimPlaying = true;
-	m_->m_Models[20]->animator.SetCurrentIndex(2);  m_->m_Models[20]->uiAnimPlaying = true;
-	m_->m_Models[21]->animator.SetCurrentIndex(2);  m_->m_Models[21]->uiAnimPlaying = true;
-	m_->m_Models[22]->animator.SetCurrentIndex(2);  m_->m_Models[22]->uiAnimPlaying = true;
-	m_->m_Models[23]->animator.SetCurrentIndex(2);  m_->m_Models[23]->uiAnimPlaying = true;
-	// 3줄 (24..35)
-	m_->m_Models[24]->animator.SetCurrentIndex(1);  m_->m_Models[24]->uiAnimPlaying = true;
-	m_->m_Models[25]->animator.SetCurrentIndex(1);  m_->m_Models[25]->uiAnimPlaying = true;
-	m_->m_Models[26]->animator.SetCurrentIndex(1);  m_->m_Models[26]->uiAnimPlaying = true;
-	m_->m_Models[27]->animator.SetCurrentIndex(1);  m_->m_Models[27]->uiAnimPlaying = true;
-	m_->m_Models[28]->animator.SetCurrentIndex(1);  m_->m_Models[28]->uiAnimPlaying = true;
-	m_->m_Models[29]->animator.SetCurrentIndex(1);  m_->m_Models[29]->uiAnimPlaying = true;
-	m_->m_Models[30]->animator.SetCurrentIndex(1);  m_->m_Models[30]->uiAnimPlaying = true;
-	m_->m_Models[31]->animator.SetCurrentIndex(1);  m_->m_Models[31]->uiAnimPlaying = true;
-	m_->m_Models[32]->animator.SetCurrentIndex(1);  m_->m_Models[32]->uiAnimPlaying = true;
-	m_->m_Models[33]->animator.SetCurrentIndex(1);  m_->m_Models[33]->uiAnimPlaying = true;
-	m_->m_Models[34]->animator.SetCurrentIndex(1);  m_->m_Models[34]->uiAnimPlaying = true;
-	m_->m_Models[35]->animator.SetCurrentIndex(1);  m_->m_Models[35]->uiAnimPlaying = true;
+	for (int i = 0; i < kToonSampleModelCount; ++i)
+	{
+		m_->m_Models[(size_t)i]->animator.SetCurrentIndex(0);
+		m_->m_Models[(size_t)i]->uiAnimPlaying = true;
+	}
 
 
 	// --------------------------------------------------------------------------------
@@ -733,6 +720,12 @@ void App::OnUpdate(const float& dt)
                         &mdl.shared->fbx->GetGlobalInverse());
                     auto t = mdl.shared->fbx->GetCurrentAnimationType();
                     mdl.animator.SetType(t == FbxModel::AnimationType::Rigid ? FbxAnimation::AnimType::Rigid : (t == FbxModel::AnimationType::Skinned ? FbxAnimation::AnimType::Skinned : FbxAnimation::AnimType::None));
+                    if (mdl.useDefaultIdle && m_->m_DefaultIdleClip)
+                    {
+                        mdl.animator.SetExternalClip(m_->m_DefaultIdleClip, "Idle");
+                        mdl.animator.SetCurrentIndex(0);
+                        mdl.uiAnimPlaying = true;
+                    }
                     mdl.animatorInited = true;
                 }
                 mdl.animator.SetPlaying(mdl.uiAnimPlaying);
@@ -1823,7 +1816,7 @@ bool App::InitSkyBoxEffect()
 }
 
 // ------------------------- Model Loader (FBX/OBJ/PMX via Assimp) -------------------------
-bool App::LoadModelFromFile(const std::wstring& pathW)
+bool App::LoadModelFromFile(const std::wstring& pathW, bool useDefaultIdle)
 {
     // 새 모델델 추가
 
@@ -1857,6 +1850,7 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
     bool ok = false;
     auto entry = std::make_unique<ModelEntry>();
     entry->modelName = fileName;
+    entry->useDefaultIdle = useDefaultIdle;
 
     // 캐시 확인
     std::shared_ptr<SharedModelData> shared;
@@ -1956,6 +1950,12 @@ bool App::LoadModelFromFile(const std::wstring& pathW)
                 &entry->shared->fbx->GetGlobalInverse());
             auto t = entry->shared->fbx->GetCurrentAnimationType();
             entry->animator.SetType(t == FbxModel::AnimationType::Rigid ? FbxAnimation::AnimType::Rigid : (t == FbxModel::AnimationType::Skinned ? FbxAnimation::AnimType::Skinned : FbxAnimation::AnimType::None));
+            if (entry->useDefaultIdle && m_->m_DefaultIdleClip)
+            {
+                entry->animator.SetExternalClip(m_->m_DefaultIdleClip, "Idle");
+                entry->animator.SetCurrentIndex(0);
+                entry->uiAnimPlaying = true;
+            }
             entry->animatorInited = true;
         }
 

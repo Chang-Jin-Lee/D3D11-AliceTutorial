@@ -21,6 +21,7 @@ void FbxAnimation::Clear()
 {
 	SAFE_RELEASE(m_pBoneCB);
 	m_pBoneCB = nullptr;
+	m_Clips.clear();
 	m_Names.clear(); m_DurationSec.clear(); m_TicksPerSec.clear();
 	m_Current = -1; m_TimeSec = 0.0; m_Playing = false; m_Type = AnimType::None;
     m_Scene = nullptr; m_NodeIndexOfName.clear(); m_BoneNames = nullptr; m_BoneOffsets = nullptr; m_GlobalInverse = nullptr;
@@ -34,15 +35,21 @@ void FbxAnimation::Clear()
 
 void FbxAnimation::InitMetadata(const aiScene* scene)
 {
+	m_Clips.clear();
 	m_Names.clear(); m_DurationSec.clear(); m_TicksPerSec.clear();
 	if (!scene) return;
 	if (scene->mNumAnimations == 0) return;
-	m_Names.reserve(scene->mNumAnimations);
-	m_DurationSec.reserve(scene->mNumAnimations);
-	m_TicksPerSec.reserve(scene->mNumAnimations);
+	m_Clips.reserve(scene->mNumAnimations);
 	for (unsigned i = 0; i < scene->mNumAnimations; ++i)
 	{
-		const aiAnimation* a = scene->mAnimations[i];
+		if (scene->mAnimations[i]) m_Clips.push_back(scene->mAnimations[i]);
+	}
+	m_Names.reserve(m_Clips.size());
+	m_DurationSec.reserve(m_Clips.size());
+	m_TicksPerSec.reserve(m_Clips.size());
+	for (size_t i = 0; i < m_Clips.size(); ++i)
+	{
+		const aiAnimation* a = m_Clips[i];
 		std::string nm = a->mName.length > 0 ? std::string(a->mName.C_Str()) : (std::string("Anim") + std::to_string(i));
 		double tps = (a->mTicksPerSecond != 0.0) ? a->mTicksPerSecond : 25.0;
 		double durSec = (tps != 0.0) ? (a->mDuration / tps) : 0.0;
@@ -51,6 +58,32 @@ void FbxAnimation::InitMetadata(const aiScene* scene)
 		m_DurationSec.push_back(durSec);
 	}
 	m_Current = 0; m_TimeSec = 0.0; m_Playing = false;
+}
+
+void FbxAnimation::SetExternalClip(const aiAnimation* clip, const std::string& name)
+{
+    m_Clips.clear();
+    m_Names.clear();
+    m_DurationSec.clear();
+    m_TicksPerSec.clear();
+    m_Precomputed.clear();
+    m_Current = -1;
+    m_TimeSec = 0.0;
+    m_ChannelDirty = true;
+
+    if (!clip) return;
+
+    const double ticksPerSec = clip->mTicksPerSecond != 0.0 ? clip->mTicksPerSecond : 25.0;
+    m_Clips.push_back(clip);
+    m_Names.push_back(name.empty() ? "External" : name);
+    m_TicksPerSec.push_back(ticksPerSec);
+    m_DurationSec.push_back(ticksPerSec != 0.0 ? clip->mDuration / ticksPerSec : 0.0);
+    m_Current = 0;
+
+    if (m_Scene && m_BoneNames && m_BoneOffsets && m_GlobalInverse)
+    {
+        PrecomputeAll(m_Scene, m_NodeIndexOfName, *m_BoneNames, *m_BoneOffsets, *m_GlobalInverse, 30);
+    }
 }
 
 void FbxAnimation::SetCurrentIndex(int idx)
@@ -126,14 +159,16 @@ void FbxAnimation::SetSharedContext(
     }
 }
 
-static void RebuildChannelMapIfNeeded(const aiScene* scene, int currentClip, const std::unordered_map<std::string,int>& nodeIndexOfName, std::vector<const aiNodeAnim*>& out)
+static void RebuildChannelMapIfNeeded(
+    const aiAnimation* animation,
+    const std::unordered_map<std::string, int>& nodeIndexOfName,
+    std::vector<const aiNodeAnim*>& out)
 {
-    if (!scene || currentClip < 0 || (size_t)currentClip >= scene->mNumAnimations) return;
     std::fill(out.begin(), out.end(), nullptr);
-    const aiAnimation* anim = scene->mAnimations[currentClip];
-    for (unsigned i = 0; i < anim->mNumChannels; ++i)
+    if (!animation) return;
+    for (unsigned i = 0; i < animation->mNumChannels; ++i)
     {
-        const aiNodeAnim* ch = anim->mChannels[i];
+        const aiNodeAnim* ch = animation->mChannels[i];
         auto it = nodeIndexOfName.find(ch->mNodeName.C_Str());
         if (it != nodeIndexOfName.end())
         {
@@ -318,13 +353,13 @@ void FbxAnimation::PrecomputeAll(
 {
 	if (!scene || boneNames.empty() || samplesPerSecond <= 0) { m_Precomputed.clear(); return; }
 	m_Precomputed.clear();
-	m_Precomputed.resize(m_Names.size());
+	m_Precomputed.resize(m_Clips.size());
 
 	// Preserve current playback state while precomputing
 	int oldClip = m_Current; double oldTime = m_TimeSec; bool oldPlaying = m_Playing;
 	m_Playing = false;
 
-	for (size_t clipIdx = 0; clipIdx < m_Names.size(); ++clipIdx)
+	for (size_t clipIdx = 0; clipIdx < m_Clips.size(); ++clipIdx)
 	{
 		PrecomputedClip pc{};
 		pc.ticksPerSec = (clipIdx < m_TicksPerSec.size()) ? m_TicksPerSec[clipIdx] : 25.0;
@@ -336,7 +371,7 @@ void FbxAnimation::PrecomputeAll(
 		// Build channel map for this clip
 		m_Current = (int)clipIdx;
 		m_ChannelOfNode.assign(nodeIndexOfName.size(), nullptr);
-		RebuildChannelMapIfNeeded(scene, m_Current, nodeIndexOfName, m_ChannelOfNode);
+		RebuildChannelMapIfNeeded(m_Clips[clipIdx], nodeIndexOfName, m_ChannelOfNode);
 
 		int numSamples = (int)std::ceil(pc.durationSec * samplesPerSecond);
 		if (numSamples < 1) numSamples = 1;
@@ -672,7 +707,7 @@ void FbxAnimation::UpdateAndUpload(
 	// Fallback: compute on the fly (if not precomputed)
 	if (m_Type == AnimType::Rigid) { UploadRigid(ctx, sc, nodeMap, *bones, *giPtr); return; }
 	if (!sc || (m_Current < 0 && m_Type != AnimType::Skinned)) return;
-	if (m_Current >= 0 && m_ChannelDirty && !m_ChannelOfNode.empty()) { RebuildChannelMapIfNeeded(sc, m_Current, nodeMap, m_ChannelOfNode); m_ChannelDirty = false; }
+	if (m_Current >= 0 && (size_t)m_Current < m_Clips.size() && m_ChannelDirty && !m_ChannelOfNode.empty()) { RebuildChannelMapIfNeeded(m_Clips[(size_t)m_Current], nodeMap, m_ChannelOfNode); m_ChannelDirty = false; }
 	EvaluateGlobals(sc, nodeMap, m_GlobalScratch);
 	m_PaletteScratch.resize(bones->size(), XMMatrixIdentity());
 	XMMATRIX Gi = XMLoadFloat4x4(giPtr);

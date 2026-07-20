@@ -7,6 +7,7 @@
 struct ID3D11Device;
 struct ID3D11DeviceContext;
 struct ID3D11Buffer;
+struct aiAnimation;
 struct aiScene;
 struct aiNodeAnim;
 
@@ -24,6 +25,8 @@ public:
 	void Clear();
 
 	void InitMetadata(const aiScene* scene);
+	// The caller owns clip and must keep it alive while this animator uses it.
+	void SetExternalClip(const aiAnimation* clip, const std::string& name);
 	// Bind shared scene/skeleton once per instance to avoid per-frame lookups
 	void SetSharedContext(
 		const aiScene* scene,
@@ -81,6 +84,7 @@ private:
 
 private:
 	AnimType m_Type = AnimType::None;
+	std::vector<const aiAnimation*> m_Clips;
 	std::vector<std::string> m_Names;
 	std::vector<double> m_DurationSec;
 	std::vector<double> m_TicksPerSec;
