@@ -562,6 +562,12 @@ bool App::OnInitialize()
 	LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Enemy\\AliceEnemy1.glb"); // 7
 
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Ground.fbx"); // 0
+	const XMFLOAT3 characterScale(100.0f, 100.0f, 100.0f);
+	for (int i = 0; i < 8 && i < (int)m_->m_Models.size(); ++i)
+	{
+		auto& model = *m_->m_Models[(size_t)i];
+		model.scale = characterScale;
+	}
 
 	// 초기 카메라 위치/속도/회전 설정
 	m_Camera.SetPosition(XMFLOAT3(40, 208.0f, -184.0f));
@@ -612,7 +618,6 @@ bool App::OnInitialize()
 
 	if (ReadmeCapture::IsEnabled())
 	{
-		const XMFLOAT3 characterScale(100.0f, 100.0f, 100.0f);
 		const XMFLOAT3 characterPositions[8] = {
 			XMFLOAT3(0.0f, 0.0f, 0.0f),
 			XMFLOAT3(-90.0f, 0.0f, 85.0f),
@@ -628,7 +633,6 @@ bool App::OnInitialize()
 		{
 			auto& model = *m_->m_Models[(size_t)i];
 			model.pos = characterPositions[i];
-			model.scale = characterScale;
 			model.rotDeg = XMFLOAT3(0.0f, characterYaw[i], 0.0f);
 		}
 		if (m_->m_Models.size() > 8)

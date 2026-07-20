@@ -618,6 +618,16 @@ bool App::OnInitialize()
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\sphere.fbx"); // 0
 	LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Enemy\\AliceEnemy1.glb"); // 0
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Ground.fbx"); // 4
+	if (m_->m_Models.size() > 0)
+	{
+		auto& player = *m_->m_Models[0];
+		player.scale = XMFLOAT3(100.0f, 100.0f, 100.0f);
+	}
+	if (m_->m_Models.size() > 3)
+	{
+		auto& enemy = *m_->m_Models[3];
+		enemy.scale = XMFLOAT3(50.0f, 50.0f, 50.0f);
+	}
 
 	m_->m_Objects.clear();
 	for (int mi = 0; mi < (int)m_->m_Models.size(); ++mi)
@@ -679,7 +689,6 @@ bool App::OnInitialize()
 		{
 			auto& player = *m_->m_Models[0];
 			player.pos = XMFLOAT3(0.0f, 0.0f, 0.0f);
-			player.scale = XMFLOAT3(100.0f, 100.0f, 100.0f);
 			player.rotDeg = XMFLOAT3(0.0f, -25.0f, 0.0f);
 		}
 		if (m_->m_Models.size() > 1)
@@ -696,7 +705,6 @@ bool App::OnInitialize()
 		{
 			auto& enemy = *m_->m_Models[3];
 			enemy.pos = XMFLOAT3(90.0f, 0.0f, 70.0f);
-			enemy.scale = XMFLOAT3(50.0f, 50.0f, 50.0f);
 			enemy.rotDeg = XMFLOAT3(0.0f, -145.0f, 0.0f);
 		}
 		if (m_->m_Models.size() > 4)

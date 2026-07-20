@@ -608,6 +608,11 @@ bool App::OnInitialize()
 	// ====================================== 3D 모델 ======================================
 	LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"); // 0
 	LoadModelFromFile(L"..\\Resource\\fbx\\Study\\Ground.fbx"); // 0
+	if (m_->m_Models.size() > 0)
+	{
+		auto& player = *m_->m_Models[0];
+		player.scale = XMFLOAT3(100.0f, 100.0f, 100.0f);
+	}
 
 	m_->m_Objects.clear();
 	for (int mi = 0; mi < (int)m_->m_Models.size(); ++mi)
@@ -660,7 +665,6 @@ bool App::OnInitialize()
 		{
 			auto& player = *m_->m_Models[0];
 			player.pos = XMFLOAT3(0.0f, 0.0f, 0.0f);
-			player.scale = XMFLOAT3(100.0f, 100.0f, 100.0f);
 			player.rotDeg = XMFLOAT3(0.0f, -35.0f, 0.0f);
 		}
 		if (m_->m_Models.size() > 1)

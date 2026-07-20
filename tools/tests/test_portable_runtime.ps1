@@ -44,6 +44,45 @@ function Assert-Matches {
     Assert-True -Condition ([regex]::IsMatch($Text, $Pattern)) -Message $Message
 }
 
+function Assert-ContainsInOrderBefore {
+    param(
+        [string]$Text,
+        [string]$Anchor,
+        [string[]]$Expected,
+        [string]$Boundary,
+        [string]$Message
+    )
+
+    $anchorIndex = $Text.IndexOf($Anchor, [System.StringComparison]::Ordinal)
+    Assert-True -Condition ($anchorIndex -ge 0) `
+        -Message "$Message (missing anchor: $Anchor)"
+    if ($anchorIndex -lt 0) {
+        return
+    }
+
+    $boundaryIndex = $Text.Length
+    if (-not [string]::IsNullOrEmpty($Boundary)) {
+        $boundaryIndex = $Text.IndexOf($Boundary, $anchorIndex, [System.StringComparison]::Ordinal)
+        Assert-True -Condition ($boundaryIndex -ge 0) `
+            -Message "$Message (missing boundary after anchor: $Boundary)"
+        if ($boundaryIndex -lt 0) {
+            return
+        }
+    }
+
+    $searchIndex = $anchorIndex + $Anchor.Length
+    foreach ($item in $Expected) {
+        $itemIndex = $Text.IndexOf($item, $searchIndex, [System.StringComparison]::Ordinal)
+        $isInOrderBeforeBoundary = $itemIndex -ge 0 -and $itemIndex -lt $boundaryIndex
+        Assert-True -Condition $isInOrderBeforeBoundary `
+            -Message "$Message (missing or out of order before boundary: $item)"
+        if (-not $isInOrderBeforeBoundary) {
+            return
+        }
+        $searchIndex = $itemIndex + $item.Length
+    }
+}
+
 function Read-RepoText {
     param([string]$RelativePath)
 
@@ -240,12 +279,71 @@ $characterScaleContracts = @{
     '35_DeferredRendering' = @('player.scale = XMFLOAT3(100.0f, 100.0f, 100.0f)')
 }
 
+$startupCharacterScaleContracts = @{
+    '26_ShadowMap_PCF' = @(
+        'const XMFLOAT3 characterScale(100.0f, 100.0f, 100.0f);',
+        'for (int i = 0; i < 8 && i < (int)m_->m_Models.size(); ++i)',
+        'model.scale = characterScale;'
+    )
+    '27_DebugDraw' = @(
+        'const XMFLOAT3 characterScale(100.0f, 100.0f, 100.0f);',
+        'for (int i = 0; i < 8 && i < (int)m_->m_Models.size(); ++i)',
+        'model.scale = characterScale;'
+    )
+    '28_Scene_Shared3DModel_Animation' = @(
+        'if (m_->m_Models.size() > 0)',
+        'player.scale = XMFLOAT3(100.0f, 100.0f, 100.0f);'
+    )
+    '29_MousePicking' = @(
+        'if (m_->m_Models.size() > 0)',
+        'player.scale = XMFLOAT3(100.0f, 100.0f, 100.0f);'
+    )
+    '30_PBR_BRDF' = @(
+        'if (m_->m_Models.size() > 0)',
+        'player.scale = XMFLOAT3(100.0f, 100.0f, 100.0f);',
+        'if (m_->m_Models.size() > 1)',
+        'enemy.scale = XMFLOAT3(100.0f, 100.0f, 100.0f);'
+    )
+    '31_IBL' = @(
+        'if (m_->m_Models.size() > 0)',
+        'player.scale = XMFLOAT3(100.0f, 100.0f, 100.0f);',
+        'if (m_->m_Models.size() > 3)',
+        'enemy.scale = XMFLOAT3(50.0f, 50.0f, 50.0f);'
+    )
+    '32_Sound_FMOD' = @(
+        'if (m_->m_Models.size() > 0)',
+        'player.scale = XMFLOAT3(100.0f, 100.0f, 100.0f);',
+        'if (m_->m_Models.size() > 3)',
+        'enemy.scale = XMFLOAT3(50.0f, 50.0f, 50.0f);'
+    )
+    '33_Sound_Animation_Camera_Motion' = @(
+        'if (m_->m_Models.size() > 0)',
+        'player.scale = XMFLOAT3(100.0f, 100.0f, 100.0f);',
+        'if (m_->m_Models.size() > 3)',
+        'enemy.scale = XMFLOAT3(50.0f, 50.0f, 50.0f);'
+    )
+    '34_ToneMapping' = @(
+        'if (m_->m_Models.size() > 0)',
+        'player.scale = XMFLOAT3(100.0f, 100.0f, 100.0f);'
+    )
+    '35_DeferredRendering' = @(
+        'if (m_->m_Models.size() > 0)',
+        'player.scale = XMFLOAT3(100.0f, 100.0f, 100.0f);'
+    )
+}
+
 foreach ($project in $characterScaleContracts.Keys) {
     $source = Read-RepoText -RelativePath "Dx11/$project/App.cpp"
     foreach ($expectedScale in $characterScaleContracts[$project]) {
         Assert-Contains -Text $source -Expected $expectedScale `
             -Message "$project is missing character scale contract: $expectedScale"
     }
+
+    Assert-ContainsInOrderBefore -Text $source `
+        -Anchor 'bool App::OnInitialize' `
+        -Expected $startupCharacterScaleContracts[$project] `
+        -Boundary 'if (ReadmeCapture::IsEnabled())' `
+        -Message "$project does not apply startup character scales before the first ReadmeCapture guard."
 }
 
 $advancedPanels = Read-RepoText -RelativePath 'Dx11/36_AdvancedAnim_Sound_Click/App_ImGuiPanels.inl'
@@ -256,6 +354,16 @@ Assert-Contains -Text $advancedPanels -Expected 'if (showSoundDebug)' `
     -Message '36_AdvancedAnim_Sound_Click does not conditionally draw Sound Debug contents.'
 Assert-NotContains -Text $advancedPanels -Unexpected 'if (ImGui::Begin("Sound Debug"))' `
     -Message '36_AdvancedAnim_Sound_Click still has the unsafe inline Begin/End pattern.'
+Assert-ContainsInOrderBefore -Text $advancedPanels `
+    -Anchor 'void App::RenderSoundDebugUI()' `
+    -Expected @(
+        'const bool showSoundDebug = ImGui::Begin("Sound Debug");',
+        'if (showSoundDebug)',
+        'ImGui::PopID();',
+        'ImGui::End();'
+    ) `
+    -Boundary '' `
+    -Message '36_AdvancedAnim_Sound_Click does not end Sound Debug after its conditional body.'
 
 $live2DReadme = Read-RepoText -RelativePath 'Dx11/11_Live2D/README.md'
 $thirdPartyReadme = Read-RepoText -RelativePath 'Dx11/third_party/README.md'
