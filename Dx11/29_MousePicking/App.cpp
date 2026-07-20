@@ -660,7 +660,7 @@ bool App::OnInitialize()
 		{
 			auto& player = *m_->m_Models[0];
 			player.pos = XMFLOAT3(0.0f, 0.0f, 0.0f);
-			player.scale = XMFLOAT3(80.0f, 80.0f, 80.0f);
+			player.scale = XMFLOAT3(100.0f, 100.0f, 100.0f);
 			player.rotDeg = XMFLOAT3(0.0f, -35.0f, 0.0f);
 		}
 		if (m_->m_Models.size() > 1)
@@ -1017,7 +1017,7 @@ void App::OnUpdate(const float& dt)
 				auto& mdl = *m_->m_Models[(size_t)newIndex];
 				mdl.modelShading = ShadingMode::TextureOnly;
 				mdl.pos = XMFLOAT3(spacingX * (col - perRow / 2), 0.0f, 180.0f + spacingZ * row);
-				mdl.scale = XMFLOAT3(1.0f, 1.0f, 1.0f);
+				mdl.scale = XMFLOAT3(100.0f, 100.0f, 100.0f);
 				// 애니메이션 1번으로 설정 후 재생
 				mdl.animator.SetCurrentIndex((int)(rand() % 6));
 				mdl.uiAnimPlaying = true;

@@ -677,7 +677,7 @@ bool App::OnInitialize()
 
 	if (ReadmeCapture::IsEnabled())
 	{
-		const XMFLOAT3 characterScale(95.0f, 95.0f, 95.0f);
+		const XMFLOAT3 characterScale(100.0f, 100.0f, 100.0f);
 		const XMFLOAT3 characterPositions[8] = {
 			XMFLOAT3(0.0f, 0.0f, 0.0f),
 			XMFLOAT3(-90.0f, 0.0f, 85.0f),
