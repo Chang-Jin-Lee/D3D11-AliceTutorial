@@ -1611,7 +1611,8 @@ void App::RenderSoundDebugUI() {
 	ImGui::SetNextWindowPos(pos, ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowSize(ImVec2(380.0f, 600.0f), ImGuiCond_FirstUseEver);
 
-	if (ImGui::Begin("Sound Debug"))
+	const bool showSoundDebug = ImGui::Begin("Sound Debug");
+	if (showSoundDebug)
 	{
 		// ===== 2D Pan 테스트 =====
 		ImGui::SeparatorText("Pan Test (2D)");
@@ -1657,6 +1658,6 @@ void App::RenderSoundDebugUI() {
 			ImGui::PopID();
 		}
 
-		ImGui::End();
 	}
+	ImGui::End();
 }
