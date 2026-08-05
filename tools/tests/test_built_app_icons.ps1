@@ -38,19 +38,34 @@ else {
     (Resolve-Path -LiteralPath (Join-Path $repoRoot $BinRoot)).Path
 }
 
+$hasExplicitSelection = $PSBoundParameters.ContainsKey('ProjectNames') -or $PSBoundParameters.ContainsKey('AdditionalProjectNames')
 $ProjectNames = @($ProjectNames) + @($AdditionalProjectNames)
 
-if ($ProjectNames.Count -eq 0) {
-    $solutionText = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'Dx11\TutorialApp.sln')
-    $ProjectNames = @(
-        [regex]::Matches($solutionText, '(?m)^Project\("[^"]+"\) = "([^"]+)", "([^"]+\.vcxproj)"') |
-            ForEach-Object { $_.Groups[1].Value } |
-            Where-Object { $_ -ne 'Common' }
-    )
+$solutionText = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'Dx11\TutorialApp.sln')
+$solutionProjectNames = @(
+    [regex]::Matches($solutionText, '(?m)^Project\("[^"]+"\) = "([^"]+)", "([^"]+\.vcxproj)"') |
+        ForEach-Object { $_.Groups[1].Value } |
+        Where-Object { $_ -ne 'Common' }
+)
+Assert-True ($solutionProjectNames.Count -eq 37) "solution must contain exactly 37 application projects, got $($solutionProjectNames.Count)"
+Assert-True (@($solutionProjectNames | Sort-Object -Unique).Count -eq 37) 'solution application projects must be unique'
+foreach ($solutionProjectName in $solutionProjectNames) {
+    Assert-True ($solutionProjectName -match '^[A-Za-z0-9_]+$') "invalid solution project name: $solutionProjectName"
+}
+
+if ($hasExplicitSelection) {
+    Assert-True ($ProjectNames.Count -gt 0) 'explicit application project selection must not be empty'
+}
+else {
+    $ProjectNames = $solutionProjectNames
 }
 
 Assert-True ($ProjectNames.Count -gt 0) 'no application projects selected'
 Assert-True (@($ProjectNames | Sort-Object -Unique).Count -eq $ProjectNames.Count) 'selected application projects must be unique'
+foreach ($projectName in $ProjectNames) {
+    Assert-True ($projectName -match '^[A-Za-z0-9_]+$') "invalid project name: $projectName"
+    Assert-True ($solutionProjectNames -contains $projectName) "selected project is not an application in TutorialApp.sln: $projectName"
+}
 
 # Visual Studio's canonical x64 Debug output is distinct from the post-build
 # runtime copy in Dx11\bin. Probe only this deterministic build product so both
@@ -59,8 +74,6 @@ $canonicalOutputRoot = Join-Path $resolvedBinRoot 'x64\Debug'
 Assert-True (Test-Path -LiteralPath $canonicalOutputRoot -PathType Container) "canonical output directory missing: $canonicalOutputRoot"
 
 foreach ($projectName in $ProjectNames) {
-    Assert-True ($projectName -match '^[A-Za-z0-9_]+$') "invalid project name: $projectName"
-
     $executable = Join-Path $canonicalOutputRoot "$projectName.exe"
     Assert-True (Test-Path -LiteralPath $executable -PathType Leaf) "canonical executable missing: $executable"
     $executableInfo = Get-Item -LiteralPath $executable

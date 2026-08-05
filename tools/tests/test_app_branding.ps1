@@ -37,11 +37,17 @@ foreach ($entry in $readmes) {
 
     Assert-True (([regex]::Matches($content, [regex]::Escape($brandStart))).Count -eq 1) "brand start count invalid: $($entry.Path)"
     Assert-True (([regex]::Matches($content, [regex]::Escape($brandEnd))).Count -eq 1) "brand end count invalid: $($entry.Path)"
-    Assert-True ($content -match [regex]::Escape("src=`"$($entry.Relative)`"")) "logo path invalid: $($entry.Path)"
-    Assert-True ($content -match [regex]::Escape("width=`"$($entry.Width)`"")) "logo width invalid: $($entry.Path)"
+
+    $brandIndex = $content.IndexOf($brandStart, [StringComparison]::Ordinal)
+    $brandEndIndex = $content.IndexOf($brandEnd, [StringComparison]::Ordinal)
+    Assert-True ($brandIndex -lt $brandEndIndex) "brand markers out of order: $($entry.Path)"
+    $brandBlockLength = $brandEndIndex + $brandEnd.Length - $brandIndex
+    $brandBlock = $content.Substring($brandIndex, $brandBlockLength)
+    $expectedImage = "<p align=`"center`"><img src=`"$($entry.Relative)`" width=`"$($entry.Width)`" alt=`"D3D11 Alice Tutorial mascot logo`" /></p>"
+    $expectedBlockPattern = '\A' + [regex]::Escape($brandStart) + '\r?\n' + [regex]::Escape($expectedImage) + '\r?\n' + [regex]::Escape($brandEnd) + '\z'
+    Assert-True ([regex]::IsMatch($brandBlock, $expectedBlockPattern)) "brand block content invalid: $($entry.Path)"
 
     $heading = [regex]::Match($content, '(?m)^#{1,6}\s+.+$')
-    $brandIndex = $content.IndexOf($brandStart, [StringComparison]::Ordinal)
     Assert-True $heading.Success "Markdown heading missing: $($entry.Path)"
     Assert-True ($brandIndex -gt ($heading.Index + $heading.Length)) "brand block must follow first Markdown heading: $($entry.Path)"
     $betweenHeadingAndBrand = $content.Substring($heading.Index + $heading.Length, $brandIndex - ($heading.Index + $heading.Length))
