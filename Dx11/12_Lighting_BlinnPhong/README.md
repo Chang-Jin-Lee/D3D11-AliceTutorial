@@ -11,6 +11,10 @@
 <!-- README-INFO:END -->
 
 ## 12. Blinn Phong (12_Lighting_BlinnPhong)
+
+<!-- README-BRAND:START -->
+<p align="center"><img src="../../docs/media/branding/alice-tutorial-logo.png" width="520" alt="D3D11 Alice Tutorial mascot logo" /></p>
+<!-- README-BRAND:END -->
 - 내용 : Blinn Phone 쉐이더를 사용한 라이팅 예제입니다
 - 주요 구현
   - Material은 `ambient`, `diffuse`, `specular`, `reflect`를 가지고 있음

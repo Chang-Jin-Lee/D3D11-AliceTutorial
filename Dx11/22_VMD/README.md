@@ -12,6 +12,10 @@
 
 # 22. VMD Camera
 
+<!-- README-BRAND:START -->
+<p align="center"><img src="../../docs/media/branding/alice-tutorial-logo.png" width="520" alt="D3D11 Alice Tutorial mascot logo" /></p>
+<!-- README-BRAND:END -->
+
 - 내용: VMD 카메라/모션 데이터를 읽어 모델과 카메라 움직임을 확인하는 프로젝트입니다.
 - 주요 구현
   - MMD 계열 애니메이션 데이터 로딩

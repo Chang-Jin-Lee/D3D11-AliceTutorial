@@ -12,6 +12,10 @@
 
 # 31. IBL (Image Based Lighting)
 
+<!-- README-BRAND:START -->
+<p align="center"><img src="../../docs/media/branding/alice-tutorial-logo.png" width="520" alt="D3D11 Alice Tutorial mascot logo" /></p>
+<!-- README-BRAND:END -->
+
 | IBL |
 |----|
 | <div align="center"><img src="../../docs/media/readme/31-IBL.png" width="900"/><br/>metalic 1.0, roughness 0.0</div> |

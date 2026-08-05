@@ -12,6 +12,10 @@
 
 ## 19. fbx, obj, pmx MultiModels (19_MultiModels)
 
+<!-- README-BRAND:START -->
+<p align="center"><img src="../../docs/media/branding/alice-tutorial-logo.png" width="520" alt="D3D11 Alice Tutorial mascot logo" /></p>
+<!-- README-BRAND:END -->
+
 - 내용 : 여러 모델을 동시에 렌더하는 예제입니다
 - 주요 구현
   - 17번 프로젝트에서 완성한 모델 렌더 로직에서 모델을 그리기 위한 ModelEntry를 정의합니다.

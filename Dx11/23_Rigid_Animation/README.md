@@ -12,6 +12,10 @@
 
 ## 23. Rigid, Skinned Animation (23_Rigid_Animation)
 
+<!-- README-BRAND:START -->
+<p align="center"><img src="../../docs/media/branding/alice-tutorial-logo.png" width="520" alt="D3D11 Alice Tutorial mascot logo" /></p>
+<!-- README-BRAND:END -->
+
 - 내용 : Rigid, Skinned Animation 분기처리를 합니다
 - 주요 구현
   - 본을 읽어 개수가 0이고 애니메이션 개수도 0이면 Static Mesh입니다

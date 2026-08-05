@@ -12,6 +12,10 @@
 
 ## 18. fbx Animation (18_fbx_Animation)
 
+<!-- README-BRAND:START -->
+<p align="center"><img src="../../docs/media/branding/alice-tutorial-logo.png" width="520" alt="D3D11 Alice Tutorial mascot logo" /></p>
+<!-- README-BRAND:END -->
+
 - 내용 : 본 구조가 있는 캐릭터 fbx 파일에 내장되어 있는 애니메이션을 재생하는 예제입니다.
 - 주요 구현
   - 본 구조를 정의합니다

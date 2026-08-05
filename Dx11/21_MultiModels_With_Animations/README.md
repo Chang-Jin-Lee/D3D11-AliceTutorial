@@ -12,6 +12,10 @@
 
 ## 21. MultiModels With Animations (21_MultiModels_With_Animations)
 
+<!-- README-BRAND:START -->
+<p align="center"><img src="../../docs/media/branding/alice-tutorial-logo.png" width="520" alt="D3D11 Alice Tutorial mascot logo" /></p>
+<!-- README-BRAND:END -->
+
 - 내용 : 여러 모델에 애니메이션을 적용한 예제입니다
 - 주요 구현
   - 18번 프로젝트에서 만든 애니메이션을 벡터로 담아 실행합니다

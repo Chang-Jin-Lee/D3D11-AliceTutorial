@@ -12,6 +12,10 @@
 
 ## 11. Live2D (11_Live2D)
 
+<!-- README-BRAND:START -->
+<p align="center"><img src="../../docs/media/branding/alice-tutorial-logo.png" width="520" alt="D3D11 Alice Tutorial mascot logo" /></p>
+<!-- README-BRAND:END -->
+
 - 이미지를 클릭하면 이동합니다
 
 | [유튜브](https://www.youtube.com/watch?v=rGQOzdTvPmI) | [블로그](https://velog.io/@whoamicj/DX11Live2D-11Live2D-Live2D-CubismSDK) |

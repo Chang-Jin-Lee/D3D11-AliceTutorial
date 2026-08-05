@@ -12,6 +12,10 @@
 
 ## 27. debug draw box (27_DebugDraw)
 
+<!-- README-BRAND:START -->
+<p align="center"><img src="../../docs/media/branding/alice-tutorial-logo.png" width="520" alt="D3D11 Alice Tutorial mascot logo" /></p>
+<!-- README-BRAND:END -->
+
 - 내용 : AABB Bounding Box를 그린 예제입니다
 - 주요 구현
   - 3D 메시를 처음 로드할때 AABB의 Min Vector, Max Vector를 저장해둡니다

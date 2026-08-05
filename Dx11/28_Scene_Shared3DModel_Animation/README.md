@@ -1,7 +1,7 @@
 <!-- README-NAV-TOP:START -->
 <div align="center">
 
-[ÀÌÀü](../27_DebugDraw/README.md) | [¸ÞÀÎ](../../README.md) | [»óÀ§](../) | [´ÙÀ½](../29_MousePicking/README.md)
+[ì´ì „](../27_DebugDraw/README.md) | [ë©”ì¸](../../README.md) | [ìƒìœ„](../) | [ë‹¤ìŒ](../29_MousePicking/README.md)
 
 </div>
 <!-- README-NAV-TOP:END -->
@@ -12,27 +12,31 @@
 
 ## 28.  scene shared3d model
 
-- ³»¿ë : ¾Ö¼Â ¸Å´ÏÀú¸¦ ¸¸µç ¿¹Á¦ÀÔ´Ï´Ù
-- ÁÖ¿ä ±¸Çö
-  - fbx µ¥ÀÌÅÍ¸¦ ·ÎµåÇÒ¶§ ¿¡¼Â ¸Å´ÏÀú¿¡¼­ Ä³½Ã µ¥ÀÌÅÍ°¡ ÀÖ´ÂÁö È®ÀÎÇÕ´Ï´Ù.
-  - ¸¸¾à ÀÖ´Ù¸é shared_ptr, weak_ptr ±¸Á¶·Î µ¥ÀÌÅÍ¸¦ ¹ÝÈ¯ÇÕ´Ï´Ù.
-  - Ä³½Ã¸¦ ÀúÀåÇÒ¶§´Â µÎ °¡Áö ¹æ¹ý Áß ÇÏ³ª¸¦ ¼±ÅÃÇØ¾ßÇÕ´Ï´Ù.
-  - ¸ðµ¨À» °è¼ÓÇØ¼­ ·ÎµåÇØµµ VRAMÀÌ Áõ°¡ÇÏÁö ¾Ê½À´Ï´Ù. Áï µ¥ÀÌÅÍ¸¦ °øÀ¯ÇÕ´Ï´Ù.
-  - 1. °æ·Î ±â¹Ý Å°
-  - 2. µ¥ÀÌÅÍ ±â¹Ý Å°
-  - ÇöÀç ÄÚµå´Â µ¥ÀÌÅÍ ±â¹Ý Å°·Î µÇ¾î ÀÖÀ¸¸ç FBX ÆÄÀÏ¸¸À» Ä³½ÃÇÏ°í ÀÖ½À´Ï´Ù
-  - ¶ÇÇÑ ¾À ÀüÈ¯ ÈÄ¿¡ IDXGIDevice3::Trim() ÇÔ¼ö·Î  µå¶óÀÌ¹ö¿¡°Ô VRAM/DRAM/pagefile.sys¿¡¼­ ¸®¼Ò½º Á¦°Å¸¦ ¿äÃ»ÇÕ´Ï´Ù
+<!-- README-BRAND:START -->
+<p align="center"><img src="../../docs/media/branding/alice-tutorial-logo.png" width="520" alt="D3D11 Alice Tutorial mascot logo" /></p>
+<!-- README-BRAND:END -->
+
+- ë‚´ìš© : ì• ì…‹ ë§¤ë‹ˆì €ë¥¼ ë§Œë“  ì˜ˆì œìž…ë‹ˆë‹¤
+- ì£¼ìš” êµ¬í˜„
+  - fbx ë°ì´í„°ë¥¼ ë¡œë“œí• ë•Œ ì—ì…‹ ë§¤ë‹ˆì €ì—ì„œ ìºì‹œ ë°ì´í„°ê°€ ìžˆëŠ”ì§€ í™•ì¸í•©ë‹ˆë‹¤.
+  - ë§Œì•½ ìžˆë‹¤ë©´ shared_ptr, weak_ptr êµ¬ì¡°ë¡œ ë°ì´í„°ë¥¼ ë°˜í™˜í•©ë‹ˆë‹¤.
+  - ìºì‹œë¥¼ ì €ìž¥í• ë•ŒëŠ” ë‘ ê°€ì§€ ë°©ë²• ì¤‘ í•˜ë‚˜ë¥¼ ì„ íƒí•´ì•¼í•©ë‹ˆë‹¤.
+  - ëª¨ë¸ì„ ê³„ì†í•´ì„œ ë¡œë“œí•´ë„ VRAMì´ ì¦ê°€í•˜ì§€ ì•ŠìŠµë‹ˆë‹¤. ì¦‰ ë°ì´í„°ë¥¼ ê³µìœ í•©ë‹ˆë‹¤.
+  - 1. ê²½ë¡œ ê¸°ë°˜ í‚¤
+  - 2. ë°ì´í„° ê¸°ë°˜ í‚¤
+  - í˜„ìž¬ ì½”ë“œëŠ” ë°ì´í„° ê¸°ë°˜ í‚¤ë¡œ ë˜ì–´ ìžˆìœ¼ë©° FBX íŒŒì¼ë§Œì„ ìºì‹œí•˜ê³  ìžˆìŠµë‹ˆë‹¤
+  - ë˜í•œ ì”¬ ì „í™˜ í›„ì— IDXGIDevice3::Trim() í•¨ìˆ˜ë¡œ  ë“œë¼ì´ë²„ì—ê²Œ VRAM/DRAM/pagefile.sysì—ì„œ ë¦¬ì†ŒìŠ¤ ì œê±°ë¥¼ ìš”ì²­í•©ë‹ˆë‹¤
   
-| ¿©·¯ ¸ðµ¨, ¾Ö´Ï¸ÞÀÌ¼Ç |
+| ì—¬ëŸ¬ ëª¨ë¸, ì• ë‹ˆë©”ì´ì…˜ |
 |---|
 | <div align="center"><img src="../../docs/media/readme/28-Scene-Shared3DModel-Animation.png" width="600"/></div> |
 
-| ¾À B | ¾À A |
+| ì”¬ B | ì”¬ A |
 |---|---|
 | <div align="center"><img src="../../docs/media/readme/28-Scene-Shared3DModel-Animation.png" width="600"/></div> | <div align="center"><img src="../../docs/media/readme/28-Scene-Shared3DModel-Animation.png" width="600"/></div> |
 
 <!-- README-RUNTIME:START -->
-## ½ÇÇà È­¸é
+## ì‹¤í–‰ í™”ë©´
 
 | Screenshot | GIF |
 |---|---|
@@ -42,7 +46,7 @@
 <!-- README-NAV-BOTTOM:START -->
 <div align="center">
 
-[ÀÌÀü](../27_DebugDraw/README.md) | [¸ÞÀÎ](../../README.md) | [»óÀ§](../) | [´ÙÀ½](../29_MousePicking/README.md)
+[ì´ì „](../27_DebugDraw/README.md) | [ë©”ì¸](../../README.md) | [ìƒìœ„](../) | [ë‹¤ìŒ](../29_MousePicking/README.md)
 
 </div>
 <!-- README-NAV-BOTTOM:END -->
