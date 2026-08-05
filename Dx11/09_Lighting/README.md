@@ -15,6 +15,7 @@
 <!-- README-BRAND:START -->
 <p align="center"><img src="../../docs/media/branding/alice-tutorial-logo.png" width="520" alt="D3D11 Alice Tutorial mascot logo" /></p>
 <!-- README-BRAND:END -->
+
 - 내용: Directional Light로 큐브를 비추는 예제
 - 주요 구현:
   - Vertex: POSITION/NORMAL/COLOR, NORMAL을 VS에서 월드 노말로 변환(g_WorldInvTranspose)

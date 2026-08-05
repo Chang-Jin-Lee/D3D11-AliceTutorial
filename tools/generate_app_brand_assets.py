@@ -25,12 +25,7 @@ def remove_edge_connected_near_white(image: Image.Image, threshold: int = 248) -
         red, green, blue, alpha = pixels[x, y]
         return alpha > 0 and red >= threshold and green >= threshold and blue >= threshold
 
-    for x in range(width):
-        queue.append((x, 0))
-        queue.append((x, height - 1))
-    for y in range(height):
-        queue.append((0, y))
-        queue.append((width - 1, y))
+    queue.extend(((0, 0), (width - 1, 0), (0, height - 1), (width - 1, height - 1)))
 
     while queue:
         x, y = queue.popleft()

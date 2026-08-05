@@ -3,6 +3,7 @@
 <!-- README-BRAND:START -->
 <p align="center"><img src="docs/media/branding/alice-tutorial-logo.png" width="720" alt="D3D11 Alice Tutorial mascot logo" /></p>
 <!-- README-BRAND:END -->
+
 > 레거시 README 공개판은 [`README_old.md`](README_old.md)에 보존했습니다. 기존 attachment 기반 원본은 바탕화면 애셋 백업에 따로 보관했습니다.
 
 이 저장소는 [DirectX SDK Samples - Direct3D11 Tutorials](https://github.com/walbourn/directx-sdk-samples/tree/main/Direct3D11Tutorials) 을 기반으로  

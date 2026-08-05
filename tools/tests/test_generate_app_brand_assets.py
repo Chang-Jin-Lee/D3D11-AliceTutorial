@@ -27,6 +27,17 @@ class BrandAssetTests(unittest.TestCase):
         self.assertEqual(result.getpixel((0, 0))[3], 0)
         self.assertEqual(result.getpixel((3, 3))[3], 255)
 
+    def test_near_white_foreground_touching_non_corner_border_stays_opaque(self):
+        image = Image.new("RGB", (9, 9), "black")
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((0, 0, 8, 1), fill="white")
+        draw.rectangle((3, 5, 5, 8), fill="white")
+
+        result = remove_edge_connected_near_white(image)
+
+        self.assertEqual(result.getpixel((0, 0))[3], 0)
+        self.assertEqual(result.getpixel((4, 8))[3], 255)
+
     def test_generation_writes_exact_dimensions_and_ico_frames(self):
         with tempfile.TemporaryDirectory() as temp:
             temp_path = Path(temp)
