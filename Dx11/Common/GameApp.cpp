@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "GameApp.h"
 #include "Helper.h"
+#include "../Resource/Icon/AppIconResource.h"
 
 #include <dbghelp.h>
 #include <minidumpapiset.h>
@@ -10,6 +11,21 @@
 // 검은 색 테마를 사용하기 위한 헤더
 #include <dwmapi.h>
 #pragma comment(lib, "dwmapi.lib")
+
+namespace
+{
+    HICON LoadEmbeddedApplicationIcon(HINSTANCE instance, int width, int height)
+    {
+        HICON icon = reinterpret_cast<HICON>(LoadImageW(
+            instance,
+            MAKEINTRESOURCEW(IDI_ALICE_TUTORIAL_APP_ICON),
+            IMAGE_ICON,
+            width,
+            height,
+            LR_DEFAULTCOLOR | LR_SHARED));
+        return icon ? icon : LoadIconW(nullptr, IDI_APPLICATION);
+    }
+}
 
 GameApp* GameApp::m_pInstance = nullptr;
 HWND GameApp::m_hWnd;
@@ -136,14 +152,14 @@ bool GameApp::Run(HINSTANCE hInstance)
 	m_wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
 	m_wcex.lpszClassName = m_szWindowClass;
 
-	// 아이콘 설정
-	m_wcex.hIcon = (HICON)LoadImageW(
-		NULL,
-		L"..\\Resource\\Icon\\Alice.ico",
-		IMAGE_ICON,
-		128, 128,           // 아이콘 크기
-		LR_LOADFROMFILE
-	);
+    m_wcex.hIcon = LoadEmbeddedApplicationIcon(
+        hInstance,
+        GetSystemMetrics(SM_CXICON),
+        GetSystemMetrics(SM_CYICON));
+    m_wcex.hIconSm = LoadEmbeddedApplicationIcon(
+        hInstance,
+        GetSystemMetrics(SM_CXSMICON),
+        GetSystemMetrics(SM_CYSMICON));
 
 	m_Timer.Reset();
 

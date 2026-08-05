@@ -1,0 +1,3 @@
+#include "AppIconResource.h"
+
+IDI_ALICE_TUTORIAL_APP_ICON ICON "AliceTutorial.ico"
