@@ -29,22 +29,31 @@ function Read-ReadmeContent([string]$Path) {
 }
 
 function Get-UpdatedReadme([string]$Path, [string]$ImagePath, [int]$Width) {
-    $content = (Read-ReadmeContent $Path).Replace("`r`n", "`n")
-    $newline = "`n"
+    $content = Read-ReadmeContent $Path
+    $newline = if ($content.Contains("`r`n")) { "`r`n" } else { "`n" }
     $start = '<!-- README-BRAND:START -->'
     $end = '<!-- README-BRAND:END -->'
-    $startCount = ([regex]::Matches($content, [regex]::Escape($start))).Count
-    $endCount = ([regex]::Matches($content, [regex]::Escape($end))).Count
+    $startMatches = [regex]::Matches($content, [regex]::Escape($start))
+    $endMatches = [regex]::Matches($content, [regex]::Escape($end))
+    $startCount = $startMatches.Count
+    $endCount = $endMatches.Count
     if ($startCount -ne $endCount -or $startCount -gt 1) { throw "malformed README-BRAND markers: $Path" }
+    if ($startCount -eq 1 -and $startMatches[0].Index -gt $endMatches[0].Index) { throw "malformed README-BRAND markers: $Path" }
     $block = New-BrandBlock $ImagePath $Width $newline
-    if ($startCount -eq 1) {
-        $pattern = [regex]::Escape($start) + '.*?' + [regex]::Escape($end)
-        $updated = [regex]::Replace($content, $pattern, [Text.RegularExpressions.MatchEvaluator]{ param($match) $block }, [Text.RegularExpressions.RegexOptions]::Singleline)
-        return [regex]::Replace($updated, '(?m)(^#{1,6}\s+.+?)\r\r\n(?=<!-- README-BRAND:START -->)', "`$1`r`n")
-    }
     $heading = [regex]::Match($content, '(?m)^#{1,6}\s+.+?(?=\r?$)')
     if (-not $heading.Success) { throw "first Markdown heading missing: $Path" }
     $insertAt = $heading.Index + $heading.Length
+    if ($startCount -eq 1) {
+        $blockEnd = $endMatches[0].Index + $end.Length
+        $expectedBlockStart = $insertAt + (2 * $newline.Length)
+        if ($startMatches[0].Index -eq $expectedBlockStart) {
+            return $content.Remove($startMatches[0].Index, $blockEnd - $startMatches[0].Index).Insert($startMatches[0].Index, $block)
+        }
+        $content = $content.Remove($startMatches[0].Index, $blockEnd - $startMatches[0].Index)
+        $heading = [regex]::Match($content, '(?m)^#{1,6}\s+.+?(?=\r?$)')
+        if (-not $heading.Success) { throw "first Markdown heading missing: $Path" }
+        $insertAt = $heading.Index + $heading.Length
+    }
     return $content.Insert($insertAt, $newline + $newline + $block)
 }
 
