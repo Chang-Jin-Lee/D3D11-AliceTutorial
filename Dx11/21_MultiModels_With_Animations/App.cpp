@@ -311,12 +311,12 @@ bool App::OnInitialize()
 
 	if (!m_->m_SystemInfo.InitSysInfomation(m_->m_pDevice)) return false;
 
-	if (ReadmeCapture::IsEnabled())
+	if (LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb") && !m_->m_Models.empty())
 	{
-		if (LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb") && !m_->m_Models.empty())
+		auto& model = *m_->m_Models.back();
+		model.pos = XMFLOAT3(0.0f, 0.0f, 0.0f);
+		if (ReadmeCapture::IsEnabled())
 		{
-			auto& model = *m_->m_Models.back();
-			model.pos = XMFLOAT3(0.0f, 0.0f, 0.0f);
 			model.scale = XMFLOAT3(80.0f, 80.0f, 80.0f);
 			model.rotDeg = XMFLOAT3(0.0f, -35.0f, 0.0f);
 			model.autoRotate = true;

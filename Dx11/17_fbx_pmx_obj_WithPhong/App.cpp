@@ -287,9 +287,9 @@ bool App::OnInitialize()
 
 	if (!m_->m_SystemInfo.InitSysInfomation(m_->m_pDevice)) return false;
 
-	if (ReadmeCapture::IsEnabled())
+	if (LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"))
 	{
-		if (LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb"))
+		if (ReadmeCapture::IsEnabled())
 		{
 			m_->m_modelScale = XMFLOAT3(80.0f, 80.0f, 80.0f);
 			m_->m_modelRotation = XMFLOAT3(0.0f, -35.0f, 0.0f);
