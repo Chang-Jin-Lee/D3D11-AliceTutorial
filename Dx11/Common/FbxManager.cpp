@@ -811,7 +811,7 @@ void FbxManager::UpdateAnimation(ID3D11DeviceContext* ctx, double dtSec)
     }
 
     // Skinned 모드: 기존 스키닝 팔레트 업로드
-    if (!m_->HasAnimations || m_->CurrentClip < 0) return;
+    if (m_CurrentType != AnimationType::Skinned) return;
     const aiScene* scene = reinterpret_cast<const aiScene*>(m_->SceneMutable);
     if (!scene) return;
     const aiAnimation* anim = (m_->HasAnimations && m_->CurrentClip >= 0) ? scene->mAnimations[m_->CurrentClip] : nullptr;
