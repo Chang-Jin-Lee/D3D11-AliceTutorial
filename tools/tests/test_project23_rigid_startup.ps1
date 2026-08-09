@@ -53,6 +53,8 @@ Assert-True ($loadBlock -match 'model\.autoRotate\s*=\s*false') 'auto rotation s
 Assert-True ($loadBlock -match 'm_Camera\.SetPosition\(\s*XMFLOAT3\(\s*0\.0f\s*,\s*0\.0f\s*,\s*-8\.0f\s*\)\s*\)') 'camera position must be inside successful load block'
 Assert-True ($loadBlock -match 'm_Camera\.SetRotation\(\s*XMFLOAT3\(\s*0\.0f\s*,\s*0\.0f\s*,\s*0\.0f\s*\)\s*\)') 'camera rotation must be inside successful load block'
 
+$autoplayCondition = 'if\s*\(\s*model\.source\s*==\s*ModelSource::FBX\s*&&\s*model\.fbx\.GetCurrentAnimationType\(\)\s*==\s*FbxManager::AnimationType::Rigid\s*&&\s*model\.fbx\.HasAnimations\(\)\s*\)'
+Assert-True ([regex]::Matches($loadBlock, $autoplayCondition).Count -eq 1) 'complete FBX rigid autoplay guard missing'
 $autoplayAnchor = $loadBlock.IndexOf('if (model.source == ModelSource::FBX', [StringComparison]::Ordinal)
 Assert-True ($autoplayAnchor -ge 0) 'FBX autoplay block missing'
 $autoplayBlock = Get-BracedBlock $loadBlock $autoplayAnchor 'FBX autoplay block'
