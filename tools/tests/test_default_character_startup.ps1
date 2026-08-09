@@ -43,7 +43,6 @@ $multiProjects = @(
     '19_MultiModels',
     '20_Depth_And_Alpha_Issue',
     '21_MultiModels_With_Animations',
-    '23_Rigid_Animation',
     '24_Skinned_With_Bone_Structure'
 )
 $projects = @($singleProjects) + @($multiProjects)
@@ -53,11 +52,10 @@ $expectedProjects = @(
     '19_MultiModels',
     '20_Depth_And_Alpha_Issue',
     '21_MultiModels_With_Animations',
-    '23_Rigid_Animation',
     '24_Skinned_With_Bone_Structure'
 )
 
-Assert-True ($projects.Count -eq 7) 'startup contract must contain exactly seven projects'
+Assert-True ($projects.Count -eq 6) 'startup contract must contain exactly six projects'
 Assert-True (@(Compare-Object ($projects | Sort-Object) ($expectedProjects | Sort-Object)).Count -eq 0) 'startup contract target list changed'
 
 $defaultModelCall = 'LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb")'

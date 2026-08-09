@@ -311,17 +311,23 @@ bool App::OnInitialize()
 
 	if (!m_->m_SystemInfo.InitSysInfomation(m_->m_pDevice)) return false;
 
-	if (LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb") && !m_->m_Models.empty())
+	if (LoadModelFromFile(L"..\\Resource\\fbx\\Study\\BoxHuman.fbx") && !m_->m_Models.empty())
 	{
 		auto& model = *m_->m_Models.back();
 		model.pos = XMFLOAT3(0.0f, 0.0f, 0.0f);
-		if (ReadmeCapture::IsEnabled())
+		model.rotDeg = XMFLOAT3(0.0f, 0.0f, 0.0f);
+		model.scale = XMFLOAT3(1.0f, 1.0f, 1.0f);
+		model.autoRotate = false;
+
+		m_Camera.SetPosition(XMFLOAT3(0.0f, 0.0f, -8.0f));
+		m_Camera.SetRotation(XMFLOAT3(0.0f, 0.0f, 0.0f));
+
+		if (model.source == ModelSource::FBX &&
+			model.fbx.GetCurrentAnimationType() == FbxManager::AnimationType::Rigid &&
+			model.fbx.HasAnimations())
 		{
-			model.scale = XMFLOAT3(80.0f, 80.0f, 80.0f);
-			model.rotDeg = XMFLOAT3(0.0f, -35.0f, 0.0f);
-			model.autoRotate = true;
-			m_Camera.SetPosition(XMFLOAT3(20.0f, 70.0f, -150.0f));
-			m_Camera.SetRotation(XMFLOAT3(10.0f, -6.0f, 0.0f));
+			model.uiAnimPlaying = true;
+			model.fbx.SetAnimationPlaying(true);
 		}
 	}
 	return true;

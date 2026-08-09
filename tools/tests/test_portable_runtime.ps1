@@ -236,7 +236,6 @@ $defaultModelProjects = @(
     '19_MultiModels',
     '20_Depth_And_Alpha_Issue',
     '21_MultiModels_With_Animations',
-    '23_Rigid_Animation',
     '24_Skinned_With_Bone_Structure'
 )
 $defaultModelLoad = 'LoadModelFromFile(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb")'
