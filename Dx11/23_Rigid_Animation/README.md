@@ -16,13 +16,13 @@
 <p align="center"><img src="../../docs/media/branding/alice-tutorial-logo.png" width="520" alt="D3D11 Alice Tutorial mascot logo" /></p>
 <!-- README-BRAND:END -->
 
-- 내용 : Rigid, Skinned Animation 분기처리를 합니다
+- 내용: 모델의 본과 애니메이션 유무에 따라 Static Mesh, Skinned Animation, Rigid Animation으로 분기합니다.
 - 주요 구현
-  - 본을 읽어 개수가 0이고 애니메이션 개수도 0이면 Static Mesh입니다
-  - 본의 개수 > 0, 애니메이션 개수 > 0 이면 Skinned Animation 입니다
-  - 본의 개수 == 0, 애니메이션 개수 > 0 이면 Rigid Animation 입니다
-  - 위의 세 개의 로직을 구현하여 분기처리를 합니다
-  - 또한 본이 아예 없다면 스켈레탈 노드를 통해서 가짜 본을 만들어 줍니다
+  - 본의 개수 == 0, 애니메이션 개수 == 0이면 Static Mesh입니다.
+  - 본의 개수 > 0, 애니메이션 개수 > 0이면 Skinned Animation입니다.
+  - 본의 개수 == 0, 애니메이션 개수 > 0이면 Rigid Animation입니다.
+  - 본이 없고 애니메이션만 있다면 스켈레탈 노드를 사용해 리지드 노드 팔레트를 구성합니다.
+  - 기본 실행 예제는 `../Resource/fbx/Study/BoxHuman.fbx`의 리지드 애니메이션을 자동 재생합니다.
 
 | Animation - Skinned  | Animation - Rigid  |
 |---|---|

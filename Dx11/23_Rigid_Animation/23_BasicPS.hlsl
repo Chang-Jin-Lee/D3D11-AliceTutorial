@@ -1,20 +1,20 @@
 #include "23_Shared.fxh"
 
-// ÇÈ¼¿ ¼ÎÀÌ´õ(½¦ÀÌ´õ/¼ÎÀÌ´õ)
+// í”½ì…€ ì…°ì´ë”(ì‰ì´ë”/ì…°ì´ë”)
 float4 main(VertexOut pIn) : SV_Target
 {
-	// µğ¹ö±× ´ÜÃà °æ·Îµé (g_Pad)
+	// ë””ë²„ê·¸ ë‹¨ì¶• ê²½ë¡œë“¤ (g_Pad)
 	if (abs(g_Pad - 1.0f) < 1e-3) { return float4(1,0,1,1); }
 	if (abs(g_Pad - 2.0f) < 1e-3) { return float4(1,1,1,1); }
 	if (abs(g_Pad - 3.0f) < 1e-3) { return pIn.color; }
 
 
-	// ¾ËÆÄ ÄÆ¾Æ¿ô Á¶¸í ¸ğµå¿¡¼­¸¸ Àû¿ë
+	// ì•ŒíŒŒ ì»·ì•„ì›ƒ ì¡°ëª… ëª¨ë“œì—ì„œë§Œ ì ìš©
 	float4 textureColor = g_DiffuseMap.Sample(g_Sam, pIn.tex);
     float alphaTex = textureColor.a * g_Material.diffuse.a;
     clip(alphaTex - 0.1f);
 
-	// ¿ùµå ³ë¸» °è»ê(Nw) - ³ë¸»¸Ê Åä±Û¿¡ µû¶ó ºĞ±â
+	// ì›”ë“œ ë…¸ë§ ê³„ì‚°(Nw) - ë…¸ë§ë§µ í† ê¸€ì— ë”°ë¼ ë¶„ê¸°
 	float3 N = normalize(pIn.normalW);
 	if (g_EnableNormalMap != 0)
 	{
@@ -25,12 +25,12 @@ float4 main(VertexOut pIn) : SV_Target
 		if (handed < 0.0f) B = -B;
 		float3x3 TBN = float3x3(T, B, N);
 		float3 N_ts = g_NormalMap.Sample(g_Sam, pIn.tex).xyz * 2.0f - 1.0f;
-		N_ts.y = -N_ts.y; // ±×¸° Ã¤³Î ¹İÀü º¸Á¤
+		N_ts.y = -N_ts.y; // ê·¸ë¦° ì±„ë„ ë°˜ì „ ë³´ì •
 		N_ts = normalize(N_ts);
 		N = normalize(mul(N_ts, TBN));
 	}
 
-	// °øÅë: ¶óÀÌÆÃ º¤ÅÍµé
+	// ê³µí†µ: ë¼ì´íŒ… ë²¡í„°ë“¤
 	float3 L = normalize(-g_DirLight.direction);
 	float3 V = normalize(g_EyePosW - pIn.posW);
 	float NdotL = dot(N, L);
@@ -40,7 +40,7 @@ float4 main(VertexOut pIn) : SV_Target
     float4 diffuseTerm  = theta * g_DirLight.diffuse;
     float4 specularTerm = 0;
 
-	// ºĞ±âº° Á¶¸í °è»ê
+	// ë¶„ê¸°ë³„ ì¡°ëª… ê³„ì‚°
 	if (g_ShadingMode == 0)
 	{
 		// Phong
@@ -65,14 +65,14 @@ float4 main(VertexOut pIn) : SV_Target
 		// Lambert
 		specularTerm = 0;
 	}
-	// Unlit (3): Á¶¸í ¾øÀÌ ÅØ½ºÃ³*diffuse¸¸
+	// Unlit (3): ì¡°ëª… ì—†ì´ í…ìŠ¤ì²˜*diffuseë§Œ
 	else if (g_ShadingMode == 3)
 	{
 		ambientTerm = 0;
         diffuseTerm = 0;
         specularTerm = 0;
 	}
-	// TextureOnly (4): ÅØ½ºÃ³¸¸ Ãâ·Â
+	// TextureOnly (4): í…ìŠ¤ì²˜ë§Œ ì¶œë ¥
 	else if (g_ShadingMode == 4)
 	{
 		float4 only = textureColor * g_Material.diffuse;
@@ -84,7 +84,7 @@ float4 main(VertexOut pIn) : SV_Target
     float4 kd = textureColor * g_Material.diffuse;
     float4 litColor = kd * (ambientTerm + diffuseTerm) + specularTerm;
 
-    // È¯°æ ¹İ»ç (Unlit/Lambert¿¡´Â Àû¿ëÇÏÁö ¾ÊÀ½)
+    // í™˜ê²½ ë°˜ì‚¬ (Unlit/Lambertì—ëŠ” ì ìš©í•˜ì§€ ì•ŠìŒ)
     if (g_ShadingMode == 0 || g_ShadingMode == 1)
     {
         float3 Renv = reflect(-V, N);

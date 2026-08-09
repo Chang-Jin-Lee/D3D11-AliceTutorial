@@ -1,10 +1,10 @@
-#include "App.h"
+ï»¿#include "App.h"
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	_In_opt_ HINSTANCE hPrevInstance,
 	_In_ LPWSTR    lpCmdLine,
 	_In_ int       nCmdShow)
 {
-	App App;  // »ı¼ºÀÚ¿¡¼­ ¾ÆÀÌÄÜ,À©µµ¿ì ÀÌ¸§¸¸ ¹Ù²Û´Ù
+	App App;  // ìƒì„±ìì—ì„œ ì•„ì´ì½˜,ìœˆë„ìš° ì´ë¦„ë§Œ ë°”ê¾¼ë‹¤
 	return App.Run(hInstance);
 }

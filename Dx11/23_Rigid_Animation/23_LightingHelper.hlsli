@@ -11,7 +11,7 @@ struct Material
 {
     float4 ambient;
     float4 diffuse;
-    float4 specular; // w = »ç¾ç
+    float4 specular; // w = ì‚¬ì–‘
 
     float4 reflect;
 };

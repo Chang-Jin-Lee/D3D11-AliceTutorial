@@ -1,4 +1,4 @@
-#pragma once
+ï»¿#pragma once
 #include "../Common/GameApp.h"
 #include <memory>
 #include <string>
@@ -10,32 +10,32 @@ public:
 	App();
 	~App() override;
 
-	// ¼ö¸íÁÖ±â
+	// ìˆ˜ëª…ì£¼ê¸°
 	bool OnInitialize() override;
 	void OnUninitialize() override;
 	void OnUpdate(const float& dt) override;
 	void OnRender() override;
 
-	// D3D ÀåÄ¡ »ı¼º/ÆÄ±«
+	// D3D ì¥ì¹˜ ìƒì„±/íŒŒê´´
 	bool InitD3D();
 	void UninitD3D();
 
-	// ¸®¼Ò½º »ı¼º/ÆÄ±«
+	// ë¦¬ì†ŒìŠ¤ ìƒì„±/íŒŒê´´
 	bool InitScene();
 	void UninitScene();
 
-	// ÅØ½ºÃÄ °ü·Ã
+	// í…ìŠ¤ì³ ê´€ë ¨
 	bool InitTexture();
 
-	// ImGui °ü·Ã
+	// ImGui ê´€ë ¨
 	bool InitImGui();
 
-	// ·Î´õ API
+	// ë¡œë” API
 	bool LoadModelFromFile(const std::wstring& pathW);
 	void UnloadModel();
 
 private:
-	// ³»ºÎ ÇïÆÛ
+	// ë‚´ë¶€ í—¬í¼
 	bool InitBasicEffect();
 	bool InitSkyBoxEffect();
 	void PrepareSkyFaceSRVs();

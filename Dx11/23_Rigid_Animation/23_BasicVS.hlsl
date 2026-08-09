@@ -1,5 +1,5 @@
 #include "23_Shared.fxh"
-// Á¤Á¡ ¼ÎÀÌ´õ
+// ì •ì  ì…°ì´ë”
 VertexOut main(VertexIn vIn)
 {
 	VertexOut vOut;
@@ -9,12 +9,12 @@ VertexOut main(VertexIn vIn)
 	vOut.posH = mul(vOut.posH, g_Proj);
 	vOut.posW = posW.xyz;
 
-	// ³ë¸» ¸ÅÇÎÀ» À§ÇÑ ¿ùµå °ø°£ º¯È¯
+	// ë…¸ë§ ë§¤í•‘ì„ ìœ„í•œ ì›”ë“œ ê³µê°„ ë³€í™˜
 	float3 nW = normalize(mul(vIn.normalL, (float3x3) g_WorldInvTranspose));
 	float3 tW = mul(vIn.tangentL, (float3x3) g_World);
 	float3 bW = mul(vIn.bitanL,   (float3x3) g_World);
 
-	// ÃÖÁ¾ ÇÒ´ç Right-handed´Â b = n x t
+	// ìµœì¢… í• ë‹¹ Right-handedëŠ” b = n x t
 	vOut.normalW  = nW;
 	vOut.tangentW = tW;
 	vOut.bitanW   = bW;
@@ -25,15 +25,15 @@ VertexOut main(VertexIn vIn)
 	return vOut;
 }
 
-// º» ÆÈ·¹Æ®(g_BonePalette)·Î ·ÎÄÃÀ» ½ºÅ°´× ÈÄ ¿ùµå/ºä/ÇÁ·ÎÁ§¼ÇÀ» Àû¿ë
+// ë³¸ íŒ”ë ˆíŠ¸(g_BonePalette)ë¡œ ë¡œì»¬ì„ ìŠ¤í‚¤ë‹ í›„ ì›”ë“œ/ë·°/í”„ë¡œì ì…˜ì„ ì ìš©
 VertexOut VSSkinned(VertexInSkinned vIn)
 {
 	VertexOut vOut;
 
-	// ½ºÅ°´× Çà·Ä ÇÕ
+	// ìŠ¤í‚¤ë‹ í–‰ë ¬ í•©
 	uint4 bi = vIn.boneIdx;
 	float4 bw = vIn.boneW;
-	// DirectX11(Çàº¤ÅÍ) ±âÁØ: v' = v * (¥Ò w_i * M_i)
+	// DirectX11(í–‰ë²¡í„°) ê¸°ì¤€: v' = v * (Î£ w_i * M_i)
 	matrix M = bw.x * g_BonePalette[bi.x]
 		     + bw.y * g_BonePalette[bi.y]
 		     + bw.z * g_BonePalette[bi.z]
@@ -45,7 +45,7 @@ VertexOut VSSkinned(VertexInSkinned vIn)
 	float3 bL = vIn.bitanL;
 
 	float4 skinnedPos = mul(posL, M);
-	// ¹ı¼±/ÅºÁ¨Æ®/ºñÅºÁ¨Æ®´Â 3x3 ºÎºĞÀ» »ç¿ë (MÀº CPU¿¡¼­ ÀüÄ¡ ¾÷·ÎµåµÊ)
+	// ë²•ì„ /íƒ„ì  íŠ¸/ë¹„íƒ„ì  íŠ¸ëŠ” 3x3 ë¶€ë¶„ì„ ì‚¬ìš© (Mì€ CPUì—ì„œ ì „ì¹˜ ì—…ë¡œë“œë¨)
 	float3x3 M3 = (float3x3)M;
 	float3 skinnedN   = normalize(mul(nL, M3));
 	float3 skinnedT   = normalize(mul(tL, M3));
@@ -62,7 +62,7 @@ VertexOut VSSkinned(VertexInSkinned vIn)
 	return vOut;
 }
 
-// PMX(³ë¸»¸Ê ¹Ì»ç¿ë) Àü¿ë: TBN ¾ø´Â ÀÔ·Â ·¹ÀÌ¾Æ¿ô¿ë VS
+// PMX(ë…¸ë§ë§µ ë¯¸ì‚¬ìš©) ì „ìš©: TBN ì—†ëŠ” ì…ë ¥ ë ˆì´ì•„ì›ƒìš© VS
 struct VertexInNoTBN
 {
 	float3 posL   : POSITION;
@@ -89,7 +89,7 @@ VertexOut VSNoTBN(VertexInNoTBN vIn)
 	return vOut;
 }
 
-// ¶óÀÎ/Ãà Àü¿ë VS (POSITION, NORMAL, COLOR Àü¿ë)
+// ë¼ì¸/ì¶• ì „ìš© VS (POSITION, NORMAL, COLOR ì „ìš©)
 struct VertexInLine
 {
 	float3 posL    : POSITION;

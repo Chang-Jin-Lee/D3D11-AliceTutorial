@@ -1,13 +1,13 @@
-// Á¤Á¡ ¼ÎÀÌ´õ.
+// ì •ì  ì…°ì´ë”.
 
 /*
     @brief :
-        ÀÌ ¼ÎÀÌ´õ´Â Á¶¸í °è»êÀ» À§ÇØ Á¤Á¡ À§Ä¡¿Í Á¤Á¡ ³ë¸» º¤ÅÍ¸¦ ¿ùµå °ø°£À¸·Î º¯È¯ÇÕ´Ï´Ù.
-        ¶ÇÇÑ Á¤Á¡ »ö»óµµ Àü´ŞÇÕ´Ï´Ù.
+        ì´ ì…°ì´ë”ëŠ” ì¡°ëª… ê³„ì‚°ì„ ìœ„í•´ ì •ì  ìœ„ì¹˜ì™€ ì •ì  ë…¸ë§ ë²¡í„°ë¥¼ ì›”ë“œ ê³µê°„ìœ¼ë¡œ ë³€í™˜í•©ë‹ˆë‹¤.
+        ë˜í•œ ì •ì  ìƒ‰ìƒë„ ì „ë‹¬í•©ë‹ˆë‹¤.
     @details :
-        ConstantBuffer : matrix g_WorldInvTranspose; Ãß°¡ -> ¿ùµå Çà·ÄÀÇ ¿ªÀüÄ¡ Çà·Ä
-        struct VertexIn : float3 normalL : NORMAL; Ãß°¡ -> Á¤Á¡ ³ë¸» º¤ÅÍ
-        struct VertexOut : float3 posW : TEXCOORD0; Ãß°¡ -> ¿ùµå °ø°£¿¡¼­ÀÇ À§Ä¡
+        ConstantBuffer : matrix g_WorldInvTranspose; ì¶”ê°€ -> ì›”ë“œ í–‰ë ¬ì˜ ì—­ì „ì¹˜ í–‰ë ¬
+        struct VertexIn : float3 normalL : NORMAL; ì¶”ê°€ -> ì •ì  ë…¸ë§ ë²¡í„°
+        struct VertexOut : float3 posW : TEXCOORD0; ì¶”ê°€ -> ì›”ë“œ ê³µê°„ì—ì„œì˜ ìœ„ì¹˜
 */
 #include "23_LightingHelper.hlsli"
 
@@ -20,12 +20,12 @@ SamplerState g_Sam : register(s0);
 
 cbuffer ConstantBuffer : register(b0)
 {
-    matrix g_World;                     //   ¸ÅÆ®¸¯½º´Â float4x4·Î ´ëÃ¼ µÉ ¼ö ÀÖ½À´Ï´Ù. ÇàÀÌ ¾øÀ¸¸é ¸ÅÆ®¸¯½º´Â ±âº»ÀûÀ¸·Î ¿­ ¸ÅÆ®¸¯½º·Î ±âº»°ªÀ» ¾ò½À´Ï´Ù.
-    matrix g_View;                      //   Çà ¸ÅÆ®¸¯½º¸¦ ´ëÇ¥ÇÏ±â Àü¿¡ ÇàÀ» Ãß°¡ ÇÒ ¼ö ÀÖ½À´Ï´Ù.
-    matrix g_Proj;                      //   ÀÌ Æ©Åä¸®¾óÀº ÇâÈÄ ±âº» ¿­ ¸¶½ºÅÍ ¸ÅÆ®¸¯½º¸¦ »ç¿ëÇÏÁö¸¸ ¸ÅÆ®¸¯½º´Â C ++ ÄÚµå Ãø¸é¿¡¼­ ¹Ì¸® º¯È¯ÇØ¾ßÇÕ´Ï´Ù.
-    matrix g_WorldInvTranspose;         //   ¿ùµå Çà·ÄÀÇ ¿ªÀüÄ¡ Çà·ÄÀÔ´Ï´Ù. Á¶¸í °è»ê¿¡ ÇÊ¿äÇÕ´Ï´Ù. ÀÌ¹ø ÇÁ·ÎÁ§Æ®¿¡ Ãß°¡µÇ¾ú½À´Ï´Ù.
+    matrix g_World;                     //   ë§¤íŠ¸ë¦­ìŠ¤ëŠ” float4x4ë¡œ ëŒ€ì²´ ë  ìˆ˜ ìˆìŠµë‹ˆë‹¤. í–‰ì´ ì—†ìœ¼ë©´ ë§¤íŠ¸ë¦­ìŠ¤ëŠ” ê¸°ë³¸ì ìœ¼ë¡œ ì—´ ë§¤íŠ¸ë¦­ìŠ¤ë¡œ ê¸°ë³¸ê°’ì„ ì–»ìŠµë‹ˆë‹¤.
+    matrix g_View;                      //   í–‰ ë§¤íŠ¸ë¦­ìŠ¤ë¥¼ ëŒ€í‘œí•˜ê¸° ì „ì— í–‰ì„ ì¶”ê°€ í•  ìˆ˜ ìˆìŠµë‹ˆë‹¤.
+    matrix g_Proj;                      //   ì´ íŠœí† ë¦¬ì–¼ì€ í–¥í›„ ê¸°ë³¸ ì—´ ë§ˆìŠ¤í„° ë§¤íŠ¸ë¦­ìŠ¤ë¥¼ ì‚¬ìš©í•˜ì§€ë§Œ ë§¤íŠ¸ë¦­ìŠ¤ëŠ” C ++ ì½”ë“œ ì¸¡ë©´ì—ì„œ ë¯¸ë¦¬ ë³€í™˜í•´ì•¼í•©ë‹ˆë‹¤.
+    matrix g_WorldInvTranspose;         //   ì›”ë“œ í–‰ë ¬ì˜ ì—­ì „ì¹˜ í–‰ë ¬ì…ë‹ˆë‹¤. ì¡°ëª… ê³„ì‚°ì— í•„ìš”í•©ë‹ˆë‹¤. ì´ë²ˆ í”„ë¡œì íŠ¸ì— ì¶”ê°€ë˜ì—ˆìŠµë‹ˆë‹¤.
 
-    Material g_Material;                // ¸ÓÆ¼¸®¾ó ±¸Á¶Ã¼
+    Material g_Material;                // ë¨¸í‹°ë¦¬ì–¼ êµ¬ì¡°ì²´
     DirectionalLight g_DirLight;
     float3 g_EyePosW;
     float  g_Pad;
@@ -39,7 +39,7 @@ cbuffer ConstantBuffer : register(b0)
     float3 g_Pad5;
 }
 
-// GPU ½ºÅ°´×À» À§ÇÑ ·¹Áö½ºÅÍ (b1)
+// GPU ìŠ¤í‚¤ë‹ì„ ìœ„í•œ ë ˆì§€ìŠ¤í„° (b1)
 #define MAX_BONES 1023
 cbuffer BonesBuffer : register(b1)
 {
@@ -51,26 +51,26 @@ cbuffer BonesBuffer : register(b1)
 struct VertexIn
 {
     float3 posL     : POSITION;
-    float3 normalL  : NORMAL;    // TBN¿¡¼­ÀÇ Normal. ÅØ½ºÃÄÀÇ ³ë¸» ¹æÇâÀÔ´Ï´Ù
-    float3 tangentL : TANGENT;   // TBN¿¡¼­ÀÇ tangent.  (object/local space)
-    float3 bitanL   : BINORMAL;  // TBN¿¡¼­ÀÇ bitangent.  (object/local space)
-    float2 tex      : TEXCOORD;  // 2D UV ÁÂÇ¥
+    float3 normalL  : NORMAL;    // TBNì—ì„œì˜ Normal. í…ìŠ¤ì³ì˜ ë…¸ë§ ë°©í–¥ì…ë‹ˆë‹¤
+    float3 tangentL : TANGENT;   // TBNì—ì„œì˜ tangent.  (object/local space)
+    float3 bitanL   : BINORMAL;  // TBNì—ì„œì˜ bitangent.  (object/local space)
+    float2 tex      : TEXCOORD;  // 2D UV ì¢Œí‘œ
     float4 color    : COLOR;
 };
 
 struct VertexOut
 {
     float4 posH      : SV_POSITION;
-    float3 posW      : TEXCOORD0;    // ¿ùµå¿¡¼­ÀÇ À§Ä¡
-    float3 normalW   : TEXCOORD1;    // ¿ùµåÀÇ ³ë¸» º¤ÅÍÀÇ ¹æÇâ
+    float3 posW      : TEXCOORD0;    // ì›”ë“œì—ì„œì˜ ìœ„ì¹˜
+    float3 normalW   : TEXCOORD1;    // ì›”ë“œì˜ ë…¸ë§ ë²¡í„°ì˜ ë°©í–¥
     float2 tex       : TEXCOORD2;
     float4 color     : COLOR;
-    // TBN ³ë¸» ¸ÅÇÎÀ» À§ÇÑ ¿ùµå °ø°£
+    // TBN ë…¸ë§ ë§¤í•‘ì„ ìœ„í•œ ì›”ë“œ ê³µê°„
     float3 tangentW  : TEXCOORD3;
     float3 bitanW    : TEXCOORD4;
 };
 
-// ½ºÅ°´× ÀÔ·Â Á¤Á¡ ±¸Á¶Ã¼
+// ìŠ¤í‚¤ë‹ ì…ë ¥ ì •ì  êµ¬ì¡°ì²´
 struct VertexInSkinned
 {
 	float3 posL     : POSITION;
