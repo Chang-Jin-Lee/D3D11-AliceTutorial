@@ -158,26 +158,26 @@ try {
     $rootedImageManifest.projects[0].image = $outsideRootedImage
     $rootedImageManifestPath = Join-Path $tempRoot 'rooted-image.json'
     Write-FixtureManifest -Path $rootedImageManifestPath -Manifest $rootedImageManifest
-    Assert-GeneratorRejected -Script $infoImageScript -ScriptArguments @('-Manifest', $rootedImageManifestPath, '-ProjectNumber', '01') -Message 'rooted image manifest path was accepted'
+    Assert-GeneratorRejected -Script $infoImageScript -ScriptArguments @('-Manifest', $rootedImageManifestPath, '-ProjectNumber', '01') -Message 'rooted image manifest path was accepted' -ExpectedPattern "invalid safe relative path 'image'"
 
     $traversalImageManifest = Copy-FixtureManifest $manifest
     $traversalImageManifest.projects[0].image = '..\outside-traversal-image.png'
     $traversalImageManifestPath = Join-Path $tempRoot 'traversal-image.json'
     Write-FixtureManifest -Path $traversalImageManifestPath -Manifest $traversalImageManifest
-    Assert-GeneratorRejected -Script $infoImageScript -ScriptArguments @('-Manifest', $traversalImageManifestPath, '-ProjectNumber', '01') -Message 'traversal image manifest path was accepted'
+    Assert-GeneratorRejected -Script $infoImageScript -ScriptArguments @('-Manifest', $traversalImageManifestPath, '-ProjectNumber', '01') -Message 'traversal image manifest path was accepted' -ExpectedPattern "invalid safe relative path 'image'"
 
     $rootedInfoManifest = Copy-FixtureManifest $manifest
     $rootedInfoManifest.projects[0].infoImage = $outsideRootedInfo
     $rootedInfoManifestPath = Join-Path $tempRoot 'rooted-info.json'
     Write-FixtureManifest -Path $rootedInfoManifestPath -Manifest $rootedInfoManifest
-    Assert-GeneratorRejected -Script $infoImageScript -ScriptArguments @('-Manifest', $rootedInfoManifestPath, '-ProjectNumber', '01') -Message 'rooted info image manifest path was accepted' -ExpectedPattern 'invalid info image output'
+    Assert-GeneratorRejected -Script $infoImageScript -ScriptArguments @('-Manifest', $rootedInfoManifestPath, '-ProjectNumber', '01') -Message 'rooted info image manifest path was accepted' -ExpectedPattern "invalid safe relative path 'infoImage'"
     Assert-True (-not (Test-Path -LiteralPath $outsideRootedInfo)) 'rooted info image created an outside output'
 
     $traversalInfoManifest = Copy-FixtureManifest $manifest
     $traversalInfoManifest.projects[0].infoImage = '..\outside-traversal-info.png'
     $traversalInfoManifestPath = Join-Path $tempRoot 'traversal-info.json'
     Write-FixtureManifest -Path $traversalInfoManifestPath -Manifest $traversalInfoManifest
-    Assert-GeneratorRejected -Script $infoImageScript -ScriptArguments @('-Manifest', $traversalInfoManifestPath, '-ProjectNumber', '01') -Message 'traversal info image manifest path was accepted' -ExpectedPattern 'invalid info image output'
+    Assert-GeneratorRejected -Script $infoImageScript -ScriptArguments @('-Manifest', $traversalInfoManifestPath, '-ProjectNumber', '01') -Message 'traversal info image manifest path was accepted' -ExpectedPattern "invalid safe relative path 'infoImage'"
     Assert-True (-not (Test-Path -LiteralPath $outsideTraversalInfo)) 'traversal info image created an outside output'
 
     $wrongDimensionManifest = Copy-FixtureManifest $manifest
@@ -193,7 +193,7 @@ try {
     $rootedGifManifest.projects[0].gif = $outsideRootedGif
     $rootedGifManifestPath = Join-Path $tempRoot 'rooted-gif.json'
     Write-FixtureManifest -Path $rootedGifManifestPath -Manifest $rootedGifManifest
-    Assert-GeneratorRejected -Script $reviewSheetScript -ScriptArguments @('-Manifest', $rootedGifManifestPath, '-OutputDir', (Join-Path $tempRoot 'rooted-gif-review')) -Message 'rooted GIF manifest path was accepted'
+    Assert-GeneratorRejected -Script $reviewSheetScript -ScriptArguments @('-Manifest', $rootedGifManifestPath, '-OutputDir', (Join-Path $tempRoot 'rooted-gif-review')) -Message 'rooted GIF manifest path was accepted' -ExpectedPattern "invalid safe relative path 'gif'"
 
     & pwsh -NoProfile -File $infoImageScript -Manifest $manifestPath -ProjectNumber '01'
     $posterPath = Join-Path $infoDir '01-fixture-info.png'
