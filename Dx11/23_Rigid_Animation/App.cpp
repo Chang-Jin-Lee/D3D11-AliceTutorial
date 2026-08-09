@@ -316,7 +316,7 @@ bool App::OnInitialize()
 		auto& model = *m_->m_Models.back();
 		model.pos = XMFLOAT3(0.0f, 0.0f, 0.0f);
 		model.rotDeg = XMFLOAT3(0.0f, 0.0f, 0.0f);
-		model.scale = XMFLOAT3(1.0f, 1.0f, 1.0f);
+		model.scale = XMFLOAT3(0.01f, 0.01f, 0.01f);
 		model.autoRotate = false;
 
 		m_Camera.SetPosition(XMFLOAT3(0.0f, 0.0f, -8.0f));
