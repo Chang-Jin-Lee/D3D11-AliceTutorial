@@ -88,7 +88,7 @@ void Camera::Reset()
 {
 	StoreRowMajor(m_World, XMMatrixIdentity());
 	m_Rotation = XMFLOAT3(0.0f, 0.0f, 0.0f);
-	m_Position = XMFLOAT3(0.0f, 0.0f, -8.0f);
+	m_Position = XMFLOAT3(0.0f, 1.0f, -1.2f);
 	m_InputVector = XMFLOAT3(0.0f, 0.0f, 0.0f);
 	m_MoveSpeed = 15.0f;
 	m_NearZ = 0.01f;
