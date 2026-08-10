@@ -224,6 +224,8 @@ function Test-GifMedia {
         [string]$Path,
         [string]$Label,
         [int]$ExpectedFps,
+        [double]$ExpectedSeconds,
+        [int64]$ExpectedMaxBytes,
         [System.Collections.Generic.List[string]]$Errors
     )
 
@@ -237,8 +239,8 @@ function Test-GifMedia {
         Add-VerificationError $Errors "$Label is empty: $Path"
         return
     }
-    if ($fileLength -gt 5242880) {
-        Add-VerificationError $Errors "$Label size is $fileLength bytes; expected at most 5242880 bytes: $Path"
+    if ($fileLength -gt $ExpectedMaxBytes) {
+        Add-VerificationError $Errors "$Label size is $fileLength bytes; expected at most $ExpectedMaxBytes bytes: $Path"
     }
 
     $isGif87a = Test-BytePrefix -Path $Path -Expected ([System.Text.Encoding]::ASCII.GetBytes('GIF87a'))
@@ -272,8 +274,10 @@ function Test-GifMedia {
                     $totalDelayHundredths += [System.BitConverter]::ToUInt32($delayBytes, $index * 4)
                 }
                 $totalDelaySeconds = $totalDelayHundredths / 100.0
-                if ($totalDelaySeconds -lt 3.5 -or $totalDelaySeconds -gt 5.5) {
-                    Add-VerificationError $Errors ("$Label total decoded delay is {0:F2}s; expected 3.5-5.5s: $Path" -f $totalDelaySeconds)
+                $minExpectedSeconds = $ExpectedSeconds - 0.5
+                $maxExpectedSeconds = $ExpectedSeconds + 1.5
+                if ($totalDelaySeconds -lt $minExpectedSeconds -or $totalDelaySeconds -gt $maxExpectedSeconds) {
+                    Add-VerificationError $Errors ("$Label total decoded delay is {0:F2}s; expected {1:F1}-{2:F1}s: $Path" -f $totalDelaySeconds, $minExpectedSeconds, $maxExpectedSeconds)
                 }
                 $decodedFps = $frameCount / $totalDelaySeconds
                 if ([math]::Abs($decodedFps - $ExpectedFps) -gt 0.1) {
@@ -843,7 +847,12 @@ if ($null -ne $manifestData) {
             catch { Add-VerificationError $errors "Project $number info PNG validation failed: $($resolved.Info) ($($_.Exception.Message))" }
         }
         if ($null -ne $resolved.Gif) {
-            try { Test-GifMedia -Path $resolved.Gif -Label "Project $number GIF" -ExpectedFps ([int]$manifestData.gifFps) -Errors $errors }
+            try {
+                $expectedGifFps = [int](Get-ReadmeMediaEffectivePositiveNumber -Manifest $manifestData -Project $project -Name 'gifFps')
+                $expectedGifSeconds = Get-ReadmeMediaEffectivePositiveNumber -Manifest $manifestData -Project $project -Name 'gifSeconds'
+                $expectedGifMaxBytes = [int64](Get-ReadmeMediaEffectivePositiveNumber -Manifest $manifestData -Project $project -Name 'gifMaxBytes')
+                Test-GifMedia -Path $resolved.Gif -Label "Project $number GIF" -ExpectedFps $expectedGifFps -ExpectedSeconds $expectedGifSeconds -ExpectedMaxBytes $expectedGifMaxBytes -Errors $errors
+            }
             catch { Add-VerificationError $errors "Project $number GIF validation failed: $($resolved.Gif) ($($_.Exception.Message))" }
         }
         if ($null -ne $resolved.ProjectReadme) {

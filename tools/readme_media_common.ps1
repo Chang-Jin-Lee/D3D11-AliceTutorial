@@ -93,6 +93,19 @@ function Test-ReadmeMediaManifestProperty {
     return $null -ne $Object -and $null -ne $Object.PSObject.Properties[$Name]
 }
 
+function Get-ReadmeMediaEffectivePositiveNumber {
+    param(
+        [Parameter(Mandatory)] [object] $Manifest,
+        [Parameter(Mandatory)] [object] $Project,
+        [Parameter(Mandatory)] [string] $Name
+    )
+
+    if (Test-ReadmeMediaManifestProperty -Object $Project -Name $Name) {
+        return [double]$Project.$Name
+    }
+    return [double]$Manifest.$Name
+}
+
 function Test-ReadmeMediaPositiveInteger {
     param([object] $Value)
 
@@ -260,6 +273,16 @@ function Test-ReadmeMediaManifest {
         if ((Test-ReadmeMediaManifestProperty -Object $project -Name 'gifPresentationPan') -and
             $project.gifPresentationPan -isnot [bool]) {
             $null = $errors.Add("invalid gifPresentationPan flag: $number")
+        }
+        if ((Test-ReadmeMediaManifestProperty -Object $project -Name 'readmeBackbufferCapture') -and
+            $project.readmeBackbufferCapture -isnot [bool]) {
+            $null = $errors.Add("invalid readmeBackbufferCapture flag: $number")
+        }
+        foreach ($overrideProperty in @('gifSeconds', 'gifFps', 'gifMaxBytes')) {
+            if ((Test-ReadmeMediaManifestProperty -Object $project -Name $overrideProperty) -and
+                -not (Test-ReadmeMediaPositiveInteger -Value $project.$overrideProperty)) {
+                $null = $errors.Add("invalid $overrideProperty override: $number")
+            }
         }
 
         if (Test-ReadmeMediaManifestProperty -Object $project -Name 'directory') {

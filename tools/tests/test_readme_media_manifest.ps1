@@ -17,6 +17,14 @@ Assert-True ($manifest.captureWidth -eq 1600 -and $manifest.captureHeight -eq 90
 Assert-True ($manifest.gifWidth -eq 800 -and $manifest.gifHeight -eq 450) 'GIF size contract mismatch'
 Assert-True ($manifest.infoWidth -eq 1600 -and $manifest.infoHeight -eq 640) 'info image size contract mismatch'
 
+$project36 = @($manifest.projects | Where-Object number -eq '36')[0]
+Assert-True ((Get-ReadmeMediaEffectivePositiveNumber $manifest $project36 'gifSeconds') -eq 8) 'project 36 must capture eight seconds'
+Assert-True ([bool]$project36.readmeBackbufferCapture) 'project 36 must opt into backbuffer capture'
+
+foreach ($project in @($manifest.projects | Where-Object number -ne '36')) {
+    Assert-True ((Get-ReadmeMediaEffectivePositiveNumber $manifest $project 'gifSeconds') -eq 4) "project $($project.number) changed from four seconds"
+}
+
 foreach ($project in $manifest.projects) {
     Assert-True ($project.number -match '^\d{2}$') "invalid number: $($project.number)"
     Assert-True (-not [string]::IsNullOrWhiteSpace($project.title)) "missing title: $($project.number)"
@@ -30,6 +38,10 @@ foreach ($project in $manifest.projects) {
 function Copy-ReadmeMediaManifest([object]$SourceManifest) {
     return $SourceManifest | ConvertTo-Json -Depth 10 | ConvertFrom-Json
 }
+
+$invalid = Copy-ReadmeMediaManifest $manifest
+$invalid.projects[35].gifSeconds = 0
+Assert-True ((Test-ReadmeMediaManifest $invalid $repoRoot) -contains 'invalid gifSeconds override: 36') 'zero override was accepted'
 
 $regressionFailures = [System.Collections.Generic.List[string]]::new()
 foreach ($invalidAtMs in @('NaN', 'Infinity', '-Infinity')) {

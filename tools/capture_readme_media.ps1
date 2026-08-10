@@ -786,11 +786,11 @@ function Invoke-GifCapture {
         throw "ffmpeg not found: $ffmpegPath"
     }
 
-    $gifSeconds = [double]$ManifestData.gifSeconds
-    $gifFps = [int]$ManifestData.gifFps
+    $gifSeconds = Get-ReadmeMediaEffectivePositiveNumber -Manifest $ManifestData -Project $Project -Name 'gifSeconds'
+    $gifFps = [int](Get-ReadmeMediaEffectivePositiveNumber -Manifest $ManifestData -Project $Project -Name 'gifFps')
     $gifWidth = [int]$ManifestData.gifWidth
     $gifHeight = [int]$ManifestData.gifHeight
-    $gifMaxBytes = [int64]$ManifestData.gifMaxBytes
+    $gifMaxBytes = [int64](Get-ReadmeMediaEffectivePositiveNumber -Manifest $ManifestData -Project $Project -Name 'gifMaxBytes')
     $frameCount = [Math]::Max(1, [int][Math]::Ceiling($gifSeconds * $gifFps))
     $frameIntervalMs = [int][Math]::Round(1000.0 / $gifFps)
     $framesDir = Join-Path $MediaDir ('frames-{0}-{1}' -f $Project.number, [Guid]::NewGuid().ToString('N'))
@@ -927,7 +927,10 @@ function Invoke-ProjectCapture {
             $imageDetails = Get-CaptureOutputDetails -Path $imagePath -ExpectedWidth ([int]$ManifestData.captureWidth) -ExpectedHeight ([int]$ManifestData.captureHeight)
 
             if ($usePresentationPan -and -not $SkipGif) {
-                $gifDetails = Invoke-PresentationPanGif -FfmpegPath 'C:\ffmpeg\bin\ffmpeg.exe' -PngPath $imagePath -GifPath $gifPath -GifFps ([int]$ManifestData.gifFps) -GifWidth ([int]$ManifestData.gifWidth) -GifHeight ([int]$ManifestData.gifHeight) -GifSeconds ([double]$ManifestData.gifSeconds) -MaxColors 256 -GifMaxBytes ([int64]$ManifestData.gifMaxBytes)
+                $effectiveGifFps = [int](Get-ReadmeMediaEffectivePositiveNumber -Manifest $ManifestData -Project $Project -Name 'gifFps')
+                $effectiveGifSeconds = Get-ReadmeMediaEffectivePositiveNumber -Manifest $ManifestData -Project $Project -Name 'gifSeconds'
+                $effectiveGifMaxBytes = [int64](Get-ReadmeMediaEffectivePositiveNumber -Manifest $ManifestData -Project $Project -Name 'gifMaxBytes')
+                $gifDetails = Invoke-PresentationPanGif -FfmpegPath 'C:\ffmpeg\bin\ffmpeg.exe' -PngPath $imagePath -GifPath $gifPath -GifFps $effectiveGifFps -GifWidth ([int]$ManifestData.gifWidth) -GifHeight ([int]$ManifestData.gifHeight) -GifSeconds $effectiveGifSeconds -MaxColors 256 -GifMaxBytes $effectiveGifMaxBytes
             }
             elseif ($Project.gifPhase -eq 'runtime' -and -not $SkipGif) {
                 $gifDetails = Invoke-GifCapture -Process $process -Project $Project -ManifestData $ManifestData -MediaDir $MediaDir -GifPath $gifPath -RepoRoot $RepoRoot -CaptureSession $captureSession -PressedKeys $pressedKeys

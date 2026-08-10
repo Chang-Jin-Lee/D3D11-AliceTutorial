@@ -28,6 +28,9 @@ catch {
 
 $project36ActionTypes = @($project36[0].preCaptureActions | ForEach-Object { $_.type })
 Assert-True (($project36ActionTypes -join ',') -eq 'click,wait') 'project 36 start actions missing or reordered'
+$resetActions = @($project36[0].gifActions)
+Assert-True ($resetActions.Count -eq 1) 'project 36 needs exactly one GIF reset action'
+Assert-True ($resetActions[0].type -eq 'click' -and [int]$resetActions[0].atMs -eq 0) 'project 36 reset must be a click at frame zero'
 $sway = @($mediaManifest.projects | Where-Object { @($_.gifActions).Count -eq 4 })
 Assert-True ($sway.Count -ge 1) 'camera sway actions missing'
 

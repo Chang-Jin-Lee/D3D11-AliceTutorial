@@ -347,6 +347,18 @@ try {
     Assert-FailedWith -Result $durationFailure -Patterns @('GIF total decoded delay.*expected 3\.5-5\.5s') -Message 'independent GIF duration diagnostic was not emitted'
     Copy-Item -LiteralPath $validGifBackup -Destination $gifPath -Force
 
+    $project.gifSeconds = 8
+    Write-FixtureManifest -Path $manifestPath -Manifest $manifest
+    New-MovingGif -Path $gifPath -FramesDir (Join-Path $fixtureRoot 'eight-second-gif-frames') -FrameRate 8 -FrameCount 64
+    $eightSecondOverride = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
+    Assert-True ($eightSecondOverride.ExitCode -eq 0) "eight-second project override was rejected: $($eightSecondOverride.Output)"
+
+    $project.Remove('gifSeconds')
+    Write-FixtureManifest -Path $manifestPath -Manifest $manifest
+    $eightSecondWithoutOverride = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
+    Assert-FailedWith -Result $eightSecondWithoutOverride -Patterns @('GIF total decoded delay.*expected 3\.5-5\.5s') -Message 'eight-second GIF without a project override was accepted'
+    Copy-Item -LiteralPath $validGifBackup -Destination $gifPath -Force
+
     New-MovingGif -Path $gifPath -FramesDir (Join-Path $fixtureRoot 'two-fps-gif-frames') -FrameRate 2 -FrameCount 8
     $cadenceFailure = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
     Assert-FailedWith -Result $cadenceFailure -Patterns @('GIF frame cadence is 2\.00fps; expected 8\.00fps') -Message 'independent GIF cadence diagnostic was not emitted'
