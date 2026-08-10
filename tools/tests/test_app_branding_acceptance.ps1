@@ -29,7 +29,7 @@ function New-BaseFixture([string]$Path, [string]$AcceptanceScript, [string]$Repo
     [IO.File]::WriteAllText((Join-Path $Path 'Dx11\TutorialApp.sln'), ($solutionLines -join "`r`n") + "`r`n", [Text.UTF8Encoding]::new($false))
     @{ expectedProjectCount = 37; projects = @($Directories | ForEach-Object { @{ directory = $_ } }) } |
         ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $Path 'tools\readme_media_manifest.json') -Encoding utf8NoBOM
-    Write-CanonicalReadme (Join-Path $Path 'README.md') 'docs/media/branding/alice-tutorial-logo.png' 720
+    [IO.File]::WriteAllText((Join-Path $Path 'README.md'), "# Fixture`n`nBody`n", [Text.UTF8Encoding]::new($false))
     foreach ($directory in $Directories | Sort-Object -Unique) {
         New-Item -ItemType Directory -Force -Path (Join-Path $Path "Dx11\$directory") | Out-Null
         Write-CanonicalReadme (Join-Path $Path "Dx11\$directory\README.md") '../../docs/media/branding/alice-tutorial-logo.png' 520
@@ -86,13 +86,12 @@ try {
             }
         },
         [pscustomobject]@{
-            Name = 'immediate root blockquote follower'
-            Pattern = 'brand block must have exactly one trailing blank line'
+            Name = 'root README logo block'
+            Pattern = 'root README brand markers must be absent'
             Mutate = {
                 param($path)
                 $readme = Join-Path $path 'README.md'
-                $content = [IO.File]::ReadAllText($readme).Replace("<!-- README-BRAND:END -->`n`nBody", "<!-- README-BRAND:END -->`n> Quote")
-                [IO.File]::WriteAllText($readme, $content, [Text.UTF8Encoding]::new($false))
+                Write-CanonicalReadme $readme 'docs/media/branding/alice-tutorial-logo.png' 720
             }
         },
         [pscustomobject]@{

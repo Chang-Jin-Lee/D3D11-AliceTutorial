@@ -78,7 +78,6 @@ function Get-UpdatedReadme([string]$Path, [string]$ImagePath, [int]$Width) {
 }
 
 $targets = [Collections.Generic.List[object]]::new()
-$targets.Add([pscustomobject]@{ Path = Join-Path $root 'README.md'; Image = 'docs/media/branding/alice-tutorial-logo.png'; Width = 720 })
 foreach ($project in @($data.projects)) {
     $targets.Add([pscustomobject]@{ Path = Join-Path $root "Dx11/$($project.directory)/README.md"; Image = '../../docs/media/branding/alice-tutorial-logo.png'; Width = 520 })
 }

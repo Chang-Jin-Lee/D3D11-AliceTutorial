@@ -103,14 +103,11 @@ finally {
 }
 Assert-True (Test-RequiredIcoDirectory $icoPath) 'ICO must contain exactly the nine required square entries'
 
-$readmes = @(
-    [pscustomobject]@{
-        Path = Join-Path $repoRoot 'README.md'
-        Relative = 'docs/media/branding/alice-tutorial-logo.png'
-        Width = 720
-    }
-)
-$readmes += @($manifest.projects | ForEach-Object {
+$rootReadme = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'README.md')
+Assert-True ($rootReadme -notmatch 'README-BRAND:(?:START|END)') 'root README brand markers must be absent'
+Assert-True ($rootReadme -notmatch 'alice-tutorial-logo\.png') 'root README logo reference must be absent'
+
+$readmes = @($manifest.projects | ForEach-Object {
     [pscustomobject]@{
         Path = Join-Path $repoRoot "Dx11/$($_.directory)/README.md"
         Relative = '../../docs/media/branding/alice-tutorial-logo.png'
@@ -118,7 +115,7 @@ $readmes += @($manifest.projects | ForEach-Object {
     }
 })
 
-Assert-True ($readmes.Count -eq 38) 'expected root plus 37 project READMEs'
+Assert-True ($readmes.Count -eq 37) 'expected 37 project READMEs'
 foreach ($entry in $readmes) {
     $content = Get-Content -Raw -LiteralPath $entry.Path
     $brandStart = '<!-- README-BRAND:START -->'

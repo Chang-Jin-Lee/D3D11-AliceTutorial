@@ -18,7 +18,8 @@ try {
     [IO.File]::WriteAllText((Join-Path $fixture 'Dx11\TutorialApp.sln'), ($solutionLines -join "`r`n") + "`r`n", [Text.UTF8Encoding]::new($false))
     @{ expectedProjectCount = 37; projects = @($projectDirectories | ForEach-Object { @{ directory = $_ } }) } |
         ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $fixture 'tools\manifest.json') -Encoding utf8NoBOM
-    [IO.File]::WriteAllText((Join-Path $fixture 'README.md'), "# Root`r`n`r`n<!-- README-BRAND:START -->`r`nold root block`r`n<!-- README-BRAND:END -->`r`n> Root quote`r`n", [Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText((Join-Path $fixture 'README.md'), "# Root`r`n`r`n> Root quote`r`n", [Text.UTF8Encoding]::new($false))
+    $rootBefore = [IO.File]::ReadAllBytes((Join-Path $fixture 'README.md'))
     [IO.File]::WriteAllText((Join-Path $fixture 'Dx11\01_Test\README.md'), "<!-- README-NAV-TOP:START -->`nnav`n<!-- README-NAV-TOP:END -->`n`n## One`n`n<!-- README-BRAND:START -->`nold project block`n<!-- README-BRAND:END -->`n- Project list`n", [Text.UTF8Encoding]::new($false))
     [IO.File]::WriteAllText((Join-Path $fixture 'Dx11\02_Test\README.md'), "### Two`n`n본문 two`n", [Text.Encoding]::GetEncoding(949))
     foreach ($directory in $projectDirectories | Select-Object -Skip 2) {
@@ -37,11 +38,9 @@ try {
 
     $newBehaviorFailures = [Collections.Generic.List[string]]::new()
 
-    Assert-True ($rootFirst -match 'width="720"') 'root width must be 720'
     Assert-True ($rootFirst.Contains("`r`n")) 'CRLF root README newline style changed'
-    Assert-True ($rootFirst -match "# Root`r`n`r`n<!-- README-BRAND:START -->") 'CRLF root brand block placement or surrounding content changed'
-    if ($rootFirst -notmatch '<!-- README-BRAND:END -->\r\n\r\n> Root quote') { $newBehaviorFailures.Add('root blockquote must have one blank line after README-BRAND:END') }
-    if ($rootFirst -match '<!-- README-BRAND:END -->\r\n\r\n\r\n') { $newBehaviorFailures.Add('root block must not gain extra blank lines') }
+    Assert-True ([System.Collections.StructuralComparisons]::StructuralEqualityComparer.Equals($rootBefore, [IO.File]::ReadAllBytes((Join-Path $fixture 'README.md')))) 'root README must remain byte-identical'
+    Assert-True ($rootFirst -notmatch 'README-BRAND:(?:START|END)') 'root README brand block must remain absent'
     if ($rootFirst -cne $rootSecond) { $newBehaviorFailures.Add('second run must keep the root README byte-idempotent') }
     Assert-True ($oneFirst -match 'width="520"') 'project width must be 520'
     if ($oneFirst -notmatch '<!-- README-BRAND:END -->\n\n- Project list') { $newBehaviorFailures.Add('project list must have one blank line after README-BRAND:END') }

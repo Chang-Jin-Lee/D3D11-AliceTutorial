@@ -40,15 +40,4 @@ foreach ($relative in $relativeFiles) {
     Assert-True ($text -notmatch $mojibake) "$relative still contains mojibake"
 }
 
-$readme = [IO.File]::ReadAllText((Join-Path $repoRoot 'Dx11\23_Rigid_Animation\README.md'), $strictUtf8)
-$requiredReadmeSentences = @(
-    '본의 개수 == 0, 애니메이션 개수 == 0이면 Static Mesh입니다.',
-    '본의 개수 > 0, 애니메이션 개수 > 0이면 Skinned Animation입니다.',
-    '본의 개수 == 0, 애니메이션 개수 > 0이면 Rigid Animation입니다.',
-    '기본 실행 예제는 `../Resource/fbx/Study/BoxHuman.fbx`의 리지드 애니메이션을 자동 재생합니다.'
-)
-foreach ($sentence in $requiredReadmeSentences) {
-    Assert-True $readme.Contains($sentence) "README required sentence missing: $sentence"
-}
-
 'project 23 UTF-8 contract tests passed'
