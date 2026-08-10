@@ -704,8 +704,17 @@ function Test-RootReadme {
         return
     }
 
-    if ($content -match 'github\.com/user-attachments') {
-        Add-VerificationError $Errors 'Root README still references github.com/user-attachments'
+    $allowedRootAttachments = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+    $null = $allowedRootAttachments.Add('https://github.com/user-attachments/assets/3aafc53e-d6ae-492d-8680-b240c19f1f92')
+    $null = $allowedRootAttachments.Add('https://github.com/user-attachments/assets/64a50e8e-5580-4e76-97d1-b500f9c5a8a2')
+    $attachmentPattern = 'https://github\.com/user-attachments/assets/[^"''\s<>()]+'
+    foreach ($attachment in [regex]::Matches($content, $attachmentPattern)) {
+        if (-not $allowedRootAttachments.Contains($attachment.Value)) {
+            Add-VerificationError $Errors "Root README has an unexpected root user-attachment: $($attachment.Value)"
+        }
+    }
+    if ([regex]::Replace($content, $attachmentPattern, '') -match 'github\.com/user-attachments') {
+        Add-VerificationError $Errors 'Root README has an unsupported root user-attachment reference'
     }
 
     $normalizedMediaDir = $MediaDir.Replace('\', '/').TrimEnd('/')

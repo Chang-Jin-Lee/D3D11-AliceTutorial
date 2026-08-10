@@ -374,6 +374,19 @@ try {
     Assert-True ($alphaMotion.ExitCode -eq 0) "alpha-only visible GIF motion was not counted: $($alphaMotion.Output)"
     Copy-Item -LiteralPath $validGifBackup -Destination $gifPath -Force
 
+    $allowedAttachmentReadme = $validRootReadme + @'
+
+<img src="https://github.com/user-attachments/assets/3aafc53e-d6ae-492d-8680-b240c19f1f92" />
+<img src="https://github.com/user-attachments/assets/64a50e8e-5580-4e76-97d1-b500f9c5a8a2" />
+'@
+    Write-Utf8File -Path $rootReadmePath -Content $allowedAttachmentReadme
+    $allowedAttachments = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
+    Assert-True ($allowedAttachments.ExitCode -eq 0) "approved legacy root attachments were rejected: $($allowedAttachments.Output)"
+
+    Write-Utf8File -Path $rootReadmePath -Content ($validRootReadme + "`n<img src=`"https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000000`" />`n")
+    $unknownAttachment = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
+    Assert-FailedWith -Result $unknownAttachment -Patterns @('unexpected root user-attachment') -Message 'unknown root attachment was not rejected'
+
     Write-Utf8File -Path $rootReadmePath -Content ($validRootReadme + "`n<img src=`"assets/local-other.gif`" />`n")
     $otherLocalGif = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
     Assert-FailedWith -Result $otherLocalGif -Patterns @('unexpected root GIF reference: assets/local-other\.gif') -Message 'local non-mediaDir root GIF embed was not rejected'
