@@ -1,10 +1,5 @@
 # D3D11-AliceTutorial
 
-<!-- README-BRAND:START -->
-<p align="center"><img src="docs/media/branding/alice-tutorial-logo.png" width="720" alt="D3D11 Alice Tutorial mascot logo" /></p>
-<!-- README-BRAND:END -->
-
-> 레거시 README 공개판은 [`README_old.md`](README_old.md)에 보존했습니다. 기존 attachment 기반 원본은 바탕화면 애셋 백업에 따로 보관했습니다.
 
 이 저장소는 [DirectX SDK Samples - Direct3D11 Tutorials](https://github.com/walbourn/directx-sdk-samples/tree/main/Direct3D11Tutorials) 을 기반으로  
 D3D 그래픽스를 학습하면서 정리한 튜토리얼 프로젝트입니다.
@@ -15,11 +10,12 @@ D3D 그래픽스를 학습하면서 정리한 튜토리얼 프로젝트입니다
 
 | [Youtube](https://www.youtube.com/playlist?list=PLbPdrhrt0AJgCSKYyzjAjHwpQ_Yt4uBMx) | [Velog](https://velog.io/@whoamicj/series/DirectX11) |
 |---|---|
-| <div align="center">[<img src="docs/media/readme/36-AdvancedAnim-Sound-Click.png" width="450"/>](https://www.youtube.com/playlist?list=PLbPdrhrt0AJgCSKYyzjAjHwpQ_Yt4uBMx)<br/></div> | <div align="center">[<img src="docs/media/readme/36-advanced-anim-sound-click.gif" width="230"/>](https://velog.io/@whoamicj/series/DirectX11)<br/></div> |
+| <div align="center">[<img src="https://github.com/user-attachments/assets/3aafc53e-d6ae-492d-8680-b240c19f1f92" width="450"/>](https://www.youtube.com/playlist?list=PLbPdrhrt0AJgCSKYyzjAjHwpQ_Yt4uBMx)<br/></div> | <div align="center">[<img src="https://github.com/user-attachments/assets/64a50e8e-5580-4e76-97d1-b500f9c5a8a2" width="230"/>](https://velog.io/@whoamicj/series/DirectX11)<br/></div> |
+
 
 ## 대표 데모
 
-채용자가 빠르게 볼 대표 프로젝트는 [`36_AdvancedAnim_Sound_Click`](Dx11/36_AdvancedAnim_Sound_Click)입니다. 앞 단계에서 구현한 모델 로딩, PBR/IBL, 톤매핑, 디퍼드 렌더링 위에 애니메이션 블렌딩, 레이어, IK, 소켓, FMOD 3D 사운드, ImGui 디버그 UI, 멀티스레드 로딩을 묶은 최종 데모입니다.
+[`36_AdvancedAnim_Sound_Click`](Dx11/36_AdvancedAnim_Sound_Click)입니다. 모델 로딩, PBR/IBL, 톤매핑, 디퍼드 렌더링 위에 애니메이션 블렌딩, 레이어, IK, 소켓, FMOD 3D 사운드, ImGui 디버그 UI, 멀티스레드 로딩을 담은 최종 데모입니다.
 
 | Screenshot | GIF |
 |---|---|
