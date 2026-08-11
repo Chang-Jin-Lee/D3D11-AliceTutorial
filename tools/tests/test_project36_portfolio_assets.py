@@ -53,22 +53,34 @@ EXPECTED_CHANNELS = {
 }
 EXPECTED_HIPS_OFFSET_X = [0.0, 0.08, 0.0, -0.08, 0.0, 0.08, 0.0, -0.08, 0.0]
 
-# Every authored row below is a pure Z rotation, so the delta recovered from a
-# keyframe as conjugate(bind) * frame must be exactly sin/cos of the half angle
-# about Z. That inverts the generator's composition instead of repeating it, and
-# it pins the local-frame delta convention, the sign, and degrees -> radians.
-EXPECTED_LOCAL_Z_DELTA_DEG = {
+# The authored local-frame delta for every rotation channel, in degrees,
+# transcribed from the brief's euler tables. The expected quaternion for each row
+# is derived below through this file's own matrix route
+# (`expected_local_delta`), never by running the generator, and it is compared
+# against the delta recovered from the file as conjugate(bind) * frame. That
+# inverts the generator's composition instead of repeating it, and it pins the
+# local-frame convention, the sign, degrees -> radians, and — because a
+# multi-axis triple is order-sensitive — the intrinsic X -> Y -> Z euler order.
+EXPECTED_LOCAL_DELTA_EULER_DEG = {
     "PortfolioDance": {
-        "J_Bip_L_LowerArm": [0, -25, -55, -25, 0, -25, -55, -25, 0],
-        "J_Bip_R_LowerArm": [0, 55, 25, 55, 0, 55, 25, 55, 0],
-        "J_Bip_L_UpperLeg": [0, 8, -5, 2, 0, 8, -5, 2, 0],
-        "J_Bip_R_UpperLeg": [0, -2, 5, -8, 0, -2, 5, -8, 0],
+        "J_Bip_C_Hips":     [(0, 0, 0), (0, 10, 7), (0, 0, 0), (0, -10, -7), (0, 0, 0), (0, 10, 7), (0, 0, 0), (0, -10, -7), (0, 0, 0)],
+        "J_Bip_C_Spine":    [(0, 0, 0), (4, -8, -5), (0, 0, 0), (4, 8, 5), (0, 0, 0), (4, -8, -5), (0, 0, 0), (4, 8, 5), (0, 0, 0)],
+        "J_Bip_C_Chest":    [(0, 0, 0), (-3, -10, -8), (0, 0, 0), (-3, 10, 8), (0, 0, 0), (-3, -10, -8), (0, 0, 0), (-3, 10, 8), (0, 0, 0)],
+        "J_Bip_L_UpperArm": [(0, 0, 0), (-20, 0, -35), (-110, 0, -70), (-20, 0, -35), (0, 0, 0), (-20, 0, -35), (-110, 0, -70), (-20, 0, -35), (0, 0, 0)],
+        "J_Bip_R_UpperArm": [(0, 0, 0), (-110, 0, 70), (-20, 0, 35), (-110, 0, 70), (0, 0, 0), (-110, 0, 70), (-20, 0, 35), (-110, 0, 70), (0, 0, 0)],
+        "J_Bip_L_LowerArm": [(0, 0, 0), (0, 0, -25), (0, 0, -55), (0, 0, -25), (0, 0, 0), (0, 0, -25), (0, 0, -55), (0, 0, -25), (0, 0, 0)],
+        "J_Bip_R_LowerArm": [(0, 0, 0), (0, 0, 55), (0, 0, 25), (0, 0, 55), (0, 0, 0), (0, 0, 55), (0, 0, 25), (0, 0, 55), (0, 0, 0)],
+        "J_Bip_L_UpperLeg": [(0, 0, 0), (0, 0, 8), (0, 0, -5), (0, 0, 2), (0, 0, 0), (0, 0, 8), (0, 0, -5), (0, 0, 2), (0, 0, 0)],
+        "J_Bip_R_UpperLeg": [(0, 0, 0), (0, 0, -2), (0, 0, 5), (0, 0, -8), (0, 0, 0), (0, 0, -2), (0, 0, 5), (0, 0, -8), (0, 0, 0)],
     },
     "PortfolioUpperWave": {
-        "J_Bip_L_Shoulder": [0, -12, -20, -12, 0],
-        "J_Bip_R_Shoulder": [0, 12, 20, 12, 0],
-        "J_Bip_L_LowerArm": [0, -35, -65, -35, 0],
-        "J_Bip_R_LowerArm": [0, 65, 35, 65, 0],
+        "J_Bip_C_Chest":    [(0, 0, 0), (-5, -12, -5), (0, 0, 0), (-5, 12, 5), (0, 0, 0)],
+        "J_Bip_L_Shoulder": [(0, 0, 0), (0, 0, -12), (0, 0, -20), (0, 0, -12), (0, 0, 0)],
+        "J_Bip_R_Shoulder": [(0, 0, 0), (0, 0, 12), (0, 0, 20), (0, 0, 12), (0, 0, 0)],
+        "J_Bip_L_UpperArm": [(0, 0, 0), (-45, 0, -55), (-75, 0, -90), (-45, 0, -55), (0, 0, 0)],
+        "J_Bip_R_UpperArm": [(0, 0, 0), (-75, 0, 90), (-45, 0, 55), (-75, 0, 90), (0, 0, 0)],
+        "J_Bip_L_LowerArm": [(0, 0, 0), (0, 0, -35), (0, 0, -65), (0, 0, -35), (0, 0, 0)],
+        "J_Bip_R_LowerArm": [(0, 0, 0), (0, 0, 65), (0, 0, 35), (0, 0, 65), (0, 0, 0)],
     },
 }
 DELTA_TOLERANCE = 2e-6
@@ -83,7 +95,7 @@ DEFAULT_TRANSLATION = [0.0, 0.0, 0.0]
 
 
 def fail(message: str) -> NoReturn:
-    print(f"[FAIL] {message}")
+    print(f"[FAIL] {message}", file=sys.stderr)
     raise SystemExit(1)
 
 
@@ -111,6 +123,87 @@ def quaternion_multiply(left, right):
 def local_rotation_delta(bind, frame):
     """The delta that turns the bind pose into this keyframe, in the bone's own frame."""
     return quaternion_multiply([-bind[0], -bind[1], -bind[2], bind[3]], frame)
+
+
+def matrix_multiply(left, right):
+    return tuple(
+        tuple(sum(left[row][k] * right[k][column] for k in range(3)) for column in range(3))
+        for row in range(3)
+    )
+
+
+def rotation_matrix_from_euler_degrees(x_deg: float, y_deg: float, z_deg: float):
+    """Intrinsic X -> Y -> Z as a row-major 3x3 matrix: M = Rx . Ry . Rz.
+
+    Deliberately built from the textbook single-axis rotation matrices rather
+    than from a quaternion product, so this route shares no algebra with the
+    generator and cannot inherit an error from it.
+    """
+    sin_x, cos_x = math.sin(math.radians(x_deg)), math.cos(math.radians(x_deg))
+    sin_y, cos_y = math.sin(math.radians(y_deg)), math.cos(math.radians(y_deg))
+    sin_z, cos_z = math.sin(math.radians(z_deg)), math.cos(math.radians(z_deg))
+    around_x = ((1.0, 0.0, 0.0), (0.0, cos_x, -sin_x), (0.0, sin_x, cos_x))
+    around_y = ((cos_y, 0.0, sin_y), (0.0, 1.0, 0.0), (-sin_y, 0.0, cos_y))
+    around_z = ((cos_z, -sin_z, 0.0), (sin_z, cos_z, 0.0), (0.0, 0.0, 1.0))
+    return matrix_multiply(matrix_multiply(around_x, around_y), around_z)
+
+
+def quaternion_from_matrix(matrix):
+    """(x, y, z, w) for a rotation matrix, taking the positive-w branch.
+
+    Valid while trace > -1; every authored delta in this file turns by well under
+    180 deg, and the guard below refuses rather than silently losing precision.
+    """
+    trace = matrix[0][0] + matrix[1][1] + matrix[2][2]
+    check(trace > -0.5, f"euler delta trace {trace} is too near a 180 deg turn for the positive-w branch")
+    scale = 2.0 * math.sqrt(trace + 1.0)
+    return [
+        (matrix[2][1] - matrix[1][2]) / scale,
+        (matrix[0][2] - matrix[2][0]) / scale,
+        (matrix[1][0] - matrix[0][1]) / scale,
+        0.25 * scale,
+    ]
+
+
+def expected_local_delta(x_deg: float, y_deg: float, z_deg: float):
+    """The delta quaternion an (x, y, z) degree triple must produce."""
+    return quaternion_from_matrix(rotation_matrix_from_euler_degrees(x_deg, y_deg, z_deg))
+
+
+def verify_delta_derivation() -> None:
+    """Pins this file's euler -> quaternion route without consulting the generator.
+
+    Two independent anchors:
+
+    1. A hand-worked probe. For (90, 0, 90), intrinsic X -> Y -> Z is
+       q = qx (x) qz with qx = (sin45, 0, 0, cos45) and qz = (0, 0, sin45, cos45).
+       Their Hamilton product, expanded by hand, is
+       x = cos45*0 + sin45*cos45 = 0.5, y = -sin45*sin45 = -0.5,
+       z = cos45*sin45 = 0.5, w = cos45*cos45 = 0.5  ->  (0.5, -0.5, 0.5, 0.5).
+       The reversed order Z -> Y -> X gives (0.5, +0.5, 0.5, 0.5), so this one row
+       separates the two orders and the sign of y is what does it.
+    2. Every pure-Z row of the expected table must equal the closed form
+       (0, 0, sin(z/2), cos(z/2)), which pins the sign and degrees -> radians.
+    """
+    probe = expected_local_delta(90, 0, 90)
+    hand_derived = [0.5, -0.5, 0.5, 0.5]
+    check(
+        all(abs(actual - expected) < 1e-12 for actual, expected in zip(probe, hand_derived)),
+        f"euler -> quaternion probe (90, 0, 90) gave {probe}, hand derivation says {hand_derived}",
+    )
+    for rows in EXPECTED_LOCAL_DELTA_EULER_DEG.values():
+        for euler_rows in rows.values():
+            for x_deg, y_deg, z_deg in euler_rows:
+                if x_deg or y_deg:
+                    continue
+                half = math.radians(z_deg) / 2.0
+                closed_form = [0.0, 0.0, math.sin(half), math.cos(half)]
+                derived = expected_local_delta(x_deg, y_deg, z_deg)
+                check(
+                    all(abs(actual - expected) < 1e-12 for actual, expected in zip(derived, closed_form)),
+                    f"euler -> quaternion for (0, 0, {z_deg}) gave {derived}, closed form says {closed_form}",
+                )
+    print("[OK] expected deltas match the hand-derived probe and the closed-form pure-Z rows")
 
 
 def read_glb(path: Path):
@@ -174,7 +267,14 @@ def skeleton_closure(doc: dict) -> set:
     return closure
 
 
-def verify_asset(path: Path, animation_name: str, duration: float, closure_names: set, bind_nodes: dict) -> None:
+def verify_asset(
+    path: Path,
+    animation_name: str,
+    duration: float,
+    closure_names: set,
+    bind_nodes: dict,
+    source_children: dict,
+) -> None:
     doc, binary = read_glb(path)
     name = path.name
 
@@ -204,7 +304,29 @@ def verify_asset(path: Path, animation_name: str, duration: float, closure_names
         f"{name}: a scene root index points outside the node list",
     )
 
-    haystack = (json.dumps(doc).encode("utf-8") + binary).lower()
+    # Indices in range is not enough: a scrambled-but-in-range remap would still
+    # pass, and regenerating with the same bug would still be byte-identical. Tie
+    # every parent -> child edge back to the source skeleton by name.
+    emitted_children = {
+        node["name"]: sorted(doc["nodes"][child]["name"] for child in node.get("children", []))
+        for node in doc["nodes"]
+    }
+    for node_name in sorted(emitted_children):
+        check(
+            emitted_children[node_name] == source_children[node_name],
+            f"{name}: node {node_name!r} has children {emitted_children[node_name]} "
+            f"but the source skeleton says {source_children[node_name]}",
+        )
+    parented = {child for children in emitted_children.values() for child in children}
+    emitted_roots = sorted(doc["nodes"][root]["name"] for root in doc["scenes"][0]["nodes"])
+    check(
+        emitted_roots == sorted(node_names - parented),
+        f"{name}: scene roots {emitted_roots} are not exactly the unparented nodes",
+    )
+
+    # Scan the file as written, not a re-serialisation: anything a JSON parse and
+    # re-dump would normalise away must not be able to slip past this.
+    haystack = path.read_bytes().lower()
     for token in BANNED:
         check(token.lower() not in haystack, f"{name}: banned provenance token {token!r} found")
 
@@ -252,20 +374,22 @@ def verify_asset(path: Path, animation_name: str, duration: float, closure_names
             for frame in values:
                 norm = math.sqrt(sum(component * component for component in frame))
                 check(abs(norm - 1.0) < 1e-5, f"{name}: {target_node['name']} rotation {frame} is not a unit quaternion")
-            expected_z_deg = EXPECTED_LOCAL_Z_DELTA_DEG[animation_name].get(target_node["name"])
-            if expected_z_deg is not None:
+            expected_euler = EXPECTED_LOCAL_DELTA_EULER_DEG[animation_name].get(target_node["name"])
+            check(
+                expected_euler is not None,
+                f"{name}: rotation channel {target_node['name']!r} has no expected local delta table",
+            )
+            check(
+                len(expected_euler) == len(values),
+                f"{name}: {target_node['name']} has {len(values)} keys, expected {len(expected_euler)}",
+            )
+            for euler, frame in zip(expected_euler, values):
+                expected_delta = expected_local_delta(*euler)
+                actual_delta = local_rotation_delta(bind, frame)
                 check(
-                    len(expected_z_deg) == len(values),
-                    f"{name}: {target_node['name']} has {len(values)} keys, expected {len(expected_z_deg)}",
+                    all(abs(a - b) < DELTA_TOLERANCE for a, b in zip(actual_delta, expected_delta)),
+                    f"{name}: {target_node['name']} local delta {actual_delta} != euler {euler} deg {expected_delta}",
                 )
-                for degrees, frame in zip(expected_z_deg, values):
-                    half = math.radians(degrees) / 2.0
-                    expected_delta = [0.0, 0.0, math.sin(half), math.cos(half)]
-                    actual_delta = local_rotation_delta(bind, frame)
-                    check(
-                        all(abs(a - b) < DELTA_TOLERANCE for a, b in zip(actual_delta, expected_delta)),
-                        f"{name}: {target_node['name']} local delta {actual_delta} != {degrees} deg about Z {expected_delta}",
-                    )
         elif target["path"] == "translation":
             bind = [as_float32(value) for value in target_node.get("translation", DEFAULT_TRANSLATION)]
             check(
@@ -283,6 +407,28 @@ def verify_asset(path: Path, animation_name: str, duration: float, closure_names
     check(
         seen_channels == EXPECTED_CHANNELS[animation_name],
         f"{name}: channels {seen_channels} != {EXPECTED_CHANNELS[animation_name]}",
+    )
+    check(
+        {node_name for node_name, path_kind in seen_channels if path_kind == "rotation"}
+        == set(EXPECTED_LOCAL_DELTA_EULER_DEG[animation_name]),
+        f"{name}: the rotation channels and the expected local delta table cover different nodes",
+    )
+
+    # Samplers are only ever reached through channels, so an orphan or a
+    # double-referenced sampler would otherwise go unnoticed.
+    samplers = animation["samplers"]
+    check(
+        len(samplers) == len(animation["channels"]),
+        f"{name}: {len(samplers)} samplers for {len(animation['channels'])} channels",
+    )
+    check(
+        sorted(channel["sampler"] for channel in animation["channels"]) == list(range(len(samplers))),
+        f"{name}: samplers are not referenced exactly once each by the channel list",
+    )
+    check(len(doc.get("buffers", [])) == 1, f"{name}: expected exactly one buffer")
+    check(
+        doc["buffers"][0].get("byteLength") == len(binary),
+        f"{name}: buffer byteLength {doc['buffers'][0].get('byteLength')} != BIN chunk length {len(binary)}",
     )
     print(f"[OK] {name}: {animation_name} {duration:.1f}s, {len(seen_channels)} channels, {len(doc['nodes'])} nodes, {path.stat().st_size} bytes")
 
@@ -315,14 +461,26 @@ def main() -> int:
     if not SOURCE.is_file():
         fail(f"missing source model: {SOURCE}")
 
+    verify_delta_derivation()
+
     source_doc, _ = read_glb(SOURCE)
     closure = skeleton_closure(source_doc)
     bind_nodes = {source_doc["nodes"][index]["name"]: source_doc["nodes"][index] for index in closure}
     closure_names = set(bind_nodes)
     check(len(bind_nodes) == len(closure), f"source skeleton closure has duplicate node names ({SOURCE})")
+    source_children = {
+        source_doc["nodes"][index]["name"]: sorted(
+            source_doc["nodes"][child]["name"]
+            for child in source_doc["nodes"][index].get("children", [])
+            if child in closure
+        )
+        for index in closure
+    }
 
     for filename, (animation_name, duration) in EXPECTED.items():
-        verify_asset(ANIMATION_DIR / filename, animation_name, duration, closure_names, bind_nodes)
+        verify_asset(
+            ANIMATION_DIR / filename, animation_name, duration, closure_names, bind_nodes, source_children
+        )
 
     verify_reproducible()
     print("[OK] project36 portfolio animation assets verified")

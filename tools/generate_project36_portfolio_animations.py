@@ -90,7 +90,7 @@ CLIPS = (
 
 
 def fail(message: str) -> NoReturn:
-    print(f"[FAIL] {message}")
+    print(f"[FAIL] {message}", file=sys.stderr)
     raise SystemExit(1)
 
 
@@ -273,8 +273,13 @@ def build_clip(source_doc: dict, clip: ClipSpec, source_path: Path) -> Tuple[dic
         frames = [quaternion_multiply(bind, quaternion_from_euler_degrees(*euler)) for euler in euler_rows]
         add_channel(node_name, "rotation", frames, "VEC4")
 
-    if clip.translation_x_node:
+    if clip.translation_x_node or clip.translation_x_offsets:
         node_name = clip.translation_x_node
+        if not node_name:
+            fail(
+                f"{clip.animation_name}: {len(clip.translation_x_offsets)} translation offsets "
+                f"were given without a translation node"
+            )
         if node_name not in node_index_by_name:
             fail(f"{clip.animation_name}: node {node_name!r} is not in the skeleton of {source_path}")
         if len(clip.translation_x_offsets) != len(clip.times):
