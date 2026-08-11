@@ -184,40 +184,72 @@ void App::LoadDataAsync(std::stop_token stoken)
 	m_->m_WeaponModelIndex = -1;
 
 	// ====================================== 큐브  ======================================
-	auto co = std::make_unique<CubeObject>(
-		L"Cube" + std::to_wstring(1),
-		Transform({ -220.0f, 25.0f, 45.0f }, { 0.0f, 25.0f, 0.0f }, { 28.0f, 28.0f, 28.0f }),
-		ECubeType::Texture);
-	for (int i = 0; i < 6; ++i) {
-		co->LoadTexture2DAt(m_->m_pDevice, i, L"..\\Resource\\Image\\Bricks059_1K-JPG_Color.jpg");
-		co->LoadTextureNormalAt(m_->m_pDevice, i, L"..\\Resource\\Image\\Bricks059_1K-JPG_NormalDX.jpg");
-		co->LoadTextureSpecularAt(m_->m_pDevice, i, L"..\\Resource\\Image\\Bricks059_Specular.png");
-	}
-	m_->m_Objects.push_back(std::move(co));
+	// The two decorative cubes are editor scenery only; the README capture
+	// composition shows the four characters alone.
+	if (!readmeCaptureMode) {
+		auto co = std::make_unique<CubeObject>(
+			L"Cube" + std::to_wstring(1),
+			Transform({ -220.0f, 25.0f, 45.0f }, { 0.0f, 25.0f, 0.0f }, { 28.0f, 28.0f, 28.0f }),
+			ECubeType::Texture);
+		for (int i = 0; i < 6; ++i) {
+			co->LoadTexture2DAt(m_->m_pDevice, i, L"..\\Resource\\Image\\Bricks059_1K-JPG_Color.jpg");
+			co->LoadTextureNormalAt(m_->m_pDevice, i, L"..\\Resource\\Image\\Bricks059_1K-JPG_NormalDX.jpg");
+			co->LoadTextureSpecularAt(m_->m_pDevice, i, L"..\\Resource\\Image\\Bricks059_Specular.png");
+		}
+		m_->m_Objects.push_back(std::move(co));
 
-	auto co2 = std::make_unique<CubeObject>(
-		L"Cube" + std::to_wstring(2),
-		Transform({ 220.0f, 25.0f, 65.0f }, { 0.0f, -20.0f, 0.0f }, { 36.0f, 36.0f, 36.0f }),
-		ECubeType::Basic);
-	m_->m_Objects.push_back(std::move(co2));
+		auto co2 = std::make_unique<CubeObject>(
+			L"Cube" + std::to_wstring(2),
+			Transform({ 220.0f, 25.0f, 65.0f }, { 0.0f, -20.0f, 0.0f }, { 36.0f, 36.0f, 36.0f }),
+			ECubeType::Basic);
+		m_->m_Objects.push_back(std::move(co2));
+	}
 
 	// ====================================== 카메라 ======================================
 	m_Camera.SetPosition(XMFLOAT3(0.0f, 65.0f, -220.0f));
 	m_Camera.SetSpeed(15.0f);
 	m_Camera.SetRotation(XMFLOAT3(8.0f, 0.0f, 0.0f));
 
+	// ================== README capture composition: four characters ==================
+	// KNOWN ISSUE (raised in the Task 3 report, to be resolved before media is
+	// published): with these values slot 2 stands directly behind slot 0, so only
+	// three characters are visible; yaw 180 turns them away from the camera; and
+	// at this camera distance they fill roughly 38% of the frame height rather
+	// than the intended 70%.
+	if (readmeCaptureMode) {
+		const std::array<int, 4> showcaseModelIndices = { playerIndex, enemy1Index, enemy2Index, enemy3Index };
+		const std::array<XMFLOAT3, 4> positions = {
+			XMFLOAT3{ 0.0f, 0.0f, 5.0f },
+			XMFLOAT3{ -92.0f, 0.0f, 48.0f },
+			XMFLOAT3{ 0.0f, 0.0f, 62.0f },
+			XMFLOAT3{ 92.0f, 0.0f, 48.0f }
+		};
+		for (size_t i = 0; i < showcaseModelIndices.size(); ++i) {
+			auto* model = modelAt(showcaseModelIndices[i]);
+			if (!model)
+				continue;
+			model->pos = positions[i];
+			model->rotDeg = XMFLOAT3(0.0f, 180.0f, 0.0f);
+			model->scale = XMFLOAT3(80.0f, 80.0f, 80.0f);
+			model->autoRotate = false;
+		}
+		m_Camera.SetPosition(XMFLOAT3(0.0f, 72.0f, -165.0f));
+		m_Camera.SetRotation(XMFLOAT3(5.0f, 0.0f, 0.0f));
+	}
+
 	m_->m_OutlineThickness = 0.3f;
 	m_->m_OutlineColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 1);
 
 	// ====================================== Advanced Rig 초기화 (CharacterAnimController) ======================================
 	m_->m_ExternalAnimClips.Clear();
-	auto loadExternalClip = [&](const std::string& key, const std::wstring& path) {
+	auto loadExternalClip = [&](const std::string& key, const std::wstring& path,
+		ExternalAnimationClipTransform transform = ExternalAnimationClipTransform::UnrealCmZUpToGlbMeters) {
 		std::string error;
 		if (!m_->m_ExternalAnimClips.LoadClip(
 			key,
 			path,
 			&error,
-			ExternalAnimationClipTransform::UnrealCmZUpToGlbMeters)) {
+			transform)) {
 			std::string message = "[WARN] External animation clip failed: " + key + " (" + Utf8FromWString(path) + ")";
 			if (!error.empty())
 				message += " - " + error;
@@ -233,6 +265,20 @@ void App::LoadDataAsync(std::stop_token stoken)
 	loadExternalClip("Run", runClip);
 	loadExternalClip("Roll", rollClip);
 
+	// Original portfolio clips: authored in GLB space already, so no transform.
+	// They exist only for the README capture showcase, so normal runs never pay
+	// the import cost.
+	if (readmeCaptureMode) {
+		loadExternalClip(
+			"PortfolioDance",
+			L"..\\Resource\\fbx\\Public\\MyAlice\\Animations\\anim_PortfolioDance.glb",
+			ExternalAnimationClipTransform::None);
+		loadExternalClip(
+			"PortfolioUpperWave",
+			L"..\\Resource\\fbx\\Public\\MyAlice\\Animations\\anim_PortfolioUpperWave.glb",
+			ExternalAnimationClipTransform::None);
+	}
+
 	// Placeholder action mappings until dedicated authored clips exist.
 	loadExternalClip("IdleToShoot", rollClip);
 	loadExternalClip("IdleToShoot_Reverse", rollClip);
@@ -247,6 +293,10 @@ void App::LoadDataAsync(std::stop_token stoken)
 	{
 		InitializeEnemyIdleRuntime(enemyIndex);
 	}
+
+	// All four model indices and every external clip are ready by this point.
+	// Outside README capture mode this call is a no-op.
+	InitializePortfolioShowcase();
 
 	// - The character index is the actual loaded player slot.
 	// - No weapon model is required; socket output is optional.

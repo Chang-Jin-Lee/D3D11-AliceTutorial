@@ -72,6 +72,13 @@ private:
 	void UpdateEnemyIdleAnimations(float dt);
 	void StartPublicDemoAudioOnce();
 
+	// README capture-only portfolio showcase (see App_PortfolioShowcase.inl).
+	bool InitializePortfolioShowcase();
+	void ResetPortfolioShowcase();
+	bool UpdatePortfolioShowcase(float dt); // true only while it owns the capture-mode character palettes
+	void RenderPortfolioShowcaseDebug();
+	void RenderPortfolioShowcaseHud();
+
 private:
 	struct Impl;
 	std::unique_ptr<Impl> m_;

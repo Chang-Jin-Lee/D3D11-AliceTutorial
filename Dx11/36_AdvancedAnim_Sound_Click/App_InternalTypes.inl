@@ -675,6 +675,37 @@ struct App::Impl {
 	bool m_PublicDemoBgmLoaded = false;
 	bool m_EnemyIdleAuraLoaded = false;
 
+	// ===================== README capture portfolio showcase =====================
+	// Capture-only runtime: drives four public MyAlice characters through a
+	// deterministic eight-second Dance -> Blend/Layer -> CCD IK cycle so the
+	// README GIF always shows the same animation feature tour.
+	enum class PortfolioShowcasePhase { Dance, BlendLayer, Ik, Finish };
+
+	struct PortfolioAnimatorSlot
+	{
+		int modelIndex = -1;
+		CharacterAnimator animator;
+		float phaseOffsetSec = 0.0f;
+		bool initialized = false;
+	};
+
+	struct PortfolioShowcaseRuntime
+	{
+		bool initialized = false;
+		bool fallbackToIdle = false;
+		float timeSec = 0.0f;
+		PortfolioShowcasePhase phase = PortfolioShowcasePhase::Dance;
+		std::array<PortfolioAnimatorSlot, 4> slots{};
+		DirectX::XMFLOAT3 ikTargetMS{ -0.35f, 1.15f, 0.18f };
+		DirectX::XMFLOAT3 ikShoulderWS{};
+		DirectX::XMFLOAT3 ikElbowWS{};
+		DirectX::XMFLOAT3 ikHandWS{};
+		DirectX::XMFLOAT3 ikTargetWS{};
+		bool ikDebugValid = false;
+	};
+
+	PortfolioShowcaseRuntime m_PortfolioShowcase;
+
 	// ===================== TPS Camera Follow =====================
 	bool  m_TpsCamAttached = false;     // V키 토글
 	float m_TpsYawRad = 0.0f;

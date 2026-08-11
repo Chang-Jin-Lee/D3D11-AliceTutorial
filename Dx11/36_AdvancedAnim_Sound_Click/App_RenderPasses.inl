@@ -688,6 +688,9 @@ void App::PassMainScene() {
 	if (!IsReadmeCaptureMode()) {
 		PassDebugDraw();
 	}
+	else {
+		RenderPortfolioShowcaseDebug();
+	}
 }
 
 // G-Buffer 패스: 지오메트리 정보를 G-Buffer에 렌더링
@@ -1014,6 +1017,9 @@ void App::PassUI() {
 		RenderSceneImageWindow();
 		RenderDeferredUI();
 		RenderSoundDebugUI();
+	}
+	else {
+		RenderPortfolioShowcaseHud();
 	}
 	const unsigned int skyboxGeneration = SkyboxAssetManager::GetCompletedGeneration();
 	if (skyboxGeneration != m_->m_SkyboxAssetGeneration) {

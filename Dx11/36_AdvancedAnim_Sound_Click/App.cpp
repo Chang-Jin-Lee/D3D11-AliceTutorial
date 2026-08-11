@@ -72,6 +72,7 @@ using namespace DirectX::SimpleMath;
 // These files are included here so App::Impl and file-local helpers remain private to this translation unit.
 #include "App_InternalTypes.inl"
 #include "App_Utilities.inl"
+#include "App_PortfolioShowcase.inl"
 #include "App_PublicDemoRuntime.inl"
 #include "App_Lifecycle.inl"
 #include "App_UpdateInput.inl"

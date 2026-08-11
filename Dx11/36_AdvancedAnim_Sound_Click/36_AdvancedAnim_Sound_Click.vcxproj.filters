@@ -103,6 +103,9 @@
     <ClInclude Include="App_ImGuiPanels.inl">
       <Filter>App Parts</Filter>
     </ClInclude>
+    <ClInclude Include="App_PortfolioShowcase.inl">
+      <Filter>App Parts</Filter>
+    </ClInclude>
     <ClInclude Include="App_Utilities.inl">
       <Filter>App Parts</Filter>
     </ClInclude>

@@ -92,6 +92,7 @@
     <ClInclude Include="App_RenderPasses.inl" />
     <ClInclude Include="App_ModelLoading.inl" />
     <ClInclude Include="App_ImGuiPanels.inl" />
+    <ClInclude Include="App_PortfolioShowcase.inl" />
     <ClInclude Include="App_Utilities.inl" />
     <ClInclude Include="SceneA.h" />
     <ClInclude Include="SceneB.h" />

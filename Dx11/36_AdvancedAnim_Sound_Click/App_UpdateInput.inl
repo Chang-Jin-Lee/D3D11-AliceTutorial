@@ -296,10 +296,15 @@ void App::OnUpdate(const float& dt) {
 		XMFLOAT3 sceneCenter = { 0.0f, 0.0f, 0.0f };
 		int sceneModelCount = 0;
 
+		// README capture mode: the portfolio showcase owns the four character
+		// palettes. Everything else (camera, shadows, rendering, input) keeps
+		// running so the window stays responsive during the eight-second capture.
+		const bool showcaseOwnsPalettes = UpdatePortfolioShowcase(dt);
+
 		// ===================== AdvancedRig: player animation and optional socket attachment =====================
 		// - This block handles the player model separately from the shared-data update path.
 		// - The general loop below skips the player model's default FbxAnimation::UpdateAndUpload.
-		if (m_->m_UseAdvancedRig && m_->m_CharRigInited) {
+		if (!showcaseOwnsPalettes && m_->m_UseAdvancedRig && m_->m_CharRigInited) {
 			const int ci = m_->m_CharModelIndex;
 			const int wi = m_->m_WeaponModelIndex;
 			if (ci < 0 || ci >= (int)m_->m_Models.size()) {
@@ -597,6 +602,22 @@ void App::OnUpdate(const float& dt) {
 				continue;
 			}
 
+			// Showcase-owned characters skip the default palette evaluation; every
+			// other model (ground, props) keeps its normal update path.
+			if (showcaseOwnsPalettes) {
+				bool ownedByShowcase = false;
+				for (const auto& slot : m_->m_PortfolioShowcase.slots) {
+					if (slot.initialized && slot.modelIndex == (int)i) {
+						ownedByShowcase = true;
+						break;
+					}
+				}
+				if (ownedByShowcase) {
+					++i;
+					continue;
+				}
+			}
+
 			if (mdl.source == ModelSource::FBX && mdl.shared->fbx) {
 				// 인스턴스별 애니메이션 업데이트 (공유 지오메트리/스켈레톤 사용)
 				if (!mdl.animatorInited) {
@@ -647,7 +668,8 @@ void App::OnUpdate(const float& dt) {
 
 		}
 
-		UpdateEnemyIdleAnimations(dt);
+		if (!showcaseOwnsPalettes)
+			UpdateEnemyIdleAnimations(dt);
 		StartPublicDemoAudioOnce();
 
 		// FMOD 갱신 (매 프레임) - 모델 루프 밖에서 1회만 호출해야 한다.
