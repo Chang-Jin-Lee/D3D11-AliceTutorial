@@ -30,6 +30,10 @@
 		PassPostProcess(); // 톤매핑 (HDR -> BackBuffer)
 		// 3. UI 및 Present
 		PassUI();
+		// README capture only: publish the finished frame from the swap chain
+		// before it is presented, so the capture tool reads the true rendered
+		// pixels instead of screen-scraping this window.
+		WritePortfolioBackbufferPng();
 	}
 
 	m_->m_pSwapChain->Present(0, 0);

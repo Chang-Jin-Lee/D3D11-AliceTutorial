@@ -47,9 +47,11 @@
 #include <imgui_internal.h>
 #include <imgui_stdlib.h>
 #include <memory>
+#include <objbase.h>
 #include <random>
 #include <thread>
 #include <unordered_set>
+#include <wincodec.h>
 #include <windows.h>
 #include <wrl/client.h>
 
@@ -63,6 +65,13 @@
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "d3dcompiler.lib")
 #pragma comment(lib, "Comdlg32.lib")
+// README backbuffer capture writes its PNG through the Windows Imaging Component
+// directly. This repository vendors only six DirectXTK sources (see
+// Dx11/Common/Common.vcxproj) and ScreenGrab.cpp is not one of them, so
+// SaveWICTextureToFile has no implementation to link against; WIC is exactly what
+// it would have called anyway, and it costs no new third-party source.
+#pragma comment(lib, "windowscodecs.lib")
+#pragma comment(lib, "ole32.lib")
 
 using namespace DirectX;
 using namespace DirectX::SimpleMath;

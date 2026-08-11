@@ -78,6 +78,11 @@ private:
 	bool UpdatePortfolioShowcase(float dt); // true only while it owns the capture-mode character palettes
 	void RenderPortfolioShowcaseDebug();
 	void RenderPortfolioShowcaseHud();
+	// Publishes the finished swap-chain frame for the README capture tool. Called
+	// after PassUI() and before Present(); inert outside README capture mode and
+	// whenever DX11_README_BACKBUFFER_PNG is unset.
+	void WritePortfolioBackbufferPng();
+	void ShutdownPortfolioBackbufferWriter();
 
 private:
 	struct Impl;

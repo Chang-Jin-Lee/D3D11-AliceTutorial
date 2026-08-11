@@ -126,6 +126,77 @@ function Get-CaptureOutputDetails {
     }
 }
 
+function Copy-ReadmeBackbufferPng {
+    param(
+        [string]$SourcePath,
+        [string]$OutputPath,
+        [int]$Width,
+        [int]$Height,
+        [int]$TimeoutSeconds = 3
+    )
+
+    # The application republishes this path continuously through an atomic
+    # replace, so every open either finds nothing yet or finds a whole PNG. Retry
+    # until the first frame lands, share the file with the writer, and copy the
+    # decoded image into a detached bitmap so the tool's handle is gone - and the
+    # publisher's next replace unblocked - before this returns.
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $lastError = 'no attempt was made'
+    while ($true) {
+        $stream = $null
+        $image = $null
+        $detached = $null
+        $copied = $false
+        try {
+            $stream = [System.IO.File]::Open($SourcePath, [System.IO.FileMode]::Open,
+                [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+            $image = [System.Drawing.Image]::FromStream($stream, $false, $true)
+            if ($image.Width -ne $Width -or $image.Height -ne $Height) {
+                throw "backbuffer PNG has unexpected dimensions $($image.Width)x$($image.Height)"
+            }
+            $detached = New-Object System.Drawing.Bitmap($image)
+            $detached.Save($OutputPath, [System.Drawing.Imaging.ImageFormat]::Png)
+            $copied = $true
+        }
+        catch {
+            $lastError = $_.Exception.Message
+        }
+        finally {
+            if ($null -ne $detached) { $detached.Dispose() }
+            if ($null -ne $image) { $image.Dispose() }
+            if ($null -ne $stream) { $stream.Dispose() }
+        }
+
+        if ($copied) {
+            return
+        }
+        if ((Get-Date) -ge $deadline) {
+            throw "Backbuffer PNG was not published within $TimeoutSeconds seconds: $SourcePath ($lastError)"
+        }
+        Start-Sleep -Milliseconds 100
+    }
+}
+
+function Remove-ReadmeBackbufferFile {
+    param(
+        [string]$Path,
+        [string]$MediaDir
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        return
+    }
+
+    $resolvedPath = (Resolve-Path -LiteralPath $Path).Path
+    $resolvedMedia = (Resolve-Path -LiteralPath $MediaDir).Path
+    $mediaWithSlash = $resolvedMedia.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
+    if (-not $resolvedPath.StartsWith($mediaWithSlash, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to remove backbuffer output outside mediaDir: $resolvedPath"
+    }
+
+    Remove-Item -LiteralPath $resolvedPath -Force
+}
+
 function Get-CaptureProjectSelection {
     param(
         [object]$Manifest,
@@ -389,7 +460,8 @@ function Prepare-CaptureWindow {
     param(
         [System.Diagnostics.Process]$Process,
         [int]$ClientWidth,
-        [int]$ClientHeight
+        [int]$ClientHeight,
+        [string]$BackbufferPath
     )
 
     $session = $null
@@ -414,6 +486,7 @@ function Prepare-CaptureWindow {
             ClientHeight = $ClientHeight
             Rect = $rect
             TopmostFlags = $topmostFlags
+            BackbufferPath = $BackbufferPath
         }
         Focus-CaptureWindow -Handle $captureWindow.Handle
         Start-Sleep -Milliseconds 300
@@ -444,24 +517,36 @@ function Capture-PreparedWindowPng {
     )
 
     $rect = Test-PreparedCaptureWindow -Process $Process -CaptureSession $CaptureSession
-    $bitmap = $null
-    $graphics = $null
-    try {
-        $bitmap = New-Object System.Drawing.Bitmap($CaptureSession.ClientWidth, $CaptureSession.ClientHeight)
-        $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-        $graphics.CopyFromScreen($rect.Left, $rect.Top, 0, 0, $bitmap.Size)
-        $bitmap.Save($OutputPath, [System.Drawing.Imaging.ImageFormat]::Png)
-        Test-PngOutput -Path $OutputPath
-        [void](Get-CaptureOutputDetails -Path $OutputPath -ExpectedWidth $CaptureSession.ClientWidth -ExpectedHeight $CaptureSession.ClientHeight)
+
+    if (-not [string]::IsNullOrWhiteSpace($CaptureSession.BackbufferPath)) {
+        # Opted-in projects publish their own swap-chain frames, so the capture is
+        # the frame the application actually rendered - immune to an overlapping
+        # window, a screensaver, or a DPI quirk.
+        Copy-ReadmeBackbufferPng -SourcePath $CaptureSession.BackbufferPath -OutputPath $OutputPath `
+            -Width $CaptureSession.ClientWidth -Height $CaptureSession.ClientHeight
     }
-    finally {
-        if ($null -ne $graphics) {
-            $graphics.Dispose()
+    else {
+        # Every project without the opt-in flag keeps the screen-copy path.
+        $bitmap = $null
+        $graphics = $null
+        try {
+            $bitmap = New-Object System.Drawing.Bitmap($CaptureSession.ClientWidth, $CaptureSession.ClientHeight)
+            $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+            $graphics.CopyFromScreen($rect.Left, $rect.Top, 0, 0, $bitmap.Size)
+            $bitmap.Save($OutputPath, [System.Drawing.Imaging.ImageFormat]::Png)
         }
-        if ($null -ne $bitmap) {
-            $bitmap.Dispose()
+        finally {
+            if ($null -ne $graphics) {
+                $graphics.Dispose()
+            }
+            if ($null -ne $bitmap) {
+                $bitmap.Dispose()
+            }
         }
     }
+
+    Test-PngOutput -Path $OutputPath
+    [void](Get-CaptureOutputDetails -Path $OutputPath -ExpectedWidth $CaptureSession.ClientWidth -ExpectedHeight $CaptureSession.ClientHeight)
 }
 
 function Send-CaptureWindowMessage {
@@ -871,7 +956,10 @@ function Invoke-ProjectCapture {
     $lastCaptureSession = $null
     $pressedKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $previousReadmeCaptureEnv = $env:DX11_README_CAPTURE
+    $previousReadmeBackbufferEnv = $env:DX11_README_BACKBUFFER_PNG
     $readmeCaptureEnvChanged = $false
+    $readmeBackbufferEnvChanged = $false
+    $backbufferPath = $null
     $usePresentationPan = [bool]$Project.gifPresentationPan
     $imagePath = Resolve-ReadmeMediaContainedPath -BasePath $MediaDir -Path $Project.image -Description "project $($Project.number) image output"
     $gifPath = Resolve-ReadmeMediaContainedPath -BasePath $MediaDir -Path $Project.gif -Description "project $($Project.number) GIF output"
@@ -890,6 +978,17 @@ function Invoke-ProjectCapture {
             $readmeCaptureEnvChanged = $true
         }
 
+        if ([bool]$Project.readmeBackbufferCapture) {
+            # A unique name per attempt, contained inside the chosen media
+            # directory so the cleanup below can prove it is removing a path this
+            # run created.
+            $backbufferPath = Resolve-ReadmeMediaContainedPath -BasePath $MediaDir `
+                -Path ('backbuffer-{0}-{1}.png' -f $Project.number, [Guid]::NewGuid().ToString('N')) `
+                -Description "project $($Project.number) backbuffer output"
+            $env:DX11_README_BACKBUFFER_PNG = $backbufferPath
+            $readmeBackbufferEnvChanged = $true
+        }
+
         $process = Start-Process -FilePath $exePath -WorkingDirectory $RuntimeDir -PassThru
         if ($readmeCaptureEnvChanged) {
             if ($null -eq $previousReadmeCaptureEnv) {
@@ -900,11 +999,20 @@ function Invoke-ProjectCapture {
             }
             $readmeCaptureEnvChanged = $false
         }
+        if ($readmeBackbufferEnvChanged) {
+            if ($null -eq $previousReadmeBackbufferEnv) {
+                Remove-Item Env:\DX11_README_BACKBUFFER_PNG -ErrorAction SilentlyContinue
+            }
+            else {
+                $env:DX11_README_BACKBUFFER_PNG = $previousReadmeBackbufferEnv
+            }
+            $readmeBackbufferEnvChanged = $false
+        }
 
         Wait-MainWindow -Process $process
 
         if ($Project.gifPhase -eq 'startup' -and -not $SkipGif -and -not $usePresentationPan) {
-            $startupSession = Prepare-CaptureWindow -Process $process -ClientWidth ([int]$ManifestData.captureWidth) -ClientHeight ([int]$ManifestData.captureHeight)
+            $startupSession = Prepare-CaptureWindow -Process $process -ClientWidth ([int]$ManifestData.captureWidth) -ClientHeight ([int]$ManifestData.captureHeight) -BackbufferPath $backbufferPath
             $lastCaptureSession = $startupSession
             try {
                 $gifDetails = Invoke-GifCapture -Process $process -Project $Project -ManifestData $ManifestData -MediaDir $MediaDir -GifPath $gifPath -RepoRoot $RepoRoot -CaptureSession $startupSession -PressedKeys $pressedKeys
@@ -919,7 +1027,7 @@ function Invoke-ProjectCapture {
             Start-Sleep -Milliseconds $delayMs
         }
 
-        $captureSession = Prepare-CaptureWindow -Process $process -ClientWidth ([int]$ManifestData.captureWidth) -ClientHeight ([int]$ManifestData.captureHeight)
+        $captureSession = Prepare-CaptureWindow -Process $process -ClientWidth ([int]$ManifestData.captureWidth) -ClientHeight ([int]$ManifestData.captureHeight) -BackbufferPath $backbufferPath
         $lastCaptureSession = $captureSession
         try {
             Invoke-PreCaptureActions -CaptureSession $captureSession -Project $Project -PressedKeys $pressedKeys
@@ -958,8 +1066,24 @@ function Invoke-ProjectCapture {
                 $env:DX11_README_CAPTURE = $previousReadmeCaptureEnv
             }
         }
+        if ($readmeBackbufferEnvChanged) {
+            if ($null -eq $previousReadmeBackbufferEnv) {
+                Remove-Item Env:\DX11_README_BACKBUFFER_PNG -ErrorAction SilentlyContinue
+            }
+            else {
+                $env:DX11_README_BACKBUFFER_PNG = $previousReadmeBackbufferEnv
+            }
+        }
         if ($null -ne $process -and (-not $KeepWindows -or -not $captureCompleted)) {
             Stop-CaptureProcess -Process $process
+        }
+        # After the publisher is down, so it cannot recreate what is removed here.
+        # The application clears its own temporary sibling when it shuts down, but
+        # this run may have killed it mid-publication, and nothing but the media
+        # directory's own capture output may be left behind.
+        if (-not [string]::IsNullOrWhiteSpace($backbufferPath)) {
+            Remove-ReadmeBackbufferFile -Path $backbufferPath -MediaDir $MediaDir
+            Remove-ReadmeBackbufferFile -Path ($backbufferPath + '.tmp.png') -MediaDir $MediaDir
         }
     }
 }

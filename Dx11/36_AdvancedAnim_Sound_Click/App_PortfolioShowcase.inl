@@ -85,6 +85,164 @@ namespace
 	{
 		return XMMatrixTranspose(nodeGlobal).r[3];
 	}
+
+	// ------------------------------------------------------------------------
+	// README backbuffer publication helpers.
+	// ------------------------------------------------------------------------
+
+	// At most twelve published frames per second. The capture tool samples the
+	// file far more slowly than that, so anything faster would only spend the
+	// showcase's frame time re-encoding pixels nobody reads.
+	constexpr ULONGLONG kPortfolioBackbufferMinIntervalMs = 1000ull / 12ull;
+
+	std::wstring ReadPortfolioBackbufferPathFromEnvironment()
+	{
+		const DWORD required = GetEnvironmentVariableW(L"DX11_README_BACKBUFFER_PNG", nullptr, 0);
+		if (required == 0)
+			return std::wstring();
+
+		std::wstring value(required, L'\0');
+		const DWORD copied = GetEnvironmentVariableW(L"DX11_README_BACKBUFFER_PNG", value.data(), required);
+		if (copied == 0 || copied >= required)
+			return std::wstring();
+		value.resize(copied);
+		return value;
+	}
+
+	// Only the formats this swap chain can actually present. Anything else is
+	// refused rather than reinterpreted, so a future format change fails visibly
+	// instead of publishing colour garbage.
+	const GUID* PortfolioBackbufferWicFormat(DXGI_FORMAT format) noexcept
+	{
+		switch (format)
+		{
+		case DXGI_FORMAT_R8G8B8A8_UNORM:
+		case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:  return &GUID_WICPixelFormat32bppRGBA;
+		case DXGI_FORMAT_B8G8R8A8_UNORM:
+		case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:  return &GUID_WICPixelFormat32bppBGRA;
+		case DXGI_FORMAT_B8G8R8X8_UNORM:
+		case DXGI_FORMAT_B8G8R8X8_UNORM_SRGB:  return &GUID_WICPixelFormat32bppBGR;
+		case DXGI_FORMAT_R10G10B10A2_UNORM:    return &GUID_WICPixelFormat32bppRGBA1010102;
+		case DXGI_FORMAT_R16G16B16A16_FLOAT:   return &GUID_WICPixelFormat64bppRGBAHalf;
+		default:                               return nullptr;
+		}
+	}
+
+	// Encodes mapped staging rows into a complete in-memory PNG. Encoding away
+	// from the file system is what keeps the temporary sibling below alive for a
+	// single WriteFile instead of for the whole encode, so a capture run that is
+	// killed mid-frame has almost no window in which to leave one behind.
+	bool EncodePortfolioBackbufferPng(
+		IWICImagingFactory* factory,
+		const void* rows,
+		UINT rowPitch,
+		UINT width,
+		UINT height,
+		DXGI_FORMAT format,
+		std::vector<uint8_t>& encoded)
+	{
+		encoded.clear();
+		const GUID* sourceFormat = PortfolioBackbufferWicFormat(format);
+		if (!factory || !rows || !sourceFormat || width == 0 || height == 0 || rowPitch == 0)
+			return false;
+
+		// The mapped RowPitch is the driver's, never assumed to be width * 4.
+		Microsoft::WRL::ComPtr<IWICBitmap> sourceBitmap;
+		if (FAILED(factory->CreateBitmapFromMemory(
+			width, height, *sourceFormat, rowPitch, rowPitch * height,
+			static_cast<BYTE*>(const_cast<void*>(rows)), sourceBitmap.GetAddressOf())))
+			return false;
+
+		Microsoft::WRL::ComPtr<IStream> stream;
+		if (FAILED(CreateStreamOnHGlobal(nullptr, TRUE, stream.GetAddressOf())))
+			return false;
+
+		Microsoft::WRL::ComPtr<IWICBitmapEncoder> encoder;
+		if (FAILED(factory->CreateEncoder(GUID_ContainerFormatPng, nullptr, encoder.GetAddressOf())) ||
+			FAILED(encoder->Initialize(stream.Get(), WICBitmapEncoderNoCache)))
+			return false;
+
+		Microsoft::WRL::ComPtr<IWICBitmapFrameEncode> frame;
+		Microsoft::WRL::ComPtr<IPropertyBag2> frameProperties;
+		if (FAILED(encoder->CreateNewFrame(frame.GetAddressOf(), frameProperties.GetAddressOf())) ||
+			FAILED(frame->Initialize(frameProperties.Get())) ||
+			FAILED(frame->SetSize(width, height)))
+			return false;
+
+		// A screenshot has no meaningful alpha channel, and the back buffer's
+		// alpha is whatever the last blend left behind. Publishing 24bpp BGR keeps
+		// the PNG opaque so the downstream GDI+ and ffmpeg stages cannot composite
+		// the capture against an unexpected background.
+		GUID targetFormat = GUID_WICPixelFormat24bppBGR;
+		if (FAILED(frame->SetPixelFormat(&targetFormat)))
+			return false;
+
+		Microsoft::WRL::ComPtr<IWICFormatConverter> converter;
+		BOOL canConvert = FALSE;
+		if (FAILED(factory->CreateFormatConverter(converter.GetAddressOf())) ||
+			FAILED(converter->CanConvert(*sourceFormat, targetFormat, &canConvert)) ||
+			!canConvert ||
+			FAILED(converter->Initialize(sourceBitmap.Get(), targetFormat,
+				WICBitmapDitherTypeNone, nullptr, 0.0, WICBitmapPaletteTypeMedianCut)))
+			return false;
+
+		if (FAILED(frame->WriteSource(converter.Get(), nullptr)) ||
+			FAILED(frame->Commit()) ||
+			FAILED(encoder->Commit()))
+			return false;
+
+		// GlobalSize would report the allocation, not the encoded length.
+		STATSTG streamStats{};
+		if (FAILED(stream->Stat(&streamStats, STATFLAG_NONAME)) ||
+			streamStats.cbSize.QuadPart <= 0 ||
+			streamStats.cbSize.QuadPart > (LONGLONG)(64ull * 1024ull * 1024ull))
+			return false;
+
+		HGLOBAL encodedMemory = nullptr;
+		if (FAILED(GetHGlobalFromStream(stream.Get(), &encodedMemory)) || !encodedMemory)
+			return false;
+
+		const uint8_t* encodedBytes = static_cast<const uint8_t*>(GlobalLock(encodedMemory));
+		if (!encodedBytes)
+			return false;
+		encoded.assign(encodedBytes, encodedBytes + (size_t)streamStats.cbSize.QuadPart);
+		GlobalUnlock(encodedMemory);
+		return true;
+	}
+
+	// The publication itself: one private temporary sibling, written in a single
+	// shot, then renamed onto the requested path. MoveFileExW's replace is atomic,
+	// so a tool polling that path only ever opens a whole PNG - never the bytes of
+	// one still being written.
+	bool PublishPortfolioBackbufferPng(
+		const std::wstring& temporaryPath,
+		const std::wstring& requestedPath,
+		const std::vector<uint8_t>& encoded)
+	{
+		if (temporaryPath.empty() || requestedPath.empty() || encoded.empty())
+			return false;
+
+		const HANDLE temporaryFile = CreateFileW(temporaryPath.c_str(), GENERIC_WRITE, 0, nullptr,
+			CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+		if (temporaryFile == INVALID_HANDLE_VALUE)
+			return false;
+
+		DWORD written = 0;
+		const BOOL wrote = WriteFile(temporaryFile, encoded.data(), (DWORD)encoded.size(), &written, nullptr);
+		CloseHandle(temporaryFile);
+
+		if (!wrote || written != (DWORD)encoded.size() ||
+			!MoveFileExW(temporaryPath.c_str(), requestedPath.c_str(),
+				MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+		{
+			// A reader holding the published PNG open blocks the replace. Drop this
+			// frame - the next throttled one republishes - but never leave the
+			// temporary sibling behind.
+			DeleteFileW(temporaryPath.c_str());
+			return false;
+		}
+		return true;
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -99,9 +257,25 @@ bool App::InitializePortfolioShowcase()
 	showcase.phase = Impl::PortfolioShowcasePhase::Dance;
 	showcase.ikDebugValid = false;
 
+	auto& backbuffer = m_->m_PortfolioBackbuffer;
+	backbuffer.requestedPath.clear();
+	backbuffer.temporaryPath.clear();
+	backbuffer.nextWriteTickMs = 0;
+
 	// Outside README capture mode the showcase stays completely inert.
 	if (!IsReadmeCaptureMode())
 		return false;
+
+	// Read once, here, and never again: a capture run must not be able to change
+	// where its frames are published half way through. An unset variable leaves
+	// the path empty, which is what keeps the writer off for the projects that did
+	// not opt in.
+	backbuffer.requestedPath = ReadPortfolioBackbufferPathFromEnvironment();
+	if (!backbuffer.requestedPath.empty())
+	{
+		backbuffer.temporaryPath = backbuffer.requestedPath + L".tmp.png";
+		m_->PushLog("[OK] Portfolio backbuffer capture enabled");
+	}
 
 	const aiAnimation* danceClip = m_->m_ExternalAnimClips.Get("PortfolioDance");
 	const aiAnimation* upperWaveClip = m_->m_ExternalAnimClips.Get("PortfolioUpperWave");
@@ -486,4 +660,159 @@ void App::RenderPortfolioShowcaseHud()
 	}
 	ImGui::End();
 	ImGui::PopStyleColor(2);
+}
+
+// ---------------------------------------------------------------------------
+// Reliable capture source: publish the finished frame straight from the swap
+// chain.
+//
+// Graphics.CopyFromScreen captures whatever is physically on screen, so an
+// overlapping window, a screensaver or a locked workstation corrupts the shot.
+// Reading swap-chain buffer 0 after PassUI() and before Present() gives the true
+// rendered frame instead. Every failure below skips the frame silently: a capture
+// run must never crash or stall because a publication did not work out.
+// ---------------------------------------------------------------------------
+void App::WritePortfolioBackbufferPng()
+{
+	auto& writer = m_->m_PortfolioBackbuffer;
+	if (!IsReadmeCaptureMode() || writer.requestedPath.empty() || writer.temporaryPath.empty())
+		return;
+	if (writer.wicUnavailable || !m_->m_pDevice || !m_->m_pDeviceContext || !m_->m_pSwapChain)
+		return;
+
+	const ULONGLONG nowMs = GetTickCount64();
+	if (nowMs < writer.nextWriteTickMs)
+		return;
+	writer.nextWriteTickMs = nowMs + kPortfolioBackbufferMinIntervalMs;
+
+	if (!writer.wicFactory)
+	{
+		if (!writer.comInitializeAttempted)
+		{
+			writer.comInitializeAttempted = true;
+			// Nothing else in this application initializes COM on the render
+			// thread and WIC cannot be created without it. RPC_E_CHANGED_MODE
+			// means COM is already up in the other apartment model, which serves
+			// just as well - and must not be balanced with CoUninitialize here.
+			writer.comUninitializeNeeded =
+				SUCCEEDED(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE));
+		}
+
+		// Same factory creation as Dx11/third_party/DirectXTK/src/WICTextureLoader.cpp:
+		// prefer the WIC2 factory, fall back to WIC1.
+		if (FAILED(CoCreateInstance(CLSID_WICImagingFactory2, nullptr, CLSCTX_INPROC_SERVER,
+				__uuidof(IWICImagingFactory2),
+				reinterpret_cast<void**>(writer.wicFactory.ReleaseAndGetAddressOf()))) &&
+			FAILED(CoCreateInstance(CLSID_WICImagingFactory1, nullptr, CLSCTX_INPROC_SERVER,
+				__uuidof(IWICImagingFactory),
+				reinterpret_cast<void**>(writer.wicFactory.ReleaseAndGetAddressOf()))))
+		{
+			writer.wicFactory.Reset();
+			writer.wicUnavailable = true;
+			m_->PushLog("[WARN] Portfolio backbuffer capture: WIC imaging factory unavailable");
+			return;
+		}
+	}
+
+	Microsoft::WRL::ComPtr<ID3D11Texture2D> backBuffer;
+	if (FAILED(m_->m_pSwapChain->GetBuffer(0, IID_PPV_ARGS(backBuffer.GetAddressOf()))))
+		return;
+
+	D3D11_TEXTURE2D_DESC frameDesc{};
+	backBuffer->GetDesc(&frameDesc);
+
+	// A multisampled back buffer cannot be copied into a staging texture, so it is
+	// resolved down first. This swap chain is created single-sampled today; the
+	// branch exists so raising SampleDesc.Count later cannot silently break the
+	// capture.
+	ID3D11Texture2D* copySource = backBuffer.Get();
+	Microsoft::WRL::ComPtr<ID3D11Texture2D> resolvedFrame;
+	if (frameDesc.SampleDesc.Count > 1)
+	{
+		D3D11_TEXTURE2D_DESC resolveDesc = frameDesc;
+		resolveDesc.SampleDesc.Count = 1;
+		resolveDesc.SampleDesc.Quality = 0;
+		resolveDesc.Usage = D3D11_USAGE_DEFAULT;
+		resolveDesc.BindFlags = 0;
+		resolveDesc.CPUAccessFlags = 0;
+		resolveDesc.MiscFlags = 0;
+		if (FAILED(m_->m_pDevice->CreateTexture2D(&resolveDesc, nullptr, resolvedFrame.GetAddressOf())))
+			return;
+		m_->m_pDeviceContext->ResolveSubresource(resolvedFrame.Get(), 0, backBuffer.Get(), 0, frameDesc.Format);
+		copySource = resolvedFrame.Get();
+	}
+
+	// The staging texture lives for the whole capture run; it is rebuilt only if
+	// the swap chain's size or format ever changes underneath it.
+	if (!writer.staging ||
+		writer.stagingWidth != frameDesc.Width ||
+		writer.stagingHeight != frameDesc.Height ||
+		writer.stagingFormat != frameDesc.Format)
+	{
+		writer.staging.Reset();
+		writer.stagingWidth = 0;
+		writer.stagingHeight = 0;
+		writer.stagingFormat = DXGI_FORMAT_UNKNOWN;
+
+		D3D11_TEXTURE2D_DESC stagingDesc{};
+		stagingDesc.Width = frameDesc.Width;
+		stagingDesc.Height = frameDesc.Height;
+		stagingDesc.MipLevels = 1;
+		stagingDesc.ArraySize = 1;
+		stagingDesc.Format = frameDesc.Format;
+		stagingDesc.SampleDesc.Count = 1;
+		stagingDesc.SampleDesc.Quality = 0;
+		stagingDesc.Usage = D3D11_USAGE_STAGING;
+		stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+		if (FAILED(m_->m_pDevice->CreateTexture2D(&stagingDesc, nullptr, writer.staging.GetAddressOf())))
+		{
+			writer.staging.Reset();
+			return;
+		}
+		writer.stagingWidth = frameDesc.Width;
+		writer.stagingHeight = frameDesc.Height;
+		writer.stagingFormat = frameDesc.Format;
+	}
+
+	m_->m_pDeviceContext->CopyResource(writer.staging.Get(), copySource);
+
+	D3D11_MAPPED_SUBRESOURCE mappedFrame{};
+	if (FAILED(m_->m_pDeviceContext->Map(writer.staging.Get(), 0, D3D11_MAP_READ, 0, &mappedFrame)))
+		return;
+
+	const bool encoded = EncodePortfolioBackbufferPng(
+		writer.wicFactory.Get(), mappedFrame.pData, mappedFrame.RowPitch,
+		writer.stagingWidth, writer.stagingHeight, writer.stagingFormat, writer.encodedScratch);
+	m_->m_pDeviceContext->Unmap(writer.staging.Get(), 0);
+	if (!encoded)
+		return;
+
+	PublishPortfolioBackbufferPng(writer.temporaryPath, writer.requestedPath, writer.encodedScratch);
+}
+
+// ---------------------------------------------------------------------------
+// Shutdown: hand back the D3D and COM objects the writer owns before the device
+// is released, and make sure no temporary sibling outlives the process.
+// ---------------------------------------------------------------------------
+void App::ShutdownPortfolioBackbufferWriter()
+{
+	auto& writer = m_->m_PortfolioBackbuffer;
+	if (!writer.temporaryPath.empty())
+	{
+		DeleteFileW(writer.temporaryPath.c_str());
+	}
+
+	writer.staging.Reset();
+	writer.stagingWidth = 0;
+	writer.stagingHeight = 0;
+	writer.stagingFormat = DXGI_FORMAT_UNKNOWN;
+	writer.encodedScratch.clear();
+	writer.encodedScratch.shrink_to_fit();
+	writer.wicFactory.Reset();
+
+	if (writer.comUninitializeNeeded)
+	{
+		writer.comUninitializeNeeded = false;
+		CoUninitialize();
+	}
 }

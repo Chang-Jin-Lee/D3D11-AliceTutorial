@@ -706,6 +706,29 @@ struct App::Impl {
 
 	PortfolioShowcaseRuntime m_PortfolioShowcase;
 
+	// Opt-in README backbuffer publisher (see App_PortfolioShowcase.inl).
+	// DX11_README_BACKBUFFER_PNG is read exactly once, during capture-only
+	// initialization; everything else here is owned by the render thread.
+	struct PortfolioBackbufferWriter
+	{
+		std::wstring requestedPath;   // empty unless the capture tool asked for a PNG
+		std::wstring temporaryPath;   // requestedPath + L".tmp.png"
+		ULONGLONG nextWriteTickMs = 0;
+		bool comInitializeAttempted = false;
+		bool comUninitializeNeeded = false;
+		bool wicUnavailable = false;
+		Microsoft::WRL::ComPtr<IWICImagingFactory> wicFactory;
+		// One staging texture for the whole capture run; recreated only when the
+		// swap chain's size or format changes.
+		Microsoft::WRL::ComPtr<ID3D11Texture2D> staging;
+		UINT stagingWidth = 0;
+		UINT stagingHeight = 0;
+		DXGI_FORMAT stagingFormat = DXGI_FORMAT_UNKNOWN;
+		std::vector<uint8_t> encodedScratch;
+	};
+
+	PortfolioBackbufferWriter m_PortfolioBackbuffer;
+
 	// ===================== TPS Camera Follow =====================
 	bool  m_TpsCamAttached = false;     // V키 토글
 	float m_TpsYawRad = 0.0f;

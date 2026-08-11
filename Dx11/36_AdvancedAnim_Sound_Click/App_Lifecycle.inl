@@ -374,6 +374,10 @@ void App::OnUninitialize() {
 	// 3. 안전하게 리소스 해제 (이제 B 스레드는 완전히 죽었으므로 안전함)
 	if (m_->m_pDeviceContext) m_->m_pDeviceContext->ClearState();
 
+	// README backbuffer publisher: release its staging texture and WIC factory
+	// while the device is still alive, and clear any temporary sibling.
+	ShutdownPortfolioBackbufferWriter();
+
 	// FMOD 종료
 	Sound::Shutdown();
 

@@ -34,6 +34,7 @@ using System;
 using System.Runtime.InteropServices;
 using System.Text;
 public static class ShowcaseWin32 {
+  public const uint WM_CLOSE = 0x0010;
   public const uint WM_LBUTTONDOWN = 0x0201;
   public const uint WM_LBUTTONUP = 0x0202;
   public const int MK_LBUTTON = 0x0001;
@@ -489,14 +490,118 @@ function Stop-ShowcaseProcess {
     catch { }
 }
 
+# Ask the window to close and let the application run its own shutdown, falling
+# back to a forced kill. A publisher that cleans up after itself can only be
+# observed doing so if it is given the chance to shut down.
+function Close-ShowcaseProcess {
+    param([System.Diagnostics.Process]$Process, [IntPtr]$Handle, [int]$TimeoutMs = 20000)
+
+    if ($null -eq $Process) { return $true }
+    try {
+        $Process.Refresh()
+        if ($Process.HasExited) { return $true }
+        if ($Handle -ne [IntPtr]::Zero) {
+            [void][ShowcaseWin32]::PostMessage($Handle, [ShowcaseWin32]::WM_CLOSE, [IntPtr]::Zero, [IntPtr]::Zero)
+            if ($Process.WaitForExit($TimeoutMs)) { return $true }
+        }
+    }
+    catch { }
+    Stop-ShowcaseProcess -Process $Process
+    return $false
+}
+
+# Observes the published backbuffer PNG the way a correct consumer must: take the
+# bytes under FileShare.ReadWrite, release the file immediately so the publisher's
+# atomic replace is not blocked, then decode from memory. Decoding is forced all
+# the way to raster pixels because a torn PNG still parses its header - only
+# drawing it exposes the truncation.
+#
+# Observed=false  -> the file does not exist yet (a legal observation).
+# Complete=false  -> the file existed but could not be read or decoded (a torn
+#                    publication, which is exactly what atomicity forbids).
+function Read-ShowcaseBackbufferPng {
+    param([string]$Path)
+
+    $absent = [pscustomobject]@{ Observed = $false; Complete = $false; Reason = ''; Width = 0; Height = 0; Signature = '' }
+    $bytes = $null
+    try {
+        $stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open,
+            [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+        try {
+            $bytes = New-Object byte[] ([int]$stream.Length)
+            $offset = 0
+            while ($offset -lt $bytes.Length) {
+                $read = $stream.Read($bytes, $offset, $bytes.Length - $offset)
+                if ($read -le 0) { break }
+                $offset += $read
+            }
+            if ($offset -ne $bytes.Length) { throw "short read: $offset of $($bytes.Length) bytes" }
+        }
+        finally { $stream.Dispose() }
+    }
+    catch [System.IO.FileNotFoundException] { return $absent }
+    catch [System.IO.DirectoryNotFoundException] { return $absent }
+    catch {
+        return [pscustomobject]@{ Observed = $true; Complete = $false
+            Reason = "unreadable: $($_.Exception.Message)"; Width = 0; Height = 0; Signature = '' }
+    }
+
+    $memory = $null
+    $image = $null
+    $raster = $null
+    $bits = $null
+    try {
+        $memory = New-Object System.IO.MemoryStream(, $bytes)
+        $image = [System.Drawing.Image]::FromStream($memory, $false, $true)
+        $raster = New-Object System.Drawing.Bitmap($image)
+        $rect = New-Object System.Drawing.Rectangle(0, 0, $raster.Width, $raster.Height)
+        $bits = $raster.LockBits($rect, [System.Drawing.Imaging.ImageLockMode]::ReadOnly,
+            [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+        $pixelCount = $bits.Stride * $raster.Height
+        $pixels = New-Object byte[] $pixelCount
+        [System.Runtime.InteropServices.Marshal]::Copy($bits.Scan0, $pixels, 0, $pixelCount)
+        $raster.UnlockBits($bits)
+        $bits = $null
+        $sha = [System.Security.Cryptography.SHA256]::Create()
+        try { $signature = [System.BitConverter]::ToString($sha.ComputeHash($pixels)) }
+        finally { $sha.Dispose() }
+        return [pscustomobject]@{ Observed = $true; Complete = $true; Reason = ''
+            Width = $raster.Width; Height = $raster.Height; Signature = $signature }
+    }
+    catch {
+        return [pscustomobject]@{ Observed = $true; Complete = $false
+            Reason = "undecodable ($($bytes.Length) bytes): $($_.Exception.Message)"
+            Width = 0; Height = 0; Signature = '' }
+    }
+    finally {
+        if ($null -ne $bits -and $null -ne $raster) { $raster.UnlockBits($bits) }
+        if ($null -ne $raster) { $raster.Dispose() }
+        if ($null -ne $image) { $image.Dispose() }
+        if ($null -ne $memory) { $memory.Dispose() }
+    }
+}
+
 $frameDir = Join-Path ([System.IO.Path]::GetTempPath()) ("dx11-project36-showcase-{0}" -f $PID)
 New-Item -ItemType Directory -Path $frameDir -Force | Out-Null
 
+# Ignored staging directories for the opt-in backbuffer publisher. One per run so
+# an assertion can never be satisfied by a file some other run left behind.
+$backbufferDir = Join-Path $frameDir 'backbuffer-capture'
+$normalBackbufferDir = Join-Path $frameDir 'backbuffer-normal'
+$gateBackbufferDir = Join-Path $frameDir 'backbuffer-gate'
+New-Item -ItemType Directory -Path $backbufferDir, $normalBackbufferDir, $gateBackbufferDir -Force | Out-Null
+$backbufferPath = Join-Path $backbufferDir 'project36-backbuffer.png'
+$backbufferTempPath = $backbufferPath + '.tmp.png'
+$normalBackbufferPath = Join-Path $normalBackbufferDir 'project36-normal.png'
+
 $previousCaptureEnv = $env:DX11_README_CAPTURE
+$previousBackbufferEnv = $env:DX11_README_BACKBUFFER_PNG
 $captureProcess = $null
 $normalProcess = $null
+$gateProcess = $null
 $captureHandle = [IntPtr]::Zero
 $normalHandle = [IntPtr]::Zero
+$gateHandle = [IntPtr]::Zero
 
 # Every editor panel positions itself with ImGuiCond_FirstUseEver, so where they
 # actually land comes from Dx11/bin/imgui.ini - untracked, gitignored, and rewritten
@@ -522,9 +627,12 @@ try {
     # 3. Capture-mode run: showcase HUD plus the deterministic phase cycle.
     # -----------------------------------------------------------------------
     $env:DX11_README_CAPTURE = '1'
+    $env:DX11_README_BACKBUFFER_PNG = $backbufferPath
     $captureProcess = Start-Process -FilePath $exePath -WorkingDirectory $runtimeDir -PassThru
     if ($null -eq $previousCaptureEnv) { Remove-Item Env:\DX11_README_CAPTURE -ErrorAction SilentlyContinue }
     else { $env:DX11_README_CAPTURE = $previousCaptureEnv }
+    if ($null -eq $previousBackbufferEnv) { Remove-Item Env:\DX11_README_BACKBUFFER_PNG -ErrorAction SilentlyContinue }
+    else { $env:DX11_README_BACKBUFFER_PNG = $previousBackbufferEnv }
 
     $captureWindow = Wait-ShowcaseWindow -Process $captureProcess
     $captureHandle = $captureWindow.Handle
@@ -624,14 +732,78 @@ try {
     Assert-True ($ikYellow -ge 40 -and $ikYellow -ge (([Math]::Max($danceYellow, $blendYellow)) * 4 + 20)) `
         ("the IK phase draws its solved left-hand chain over the lead character and no other phase does (yellow pixels ik $ikYellow vs dance $danceYellow / blend $blendYellow, need >= 40 and >= 4x+20)")
 
+    # -----------------------------------------------------------------------
+    # 4. Opt-in backbuffer publication. The capture tool must be able to take the
+    #    true rendered frame out of the swap chain instead of screen-scraping the
+    #    window, so the running application has to keep a complete 1600x900 PNG
+    #    at exactly the path DX11_README_BACKBUFFER_PNG named.
+    #
+    #    The polling loop below observes the file while the application keeps
+    #    rewriting it. Publication through a temporary sibling plus an atomic
+    #    replace is the only way every one of those observations can be either
+    #    "absent" or "fully decodable": a writer that encoded straight into the
+    #    published path would be caught mid-write as a truncated or unreadable
+    #    file, and the file is rewritten ~12 times a second, so a torn write has
+    #    dozens of chances to be seen.
+    # -----------------------------------------------------------------------
+    $backbufferObservations = 0
+    $backbufferComplete = 0
+    $backbufferAnomalies = [System.Collections.Generic.List[string]]::new()
+    $backbufferSizes = [System.Collections.Generic.HashSet[string]]::new()
+    $backbufferSignatures = [System.Collections.Generic.List[string]]::new()
+    $nextSignatureAt = [datetime]::MinValue
+    $pollDeadline = (Get-Date).AddSeconds(6)
+    while ((Get-Date) -lt $pollDeadline) {
+        $observation = Read-ShowcaseBackbufferPng -Path $backbufferPath
+        $backbufferObservations++
+        if ($observation.Observed) {
+            if ($observation.Complete) {
+                $backbufferComplete++
+                [void]$backbufferSizes.Add("$($observation.Width)x$($observation.Height)")
+                # Sampled far apart relative to the 12 fps publication throttle, so
+                # two identical samples would mean a stale, never-refreshed file.
+                if ((Get-Date) -ge $nextSignatureAt) {
+                    $backbufferSignatures.Add($observation.Signature)
+                    $nextSignatureAt = (Get-Date).AddMilliseconds(500)
+                }
+            }
+            elseif ($backbufferAnomalies.Count -lt 8) {
+                $backbufferAnomalies.Add($observation.Reason)
+            }
+        }
+        Start-Sleep -Milliseconds 25
+    }
+
+    Assert-True ($backbufferComplete -ge 10) `
+        ("DX11_README_BACKBUFFER_PNG publishes to exactly the requested path (decoded $backbufferComplete of $backbufferObservations observations, need >= 10)")
+    Assert-True ($backbufferSizes.Count -eq 1 -and $backbufferSizes.Contains("${clientWidth}x${clientHeight}")) `
+        ("every published backbuffer frame decodes at exactly ${clientWidth}x${clientHeight} (saw: $(($backbufferSizes | Sort-Object) -join ', '))")
+    Assert-True ($backbufferAnomalies.Count -eq 0) `
+        ("publication is atomic: no observation ever caught a partially written PNG (anomalies: $($backbufferAnomalies -join ' | '))")
+    $distinctSignatures = @($backbufferSignatures | Select-Object -Unique).Count
+    Assert-True ($distinctSignatures -ge 2) `
+        ("the published PNG refreshes with live frames rather than one stale frame ($distinctSignatures distinct of $($backbufferSignatures.Count) half-second samples, need >= 2)")
+
     Reset-ShowcaseTopmost -Handle $captureHandle
-    Stop-ShowcaseProcess -Process $captureProcess
+    $captureClosedCleanly = Close-ShowcaseProcess -Process $captureProcess -Handle $captureHandle
+
+    # The temporary sibling is an implementation detail of the atomic replace and
+    # must never survive the run; a leaked one would end up in the media directory
+    # the capture tool hands over.
+    Assert-True (-not (Test-Path -LiteralPath $backbufferTempPath)) `
+        ("the atomic publication temporary leaves nothing behind after the process exits (clean shutdown: $captureClosedCleanly)")
 
     # -----------------------------------------------------------------------
-    # 4. Normal (non-capture) run: the showcase must be completely inert.
+    # 5. Normal (non-capture) run: the showcase must be completely inert.
+    #    DX11_README_BACKBUFFER_PNG is deliberately set here: the writer is gated
+    #    on capture mode AND the variable, so with capture mode off it must stay
+    #    silent even though the variable names a valid, writable path.
     # -----------------------------------------------------------------------
     Remove-Item Env:\DX11_README_CAPTURE -ErrorAction SilentlyContinue
+    $env:DX11_README_BACKBUFFER_PNG = $normalBackbufferPath
     $normalProcess = Start-Process -FilePath $exePath -WorkingDirectory $runtimeDir -PassThru
+    if ($null -eq $previousBackbufferEnv) { Remove-Item Env:\DX11_README_BACKBUFFER_PNG -ErrorAction SilentlyContinue }
+    else { $env:DX11_README_BACKBUFFER_PNG = $previousBackbufferEnv }
     $normalWindow = Wait-ShowcaseWindow -Process $normalProcess
     $normalHandle = $normalWindow.Handle
     Set-ShowcaseClientSize -Handle $normalHandle -Width $clientWidth -Height $clientHeight
@@ -662,15 +834,63 @@ try {
     Assert-True ($normalContent -ge 0.05) `
         ("normal mode still draws its own UI in that region (lit pixel ratio {0:N4}, need >= 0.0500)" -f $normalContent)
 
+    Assert-True (@(Get-ChildItem -LiteralPath $normalBackbufferDir -File -ErrorAction SilentlyContinue).Count -eq 0) `
+        'with README capture mode off the backbuffer writer stays silent even though DX11_README_BACKBUFFER_PNG names a writable path'
+
     Reset-ShowcaseTopmost -Handle $normalHandle
+    Stop-ShowcaseProcess -Process $normalProcess
+
+    # -----------------------------------------------------------------------
+    # 6. The other half of the opt-in gate: capture mode on, no
+    #    DX11_README_BACKBUFFER_PNG. This is how the other 36 projects run, and
+    #    the writer must publish nothing at all - not into the staging directory
+    #    and not next to the executable under some implied default name.
+    # -----------------------------------------------------------------------
+    $runtimePngBefore = @(Get-ChildItem -LiteralPath $runtimeDir -Filter '*.png' -File -ErrorAction SilentlyContinue |
+        ForEach-Object { $_.Name })
+
+    Remove-Item Env:\DX11_README_BACKBUFFER_PNG -ErrorAction SilentlyContinue
+    $env:DX11_README_CAPTURE = '1'
+    $gateProcess = Start-Process -FilePath $exePath -WorkingDirectory $runtimeDir -PassThru
+    if ($null -eq $previousCaptureEnv) { Remove-Item Env:\DX11_README_CAPTURE -ErrorAction SilentlyContinue }
+    else { $env:DX11_README_CAPTURE = $previousCaptureEnv }
+    if ($null -eq $previousBackbufferEnv) { Remove-Item Env:\DX11_README_BACKBUFFER_PNG -ErrorAction SilentlyContinue }
+    else { $env:DX11_README_BACKBUFFER_PNG = $previousBackbufferEnv }
+
+    $gateWindow = Wait-ShowcaseWindow -Process $gateProcess
+    $gateHandle = $gateWindow.Handle
+    Set-ShowcaseClientSize -Handle $gateHandle -Width $clientWidth -Height $clientHeight
+    Set-ShowcaseTopmost -Handle $gateHandle
+    Start-Sleep -Milliseconds 400
+    Wait-ShowcaseScene -Process $gateProcess -Handle $gateHandle -Width $clientWidth -Height $clientHeight `
+        -ProbePath (Join-Path $frameDir 'gate-probe.png')
+    # Long enough for two dozen throttled publications, had any been due.
+    Start-Sleep -Milliseconds 2500
+
+    $gateProcess.Refresh()
+    Assert-True (-not $gateProcess.HasExited) 'capture mode without DX11_README_BACKBUFFER_PNG keeps running normally'
+
+    Reset-ShowcaseTopmost -Handle $gateHandle
+    Stop-ShowcaseProcess -Process $gateProcess
+
+    Assert-True (@(Get-ChildItem -LiteralPath $gateBackbufferDir -File -ErrorAction SilentlyContinue).Count -eq 0) `
+        'capture mode without DX11_README_BACKBUFFER_PNG writes nothing into the staging directory'
+    $newRuntimePngs = @(Get-ChildItem -LiteralPath $runtimeDir -Filter '*.png' -File -ErrorAction SilentlyContinue |
+        Where-Object { $runtimePngBefore -notcontains $_.Name } | ForEach-Object { $_.Name })
+    Assert-True ($newRuntimePngs.Count -eq 0) `
+        ("capture mode without DX11_README_BACKBUFFER_PNG writes no implied default PNG beside the executable (new files: $($newRuntimePngs -join ', '))")
 }
 finally {
     Reset-ShowcaseTopmost -Handle $captureHandle
     Reset-ShowcaseTopmost -Handle $normalHandle
+    Reset-ShowcaseTopmost -Handle $gateHandle
     Stop-ShowcaseProcess -Process $captureProcess
     Stop-ShowcaseProcess -Process $normalProcess
+    Stop-ShowcaseProcess -Process $gateProcess
     if ($null -eq $previousCaptureEnv) { Remove-Item Env:\DX11_README_CAPTURE -ErrorAction SilentlyContinue }
     else { $env:DX11_README_CAPTURE = $previousCaptureEnv }
+    if ($null -eq $previousBackbufferEnv) { Remove-Item Env:\DX11_README_BACKBUFFER_PNG -ErrorAction SilentlyContinue }
+    else { $env:DX11_README_BACKBUFFER_PNG = $previousBackbufferEnv }
     # Both processes are down, so whatever ini they wrote is final. Discard it and
     # restore the developer's panel layout byte for byte.
     if (Test-Path -LiteralPath $imguiIniPath -PathType Leaf) {

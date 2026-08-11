@@ -6,6 +6,27 @@ function Assert-True([bool]$Condition, [string]$Message) {
     if (-not $Condition) { throw $Message }
 }
 
+# A real, decodable PNG of a requested size. The backbuffer provider round-trip
+# below has to work on actual image bytes, not on a placeholder file.
+function New-TestPng {
+    param([string]$Path, [int]$Width, [int]$Height)
+
+    $bitmap = $null
+    $graphics = $null
+    try {
+        $bitmap = New-Object System.Drawing.Bitmap($Width, $Height)
+        $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+        $graphics.Clear([System.Drawing.Color]::FromArgb(255, 18, 24, 40))
+        $graphics.FillRectangle([System.Drawing.Brushes]::Goldenrod, 12, 12,
+            [Math]::Max(1, [int]($Width / 3)), [Math]::Max(1, [int]($Height / 3)))
+        $bitmap.Save($Path, [System.Drawing.Imaging.ImageFormat]::Png)
+    }
+    finally {
+        if ($null -ne $graphics) { $graphics.Dispose() }
+        if ($null -ne $bitmap) { $bitmap.Dispose() }
+    }
+}
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $captureScript = Join-Path $repoRoot 'tools\capture_readme_media.ps1'
 
@@ -94,6 +115,94 @@ $tempManifest = Join-Path $tempRoot 'manifest.json'
 $tempOutput = Join-Path $tempRoot 'output'
 New-Item -ItemType Directory -Path $tempRoot, $tempRuntime -Force | Out-Null
 try {
+    # ---------------------------------------------------------------------------
+    # Backbuffer PNG provider. Project 36 publishes its own swap-chain frames, so
+    # the capture tool has to consume a file another process is rewriting rather
+    # than screen-scrape a window.
+    # ---------------------------------------------------------------------------
+    $source = Join-Path $tempRoot 'backbuffer.png'
+    $destination = Join-Path $tempRoot 'copied.png'
+    New-TestPng -Path $source -Width 1600 -Height 900
+    Copy-ReadmeBackbufferPng -SourcePath $source -OutputPath $destination -Width 1600 -Height 900
+    $details = Get-CaptureOutputDetails $destination 1600 900
+    Assert-True ($details.Dimensions -eq '1600x900') 'backbuffer PNG provider changed dimensions'
+
+    # The publisher keeps rewriting the source, so the provider must be able to
+    # read it while another handle holds it open for writing.
+    $sharedHandle = [System.IO.File]::Open($source, [System.IO.FileMode]::Open,
+        [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::ReadWrite)
+    try {
+        $sharedDestination = Join-Path $tempRoot 'copied-shared.png'
+        Copy-ReadmeBackbufferPng -SourcePath $source -OutputPath $sharedDestination -Width 1600 -Height 900
+        Assert-True ((Get-CaptureOutputDetails $sharedDestination 1600 900).Dimensions -eq '1600x900') `
+            'backbuffer PNG provider could not read a source that is still open for writing'
+    }
+    finally {
+        $sharedHandle.Dispose()
+    }
+
+    # ... and it must let go of the source before it returns, or the publisher's
+    # next atomic replace would fail against the tool's own handle.
+    $sourceReleased = $true
+    try { Remove-Item -LiteralPath $source -Force }
+    catch { $sourceReleased = $false }
+    Assert-True $sourceReleased 'backbuffer PNG provider kept the published source open after returning'
+    Assert-True ((Get-CaptureOutputDetails $destination 1600 900).Dimensions -eq '1600x900') `
+        'backbuffer PNG output did not survive deleting the source it was copied from'
+
+    # A source of the wrong size must fail loudly instead of publishing a
+    # mis-sized README asset.
+    $wrongSizeSource = Join-Path $tempRoot 'wrong-size.png'
+    New-TestPng -Path $wrongSizeSource -Width 800 -Height 450
+    $wrongSizeRejected = $false
+    try {
+        Copy-ReadmeBackbufferPng -SourcePath $wrongSizeSource -OutputPath (Join-Path $tempRoot 'rejected.png') `
+            -Width 1600 -Height 900 -TimeoutSeconds 1
+    }
+    catch {
+        $wrongSizeRejected = $_.Exception.Message -match '800x450'
+    }
+    Assert-True $wrongSizeRejected 'backbuffer PNG provider accepted a source with the wrong dimensions'
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $tempRoot 'rejected.png'))) `
+        'backbuffer PNG provider wrote an output for a rejected source'
+
+    # A source that never appears must time out rather than hang the capture run.
+    $missingRejected = $false
+    $missingTimer = [System.Diagnostics.Stopwatch]::StartNew()
+    try {
+        Copy-ReadmeBackbufferPng -SourcePath (Join-Path $tempRoot 'never-published.png') `
+            -OutputPath (Join-Path $tempRoot 'never.png') -Width 1600 -Height 900 -TimeoutSeconds 1
+    }
+    catch {
+        $missingRejected = $true
+    }
+    $missingTimer.Stop()
+    Assert-True $missingRejected 'backbuffer PNG provider succeeded even though the source was never published'
+    Assert-True ($missingTimer.Elapsed.TotalSeconds -lt 20) 'backbuffer PNG provider did not bound its retry window'
+
+    # The generated backbuffer path is deleted only when it really sits inside the
+    # chosen media directory: the tool must never remove a path it did not create.
+    $mediaLike = Join-Path $tempRoot 'media'
+    New-Item -ItemType Directory -Path $mediaLike -Force | Out-Null
+    $containedPath = Join-Path $mediaLike 'backbuffer-36.png'
+    New-TestPng -Path $containedPath -Width 32 -Height 32
+    New-TestPng -Path ($containedPath + '.tmp.png') -Width 32 -Height 32
+    Remove-ReadmeBackbufferFile -Path $containedPath -MediaDir $mediaLike
+    Remove-ReadmeBackbufferFile -Path ($containedPath + '.tmp.png') -MediaDir $mediaLike
+    Assert-True (-not (Test-Path -LiteralPath $containedPath)) 'contained backbuffer output was not removed'
+    Assert-True (-not (Test-Path -LiteralPath ($containedPath + '.tmp.png'))) `
+        'a publication temporary left in the media directory by a killed capture was not removed'
+    Assert-True (@(Get-ChildItem -LiteralPath $mediaLike -File).Count -eq 0) `
+        'backbuffer cleanup left files in the media directory'
+
+    $strayPath = Join-Path $tempRoot 'stray.png'
+    New-TestPng -Path $strayPath -Width 32 -Height 32
+    $strayRefused = $false
+    try { Remove-ReadmeBackbufferFile -Path $strayPath -MediaDir $mediaLike }
+    catch { $strayRefused = $_.Exception.Message -match 'outside mediaDir' }
+    Assert-True $strayRefused 'backbuffer cleanup accepted a path outside the media directory'
+    Assert-True (Test-Path -LiteralPath $strayPath -PathType Leaf) 'backbuffer cleanup deleted a file it did not create'
+
     $missingExeManifest = $mediaManifest | ConvertTo-Json -Depth 32 | ConvertFrom-Json
     $missingExeManifest.runtimeDir = $tempRuntime
     $missingExeManifest | ConvertTo-Json -Depth 32 | Set-Content -LiteralPath $tempManifest -Encoding UTF8
