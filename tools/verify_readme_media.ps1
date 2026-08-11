@@ -275,8 +275,8 @@ function Test-GifMedia {
                 }
                 $totalDelaySeconds = $totalDelayHundredths / 100.0
                 $minExpectedSeconds = $ExpectedSeconds - 0.5
-                $maxExpectedSeconds = $ExpectedSeconds + 1.5
-                if ($totalDelaySeconds -lt $minExpectedSeconds -or $totalDelaySeconds -gt $maxExpectedSeconds) {
+                $maxExpectedSeconds = $ExpectedSeconds + 0.5
+                if ([math]::Abs($totalDelaySeconds - $ExpectedSeconds) -gt 0.5) {
                     Add-VerificationError $Errors ("$Label total decoded delay is {0:F2}s; expected {1:F1}-{2:F1}s: $Path" -f $totalDelaySeconds, $minExpectedSeconds, $maxExpectedSeconds)
                 }
                 $decodedFps = $frameCount / $totalDelaySeconds

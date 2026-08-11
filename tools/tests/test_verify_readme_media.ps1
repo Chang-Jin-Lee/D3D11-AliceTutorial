@@ -332,9 +332,9 @@ try {
     $baseline = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
     Assert-True ($baseline.ExitCode -eq 0) "odd/even escaped-pipe report with a later successful attempt failed: $($baseline.Output)"
 
-    New-MovingGif -Path $gifPath -FramesDir (Join-Path $fixtureRoot 'five-second-gif-frames') -FrameRate 8 -FrameCount 40
-    $fiveSecondBoundary = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
-    Assert-True ($fiveSecondBoundary.ExitCode -eq 0) "five-second 8fps GIF was rejected: $($fiveSecondBoundary.Output)"
+    New-MovingGif -Path $gifPath -FramesDir (Join-Path $fixtureRoot 'above-window-gif-frames') -FrameRate 8 -FrameCount 40
+    $aboveWindowDuration = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
+    Assert-FailedWith -Result $aboveWindowDuration -Patterns @('GIF total decoded delay.*expected 3\.5-4\.5s') -Message 'five-second 8fps GIF outside the symmetric duration window was accepted'
     Copy-Item -LiteralPath $validGifBackup -Destination $gifPath -Force
 
     New-OneFrameGif -Path $gifPath
@@ -344,7 +344,7 @@ try {
 
     New-MovingGif -Path $gifPath -FramesDir (Join-Path $fixtureRoot 'short-gif-frames') -FrameRate 8 -FrameCount 8
     $durationFailure = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
-    Assert-FailedWith -Result $durationFailure -Patterns @('GIF total decoded delay.*expected 3\.5-5\.5s') -Message 'independent GIF duration diagnostic was not emitted'
+    Assert-FailedWith -Result $durationFailure -Patterns @('GIF total decoded delay.*expected 3\.5-4\.5s') -Message 'independent GIF duration diagnostic was not emitted'
     Copy-Item -LiteralPath $validGifBackup -Destination $gifPath -Force
 
     $project.gifSeconds = 8
@@ -356,7 +356,7 @@ try {
     $project.Remove('gifSeconds')
     Write-FixtureManifest -Path $manifestPath -Manifest $manifest
     $eightSecondWithoutOverride = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
-    Assert-FailedWith -Result $eightSecondWithoutOverride -Patterns @('GIF total decoded delay.*expected 3\.5-5\.5s') -Message 'eight-second GIF without a project override was accepted'
+    Assert-FailedWith -Result $eightSecondWithoutOverride -Patterns @('GIF total decoded delay.*expected 3\.5-4\.5s') -Message 'eight-second GIF without a project override was accepted'
     Copy-Item -LiteralPath $validGifBackup -Destination $gifPath -Force
 
     New-MovingGif -Path $gifPath -FramesDir (Join-Path $fixtureRoot 'two-fps-gif-frames') -FrameRate 2 -FrameCount 8
