@@ -72,12 +72,18 @@ public class ShowcaseFrame {
   public int Width;
   public int Height;
   public byte[] Pixels;
+  // Per-pixel yellow dominance, min(r,g) - b, clamped at 0. Nothing in this scene is
+  // yellow - the models are pale, the ground and sky are neutral grey, the shadows
+  // are black - so this plane isolates the CCD IK debug pass's hand-to-target reach
+  // line from everything else in the frame.
+  public byte[] YellowDominance;
 
   public static ShowcaseFrame FromBgra(byte[] buffer, int stride, int width, int height) {
     ShowcaseFrame frame = new ShowcaseFrame();
     frame.Width = width;
     frame.Height = height;
     frame.Pixels = new byte[width * height];
+    frame.YellowDominance = new byte[width * height];
     for (int y = 0; y < height; ++y) {
       int rowBase = y * stride;
       int outBase = y * width;
@@ -86,26 +92,29 @@ public class ShowcaseFrame {
         int g = buffer[rowBase + x * 4 + 1];
         int r = buffer[rowBase + x * 4 + 2];
         frame.Pixels[outBase + x] = (byte)((r * 77 + g * 151 + b * 28) >> 8);
+        int warm = ((r < g) ? r : g) - b;
+        frame.YellowDominance[outBase + x] = (byte)(warm > 0 ? warm : 0);
       }
     }
     return frame;
   }
 
-  private static void Clip(ShowcaseFrame f, ref int x, ref int y, ref int w, ref int h) {
-    if (x < 0) { w += x; x = 0; }
-    if (y < 0) { h += y; y = 0; }
-    if (x + w > f.Width) { w = f.Width - x; }
-    if (y + h > f.Height) { h = f.Height - y; }
-    if (w < 0) { w = 0; }
-    if (h < 0) { h = 0; }
+  // Every region must lie wholly inside the frame. The earlier version silently
+  // shrank an out-of-range rectangle to nothing, which let a "<= tolerance"
+  // assertion pass vacuously over a region containing no pixels at all. An
+  // impossible region is a defect in the test, so say so loudly instead.
+  private static void Require(ShowcaseFrame f, int x, int y, int w, int h) {
+    if (w <= 0 || h <= 0 || x < 0 || y < 0 || x + w > f.Width || y + h > f.Height) {
+      throw new ArgumentOutOfRangeException("region", string.Format(
+        "region ({0},{1}) {2}x{3} is not wholly inside the {4}x{5} frame", x, y, w, h, f.Width, f.Height));
+    }
   }
 
   // Fraction of pixels in the region whose luminance differs by more than
   // 'tolerance'. 0.0 means the two frames render the region identically.
   public static double DiffRatio(ShowcaseFrame a, ShowcaseFrame b, int x, int y, int w, int h, int tolerance) {
     if (a.Width != b.Width || a.Height != b.Height) { return 1.0; }
-    Clip(a, ref x, ref y, ref w, ref h);
-    if (w == 0 || h == 0) { return 0.0; }
+    Require(a, x, y, w, h);
     long changed = 0;
     for (int yy = y; yy < y + h; ++yy) {
       int rowBase = yy * a.Width;
@@ -121,8 +130,7 @@ public class ShowcaseFrame {
   // Fraction of pixels in the region at or above 'threshold' luminance. Used to
   // prove that legible light-on-dark HUD text was actually rasterised.
   public static double BrightRatio(ShowcaseFrame a, int x, int y, int w, int h, int threshold) {
-    Clip(a, ref x, ref y, ref w, ref h);
-    if (w == 0 || h == 0) { return 0.0; }
+    Require(a, x, y, w, h);
     long bright = 0;
     for (int yy = y; yy < y + h; ++yy) {
       int rowBase = yy * a.Width;
@@ -131,6 +139,21 @@ public class ShowcaseFrame {
       }
     }
     return (double)bright / (double)(w * h);
+  }
+
+  // Number of pixels in the region that are strongly yellow. The CCD IK debug pass
+  // is the only thing in this scene that emits such a colour, so this counts
+  // solved-IK evidence directly.
+  public static int YellowDominantCount(ShowcaseFrame a, int x, int y, int w, int h, int threshold) {
+    Require(a, x, y, w, h);
+    int count = 0;
+    for (int yy = y; yy < y + h; ++yy) {
+      int rowBase = yy * a.Width;
+      for (int xx = x; xx < x + w; ++xx) {
+        if (a.YellowDominance[rowBase + xx] >= threshold) { ++count; }
+      }
+    }
+    return count;
   }
 
   // Splits the band [y0, y1) into fixed-width columns, marks a column as moving
@@ -211,6 +234,14 @@ $castY = 52
 $castW = 290
 $castH = 18
 $pixelTolerance = 12
+
+# Region around the lead character alone. With the capture composition its animated
+# envelope spans x 750..1109 and its IK target cross sits near x 710, while the
+# neighbouring silhouettes end at x 610 and start at x 1249.
+$ikProbeX = 640
+$ikProbeY = 150
+$ikProbeW = 490
+$ikProbeH = 410
 
 # ---------------------------------------------------------------------------
 # 1. The built binary must exist and must be newer than the sources it is built
@@ -467,6 +498,25 @@ $normalProcess = $null
 $captureHandle = [IntPtr]::Zero
 $normalHandle = [IntPtr]::Zero
 
+# Every editor panel positions itself with ImGuiCond_FirstUseEver, so where they
+# actually land comes from Dx11/bin/imgui.ini - untracked, gitignored, and rewritten
+# whenever a developer drags a window. The normal-mode assertions below measure a
+# fixed client rectangle, so they would drift with that unversioned local state.
+# Set the run aside from it: stash the file in memory for the duration of the test
+# so both processes start from the layout the C++ source actually specifies, then
+# put the developer's file back exactly as it was.
+$imguiIniPath = Join-Path $runtimeDir 'imgui.ini'
+$imguiIniExisted = Test-Path -LiteralPath $imguiIniPath -PathType Leaf
+$imguiIniBytes = $null
+if ($imguiIniExisted) {
+    $imguiIniBytes = [System.IO.File]::ReadAllBytes($imguiIniPath)
+    Remove-Item -LiteralPath $imguiIniPath -Force
+    Write-Host "  ok   stashed $imguiIniPath ($($imguiIniBytes.Length) bytes) so panel placement comes from the sources"
+}
+else {
+    Write-Host '  ok   no imgui.ini present; panel placement comes from the sources'
+}
+
 try {
     # -----------------------------------------------------------------------
     # 3. Capture-mode run: showcase HUD plus the deterministic phase cycle.
@@ -545,18 +595,34 @@ try {
         ("characters keep animating inside a single phase (diff {0:N4}, need >= 0.0050)" -f $sameDanceMotion)
 
     # The slots run with distinct time offsets, so separated moving column
-    # clusters prove that several characters are live rather than one animating
-    # while the rest are frozen.
+    # clusters prove that four characters are live rather than one animating while
+    # the rest are frozen - and, because a character hidden inside another's
+    # silhouette cannot contribute its own cluster, that all four are separated.
     #
-    # NOTE: the mandated capture layout places slot 2 at (0,0,62) directly behind
-    # slot 0 at (0,0,5), so only three of the four characters are ever visible.
-    # Three separated clusters is therefore the maximum this composition can
-    # show. See the Task 3 report: the layout needs fixing before Task 5
-    # publishes media, and this threshold should rise to 4 at that point.
+    # Band 260-500 is the torso/arm span shared by all four slots (the nearest head
+    # is at row ~134 and the farthest feet at row ~653). The composition spaces the
+    # four animated envelopes ~140 px apart, which is 7 empty 20 px columns, so
+    # minGapColumns = 4 carries real margin: three boundary columns would have to
+    # flip at once before two clusters could merge.
     $frames = @($danceA, $danceB, $blend, $ik)
-    $clusters = [ShowcaseFrame]::MovingColumnClusters($frames, 240, 480, 25, 24, 0.10, 2)
-    Assert-True ($clusters -ge 3) `
-        ("separated character regions animate independently (found $clusters, need >= 3)")
+    $clusters = [ShowcaseFrame]::MovingColumnClusters($frames, 260, 500, 20, 24, 0.10, 4)
+    Assert-True ($clusters -ge 4) `
+        ("four separated character regions animate independently (found $clusters, need >= 4)")
+
+    # CCD IK contract, verified through rendered output rather than a HUD label.
+    # RenderPortfolioShowcaseDebug emits the yellow hand-to-target reach line only
+    # when the IK phase is active AND ikDebugValid is set, and ikDebugValid requires
+    # the tip bone 'J_Bip_L_Hand' together with 'J_Bip_L_LowerArm' and
+    # 'J_Bip_L_UpperArm' - the chainLen = 3 chain - to resolve out of the uploaded
+    # palette. Rename or lose any of those three and this collapses to the Dance
+    # baseline of zero. (The green chain segments themselves are drawn inside the
+    # arm mesh and are occluded; the reach line and target cross are what a viewer
+    # actually sees, so they are what the test measures.)
+    $ikYellow = [ShowcaseFrame]::YellowDominantCount($ik, $ikProbeX, $ikProbeY, $ikProbeW, $ikProbeH, 60)
+    $danceYellow = [ShowcaseFrame]::YellowDominantCount($danceA, $ikProbeX, $ikProbeY, $ikProbeW, $ikProbeH, 60)
+    $blendYellow = [ShowcaseFrame]::YellowDominantCount($blend, $ikProbeX, $ikProbeY, $ikProbeW, $ikProbeH, 60)
+    Assert-True ($ikYellow -ge 40 -and $ikYellow -ge (([Math]::Max($danceYellow, $blendYellow)) * 4 + 20)) `
+        ("the IK phase draws its solved left-hand chain over the lead character and no other phase does (yellow pixels ik $ikYellow vs dance $danceYellow / blend $blendYellow, need >= 40 and >= 4x+20)")
 
     Reset-ShowcaseTopmost -Handle $captureHandle
     Stop-ShowcaseProcess -Process $captureProcess
@@ -584,7 +650,10 @@ try {
 
     # If the showcase HUD leaked outside capture mode, its fixed-geometry opaque
     # panel would land on exactly these pixels and reproduce the phase-invariant
-    # cast line, driving this diff to the 0.0000 measured above.
+    # cast line, driving this diff to the 0.0000 measured above. What normal mode
+    # paints there instead is the "Controls" panel, whose ImGuiCond_FirstUseEver
+    # rectangle (10,20)-(310,380) covers this region; the imgui.ini stash above is
+    # what makes that placement come from the sources rather than from local state.
     $hudLeak = [ShowcaseFrame]::DiffRatio($danceA, $normalFrame, $castX, $castY, $castW, $castH, $pixelTolerance)
     Assert-True ($hudLeak -ge 0.10) `
         ("normal mode shows the editor UI, not the showcase HUD, at client (24,24) (diff {0:N4}, need >= 0.1000)" -f $hudLeak)
@@ -602,6 +671,14 @@ finally {
     Stop-ShowcaseProcess -Process $normalProcess
     if ($null -eq $previousCaptureEnv) { Remove-Item Env:\DX11_README_CAPTURE -ErrorAction SilentlyContinue }
     else { $env:DX11_README_CAPTURE = $previousCaptureEnv }
+    # Both processes are down, so whatever ini they wrote is final. Discard it and
+    # restore the developer's panel layout byte for byte.
+    if (Test-Path -LiteralPath $imguiIniPath -PathType Leaf) {
+        Remove-Item -LiteralPath $imguiIniPath -Force -ErrorAction SilentlyContinue
+    }
+    if ($imguiIniExisted -and $null -ne $imguiIniBytes) {
+        [System.IO.File]::WriteAllBytes($imguiIniPath, $imguiIniBytes)
+    }
     if (-not $KeepFrames -and (Test-Path -LiteralPath $frameDir)) {
         Remove-Item -LiteralPath $frameDir -Recurse -Force -ErrorAction SilentlyContinue
     }

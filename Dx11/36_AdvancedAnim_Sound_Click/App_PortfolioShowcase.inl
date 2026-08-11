@@ -30,7 +30,9 @@ namespace
 	constexpr const char* kPortfolioHudPhaseBlend = "ANIMATION BLEND + LAYER";
 	constexpr const char* kPortfolioHudPhaseIk = "CCD IK / LEFT HAND TARGET";
 	constexpr const char* kPortfolioHudPhaseFinish = "SHOWCASE LOOP / REPLAY";
-	constexpr const char* kPortfolioHudCastLine = "4 CHARACTERS / LIVE PALETTES";
+	// The cast line reports the number of slots that actually came up, so a partial
+	// initialization can never publish a caption the frame does not support.
+	constexpr const char* kPortfolioHudCastLineFormat = "%d CHARACTERS / LIVE PALETTES";
 
 	float PortfolioSmoothStep(float t)
 	{
@@ -470,10 +472,17 @@ void App::RenderPortfolioShowcaseHud()
 		ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
 		ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoInputs;
 
+	int liveSlots = 0;
+	for (const auto& slot : showcase.slots)
+	{
+		if (slot.initialized)
+			++liveSlots;
+	}
+
 	if (ImGui::Begin("PortfolioShowcaseHud", nullptr, hudFlags))
 	{
 		ImGui::TextUnformatted(phaseLabel);
-		ImGui::TextUnformatted(kPortfolioHudCastLine);
+		ImGui::Text(kPortfolioHudCastLineFormat, liveSlots);
 	}
 	ImGui::End();
 	ImGui::PopStyleColor(2);

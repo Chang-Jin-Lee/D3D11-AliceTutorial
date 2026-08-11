@@ -139,35 +139,58 @@ void App::LoadDataAsync(std::stop_token stoken)
 		m_->m_DirLight.intensity = 2.5f;
 	}
 
+	// =========================== Character composition ============================
+	// The four public MyAlice characters have exactly one composition per mode, and
+	// both live here so nothing is written twice: the editor scene spreads them
+	// around the play area, the README capture lines the cast up for the showcase
+	// reel. Slot order is player, enemy 1, enemy 2, enemy 3 - the same order
+	// InitializePortfolioShowcase() builds its animator slots in.
+	//
+	// Capture geometry, derived rather than guessed. Camera::SetFrustum uses a 90
+	// degree *vertical* FOV at 16:9, so the visible height at camera-space depth d
+	// is exactly 2d and the visible width is 2*(16/9)*d. A character silhouette
+	// measures 126.8 world units at scale 80 (measured from captured frames), so
+	// d ~= 90 makes the nearest character span ~70% of a 900 px frame.
+	//
+	// The x values then spread the four silhouettes evenly. They are spaced by the
+	// *animated* envelope each slot sweeps (measured at 219 / 139 / 359 / 239 px
+	// wide - the near slot is both closer and swings the widest), not by the model
+	// origins, which is why they are not symmetric: origins project to x = 202 /
+	// 528 / 893 / 1359 px and leave a ~140 px gap between every neighbouring pair.
 	const bool readmeCaptureMode = IsReadmeCaptureMode();
 	const XMFLOAT3 characterScale(80.0f, 80.0f, 80.0f);
 
-	if (auto* player = modelAt(playerIndex)) {
-		player->pos = XMFLOAT3(-50.0f, 0.0f, -30.0f);
-		player->rotDeg = XMFLOAT3(0.0f, readmeCaptureMode ? -70.0f : 0.0f, 0.0f);
-		player->scale = characterScale;
-		player->autoRotate = readmeCaptureMode;
-		if (player->boneCache.size() > 2)
-			player->boundsBoneIndex = 2;
+	const std::array<int, 4> characterModelIndices = { playerIndex, enemy1Index, enemy2Index, enemy3Index };
+	const std::array<XMFLOAT3, 4> editorPositions = {
+		XMFLOAT3{ -50.0f, 0.0f, -30.0f },
+		XMFLOAT3{ -145.0f, 0.0f, 100.0f },
+		XMFLOAT3{ 35.0f, 0.0f, 100.0f },
+		XMFLOAT3{ 115.0f, 0.0f, 100.0f }
+	};
+	const std::array<float, 4> editorYawDeg = { 0.0f, 10.0f, 0.0f, -10.0f };
+	// Slot 2 carries a non-zero x deliberately: at x = 0 it stood on the view axis
+	// directly behind slot 0 and only three characters were ever observable.
+	const std::array<XMFLOAT3, 4> capturePositions = {
+		XMFLOAT3{ 19.0f, 0.0f, 5.0f },
+		XMFLOAT3{ -177.0f, 0.0f, 48.0f },
+		XMFLOAT3{ -89.0f, 0.0f, 62.0f },
+		XMFLOAT3{ 166.0f, 0.0f, 48.0f }
+	};
+
+	for (size_t i = 0; i < characterModelIndices.size(); ++i) {
+		auto* model = modelAt(characterModelIndices[i]);
+		if (!model)
+			continue;
+		model->pos = readmeCaptureMode ? capturePositions[i] : editorPositions[i];
+		// The camera sits at negative Z looking toward +Z, so yaw 0 is front-facing.
+		model->rotDeg = XMFLOAT3(0.0f, readmeCaptureMode ? 0.0f : editorYawDeg[i], 0.0f);
+		model->scale = characterScale;
+		model->autoRotate = false;
 	}
 
-	if (auto* enemy = modelAt(enemy1Index)) {
-		enemy->pos = XMFLOAT3(-145.0f, 0.0f, 100.0f);
-		enemy->rotDeg = XMFLOAT3(0.0f, 10.0f, 0.0f);
-		enemy->scale = characterScale;
-		enemy->autoRotate = readmeCaptureMode;
-	}
-	if (auto* enemy = modelAt(enemy2Index)) {
-		enemy->pos = XMFLOAT3(35.0f, 0.0f, 100.0f);
-		enemy->rotDeg = XMFLOAT3(0.0f, 0.0f, 0.0f);
-		enemy->scale = characterScale;
-		enemy->autoRotate = readmeCaptureMode;
-	}
-	if (auto* enemy = modelAt(enemy3Index)) {
-		enemy->pos = XMFLOAT3(115.0f, 0.0f, 100.0f);
-		enemy->rotDeg = XMFLOAT3(0.0f, -10.0f, 0.0f);
-		enemy->scale = characterScale;
-		enemy->autoRotate = readmeCaptureMode;
+	if (auto* player = modelAt(playerIndex)) {
+		if (player->boneCache.size() > 2)
+			player->boundsBoneIndex = 2;
 	}
 
 	if (auto* ground = modelAt(groundIndex)) {
@@ -206,35 +229,17 @@ void App::LoadDataAsync(std::stop_token stoken)
 	}
 
 	// ====================================== 카메라 ======================================
-	m_Camera.SetPosition(XMFLOAT3(0.0f, 65.0f, -220.0f));
+	// Capture eye height 73 puts the cast's mid-height on the view axis once the 5
+	// degree downward pitch is accounted for; z = -85 leaves 90 units to the nearest
+	// character, which is the distance the 70%-of-frame-height figure above solves to.
 	m_Camera.SetSpeed(15.0f);
-	m_Camera.SetRotation(XMFLOAT3(8.0f, 0.0f, 0.0f));
-
-	// ================== README capture composition: four characters ==================
-	// KNOWN ISSUE (raised in the Task 3 report, to be resolved before media is
-	// published): with these values slot 2 stands directly behind slot 0, so only
-	// three characters are visible; yaw 180 turns them away from the camera; and
-	// at this camera distance they fill roughly 38% of the frame height rather
-	// than the intended 70%.
 	if (readmeCaptureMode) {
-		const std::array<int, 4> showcaseModelIndices = { playerIndex, enemy1Index, enemy2Index, enemy3Index };
-		const std::array<XMFLOAT3, 4> positions = {
-			XMFLOAT3{ 0.0f, 0.0f, 5.0f },
-			XMFLOAT3{ -92.0f, 0.0f, 48.0f },
-			XMFLOAT3{ 0.0f, 0.0f, 62.0f },
-			XMFLOAT3{ 92.0f, 0.0f, 48.0f }
-		};
-		for (size_t i = 0; i < showcaseModelIndices.size(); ++i) {
-			auto* model = modelAt(showcaseModelIndices[i]);
-			if (!model)
-				continue;
-			model->pos = positions[i];
-			model->rotDeg = XMFLOAT3(0.0f, 180.0f, 0.0f);
-			model->scale = XMFLOAT3(80.0f, 80.0f, 80.0f);
-			model->autoRotate = false;
-		}
-		m_Camera.SetPosition(XMFLOAT3(0.0f, 72.0f, -165.0f));
+		m_Camera.SetPosition(XMFLOAT3(0.0f, 73.0f, -85.0f));
 		m_Camera.SetRotation(XMFLOAT3(5.0f, 0.0f, 0.0f));
+	}
+	else {
+		m_Camera.SetPosition(XMFLOAT3(0.0f, 65.0f, -220.0f));
+		m_Camera.SetRotation(XMFLOAT3(8.0f, 0.0f, 0.0f));
 	}
 
 	m_->m_OutlineThickness = 0.3f;

@@ -399,6 +399,9 @@ void App::PassMainScene() {
 		if (!IsReadmeCaptureMode()) {
 			PassDebugDraw();
 		}
+		else {
+			RenderPortfolioShowcaseDebug();
+		}
 
 		// ========== 스카이박스 렌더링 (포워드) ==========
 		// Light 패스가 끝난 후 깊이 버퍼는 G-Buffer의 깊이 정보를 유지하고 있음
