@@ -585,11 +585,13 @@ $frameDir = Join-Path ([System.IO.Path]::GetTempPath()) ("dx11-project36-showcas
 New-Item -ItemType Directory -Path $frameDir -Force | Out-Null
 
 # Ignored staging directories for the opt-in backbuffer publisher. One per run so
-# an assertion can never be satisfied by a file some other run left behind.
+# an assertion can never be satisfied by a file some other run left behind. There
+# is deliberately no directory for the capture-mode-without-the-variable run
+# below: no path is handed to that process at all, so a directory it was never
+# told about could only ever be empty, whatever the implementation did.
 $backbufferDir = Join-Path $frameDir 'backbuffer-capture'
 $normalBackbufferDir = Join-Path $frameDir 'backbuffer-normal'
-$gateBackbufferDir = Join-Path $frameDir 'backbuffer-gate'
-New-Item -ItemType Directory -Path $backbufferDir, $normalBackbufferDir, $gateBackbufferDir -Force | Out-Null
+New-Item -ItemType Directory -Path $backbufferDir, $normalBackbufferDir -Force | Out-Null
 $backbufferPath = Join-Path $backbufferDir 'project36-backbuffer.png'
 $backbufferTempPath = $backbufferPath + '.tmp.png'
 $normalBackbufferPath = Join-Path $normalBackbufferDir 'project36-normal.png'
@@ -843,8 +845,10 @@ try {
     # -----------------------------------------------------------------------
     # 6. The other half of the opt-in gate: capture mode on, no
     #    DX11_README_BACKBUFFER_PNG. This is how the other 36 projects run, and
-    #    the writer must publish nothing at all - not into the staging directory
-    #    and not next to the executable under some implied default name.
+    #    the writer must publish nothing at all. With no path named, the only
+    #    place a publication could land is beside the executable under some
+    #    implied default name, so that is what the before/after snapshot of the
+    #    runtime directory below measures.
     # -----------------------------------------------------------------------
     $runtimePngBefore = @(Get-ChildItem -LiteralPath $runtimeDir -Filter '*.png' -File -ErrorAction SilentlyContinue |
         ForEach-Object { $_.Name })
@@ -873,8 +877,6 @@ try {
     Reset-ShowcaseTopmost -Handle $gateHandle
     Stop-ShowcaseProcess -Process $gateProcess
 
-    Assert-True (@(Get-ChildItem -LiteralPath $gateBackbufferDir -File -ErrorAction SilentlyContinue).Count -eq 0) `
-        'capture mode without DX11_README_BACKBUFFER_PNG writes nothing into the staging directory'
     $newRuntimePngs = @(Get-ChildItem -LiteralPath $runtimeDir -Filter '*.png' -File -ErrorAction SilentlyContinue |
         Where-Object { $runtimePngBefore -notcontains $_.Name } | ForEach-Object { $_.Name })
     Assert-True ($newRuntimePngs.Count -eq 0) `

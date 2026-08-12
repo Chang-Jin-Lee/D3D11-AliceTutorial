@@ -236,14 +236,38 @@ bool App::CheckHDRSupportAndGetMaxNits(float& outMaxNits,
 	return true;
 }
 
+namespace {
+// The format the swap chain is actually created with.
+//
+// Outside README capture mode this only clamps the caller's request to the two
+// formats this application knows how to present.
+//
+// Inside capture mode it pins the back buffer to plain 8-bit sRGB. The capture
+// publisher (App_PortfolioShowcase.inl) copies back-buffer pixels straight into
+// a PNG, and a PNG is an sRGB container: an HDR back buffer carries a PQ
+// (ST.2084) encoded Rec.2020 signal, which WIC would only range-convert from 10
+// to 8 bits - no transfer function, no gamut mapping - publishing a washed-out,
+// wrong-hue image that every automated check still accepts. Pinning the format
+// also routes PassPostProcess through 36_ToneMappingPS_LDR.hlsl, whose
+// gamma-encoded sRGB output is exactly what a PNG wants, and keeps
+// SetColorSpace1 below off the HDR10 colour space.
+DXGI_FORMAT ResolveSwapChainFormat(DXGI_FORMAT requested,
+	bool readmeCaptureMode) noexcept {
+	if (readmeCaptureMode) {
+		return DXGI_FORMAT_R8G8B8A8_UNORM;
+	}
+	if (requested == DXGI_FORMAT_R8G8B8A8_UNORM ||
+		requested == DXGI_FORMAT_R10G10B10A2_UNORM) {
+		return requested;
+	}
+	return DXGI_FORMAT_R8G8B8A8_UNORM;
+}
+} // namespace
+
 //  DXGI_FORMAT_R8G8B8A8_UNORM : LDR
 //  DXGI_FORMAT_R10G10B10A2_UNORM   : HDR
 void App::CreateSwapChainAndBackBuffer(DXGI_FORMAT format) {
-	m_->m_format = format;
-	if (!(format == DXGI_FORMAT_R8G8B8A8_UNORM ||
-		format == DXGI_FORMAT_R10G10B10A2_UNORM)) {
-		m_->m_format = DXGI_FORMAT_R8G8B8A8_UNORM;
-	}
+	m_->m_format = ResolveSwapChainFormat(format, IsReadmeCaptureMode());
 
 	HRESULT hr = 0; // 결과값.
 

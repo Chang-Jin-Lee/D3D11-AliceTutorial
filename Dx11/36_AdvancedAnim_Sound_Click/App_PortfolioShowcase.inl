@@ -109,23 +109,22 @@ namespace
 		return value;
 	}
 
-	// Only the formats this swap chain can actually present. Anything else is
-	// refused rather than reinterpreted, so a future format change fails visibly
+	// The one format capture mode can produce. ResolveSwapChainFormat in
+	// App_Utilities.inl pins the swap chain to DXGI_FORMAT_R8G8B8A8_UNORM
+	// whenever DX11_README_CAPTURE is set, precisely so the bytes read back here
+	// are already the gamma-encoded sRGB a PNG stores.
+	//
+	// Anything else is refused rather than reinterpreted. A wider table would let
+	// an HDR10 back buffer (PQ-encoded Rec.2020) through a plain numeric 10->8
+	// bit conversion and publish a washed-out, wrong-hue frame that every
+	// automated check still accepts; refusing means the writer skips the frame,
+	// the capture tool's timeout fires, and a future format change fails visibly
 	// instead of publishing colour garbage.
 	const GUID* PortfolioBackbufferWicFormat(DXGI_FORMAT format) noexcept
 	{
-		switch (format)
-		{
-		case DXGI_FORMAT_R8G8B8A8_UNORM:
-		case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:  return &GUID_WICPixelFormat32bppRGBA;
-		case DXGI_FORMAT_B8G8R8A8_UNORM:
-		case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:  return &GUID_WICPixelFormat32bppBGRA;
-		case DXGI_FORMAT_B8G8R8X8_UNORM:
-		case DXGI_FORMAT_B8G8R8X8_UNORM_SRGB:  return &GUID_WICPixelFormat32bppBGR;
-		case DXGI_FORMAT_R10G10B10A2_UNORM:    return &GUID_WICPixelFormat32bppRGBA1010102;
-		case DXGI_FORMAT_R16G16B16A16_FLOAT:   return &GUID_WICPixelFormat64bppRGBAHalf;
-		default:                               return nullptr;
-		}
+		if (format == DXGI_FORMAT_R8G8B8A8_UNORM)
+			return &GUID_WICPixelFormat32bppRGBA;
+		return nullptr;
 	}
 
 	// Encodes mapped staging rows into a complete in-memory PNG. Encoding away
@@ -721,26 +720,17 @@ void App::WritePortfolioBackbufferPng()
 	D3D11_TEXTURE2D_DESC frameDesc{};
 	backBuffer->GetDesc(&frameDesc);
 
-	// A multisampled back buffer cannot be copied into a staging texture, so it is
-	// resolved down first. This swap chain is created single-sampled today; the
-	// branch exists so raising SampleDesc.Count later cannot silently break the
-	// capture.
-	ID3D11Texture2D* copySource = backBuffer.Get();
-	Microsoft::WRL::ComPtr<ID3D11Texture2D> resolvedFrame;
-	if (frameDesc.SampleDesc.Count > 1)
-	{
-		D3D11_TEXTURE2D_DESC resolveDesc = frameDesc;
-		resolveDesc.SampleDesc.Count = 1;
-		resolveDesc.SampleDesc.Quality = 0;
-		resolveDesc.Usage = D3D11_USAGE_DEFAULT;
-		resolveDesc.BindFlags = 0;
-		resolveDesc.CPUAccessFlags = 0;
-		resolveDesc.MiscFlags = 0;
-		if (FAILED(m_->m_pDevice->CreateTexture2D(&resolveDesc, nullptr, resolvedFrame.GetAddressOf())))
-			return;
-		m_->m_pDeviceContext->ResolveSubresource(resolvedFrame.Get(), 0, backBuffer.Get(), 0, frameDesc.Format);
-		copySource = resolvedFrame.Get();
-	}
+	// Both of these are refusals, not repairs. This swap chain is created
+	// single-sampled and, in capture mode, always as DXGI_FORMAT_R8G8B8A8_UNORM,
+	// so neither can fire today; if either ever does, skipping every frame makes
+	// the capture tool time out and fail the run loudly, which is the only safe
+	// outcome. Copying a multisampled back buffer into a staging texture is
+	// invalid, and would leave the staging texture holding the previous frame -
+	// exactly the silently-wrong publication this writer must never make.
+	if (frameDesc.SampleDesc.Count != 1)
+		return;
+	if (!PortfolioBackbufferWicFormat(frameDesc.Format))
+		return;
 
 	// The staging texture lives for the whole capture run; it is rebuilt only if
 	// the swap chain's size or format ever changes underneath it.
@@ -774,15 +764,27 @@ void App::WritePortfolioBackbufferPng()
 		writer.stagingFormat = frameDesc.Format;
 	}
 
-	m_->m_pDeviceContext->CopyResource(writer.staging.Get(), copySource);
+	m_->m_pDeviceContext->CopyResource(writer.staging.Get(), backBuffer.Get());
 
 	D3D11_MAPPED_SUBRESOURCE mappedFrame{};
 	if (FAILED(m_->m_pDeviceContext->Map(writer.staging.Get(), 0, D3D11_MAP_READ, 0, &mappedFrame)))
 		return;
 
-	const bool encoded = EncodePortfolioBackbufferPng(
-		writer.wicFactory.Get(), mappedFrame.pData, mappedFrame.RowPitch,
-		writer.stagingWidth, writer.stagingHeight, writer.stagingFormat, writer.encodedScratch);
+	// The encode grows a std::vector, so it can in principle throw std::bad_alloc.
+	// The Map above must be balanced whatever happens, and a capture run must
+	// never die because one frame could not be published, so the exception is
+	// turned back into the same skipped frame every other failure produces.
+	bool encoded = false;
+	try
+	{
+		encoded = EncodePortfolioBackbufferPng(
+			writer.wicFactory.Get(), mappedFrame.pData, mappedFrame.RowPitch,
+			writer.stagingWidth, writer.stagingHeight, writer.stagingFormat, writer.encodedScratch);
+	}
+	catch (...)
+	{
+		encoded = false;
+	}
 	m_->m_pDeviceContext->Unmap(writer.staging.Get(), 0);
 	if (!encoded)
 		return;

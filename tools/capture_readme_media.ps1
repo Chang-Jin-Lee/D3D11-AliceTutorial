@@ -147,16 +147,19 @@ function Copy-ReadmeBackbufferPng {
         $image = $null
         $detached = $null
         $copied = $false
+        $wrongSize = $null
         try {
             $stream = [System.IO.File]::Open($SourcePath, [System.IO.FileMode]::Open,
                 [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
             $image = [System.Drawing.Image]::FromStream($stream, $false, $true)
             if ($image.Width -ne $Width -or $image.Height -ne $Height) {
-                throw "backbuffer PNG has unexpected dimensions $($image.Width)x$($image.Height)"
+                $wrongSize = "backbuffer PNG has unexpected dimensions $($image.Width)x$($image.Height), expected ${Width}x${Height}: $SourcePath"
             }
-            $detached = New-Object System.Drawing.Bitmap($image)
-            $detached.Save($OutputPath, [System.Drawing.Imaging.ImageFormat]::Png)
-            $copied = $true
+            else {
+                $detached = New-Object System.Drawing.Bitmap($image)
+                $detached.Save($OutputPath, [System.Drawing.Imaging.ImageFormat]::Png)
+                $copied = $true
+            }
         }
         catch {
             $lastError = $_.Exception.Message
@@ -169,6 +172,13 @@ function Copy-ReadmeBackbufferPng {
 
         if ($copied) {
             return
+        }
+        # A whole, decodable PNG of the wrong size is a permanent failure: the
+        # publisher is producing the wrong frame and retrying cannot change that.
+        # Fail on the spot so the real cause is the error, instead of burning the
+        # whole timeout and hiding it inside the timeout message below.
+        if ($null -ne $wrongSize) {
+            throw $wrongSize
         }
         if ((Get-Date) -ge $deadline) {
             throw "Backbuffer PNG was not published within $TimeoutSeconds seconds: $SourcePath ($lastError)"
@@ -194,7 +204,17 @@ function Remove-ReadmeBackbufferFile {
         throw "Refusing to remove backbuffer output outside mediaDir: $resolvedPath"
     }
 
-    Remove-Item -LiteralPath $resolvedPath -Force
+    # The containment check above is a safety assertion and keeps throwing. The
+    # removal itself is best-effort: this is called from Invoke-ProjectCapture's
+    # finally, and with -KeepWindows the publisher is still alive and rewriting
+    # the temporary sibling, so a sharing violation is possible. Letting that
+    # escape would replace a successful capture's result with a cleanup failure.
+    try {
+        Remove-Item -LiteralPath $resolvedPath -Force
+    }
+    catch {
+        Write-Warning "Could not remove backbuffer output '$resolvedPath': $($_.Exception.Message)"
+    }
 }
 
 function Get-CaptureProjectSelection {
