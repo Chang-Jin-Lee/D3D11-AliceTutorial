@@ -516,13 +516,29 @@ function Close-ShowcaseProcess {
 # the way to raster pixels because a torn PNG still parses its header - only
 # drawing it exposes the truncation.
 #
-# Observed=false  -> the file does not exist yet (a legal observation).
-# Complete=false  -> the file existed but could not be read or decoded (a torn
-#                    publication, which is exactly what atomicity forbids).
+# MoveFileExW(..., MOVEFILE_REPLACE_EXISTING) needs exclusive access to the
+# destination for the instant of the rename, so a reader whose File.Open lands in
+# that window gets ERROR_SHARING_VIOLATION / ERROR_LOCK_VIOLATION. That is the open
+# failing, not a partial file: the reader caught nothing at all, which is exactly
+# what a correct atomic replace predicts, so it is tracked as its own "contended"
+# outcome instead of being folded into "torn". Everything else that fails to read
+# or decode still counts as torn - that is the only evidence that would actually
+# disprove atomicity.
+#
+# Observed=false, Contended=false -> the file does not exist yet (a legal
+#                                     observation).
+# Observed=false, Contended=true  -> the open lost a race with the publisher's
+#                                     atomic rename; the reader observed nothing,
+#                                     not a partial file.
+# Observed=true,  Complete=false  -> the file was opened but a short read, a
+#                                     decode failure, or a bad raster proved a
+#                                     torn publication, which is exactly what
+#                                     atomicity forbids.
+# Observed=true,  Complete=true   -> a fully decoded frame.
 function Read-ShowcaseBackbufferPng {
     param([string]$Path)
 
-    $absent = [pscustomobject]@{ Observed = $false; Complete = $false; Reason = ''; Width = 0; Height = 0; Signature = '' }
+    $absent = [pscustomobject]@{ Observed = $false; Complete = $false; Contended = $false; Reason = ''; Width = 0; Height = 0; Signature = '' }
     $bytes = $null
     try {
         $stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open,
@@ -541,8 +557,23 @@ function Read-ShowcaseBackbufferPng {
     }
     catch [System.IO.FileNotFoundException] { return $absent }
     catch [System.IO.DirectoryNotFoundException] { return $absent }
+    catch [System.IO.IOException] {
+        # MoveFileExW's replace briefly holds the destination exclusively; a reader
+        # whose open lands in that window gets ERROR_SHARING_VIOLATION (0x20) or
+        # ERROR_LOCK_VIOLATION (0x21). The open itself failed, so nothing was
+        # observed - this is not evidence of a torn file and must not be counted
+        # as one.
+        $win32Error = $_.Exception.HResult -band 0xFFFF
+        if ($win32Error -eq 0x20 -or $win32Error -eq 0x21) {
+            return [pscustomobject]@{ Observed = $false; Complete = $false; Contended = $true
+                Reason = "contended (0x$($win32Error.ToString('X2'))): $($_.Exception.Message)"
+                Width = 0; Height = 0; Signature = '' }
+        }
+        return [pscustomobject]@{ Observed = $true; Complete = $false; Contended = $false
+            Reason = "unreadable: $($_.Exception.Message)"; Width = 0; Height = 0; Signature = '' }
+    }
     catch {
-        return [pscustomobject]@{ Observed = $true; Complete = $false
+        return [pscustomobject]@{ Observed = $true; Complete = $false; Contended = $false
             Reason = "unreadable: $($_.Exception.Message)"; Width = 0; Height = 0; Signature = '' }
     }
 
@@ -565,11 +596,11 @@ function Read-ShowcaseBackbufferPng {
         $sha = [System.Security.Cryptography.SHA256]::Create()
         try { $signature = [System.BitConverter]::ToString($sha.ComputeHash($pixels)) }
         finally { $sha.Dispose() }
-        return [pscustomobject]@{ Observed = $true; Complete = $true; Reason = ''
+        return [pscustomobject]@{ Observed = $true; Complete = $true; Contended = $false; Reason = ''
             Width = $raster.Width; Height = $raster.Height; Signature = $signature }
     }
     catch {
-        return [pscustomobject]@{ Observed = $true; Complete = $false
+        return [pscustomobject]@{ Observed = $true; Complete = $false; Contended = $false
             Reason = "undecodable ($($bytes.Length) bytes): $($_.Exception.Message)"
             Width = 0; Height = 0; Signature = '' }
     }
@@ -750,6 +781,9 @@ try {
     # -----------------------------------------------------------------------
     $backbufferObservations = 0
     $backbufferComplete = 0
+    $backbufferAbsent = 0
+    $backbufferContended = 0
+    $backbufferTornCount = 0
     $backbufferAnomalies = [System.Collections.Generic.List[string]]::new()
     $backbufferSizes = [System.Collections.Generic.HashSet[string]]::new()
     $backbufferSignatures = [System.Collections.Generic.List[string]]::new()
@@ -758,18 +792,28 @@ try {
     while ((Get-Date) -lt $pollDeadline) {
         $observation = Read-ShowcaseBackbufferPng -Path $backbufferPath
         $backbufferObservations++
-        if ($observation.Observed) {
-            if ($observation.Complete) {
-                $backbufferComplete++
-                [void]$backbufferSizes.Add("$($observation.Width)x$($observation.Height)")
-                # Sampled far apart relative to the 12 fps publication throttle, so
-                # two identical samples would mean a stale, never-refreshed file.
-                if ((Get-Date) -ge $nextSignatureAt) {
-                    $backbufferSignatures.Add($observation.Signature)
-                    $nextSignatureAt = (Get-Date).AddMilliseconds(500)
-                }
+        if ($observation.Contended) {
+            # The open lost a race with the publisher's atomic rename
+            # (ERROR_SHARING_VIOLATION / ERROR_LOCK_VIOLATION): the reader observed
+            # nothing at all, which is not evidence against atomicity.
+            $backbufferContended++
+        }
+        elseif (-not $observation.Observed) {
+            $backbufferAbsent++
+        }
+        elseif ($observation.Complete) {
+            $backbufferComplete++
+            [void]$backbufferSizes.Add("$($observation.Width)x$($observation.Height)")
+            # Sampled far apart relative to the 12 fps publication throttle, so
+            # two identical samples would mean a stale, never-refreshed file.
+            if ((Get-Date) -ge $nextSignatureAt) {
+                $backbufferSignatures.Add($observation.Signature)
+                $nextSignatureAt = (Get-Date).AddMilliseconds(500)
             }
-            elseif ($backbufferAnomalies.Count -lt 8) {
+        }
+        else {
+            $backbufferTornCount++
+            if ($backbufferAnomalies.Count -lt 8) {
                 $backbufferAnomalies.Add($observation.Reason)
             }
         }
@@ -780,8 +824,8 @@ try {
         ("DX11_README_BACKBUFFER_PNG publishes to exactly the requested path (decoded $backbufferComplete of $backbufferObservations observations, need >= 10)")
     Assert-True ($backbufferSizes.Count -eq 1 -and $backbufferSizes.Contains("${clientWidth}x${clientHeight}")) `
         ("every published backbuffer frame decodes at exactly ${clientWidth}x${clientHeight} (saw: $(($backbufferSizes | Sort-Object) -join ', '))")
-    Assert-True ($backbufferAnomalies.Count -eq 0) `
-        ("publication is atomic: no observation ever caught a partially written PNG (anomalies: $($backbufferAnomalies -join ' | '))")
+    Assert-True ($backbufferTornCount -eq 0) `
+        ("publication is atomic: no observation ever caught a partially written PNG (complete=$backbufferComplete, absent=$backbufferAbsent, contended=$backbufferContended, torn=$backbufferTornCount, total=$backbufferObservations; torn reasons: $($backbufferAnomalies -join ' | '))")
     $distinctSignatures = @($backbufferSignatures | Select-Object -Unique).Count
     Assert-True ($distinctSignatures -ge 2) `
         ("the published PNG refreshes with live frames rather than one stale frame ($distinctSignatures distinct of $($backbufferSignatures.Count) half-second samples, need >= 2)")
