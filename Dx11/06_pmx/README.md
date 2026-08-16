@@ -13,7 +13,6 @@
 ## 06. PMX (A-Pose)
 
 <!-- README-BRAND:START -->
-<p align="center"><img src="../../docs/media/branding/alice-tutorial-logo.png" width="520" alt="D3D11 Alice Tutorial mascot logo" /></p>
 <!-- README-BRAND:END -->
 
 - 내용: PMX 캐릭터를 A-포즈 실루엣(흰색)으로 단순 렌더링

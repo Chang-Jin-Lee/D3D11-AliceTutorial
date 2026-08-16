@@ -13,7 +13,6 @@
 # 33. Sound Animation Camera Motion
 
 <!-- README-BRAND:START -->
-<p align="center"><img src="../../docs/media/branding/alice-tutorial-logo.png" width="520" alt="D3D11 Alice Tutorial mascot logo" /></p>
 <!-- README-BRAND:END -->
 
 - 내용: 사운드, 애니메이션, 카메라 모션을 함께 확인하는 프로젝트입니다.

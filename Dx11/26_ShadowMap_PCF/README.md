@@ -13,7 +13,6 @@
 ## 26. ShadowMap PCF (26_ShadowMap_PCF)
 
 <!-- README-BRAND:START -->
-<p align="center"><img src="../../docs/media/branding/alice-tutorial-logo.png" width="520" alt="D3D11 Alice Tutorial mascot logo" /></p>
 <!-- README-BRAND:END -->
 
 - 내용 : ShadowMap을 보여주는 예제 입니다.

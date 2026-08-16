@@ -13,7 +13,6 @@
 # 37. Blueprint
 
 <!-- README-BRAND:START -->
-<p align="center"><img src="../../docs/media/branding/alice-tutorial-logo.png" width="520" alt="D3D11 Alice Tutorial mascot logo" /></p>
 <!-- README-BRAND:END -->
 
 - 내용: imgui-node-editor를 사용해 노드 기반 UI를 실험하는 프로젝트입니다.

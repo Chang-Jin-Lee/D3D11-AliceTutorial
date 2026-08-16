@@ -13,7 +13,6 @@
 # 36. Animation, FMOD 3D Sound, Multithread
 
 <!-- README-BRAND:START -->
-<p align="center"><img src="../../docs/media/branding/alice-tutorial-logo.png" width="520" alt="D3D11 Alice Tutorial mascot logo" /></p>
 <!-- README-BRAND:END -->
 
 이 이후의 애니메이션 구현은 다음의 레포에서 계속됩니다.

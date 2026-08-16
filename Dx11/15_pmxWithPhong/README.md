@@ -13,7 +13,6 @@
 ## 15. pmxWithPhong (15_pmxWithPhong)
 
 <!-- README-BRAND:START -->
-<p align="center"><img src="../../docs/media/branding/alice-tutorial-logo.png" width="520" alt="D3D11 Alice Tutorial mascot logo" /></p>
 <!-- README-BRAND:END -->
 
 - 내용 : Phong 쉐이딩을 사용한 pmx 로더 예제입니다.

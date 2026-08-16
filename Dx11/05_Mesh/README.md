@@ -13,7 +13,6 @@
 ## 05. Mesh (FBX)
 
 <!-- README-BRAND:START -->
-<p align="center"><img src="../../docs/media/branding/alice-tutorial-logo.png" width="520" alt="D3D11 Alice Tutorial mascot logo" /></p>
 <!-- README-BRAND:END -->
 
 - 내용: FBX 메시를 로드해 머티리얼별 서브셋을 렌더링

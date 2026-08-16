@@ -13,7 +13,6 @@
 # 16. NormalMapping (16_NormalMapping)
 
 <!-- README-BRAND:START -->
-<p align="center"><img src="../../docs/media/branding/alice-tutorial-logo.png" width="520" alt="D3D11 Alice Tutorial mascot logo" /></p>
 <!-- README-BRAND:END -->
 
 - 내용 : Cube의 각 면에 Normal Mapping을 하는 예제입니다.

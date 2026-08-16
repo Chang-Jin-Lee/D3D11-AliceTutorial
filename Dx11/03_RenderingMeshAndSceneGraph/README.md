@@ -13,7 +13,6 @@
 ## 03. RenderingMeshAndSceneGraph
 
 <!-- README-BRAND:START -->
-<p align="center"><img src="../../docs/media/branding/alice-tutorial-logo.png" width="520" alt="D3D11 Alice Tutorial mascot logo" /></p>
 <!-- README-BRAND:END -->
 
 - 내용: 부모-자식 계층(Scene Graph)으로 3개의 메쉬를 렌더링

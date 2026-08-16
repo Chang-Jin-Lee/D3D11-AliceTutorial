@@ -13,7 +13,6 @@
 ## 04. RenderingMeshWithTexture
 
 <!-- README-BRAND:START -->
-<p align="center"><img src="../../docs/media/branding/alice-tutorial-logo.png" width="520" alt="D3D11 Alice Tutorial mascot logo" /></p>
 <!-- README-BRAND:END -->
 
 - 내용: 큐브 각 면에 서로 다른 텍스처를 적용하여 렌더링
