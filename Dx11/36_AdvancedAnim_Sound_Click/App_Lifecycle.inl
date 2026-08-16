@@ -131,24 +131,23 @@ void App::LoadDataAsync(std::stop_token stoken)
 			model->modelShading = ShadingMode::BlinnPhong;
 	}
 
-	if (IsReadmeCaptureMode()) {
-		m_->m_UseAdvancedRig = false;
-		m_->m_UseDeferredRendering = false;
-		m_->m_DirLight.ambient = XMFLOAT4(0.35f, 0.35f, 0.35f, 1.0f);
-		m_->m_DirLight.diffuse = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
-		m_->m_DirLight.intensity = 2.5f;
-	}
+	// The showcase owns the four character palettes on every frame, so the advanced
+	// rig must not also drive the player, and the composition below was framed and
+	// lit for the forward path.
+	m_->m_UseAdvancedRig = false;
+	m_->m_UseDeferredRendering = false;
+	m_->m_DirLight.ambient = XMFLOAT4(0.35f, 0.35f, 0.35f, 1.0f);
+	m_->m_DirLight.diffuse = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+	m_->m_DirLight.intensity = 2.5f;
 
 	// =========================== Character composition ============================
-	// The four public MyAlice characters have exactly one composition per mode, and
-	// both live here so nothing is written twice: the editor scene spreads them
-	// around the play area, the README capture lines the cast up for the showcase
-	// reel. Slot order is player, enemy 1, enemy 2, enemy 3 - the same order
-	// InitializePortfolioShowcase() builds its animator slots in.
+	// The four public MyAlice characters line up for the showcase. Slot order is
+	// player, enemy 1, enemy 2, enemy 3 - the same order InitializePortfolioShowcase()
+	// builds its animator slots in.
 	//
-	// Capture geometry, derived rather than guessed. Camera::SetFrustum uses a 90
-	// degree *vertical* FOV at 16:9, so the visible height at camera-space depth d
-	// is exactly 2d and the visible width is 2*(16/9)*d. A character silhouette
+	// Geometry, derived rather than guessed. Camera::SetFrustum uses a 90 degree
+	// *vertical* FOV at 16:9, so the visible height at camera-space depth d is
+	// exactly 2d and the visible width is 2*(16/9)*d. A character silhouette
 	// measures 126.8 world units at scale 80 (measured from captured frames), so
 	// d ~= 90 makes the nearest character span ~70% of a 900 px frame.
 	//
@@ -157,20 +156,12 @@ void App::LoadDataAsync(std::stop_token stoken)
 	// wide - the near slot is both closer and swings the widest), not by the model
 	// origins, which is why they are not symmetric: origins project to x = 202 /
 	// 528 / 893 / 1359 px and leave a ~140 px gap between every neighbouring pair.
-	const bool readmeCaptureMode = IsReadmeCaptureMode();
 	const XMFLOAT3 characterScale(80.0f, 80.0f, 80.0f);
 
 	const std::array<int, 4> characterModelIndices = { playerIndex, enemy1Index, enemy2Index, enemy3Index };
-	const std::array<XMFLOAT3, 4> editorPositions = {
-		XMFLOAT3{ -50.0f, 0.0f, -30.0f },
-		XMFLOAT3{ -145.0f, 0.0f, 100.0f },
-		XMFLOAT3{ 35.0f, 0.0f, 100.0f },
-		XMFLOAT3{ 115.0f, 0.0f, 100.0f }
-	};
-	const std::array<float, 4> editorYawDeg = { 0.0f, 10.0f, 0.0f, -10.0f };
 	// Slot 2 carries a non-zero x deliberately: at x = 0 it stood on the view axis
 	// directly behind slot 0 and only three characters were ever observable.
-	const std::array<XMFLOAT3, 4> capturePositions = {
+	const std::array<XMFLOAT3, 4> characterPositions = {
 		XMFLOAT3{ 19.0f, 0.0f, 5.0f },
 		XMFLOAT3{ -177.0f, 0.0f, 48.0f },
 		XMFLOAT3{ -89.0f, 0.0f, 62.0f },
@@ -181,9 +172,9 @@ void App::LoadDataAsync(std::stop_token stoken)
 		auto* model = modelAt(characterModelIndices[i]);
 		if (!model)
 			continue;
-		model->pos = readmeCaptureMode ? capturePositions[i] : editorPositions[i];
+		model->pos = characterPositions[i];
 		// The camera sits at negative Z looking toward +Z, so yaw 0 is front-facing.
-		model->rotDeg = XMFLOAT3(0.0f, readmeCaptureMode ? 0.0f : editorYawDeg[i], 0.0f);
+		model->rotDeg = XMFLOAT3(0.0f, 0.0f, 0.0f);
 		model->scale = characterScale;
 		model->autoRotate = false;
 	}
@@ -206,41 +197,13 @@ void App::LoadDataAsync(std::stop_token stoken)
 	m_->m_CharModelIndex = modelAt(playerIndex) ? playerIndex : -1;
 	m_->m_WeaponModelIndex = -1;
 
-	// ====================================== 큐브  ======================================
-	// The two decorative cubes are editor scenery only; the README capture
-	// composition shows the four characters alone.
-	if (!readmeCaptureMode) {
-		auto co = std::make_unique<CubeObject>(
-			L"Cube" + std::to_wstring(1),
-			Transform({ -220.0f, 25.0f, 45.0f }, { 0.0f, 25.0f, 0.0f }, { 28.0f, 28.0f, 28.0f }),
-			ECubeType::Texture);
-		for (int i = 0; i < 6; ++i) {
-			co->LoadTexture2DAt(m_->m_pDevice, i, L"..\\Resource\\Image\\Bricks059_1K-JPG_Color.jpg");
-			co->LoadTextureNormalAt(m_->m_pDevice, i, L"..\\Resource\\Image\\Bricks059_1K-JPG_NormalDX.jpg");
-			co->LoadTextureSpecularAt(m_->m_pDevice, i, L"..\\Resource\\Image\\Bricks059_Specular.png");
-		}
-		m_->m_Objects.push_back(std::move(co));
-
-		auto co2 = std::make_unique<CubeObject>(
-			L"Cube" + std::to_wstring(2),
-			Transform({ 220.0f, 25.0f, 65.0f }, { 0.0f, -20.0f, 0.0f }, { 36.0f, 36.0f, 36.0f }),
-			ECubeType::Basic);
-		m_->m_Objects.push_back(std::move(co2));
-	}
-
 	// ====================================== 카메라 ======================================
-	// Capture eye height 73 puts the cast's mid-height on the view axis once the 5
-	// degree downward pitch is accounted for; z = -85 leaves 90 units to the nearest
+	// Eye height 73 puts the cast's mid-height on the view axis once the 5 degree
+	// downward pitch is accounted for; z = -85 leaves 90 units to the nearest
 	// character, which is the distance the 70%-of-frame-height figure above solves to.
 	m_Camera.SetSpeed(15.0f);
-	if (readmeCaptureMode) {
-		m_Camera.SetPosition(XMFLOAT3(0.0f, 73.0f, -85.0f));
-		m_Camera.SetRotation(XMFLOAT3(5.0f, 0.0f, 0.0f));
-	}
-	else {
-		m_Camera.SetPosition(XMFLOAT3(0.0f, 65.0f, -220.0f));
-		m_Camera.SetRotation(XMFLOAT3(8.0f, 0.0f, 0.0f));
-	}
+	m_Camera.SetPosition(XMFLOAT3(0.0f, 73.0f, -85.0f));
+	m_Camera.SetRotation(XMFLOAT3(5.0f, 0.0f, 0.0f));
 
 	m_->m_OutlineThickness = 0.3f;
 	m_->m_OutlineColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 1);
@@ -270,19 +233,9 @@ void App::LoadDataAsync(std::stop_token stoken)
 	loadExternalClip("Run", runClip);
 	loadExternalClip("Roll", rollClip);
 
-	// Original portfolio clips: authored in GLB space already, so no transform.
-	// They exist only for the README capture showcase, so normal runs never pay
-	// the import cost.
-	if (readmeCaptureMode) {
-		loadExternalClip(
-			"PortfolioDance",
-			L"..\\Resource\\fbx\\Public\\MyAlice\\Animations\\anim_PortfolioDance.glb",
-			ExternalAnimationClipTransform::None);
-		loadExternalClip(
-			"PortfolioUpperWave",
-			L"..\\Resource\\fbx\\Public\\MyAlice\\Animations\\anim_PortfolioUpperWave.glb",
-			ExternalAnimationClipTransform::None);
-	}
+	// The showcase's own clips are not loaded here: they are the VRM_* animations
+	// already embedded in the player model, resolved by name in
+	// InitializePortfolioShowcase().
 
 	// Placeholder action mappings until dedicated authored clips exist.
 	loadExternalClip("IdleToShoot", rollClip);
@@ -299,8 +252,8 @@ void App::LoadDataAsync(std::stop_token stoken)
 		InitializeEnemyIdleRuntime(enemyIndex);
 	}
 
-	// All four model indices and every external clip are ready by this point.
-	// Outside README capture mode this call is a no-op.
+	// All four model indices are ready by this point, so the showcase can resolve
+	// its clips and claim their palettes.
 	InitializePortfolioShowcase();
 
 	// - The character index is the actual loaded player slot.

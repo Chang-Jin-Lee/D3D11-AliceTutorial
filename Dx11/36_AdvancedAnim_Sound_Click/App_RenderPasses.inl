@@ -400,12 +400,7 @@ void App::PassMainScene() {
 		PassDeferredLight();
 
 		m_->m_pDeviceContext->OMSetDepthStencilState(m_->m_pDepthStencilState, 0);
-		if (!IsReadmeCaptureMode()) {
-			PassDebugDraw();
-		}
-		else {
-			RenderPortfolioShowcaseDebug();
-		}
+		RenderPortfolioShowcaseDebug();
 
 		// ========== 스카이박스 렌더링 (포워드) ==========
 		// Light 패스가 끝난 후 깊이 버퍼는 G-Buffer의 깊이 정보를 유지하고 있음
@@ -692,12 +687,7 @@ void App::PassMainScene() {
 			m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
 	}
 
-	if (!IsReadmeCaptureMode()) {
-		PassDebugDraw();
-	}
-	else {
-		RenderPortfolioShowcaseDebug();
-	}
+	RenderPortfolioShowcaseDebug();
 }
 
 // G-Buffer 패스: 지오메트리 정보를 G-Buffer에 렌더링
@@ -1012,53 +1002,16 @@ void App::PassUI() {
 	ImGui_ImplWin32_NewFrame();
 	ImGui::NewFrame();
 
-	const bool readmeCaptureMode = IsReadmeCaptureMode();
-	if (!readmeCaptureMode) {
-		RenderControlPannel();
-		RenderSceneCollection();
-		RenderModelPannel();
-		RenderQuickGuideUI();
-		RenderAdvancedRigUI();
-		RenderConsolPannel();
-		m_->m_SystemInfo.RenderUI();
-		RenderSceneImageWindow();
-		RenderDeferredUI();
-		RenderSoundDebugUI();
-	}
-	else {
-		RenderPortfolioShowcaseHud();
-	}
+	// The showcase HUD is the only ImGui surface Project 36 draws: the editor
+	// panels and the sniper overlay described a scene this project no longer
+	// opens on.
+	RenderPortfolioShowcaseHud();
+
 	const unsigned int skyboxGeneration = SkyboxAssetManager::GetCompletedGeneration();
 	if (skyboxGeneration != m_->m_SkyboxAssetGeneration) {
 		m_->m_SkyboxAssetGeneration = skyboxGeneration;
 		if (!m_->m_CurrentIBLPath.empty())
 			ChangeIBLSkyBox(m_->m_CurrentIBLPath);
-	}
-	if (!readmeCaptureMode) {
-		SkyboxAssetManager::RenderStatusUI();
-	}
-
-	// Sniper UI Overlay
-	if (!readmeCaptureMode && m_->m_SniperEnabled && m_->m_SniperCharging)
-	{
-		ImDrawList* dl = ImGui::GetForegroundDrawList();
-		ImVec2 p = m_->m_SniperAimPos;
-
-		const float r = m_->m_SniperAimRadius;
-		dl->AddCircle(p, r, IM_COL32(255, 255, 255, 220), 32, 2.0f);
-
-		// 게이지 바
-		ImVec2 barSize(80.0f, 7.0f);
-		ImVec2 barPos(p.x - barSize.x * 0.5f, p.y + r + 10.0f);
-
-		dl->AddRectFilled(barPos, ImVec2(barPos.x + barSize.x, barPos.y + barSize.y),
-			IM_COL32(0, 0, 0, 160), 2.0f);
-
-		dl->AddRectFilled(barPos, ImVec2(barPos.x + barSize.x * m_->m_SniperCharge01, barPos.y + barSize.y),
-			IM_COL32(255, 255, 255, 220), 2.0f);
-
-		dl->AddRect(barPos, ImVec2(barPos.x + barSize.x, barPos.y + barSize.y),
-			IM_COL32(255, 255, 255, 220), 2.0f);
 	}
 
 	ImGui::Render();

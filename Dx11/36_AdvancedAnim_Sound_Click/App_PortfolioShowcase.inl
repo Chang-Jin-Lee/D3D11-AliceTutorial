@@ -1,44 +1,40 @@
 // ============================================================================
-// README capture-only portfolio showcase
+// Portfolio showcase
 //
-// When DX11_README_CAPTURE is set, Project 36 stops being an interactive editor
-// and becomes a deterministic eight-second animation reel: four public MyAlice
-// characters, each running its own CharacterAnimator, are driven through
-//   Dance -> Animation blend + upper layer -> CCD IK -> loop
-// so the README GIF always shows the same feature tour.
+// Project 36 opens on this rather than on an editor scene: four public MyAlice
+// characters, each running its own CharacterAnimator, play the VRM_* clips
+// embedded in the player model so the animation systems are the first thing the
+// window shows.
 //
-// Outside capture mode every entry point here returns immediately: normal
-// Project 36 behaviour is untouched.
+// The clips are resolved by NAME out of the model's own animation table, never
+// by index, so a re-export that reorders the animations fails loudly (a missing
+// clip is logged and the slot goes quiet) instead of silently playing the wrong
+// motion.
 // ============================================================================
 
 namespace
 {
-	// Deterministic eight-second cycle. The manifest's frame-zero click resets
-	// timeSec so the captured GIF always starts at the same pose.
-	constexpr float kPortfolioCycleSec = 8.0f;
-	constexpr float kPortfolioDanceEndSec = 3.0f;
-	constexpr float kPortfolioBlendEndSec = 5.2f;
-	constexpr float kPortfolioIkEndSec = 7.5f;
-	// The blend window is split into Dance->Walk and Walk->Dance halves.
-	constexpr float kPortfolioBlendMidSec = 4.1f;
+	constexpr int kPortfolioClipCount = 7;
+	constexpr int kPortfolioSlotCount = 4;
 
+	// The showcase clips, in the order they were authored. Animation 0 of
+	// SampleModel.glb is a 0.042 s T-Pose and is deliberately not among them.
+	const char* const kPortfolioClipNames[kPortfolioClipCount] = {
+		"VRM_1", "VRM_2", "VRM_3", "VRM_4", "VRM_5", "VRM_6", "VRM_7"
+	};
+
+	// The CCD IK evidence path: the chain RenderPortfolioShowcaseDebug() draws, and
+	// the helpers below that recover it from the uploaded palette. The chain is
+	// held here, unsolved, while the showcase plays base clips only; the IK
+	// windows that drive it are not part of this change.
 	constexpr const char* kPortfolioIkTipBone = "J_Bip_L_Hand";
 	constexpr const char* kPortfolioIkElbowBone = "J_Bip_L_LowerArm";
 	constexpr const char* kPortfolioIkShoulderBone = "J_Bip_L_UpperArm";
 
-	constexpr const char* kPortfolioHudPhaseDance = "DANCE / SKINNED ANIMATION";
-	constexpr const char* kPortfolioHudPhaseBlend = "ANIMATION BLEND + LAYER";
-	constexpr const char* kPortfolioHudPhaseIk = "CCD IK / LEFT HAND TARGET";
-	constexpr const char* kPortfolioHudPhaseFinish = "SHOWCASE LOOP / REPLAY";
+	constexpr const char* kPortfolioHudTitleLine = "VRM ANIMATION SHOWCASE";
 	// The cast line reports the number of slots that actually came up, so a partial
 	// initialization can never publish a caption the frame does not support.
 	constexpr const char* kPortfolioHudCastLineFormat = "%d CHARACTERS / LIVE PALETTES";
-
-	float PortfolioSmoothStep(float t)
-	{
-		t = std::clamp(t, 0.0f, 1.0f);
-		return t * t * (3.0f - 2.0f * t);
-	}
 
 	// Assimp glTF2 clips are authored on a different tick base than the FBX
 	// importer's, so seconds must always come from mDuration / mTicksPerSecond.
@@ -245,15 +241,46 @@ namespace
 }
 
 // ---------------------------------------------------------------------------
-// Initialization: capture mode only.
+// Clip lookup by name.
+//
+// GetAnimationNames() is index-aligned with the scene's mAnimations, so walking
+// the names and taking the animation at the matching index resolves a clip by
+// what it is called rather than by where it happens to sit. Models with no scene
+// or no animations - the ground plane, an asset that failed to import - are
+// skipped, so only a model that really carries the named clip can answer.
+// ---------------------------------------------------------------------------
+const aiAnimation* App::FindPortfolioClip(const std::string& name) const
+{
+	for (const auto& entry : m_->m_Models)
+	{
+		if (!entry || entry->source != ModelSource::FBX || !entry->shared || !entry->shared->fbx)
+			continue;
+
+		const auto& fbx = *entry->shared->fbx;
+		const aiScene* scene = fbx.GetScenePtr();
+		if (!scene || !scene->mAnimations)
+			continue;
+
+		const auto& names = fbx.GetAnimationNames();
+		for (size_t i = 0; i < names.size(); ++i)
+		{
+			if (names[i] == name && i < scene->mNumAnimations)
+				return scene->mAnimations[i];
+		}
+	}
+	return nullptr;
+}
+
+// ---------------------------------------------------------------------------
+// Initialization.
 // ---------------------------------------------------------------------------
 bool App::InitializePortfolioShowcase()
 {
 	auto& showcase = m_->m_PortfolioShowcase;
 	showcase.initialized = false;
-	showcase.fallbackToIdle = false;
 	showcase.timeSec = 0.0f;
-	showcase.phase = Impl::PortfolioShowcasePhase::Dance;
+	showcase.clips = {};
+	showcase.resolvedClipCount = 0;
 	showcase.ikDebugValid = false;
 
 	auto& backbuffer = m_->m_PortfolioBackbuffer;
@@ -261,43 +288,51 @@ bool App::InitializePortfolioShowcase()
 	backbuffer.temporaryPath.clear();
 	backbuffer.nextWriteTickMs = 0;
 
-	// Outside README capture mode the showcase stays completely inert.
-	if (!IsReadmeCaptureMode())
+	// The backbuffer publisher keeps its own gate: README capture mode plus a named
+	// path. Read once, here, and never again, so a capture run cannot change where
+	// its frames are published half way through. An unset variable leaves the path
+	// empty, which is what keeps the writer off for the projects that did not opt in.
+	if (IsReadmeCaptureMode())
+	{
+		backbuffer.requestedPath = ReadPortfolioBackbufferPathFromEnvironment();
+		if (!backbuffer.requestedPath.empty())
+		{
+			backbuffer.temporaryPath = backbuffer.requestedPath + L".tmp.png";
+			m_->PushLog("[OK] Portfolio backbuffer capture enabled");
+		}
+	}
+
+	for (int i = 0; i < kPortfolioClipCount; ++i)
+	{
+		showcase.clips[(size_t)i] = FindPortfolioClip(kPortfolioClipNames[i]);
+		if (showcase.clips[(size_t)i])
+		{
+			++showcase.resolvedClipCount;
+			m_->PushLog(std::string("[OK] Portfolio clip ") + kPortfolioClipNames[i] + ": " +
+				std::to_string(PortfolioClipDurationSec(showcase.clips[(size_t)i])) + "s");
+		}
+		else
+		{
+			m_->PushLog(std::string("[WARN] Portfolio clip missing: ") + kPortfolioClipNames[i]);
+		}
+	}
+	m_->PushLog("[OK] Portfolio clips resolved: " + std::to_string(showcase.resolvedClipCount) +
+		"/" + std::to_string(kPortfolioClipCount));
+
+	if (showcase.resolvedClipCount == 0)
+	{
+		m_->PushLog("[WARN] Portfolio showcase disabled: no VRM clips resolved");
 		return false;
-
-	// Read once, here, and never again: a capture run must not be able to change
-	// where its frames are published half way through. An unset variable leaves
-	// the path empty, which is what keeps the writer off for the projects that did
-	// not opt in.
-	backbuffer.requestedPath = ReadPortfolioBackbufferPathFromEnvironment();
-	if (!backbuffer.requestedPath.empty())
-	{
-		backbuffer.temporaryPath = backbuffer.requestedPath + L".tmp.png";
-		m_->PushLog("[OK] Portfolio backbuffer capture enabled");
-	}
-
-	const aiAnimation* danceClip = m_->m_ExternalAnimClips.Get("PortfolioDance");
-	const aiAnimation* upperWaveClip = m_->m_ExternalAnimClips.Get("PortfolioUpperWave");
-	if (!danceClip || !upperWaveClip)
-	{
-		showcase.fallbackToIdle = true;
-		m_->PushLog("[WARN] Portfolio showcase: original clips unavailable, falling back to Idle");
-	}
-	else
-	{
-		m_->PushLog("[OK] Portfolio showcase clips: PortfolioDance=" +
-			std::to_string(PortfolioClipDurationSec(danceClip)) + "s PortfolioUpperWave=" +
-			std::to_string(PortfolioClipDurationSec(upperWaveClip)) + "s");
 	}
 
 	// Slot order: player first, then the three existing enemy indices.
-	const std::array<int, 4> modelIndices = {
+	const std::array<int, kPortfolioSlotCount> modelIndices = {
 		m_->m_CharModelIndex,
 		m_->m_EnemyModelIndices[0],
 		m_->m_EnemyModelIndices[1],
 		m_->m_EnemyModelIndices[2]
 	};
-	const std::array<float, 4> phaseOffsets = { 0.0f, 0.17f, 0.31f, 0.46f };
+	const std::array<float, kPortfolioSlotCount> phaseOffsets = { 0.0f, 0.17f, 0.31f, 0.46f };
 
 	int readySlots = 0;
 	for (size_t i = 0; i < showcase.slots.size(); ++i)
@@ -346,7 +381,8 @@ bool App::InitializePortfolioShowcase()
 	showcase.initialized = readySlots > 0;
 	if (showcase.initialized)
 	{
-		m_->PushLog("[OK] Portfolio showcase initialized: slots=" + std::to_string(readySlots) + "/4");
+		m_->PushLog("[OK] Portfolio showcase initialized: slots=" + std::to_string(readySlots) +
+			"/" + std::to_string(kPortfolioSlotCount));
 	}
 	else
 	{
@@ -362,19 +398,18 @@ void App::ResetPortfolioShowcase()
 {
 	auto& showcase = m_->m_PortfolioShowcase;
 	showcase.timeSec = 0.0f;
-	showcase.phase = Impl::PortfolioShowcasePhase::Dance;
 	showcase.ikDebugValid = false;
 }
 
 // ---------------------------------------------------------------------------
-// Deterministic eight-second update. Returns true only while the showcase owns
-// the capture-mode character palettes; camera, rendering and input keep running
-// normally either way.
+// Per-frame update. Returns true while the showcase owns the character palettes,
+// which is every frame it is initialized; camera, rendering and input keep
+// running normally either way.
 // ---------------------------------------------------------------------------
 bool App::UpdatePortfolioShowcase(float dt)
 {
 	auto& showcase = m_->m_PortfolioShowcase;
-	if (!IsReadmeCaptureMode() || !showcase.initialized)
+	if (!showcase.initialized)
 		return false;
 
 	if (InputSystem::Instance &&
@@ -384,38 +419,6 @@ bool App::UpdatePortfolioShowcase(float dt)
 	}
 
 	showcase.timeSec += dt;
-	const float cycleTime = std::fmod(showcase.timeSec, kPortfolioCycleSec);
-
-	if (cycleTime < kPortfolioDanceEndSec)        showcase.phase = Impl::PortfolioShowcasePhase::Dance;
-	else if (cycleTime < kPortfolioBlendEndSec)   showcase.phase = Impl::PortfolioShowcasePhase::BlendLayer;
-	else if (cycleTime < kPortfolioIkEndSec)      showcase.phase = Impl::PortfolioShowcasePhase::Ik;
-	else                                          showcase.phase = Impl::PortfolioShowcasePhase::Finish;
-
-	const aiAnimation* idle = m_->m_ExternalAnimClips.Get("Idle");
-	const aiAnimation* walk = m_->m_ExternalAnimClips.Get("Walk");
-	const aiAnimation* dance = showcase.fallbackToIdle ? idle : m_->m_ExternalAnimClips.Get("PortfolioDance");
-	const aiAnimation* upperWave = showcase.fallbackToIdle ? nullptr : m_->m_ExternalAnimClips.Get("PortfolioUpperWave");
-	if (!dance)
-		dance = idle;
-	if (!walk)
-		walk = dance;
-
-	// Blend / layer / IK progress inside their own phase windows.
-	const bool blendFirstHalf = cycleTime < kPortfolioBlendMidSec;
-	const float blendHalfStart = blendFirstHalf ? kPortfolioDanceEndSec : kPortfolioBlendMidSec;
-	const float blendHalfLength = blendFirstHalf
-		? (kPortfolioBlendMidSec - kPortfolioDanceEndSec)
-		: (kPortfolioBlendEndSec - kPortfolioBlendMidSec);
-	const float localHalfTime = (blendHalfLength > 0.0f) ? ((cycleTime - blendHalfStart) / blendHalfLength) : 0.0f;
-	const float layer01 = (kPortfolioBlendEndSec > kPortfolioDanceEndSec)
-		? ((cycleTime - kPortfolioDanceEndSec) / (kPortfolioBlendEndSec - kPortfolioDanceEndSec))
-		: 0.0f;
-	const float ikTime = (kPortfolioIkEndSec > kPortfolioBlendEndSec)
-		? ((cycleTime - kPortfolioBlendEndSec) / (kPortfolioIkEndSec - kPortfolioBlendEndSec))
-		: 0.0f;
-	// Ease the IK weight in and out so the arm never snaps at a phase edge.
-	const float ikWeight = std::min(ikTime / 0.25f, (1.0f - ikTime) / 0.25f);
-
 	showcase.ikDebugValid = false;
 
 	for (size_t slotIndex = 0; slotIndex < showcase.slots.size(); ++slotIndex)
@@ -431,113 +434,29 @@ bool App::UpdatePortfolioShowcase(float dt)
 			continue;
 		auto& entry = *entryPtr;
 
-		const bool isMainSlot = (slotIndex == 0);
-		const float danceTime = showcase.timeSec + slot.phaseOffsetSec;
-		const float upperTime = danceTime;
+		// Placeholder assignment: one clip per slot, in order. Initialization
+		// already refused to run with resolvedClipCount == 0, so the modulus is
+		// safe.
+		const aiAnimation* clip = showcase.clips[slotIndex % (size_t)showcase.resolvedClipCount];
+		if (!clip)
+			continue;
+
+		const float clipTime = showcase.timeSec + slot.phaseOffsetSec;
 
 		CharacterAnimator::UpdateDesc desc{};
 		desc.dt = dt;
 		desc.base.enabled = true;
-		desc.base.animA = dance;
-		desc.base.animB = dance;
-		desc.base.timeA = desc.base.timeB = danceTime;
-
-		if (isMainSlot && showcase.phase == Impl::PortfolioShowcasePhase::BlendLayer)
-		{
-			// 3.0-4.1: Dance -> Walk, 4.1-5.2: Walk -> Dance.
-			desc.base.animA = blendFirstHalf ? dance : walk;
-			desc.base.animB = blendFirstHalf ? walk : dance;
-			desc.base.blend01 = PortfolioSmoothStep(localHalfTime);
-		}
-
-		if (isMainSlot && upperWave)
-		{
-			desc.upper.enabled = showcase.phase == Impl::PortfolioShowcasePhase::BlendLayer;
-			desc.upper.animA = upperWave;
-			desc.upper.animB = upperWave;
-			desc.upper.timeA = desc.upper.timeB = upperTime;
-			desc.upper.layerAlpha = std::sin(layer01 * XM_PI);
-		}
-
-		if (isMainSlot)
-		{
-			desc.ik.enabled = showcase.phase == Impl::PortfolioShowcasePhase::Ik;
-			desc.ik.tipBone = kPortfolioIkTipBone;
-			desc.ik.chainLen = 3;
-			desc.ik.targetMS = XMVectorSet(
-				-0.32f + 0.18f * std::cos(ikTime * XM_2PI),
-				1.08f + 0.16f * std::sin(ikTime * XM_2PI),
-				0.20f, 1.0f);
-			desc.ik.weight = PortfolioSmoothStep(ikWeight);
-			XMStoreFloat3(&showcase.ikTargetMS, desc.ik.targetMS);
-		}
+		desc.base.animA = clip;
+		desc.base.animB = clip;
+		desc.base.timeA = clipTime;
+		desc.base.timeB = clipTime;
+		desc.base.blend01 = 0.0f;
+		desc.base.layerAlpha = 1.0f;
 
 		slot.animator.Update(desc);
 
 		entry.fbxBaseAnimator.EnsureBoneCB(m_->m_pDevice, MAX_BONES);
 		entry.fbxBaseAnimator.UploadPalette(m_->m_pDeviceContext, slot.animator.finalTransforms);
-
-		if (isMainSlot && desc.ik.enabled)
-		{
-			// Recover the arm chain's node globals from the uploaded palette:
-			//   final = globalInverse * nodeGlobal * boneOffset
-			// so nodeGlobal = globalInverse^-1 * final * boneOffset^-1.
-			const auto& fbx = *entry.shared->fbx;
-			const auto& boneNames = fbx.GetBoneNames();
-			const auto& boneOffsets = fbx.GetBoneOffsets();
-			const auto& palette = slot.animator.finalTransforms;
-
-			const int shoulderIndex = FindPortfolioBoneIndex(boneNames, kPortfolioIkShoulderBone);
-			const int elbowIndex = FindPortfolioBoneIndex(boneNames, kPortfolioIkElbowBone);
-			const int handIndex = FindPortfolioBoneIndex(boneNames, kPortfolioIkTipBone);
-
-			XMMATRIX globalInverseInv{};
-			const bool globalInverseOk =
-				TryInvertPortfolioMatrix(XMLoadFloat4x4(&fbx.GetGlobalInverse()), globalInverseInv);
-
-			const XMMATRIX modelWorld = entry.GetWorldMatrix();
-			XMFLOAT3 resolved[3]{};
-			bool allResolved = globalInverseOk;
-			const int boneIndices[3] = { shoulderIndex, elbowIndex, handIndex };
-
-			for (int i = 0; i < 3 && allResolved; ++i)
-			{
-				const int boneIndex = boneIndices[i];
-				if (boneIndex < 0 ||
-					(size_t)boneIndex >= palette.size() ||
-					(size_t)boneIndex >= boneOffsets.size())
-				{
-					allResolved = false;
-					break;
-				}
-
-				XMMATRIX boneOffsetInv{};
-				if (!TryInvertPortfolioMatrix(XMLoadFloat4x4(&boneOffsets[(size_t)boneIndex]), boneOffsetInv))
-				{
-					allResolved = false;
-					break;
-				}
-
-				const XMMATRIX nodeGlobal = globalInverseInv * palette[(size_t)boneIndex] * boneOffsetInv;
-				if (!PortfolioMatrixIsFinite(nodeGlobal))
-				{
-					allResolved = false;
-					break;
-				}
-
-				XMStoreFloat3(&resolved[i], XMVector3TransformCoord(PortfolioNodeTranslation(nodeGlobal), modelWorld));
-			}
-
-			if (allResolved)
-			{
-				showcase.ikShoulderWS = resolved[0];
-				showcase.ikElbowWS = resolved[1];
-				showcase.ikHandWS = resolved[2];
-				XMStoreFloat3(&showcase.ikTargetWS,
-					XMVector3TransformCoord(XMLoadFloat3(&showcase.ikTargetMS), modelWorld));
-				showcase.ikDebugValid = true;
-			}
-		}
 	}
 
 	return true;
@@ -549,9 +468,7 @@ bool App::UpdatePortfolioShowcase(float dt)
 void App::RenderPortfolioShowcaseDebug()
 {
 	const auto& showcase = m_->m_PortfolioShowcase;
-	if (!IsReadmeCaptureMode() || !showcase.initialized || !showcase.ikDebugValid)
-		return;
-	if (showcase.phase != Impl::PortfolioShowcasePhase::Ik)
+	if (!showcase.initialized || !showcase.ikDebugValid)
 		return;
 	if (!m_->m_LineRenderer || !m_->m_pLineVS || !m_->m_pLineInputLayout)
 		return;
@@ -616,22 +533,14 @@ void App::RenderPortfolioShowcaseDebug()
 }
 
 // ---------------------------------------------------------------------------
-// Capture-mode HUD: the only ImGui surface Project 36 draws while capturing.
+// Showcase HUD: the only ImGui surface Project 36 draws.
 // ---------------------------------------------------------------------------
 void App::RenderPortfolioShowcaseHud()
 {
 	const auto& showcase = m_->m_PortfolioShowcase;
-	if (!IsReadmeCaptureMode())
+	// No showcase, no caption: the HUD only ever describes a cast that is running.
+	if (!showcase.initialized)
 		return;
-
-	const char* phaseLabel = kPortfolioHudPhaseDance;
-	switch (showcase.phase)
-	{
-	case Impl::PortfolioShowcasePhase::Dance:      phaseLabel = kPortfolioHudPhaseDance;  break;
-	case Impl::PortfolioShowcasePhase::BlendLayer: phaseLabel = kPortfolioHudPhaseBlend;  break;
-	case Impl::PortfolioShowcasePhase::Ik:         phaseLabel = kPortfolioHudPhaseIk;     break;
-	case Impl::PortfolioShowcasePhase::Finish:     phaseLabel = kPortfolioHudPhaseFinish; break;
-	}
 
 	// Fixed geometry and an opaque panel keep the captured frames deterministic.
 	ImGui::SetNextWindowPos(ImVec2(24.0f, 24.0f), ImGuiCond_Always);
@@ -654,7 +563,7 @@ void App::RenderPortfolioShowcaseHud()
 
 	if (ImGui::Begin("PortfolioShowcaseHud", nullptr, hudFlags))
 	{
-		ImGui::TextUnformatted(phaseLabel);
+		ImGui::TextUnformatted(kPortfolioHudTitleLine);
 		ImGui::Text(kPortfolioHudCastLineFormat, liveSlots);
 	}
 	ImGui::End();

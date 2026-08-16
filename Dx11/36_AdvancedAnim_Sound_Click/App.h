@@ -7,6 +7,7 @@
 #include <thread>
 
 class ID3D11Buffer;
+struct aiAnimation;
 
 class App : public GameApp
 {
@@ -72,10 +73,13 @@ private:
 	void UpdateEnemyIdleAnimations(float dt);
 	void StartPublicDemoAudioOnce();
 
-	// README capture-only portfolio showcase (see App_PortfolioShowcase.inl).
+	// Portfolio showcase (see App_PortfolioShowcase.inl).
 	bool InitializePortfolioShowcase();
 	void ResetPortfolioShowcase();
-	bool UpdatePortfolioShowcase(float dt); // true only while it owns the capture-mode character palettes
+	bool UpdatePortfolioShowcase(float dt); // true only while it owns the character palettes
+	// Resolves one showcase clip by name out of the loaded models' own animations;
+	// nullptr when no loaded model carries an animation of that name.
+	const aiAnimation* FindPortfolioClip(const std::string& name) const;
 	void RenderPortfolioShowcaseDebug();
 	void RenderPortfolioShowcaseHud();
 	// Publishes the finished swap-chain frame for the README capture tool. Called

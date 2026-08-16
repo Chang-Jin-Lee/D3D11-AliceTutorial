@@ -1,4 +1,4 @@
-# Observable-behavior test for the Project 36 capture-only portfolio showcase.
+# Observable-behavior test for the Project 36 portfolio showcase.
 #
 # This test launches the built executable and inspects the frames it actually
 # renders. It deliberately does NOT grep the C++ sources: source text asserts the
@@ -158,11 +158,17 @@ public class ShowcaseFrame {
   }
 
   // Splits the band [y0, y1) into fixed-width columns, marks a column as moving
-  // when enough of its pixels change across any pair of the supplied frames,
-  // then returns the number of separated clusters of moving columns.
-  public static int MovingColumnClusters(ShowcaseFrame[] frames, int y0, int y1,
+  // when enough of its pixels change across any pair of the supplied frames, then
+  // returns the pixel extent of every separated cluster of moving columns as
+  // [start0, endExclusive0, start1, endExclusive1, ...].
+  //
+  // The extents are what let a caller measure each character's own band instead of
+  // hard-coding where the composition happens to put it: a cluster IS one
+  // character's animated envelope, because a character hidden inside another's
+  // silhouette cannot contribute a separated cluster of its own.
+  public static int[] MovingColumnRanges(ShowcaseFrame[] frames, int y0, int y1,
       int columnWidth, int tolerance, double minChangedFraction, int minGapColumns) {
-    if (frames == null || frames.Length < 2) { return 0; }
+    if (frames == null || frames.Length < 2) { return new int[0]; }
     int width = frames[0].Width;
     int columns = width / columnWidth;
     bool[] moving = new bool[columns];
@@ -179,18 +185,80 @@ public class ShowcaseFrame {
       moving[c] = best >= minChangedFraction;
     }
 
-    int clusters = 0;
+    System.Collections.Generic.List<int> ranges = new System.Collections.Generic.List<int>();
     int gap = minGapColumns;
     for (int c = 0; c < columns; ++c) {
       if (moving[c]) {
-        if (gap >= minGapColumns) { ++clusters; }
+        if (gap >= minGapColumns) {
+          ranges.Add(c * columnWidth);
+          ranges.Add((c + 1) * columnWidth);
+        }
+        else {
+          ranges[ranges.Count - 1] = (c + 1) * columnWidth;
+        }
         gap = 0;
       }
       else {
         ++gap;
       }
     }
-    return clusters;
+    return ranges.ToArray();
+  }
+
+  // Number of separated clusters of moving columns in the band.
+  public static int MovingColumnClusters(ShowcaseFrame[] frames, int y0, int y1,
+      int columnWidth, int tolerance, double minChangedFraction, int minGapColumns) {
+    return MovingColumnRanges(frames, y0, y1, columnWidth, tolerance, minChangedFraction, minGapColumns).Length / 2;
+  }
+
+  // Per-cell motion inside a region: for each of cellsX*cellsY sub-rectangles, the
+  // fraction of its pixels whose luminance changed between the two frames. This
+  // describes how a region moved rather than what it looks like, so the profiles of
+  // two characters standing at different places in the frame are comparable.
+  public static double[] MotionProfile(ShowcaseFrame a, ShowcaseFrame b,
+      int x, int y, int w, int h, int cellsX, int cellsY, int tolerance) {
+    Require(a, x, y, w, h);
+    if (cellsX <= 0 || cellsY <= 0 || w < cellsX || h < cellsY) {
+      throw new ArgumentOutOfRangeException("cells", string.Format(
+        "a {0}x{1} region cannot be split into {2}x{3} cells", w, h, cellsX, cellsY));
+    }
+    double[] profile = new double[cellsX * cellsY];
+    for (int cy = 0; cy < cellsY; ++cy) {
+      int top = y + (int)((long)h * cy / cellsY);
+      int bottom = y + (int)((long)h * (cy + 1) / cellsY);
+      for (int cx = 0; cx < cellsX; ++cx) {
+        int left = x + (int)((long)w * cx / cellsX);
+        int right = x + (int)((long)w * (cx + 1) / cellsX);
+        profile[cy * cellsX + cx] = DiffRatio(a, b, left, top, right - left, bottom - top, tolerance);
+      }
+    }
+    return profile;
+  }
+
+  // Total-variation distance between two motion profiles: each is normalised to sum
+  // 1 and half the L1 difference is taken, giving 0.0 when the two regions spread
+  // their motion over exactly the same cells in the same proportions and 1.0 when
+  // they share no moving cell at all.
+  //
+  // Normalising is what makes the comparison about the motion rather than its size:
+  // a character nearer the camera sweeps more pixels than one further away, and that
+  // difference must not be mistaken for a difference in what they are doing. A
+  // region that did not move at all normalises to zeros, so two frozen regions score
+  // 0.0 and a frozen region against a moving one scores 0.5.
+  public static double MotionShapeDistance(double[] profileA, double[] profileB) {
+    if (profileA == null || profileB == null || profileA.Length != profileB.Length) {
+      throw new ArgumentException("motion profiles must be the same length");
+    }
+    double totalA = 0.0;
+    double totalB = 0.0;
+    for (int i = 0; i < profileA.Length; ++i) { totalA += profileA[i]; totalB += profileB[i]; }
+    double sum = 0.0;
+    for (int i = 0; i < profileA.Length; ++i) {
+      double a = (totalA > 0.0) ? profileA[i] / totalA : 0.0;
+      double b = (totalB > 0.0) ? profileB[i] / totalB : 0.0;
+      sum += Math.Abs(a - b);
+    }
+    return sum / 2.0;
   }
 }
 "@
@@ -215,11 +283,14 @@ $exePath = Join-Path $runtimeDir ([string]$project36.exe)
 $projectDir = Join-Path $repoRoot 'Dx11/36_AdvancedAnim_Sound_Click'
 $msbuildCommand = "& 'C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\amd64\MSBuild.exe' 'Dx11\36_AdvancedAnim_Sound_Click\36_AdvancedAnim_Sound_Click.vcxproj' /t:Rebuild /p:Configuration=Debug /p:Platform=x64 /m:1"
 
-# The eight-second showcase cycle, as the runtime defines it.
-$phaseDanceSampleA = 1.0
-$phaseDanceSampleB = 2.3
-$phaseBlendSample = 4.0
-$phaseIkSample = 6.3
+# Showcase sampling schedule, in seconds after the scene goes live. The first two
+# are the motion pair: every band is compared against itself across exactly this
+# interval, so the four measurements describe the same half second of the show.
+$slotSampleA = 0.6
+$slotSampleB = 1.1
+$driftSampleA = 2.6
+$driftSampleB = 3.1
+$slotSampleGapSec = $slotSampleB - $slotSampleA
 
 # The HUD is a fixed-geometry window anchored at client (24,24).
 $hudX = 28
@@ -227,22 +298,26 @@ $hudY = 28
 $hudW = 312
 $hudH = 56
 
-# Second HUD line ("4 CHARACTERS / LIVE PALETTES") is phase invariant, so it is
-# the sharpest capture-gate probe: identical in every capture frame, and a leak
-# into normal mode would reproduce it pixel for pixel.
-$castX = 28
-$castY = 52
-$castW = 290
-$castH = 18
-$pixelTolerance = 12
+# Band 260-500 is the torso/arm span shared by all four slots (the nearest head is
+# at row ~134 and the farthest feet at row ~653). The composition spaces the four
+# animated envelopes ~140 px apart, which is 7 empty 20 px columns, so
+# minGapColumns = 4 carries real margin: three boundary columns would have to flip
+# at once before two clusters could merge.
+$bandTop = 260
+$bandBottom = 500
+$bandColumnWidth = 20
+$bandTolerance = 24
+$bandMovingFraction = 0.10
+$bandMinGapColumns = 4
 
-# Region around the lead character alone. With the capture composition its animated
-# envelope spans x 750..1109 and its IK target cross sits near x 710, while the
-# neighbouring silhouettes end at x 610 and start at x 1249.
-$ikProbeX = 640
-$ikProbeY = 150
-$ikProbeW = 490
-$ikProbeH = 410
+# Each band's half second of motion is described by a 6x6 grid of changed-pixel
+# fractions, normalised so only its shape is compared (see MotionShapeDistance).
+# Two bands count as showing different motion when at least a fifth of that motion
+# lands in different cells. Four characters driven by one clip in lock-step land at
+# 0.0; four different clips separate far above the threshold.
+$slotMotionCellsX = 6
+$slotMotionCellsY = 6
+$slotMotionShapeThreshold = 0.20
 
 # ---------------------------------------------------------------------------
 # 1. The built binary must exist and must be newer than the sources it is built
@@ -621,28 +696,27 @@ New-Item -ItemType Directory -Path $frameDir -Force | Out-Null
 # below: no path is handed to that process at all, so a directory it was never
 # told about could only ever be empty, whatever the implementation did.
 $backbufferDir = Join-Path $frameDir 'backbuffer-capture'
-$normalBackbufferDir = Join-Path $frameDir 'backbuffer-normal'
-New-Item -ItemType Directory -Path $backbufferDir, $normalBackbufferDir -Force | Out-Null
+$plainBackbufferDir = Join-Path $frameDir 'backbuffer-plain'
+New-Item -ItemType Directory -Path $backbufferDir, $plainBackbufferDir -Force | Out-Null
 $backbufferPath = Join-Path $backbufferDir 'project36-backbuffer.png'
 $backbufferTempPath = $backbufferPath + '.tmp.png'
-$normalBackbufferPath = Join-Path $normalBackbufferDir 'project36-normal.png'
+$plainBackbufferPath = Join-Path $plainBackbufferDir 'project36-plain.png'
 
 $previousCaptureEnv = $env:DX11_README_CAPTURE
 $previousBackbufferEnv = $env:DX11_README_BACKBUFFER_PNG
+$showcaseProcess = $null
 $captureProcess = $null
-$normalProcess = $null
 $gateProcess = $null
+$showcaseHandle = [IntPtr]::Zero
 $captureHandle = [IntPtr]::Zero
-$normalHandle = [IntPtr]::Zero
 $gateHandle = [IntPtr]::Zero
 
-# Every editor panel positions itself with ImGuiCond_FirstUseEver, so where they
-# actually land comes from Dx11/bin/imgui.ini - untracked, gitignored, and rewritten
-# whenever a developer drags a window. The normal-mode assertions below measure a
-# fixed client rectangle, so they would drift with that unversioned local state.
-# Set the run aside from it: stash the file in memory for the duration of the test
-# so both processes start from the layout the C++ source actually specifies, then
-# put the developer's file back exactly as it was.
+# ImGui windows remember their geometry in Dx11/bin/imgui.ini - untracked,
+# gitignored, and rewritten whenever a developer drags a window. The assertions
+# below measure fixed client rectangles, so they would drift with that unversioned
+# local state. Set the run aside from it: stash the file in memory for the duration
+# of the test so every process starts from the layout the C++ source actually
+# specifies, then put the developer's file back exactly as it was.
 $imguiIniPath = Join-Path $runtimeDir 'imgui.ini'
 $imguiIniExisted = Test-Path -LiteralPath $imguiIniPath -PathType Leaf
 $imguiIniBytes = $null
@@ -657,7 +731,138 @@ else {
 
 try {
     # -----------------------------------------------------------------------
-    # 3. Capture-mode run: showcase HUD plus the deterministic phase cycle.
+    # 3. Plain launch: no DX11_README_CAPTURE, no capture tooling of any kind.
+    #    This is what a reader who double-clicks the executable sees, and it must
+    #    be the showcase: the HUD, and four characters each running their own
+    #    clip.
+    #
+    #    DX11_README_BACKBUFFER_PNG is deliberately set here to a valid, writable
+    #    path. The backbuffer writer is gated on README capture mode AND the
+    #    variable, so with capture mode off it must stay silent even though the
+    #    variable names somewhere it could publish.
+    # -----------------------------------------------------------------------
+    Remove-Item Env:\DX11_README_CAPTURE -ErrorAction SilentlyContinue
+    $env:DX11_README_BACKBUFFER_PNG = $plainBackbufferPath
+    $showcaseProcess = Start-Process -FilePath $exePath -WorkingDirectory $runtimeDir -PassThru
+    if ($null -eq $previousCaptureEnv) { Remove-Item Env:\DX11_README_CAPTURE -ErrorAction SilentlyContinue }
+    else { $env:DX11_README_CAPTURE = $previousCaptureEnv }
+    if ($null -eq $previousBackbufferEnv) { Remove-Item Env:\DX11_README_BACKBUFFER_PNG -ErrorAction SilentlyContinue }
+    else { $env:DX11_README_BACKBUFFER_PNG = $previousBackbufferEnv }
+
+    $showcaseWindow = Wait-ShowcaseWindow -Process $showcaseProcess
+    $showcaseHandle = $showcaseWindow.Handle
+    Set-ShowcaseClientSize -Handle $showcaseHandle -Width $clientWidth -Height $clientHeight
+    Set-ShowcaseTopmost -Handle $showcaseHandle
+    Start-Sleep -Milliseconds 400
+    # Outside capture mode the loading screen waits for a click before the scene
+    # starts, exactly as it always has; that gate is not the showcase's.
+    Wait-ShowcaseScene -Process $showcaseProcess -Handle $showcaseHandle -Width $clientWidth -Height $clientHeight `
+        -ProbePath (Join-Path $frameDir 'showcase-probe.png') -ClickToStart
+
+    $showcaseClock = [System.Diagnostics.Stopwatch]::StartNew()
+    $samples = [ordered]@{}
+    foreach ($sample in @(
+            @{ Name = 'slot-a'; At = $slotSampleA },
+            @{ Name = 'slot-b'; At = $slotSampleB },
+            @{ Name = 'drift-a'; At = $driftSampleA },
+            @{ Name = 'drift-b'; At = $driftSampleB })) {
+        $waitMs = [int](($sample.At * 1000.0) - $showcaseClock.Elapsed.TotalMilliseconds)
+        if ($waitMs -gt 0) { Start-Sleep -Milliseconds $waitMs }
+        $samples[$sample.Name] = Save-ShowcaseFrame -Handle $showcaseHandle -Width $clientWidth -Height $clientHeight `
+            -Path (Join-Path $frameDir "showcase-$($sample.Name).png")
+    }
+    $showcaseClock.Stop()
+
+    $showcaseProcess.Refresh()
+    Assert-True (-not $showcaseProcess.HasExited) 'a plain launch is still running after the sampled showcase seconds'
+    Assert-True ($showcaseProcess.Responding) 'a plain launch stays responsive while the showcase drives four palettes'
+    Assert-True ($showcaseProcess.MainWindowHandle -ne [IntPtr]::Zero) 'a plain launch owns a visible main window'
+
+    $slotA = $samples['slot-a']
+    $slotB = $samples['slot-b']
+    $driftA = $samples['drift-a']
+    $driftB = $samples['drift-b']
+
+    # The HUD is light text on an opaque dark panel: without it this region is
+    # scene background and carries almost no near-white pixels.
+    $hudBright = [ShowcaseFrame]::BrightRatio($slotA, $hudX, $hudY, $hudW, $hudH, 200)
+    Assert-True ($hudBright -ge 0.01) `
+        "a plain launch renders the showcase HUD at client (24,24) (bright pixel ratio $([Math]::Round($hudBright,4)), need >= 0.0100)"
+
+    # Separated moving column clusters prove that four characters are live rather
+    # than one animating while the rest are frozen - and, because a character
+    # hidden inside another's silhouette cannot contribute its own cluster, that
+    # all four are separated.
+    $frames = @($slotA, $slotB, $driftA, $driftB)
+    $clusters = [ShowcaseFrame]::MovingColumnClusters($frames, $bandTop, $bandBottom,
+        $bandColumnWidth, $bandTolerance, $bandMovingFraction, $bandMinGapColumns)
+    Assert-True ($clusters -ge 4) `
+        "four separated character regions animate independently (found $clusters, need >= 4)"
+
+    # Same four characters, now asked what they are each doing. Every band is
+    # profiled across the SAME half second - slot-a to slot-b - so the only thing
+    # that can separate two bands is the motion itself, and the profiles are
+    # normalised so a nearer character's larger sweep cannot pass for a different
+    # clip. Four slots fed one clip in lock-step would produce one shape and score
+    # 0; four different clips score all six pairs.
+    $slotBands = @()
+    $slotBandRanges = [ShowcaseFrame]::MovingColumnRanges($frames, $bandTop, $bandBottom,
+        $bandColumnWidth, $bandTolerance, $bandMovingFraction, $bandMinGapColumns)
+    for ($rangeIndex = 0; $rangeIndex -lt $slotBandRanges.Length; $rangeIndex += 2) {
+        $slotBands += [pscustomobject]@{
+            X     = $slotBandRanges[$rangeIndex]
+            Width = $slotBandRanges[$rangeIndex + 1] - $slotBandRanges[$rangeIndex]
+        }
+    }
+    # Widest four, left to right: if the scene ever produced a spurious fifth
+    # cluster, the four character envelopes are the substantial ones.
+    $slotBands = @($slotBands | Sort-Object -Property Width -Descending | Select-Object -First 4 | Sort-Object -Property X)
+
+    $slotPairsDiffering = 0
+    $slotPairReport = @()
+    if ($slotBands.Count -eq 4) {
+        $slotProfiles = New-Object 'System.Collections.Generic.List[double[]]'
+        foreach ($slotBand in $slotBands) {
+            $slotProfiles.Add([ShowcaseFrame]::MotionProfile($slotA, $slotB,
+                    $slotBand.X, $bandTop, $slotBand.Width, ($bandBottom - $bandTop),
+                    $slotMotionCellsX, $slotMotionCellsY, $bandTolerance))
+        }
+        for ($left = 0; $left -lt $slotBands.Count; ++$left) {
+            for ($right = $left + 1; $right -lt $slotBands.Count; ++$right) {
+                $shapeDistance = [ShowcaseFrame]::MotionShapeDistance($slotProfiles[$left], $slotProfiles[$right])
+                $slotPairReport += ('{0}-{1}:{2}' -f $left, $right, [Math]::Round($shapeDistance, 3))
+                if ($shapeDistance -ge $slotMotionShapeThreshold) { ++$slotPairsDiffering }
+            }
+        }
+    }
+    else {
+        $slotPairReport += "only $($slotBands.Count) character bands were separable"
+    }
+
+    Assert-True ($slotPairsDiffering -eq 6) `
+        "all four characters show different motion (differing slot pairs $slotPairsDiffering of 6; over $slotSampleGapSec s, shape distances $($slotPairReport -join ' ') vs threshold $slotMotionShapeThreshold)"
+
+    Assert-True (@(Get-ChildItem -LiteralPath $plainBackbufferDir -File -ErrorAction SilentlyContinue).Count -eq 0) `
+        'with README capture mode off the backbuffer writer stays silent even though DX11_README_BACKBUFFER_PNG names a writable path'
+
+    Reset-ShowcaseTopmost -Handle $showcaseHandle
+    Stop-ShowcaseProcess -Process $showcaseProcess
+
+    # -----------------------------------------------------------------------
+    # 4. Opt-in backbuffer publication, which needs README capture mode AND
+    #    DX11_README_BACKBUFFER_PNG, so it gets its own run with both set. The
+    #    capture tool must be able to take the true rendered frame out of the swap
+    #    chain instead of screen-scraping the window, so the running application
+    #    has to keep a complete 1600x900 PNG at exactly the path the variable
+    #    named.
+    #
+    #    The polling loop below observes the file while the application keeps
+    #    rewriting it. Publication through a temporary sibling plus an atomic
+    #    replace is the only way every one of those observations can be either
+    #    "absent" or "fully decodable": a writer that encoded straight into the
+    #    published path would be caught mid-write as a truncated or unreadable
+    #    file, and the file is rewritten ~12 times a second, so a torn write has
+    #    dozens of chances to be seen.
     # -----------------------------------------------------------------------
     $env:DX11_README_CAPTURE = '1'
     $env:DX11_README_BACKBUFFER_PNG = $backbufferPath
@@ -675,110 +880,9 @@ try {
     Wait-ShowcaseScene -Process $captureProcess -Handle $captureHandle -Width $clientWidth -Height $clientHeight `
         -ProbePath (Join-Path $frameDir 'capture-probe.png')
 
-    # Frame-zero reset click, exactly as tools/readme_media_manifest.json schedules it.
-    Send-ShowcaseClick -Handle $captureHandle -ClientX ([int]($clientWidth / 2)) -ClientY ([int]($clientHeight / 2))
-    $cycleClock = [System.Diagnostics.Stopwatch]::StartNew()
-
-    $samples = [ordered]@{}
-    foreach ($sample in @(
-            @{ Name = 'dance-a'; At = $phaseDanceSampleA },
-            @{ Name = 'dance-b'; At = $phaseDanceSampleB },
-            @{ Name = 'blend'; At = $phaseBlendSample },
-            @{ Name = 'ik'; At = $phaseIkSample })) {
-        $waitMs = [int](($sample.At * 1000.0) - $cycleClock.Elapsed.TotalMilliseconds)
-        if ($waitMs -gt 0) { Start-Sleep -Milliseconds $waitMs }
-        $samples[$sample.Name] = Save-ShowcaseFrame -Handle $captureHandle -Width $clientWidth -Height $clientHeight `
-            -Path (Join-Path $frameDir "capture-$($sample.Name).png")
-    }
-    $cycleClock.Stop()
-
     $captureProcess.Refresh()
-    Assert-True (-not $captureProcess.HasExited) 'capture-mode process is still running after the eight-second cycle'
-    Assert-True ($captureProcess.Responding) 'capture-mode process stays responsive while the showcase drives four palettes'
-    Assert-True ($captureProcess.MainWindowHandle -ne [IntPtr]::Zero) 'capture-mode process owns a visible main window'
+    Assert-True (-not $captureProcess.HasExited) 'capture-mode process reaches the live scene without a click'
 
-    $danceA = $samples['dance-a']
-    $danceB = $samples['dance-b']
-    $blend = $samples['blend']
-    $ik = $samples['ik']
-
-    # The HUD is light text on an opaque dark panel: without it this region is
-    # scene background and carries almost no near-white pixels.
-    $hudBright = [ShowcaseFrame]::BrightRatio($danceA, $hudX, $hudY, $hudW, $hudH, 200)
-    Assert-True ($hudBright -ge 0.01) `
-        ("capture mode renders showcase HUD text at client (24,24) (bright pixel ratio {0:N4}, need >= 0.0100)" -f $hudBright)
-
-    # The cast line never changes, so it must be pixel stable across the whole
-    # cycle. This is what makes the normal-mode comparison below conclusive.
-    $castStableAcrossPhases = @(
-        [ShowcaseFrame]::DiffRatio($danceA, $blend, $castX, $castY, $castW, $castH, $pixelTolerance),
-        [ShowcaseFrame]::DiffRatio($danceA, $ik, $castX, $castY, $castW, $castH, $pixelTolerance)
-    ) | Measure-Object -Maximum | Select-Object -ExpandProperty Maximum
-    Assert-True ($castStableAcrossPhases -le 0.005) `
-        ("the '4 CHARACTERS / LIVE PALETTES' line is pixel stable across phases (max diff {0:N4}, need <= 0.0050)" -f $castStableAcrossPhases)
-
-    # Distinct phase labels rasterise to distinct pixels.
-    $hudDanceVsBlend = [ShowcaseFrame]::DiffRatio($danceA, $blend, $hudX, $hudY, $hudW, $hudH, 40)
-    $hudDanceVsIk = [ShowcaseFrame]::DiffRatio($danceA, $ik, $hudX, $hudY, $hudW, $hudH, 40)
-    $hudBlendVsIk = [ShowcaseFrame]::DiffRatio($blend, $ik, $hudX, $hudY, $hudW, $hudH, 40)
-    Assert-True ($hudDanceVsBlend -ge 0.02) `
-        ("Dance and BlendLayer phases show different HUD content (diff {0:N4}, need >= 0.0200)" -f $hudDanceVsBlend)
-    Assert-True ($hudDanceVsIk -ge 0.02) `
-        ("Dance and IK phases show different HUD content (diff {0:N4}, need >= 0.0200)" -f $hudDanceVsIk)
-    Assert-True ($hudBlendVsIk -ge 0.02) `
-        ("BlendLayer and IK phases show different HUD content (diff {0:N4}, need >= 0.0200)" -f $hudBlendVsIk)
-
-    # Two samples inside the same phase: the characters must still be moving.
-    $characterBandTop = 200
-    $characterBandHeight = $clientHeight - 260
-    $sameDanceMotion = [ShowcaseFrame]::DiffRatio($danceA, $danceB, 0, $characterBandTop, $clientWidth, $characterBandHeight, 24)
-    Assert-True ($sameDanceMotion -ge 0.005) `
-        ("characters keep animating inside a single phase (diff {0:N4}, need >= 0.0050)" -f $sameDanceMotion)
-
-    # The slots run with distinct time offsets, so separated moving column
-    # clusters prove that four characters are live rather than one animating while
-    # the rest are frozen - and, because a character hidden inside another's
-    # silhouette cannot contribute its own cluster, that all four are separated.
-    #
-    # Band 260-500 is the torso/arm span shared by all four slots (the nearest head
-    # is at row ~134 and the farthest feet at row ~653). The composition spaces the
-    # four animated envelopes ~140 px apart, which is 7 empty 20 px columns, so
-    # minGapColumns = 4 carries real margin: three boundary columns would have to
-    # flip at once before two clusters could merge.
-    $frames = @($danceA, $danceB, $blend, $ik)
-    $clusters = [ShowcaseFrame]::MovingColumnClusters($frames, 260, 500, 20, 24, 0.10, 4)
-    Assert-True ($clusters -ge 4) `
-        ("four separated character regions animate independently (found $clusters, need >= 4)")
-
-    # CCD IK contract, verified through rendered output rather than a HUD label.
-    # RenderPortfolioShowcaseDebug emits the yellow hand-to-target reach line only
-    # when the IK phase is active AND ikDebugValid is set, and ikDebugValid requires
-    # the tip bone 'J_Bip_L_Hand' together with 'J_Bip_L_LowerArm' and
-    # 'J_Bip_L_UpperArm' - the chainLen = 3 chain - to resolve out of the uploaded
-    # palette. Rename or lose any of those three and this collapses to the Dance
-    # baseline of zero. (The green chain segments themselves are drawn inside the
-    # arm mesh and are occluded; the reach line and target cross are what a viewer
-    # actually sees, so they are what the test measures.)
-    $ikYellow = [ShowcaseFrame]::YellowDominantCount($ik, $ikProbeX, $ikProbeY, $ikProbeW, $ikProbeH, 60)
-    $danceYellow = [ShowcaseFrame]::YellowDominantCount($danceA, $ikProbeX, $ikProbeY, $ikProbeW, $ikProbeH, 60)
-    $blendYellow = [ShowcaseFrame]::YellowDominantCount($blend, $ikProbeX, $ikProbeY, $ikProbeW, $ikProbeH, 60)
-    Assert-True ($ikYellow -ge 40 -and $ikYellow -ge (([Math]::Max($danceYellow, $blendYellow)) * 4 + 20)) `
-        ("the IK phase draws its solved left-hand chain over the lead character and no other phase does (yellow pixels ik $ikYellow vs dance $danceYellow / blend $blendYellow, need >= 40 and >= 4x+20)")
-
-    # -----------------------------------------------------------------------
-    # 4. Opt-in backbuffer publication. The capture tool must be able to take the
-    #    true rendered frame out of the swap chain instead of screen-scraping the
-    #    window, so the running application has to keep a complete 1600x900 PNG
-    #    at exactly the path DX11_README_BACKBUFFER_PNG named.
-    #
-    #    The polling loop below observes the file while the application keeps
-    #    rewriting it. Publication through a temporary sibling plus an atomic
-    #    replace is the only way every one of those observations can be either
-    #    "absent" or "fully decodable": a writer that encoded straight into the
-    #    published path would be caught mid-write as a truncated or unreadable
-    #    file, and the file is rewritten ~12 times a second, so a torn write has
-    #    dozens of chances to be seen.
-    # -----------------------------------------------------------------------
     $backbufferObservations = 0
     $backbufferComplete = 0
     $backbufferAbsent = 0
@@ -840,54 +944,7 @@ try {
         ("the atomic publication temporary leaves nothing behind after the process exits (clean shutdown: $captureClosedCleanly)")
 
     # -----------------------------------------------------------------------
-    # 5. Normal (non-capture) run: the showcase must be completely inert.
-    #    DX11_README_BACKBUFFER_PNG is deliberately set here: the writer is gated
-    #    on capture mode AND the variable, so with capture mode off it must stay
-    #    silent even though the variable names a valid, writable path.
-    # -----------------------------------------------------------------------
-    Remove-Item Env:\DX11_README_CAPTURE -ErrorAction SilentlyContinue
-    $env:DX11_README_BACKBUFFER_PNG = $normalBackbufferPath
-    $normalProcess = Start-Process -FilePath $exePath -WorkingDirectory $runtimeDir -PassThru
-    if ($null -eq $previousBackbufferEnv) { Remove-Item Env:\DX11_README_BACKBUFFER_PNG -ErrorAction SilentlyContinue }
-    else { $env:DX11_README_BACKBUFFER_PNG = $previousBackbufferEnv }
-    $normalWindow = Wait-ShowcaseWindow -Process $normalProcess
-    $normalHandle = $normalWindow.Handle
-    Set-ShowcaseClientSize -Handle $normalHandle -Width $clientWidth -Height $clientHeight
-    Set-ShowcaseTopmost -Handle $normalHandle
-    Start-Sleep -Milliseconds 400
-    Wait-ShowcaseScene -Process $normalProcess -Handle $normalHandle -Width $clientWidth -Height $clientHeight `
-        -ProbePath (Join-Path $frameDir 'normal-probe.png') -ClickToStart
-    Start-Sleep -Milliseconds 1200
-    $normalFrame = Save-ShowcaseFrame -Handle $normalHandle -Width $clientWidth -Height $clientHeight `
-        -Path (Join-Path $frameDir 'normal.png')
-
-    $normalProcess.Refresh()
-    Assert-True (-not $normalProcess.HasExited) 'normal-mode process is still running'
-    Assert-True ($normalProcess.Responding) 'normal-mode process stays responsive'
-    Assert-True ($normalProcess.MainWindowHandle -ne [IntPtr]::Zero) 'normal-mode process owns a visible main window'
-
-    # If the showcase HUD leaked outside capture mode, its fixed-geometry opaque
-    # panel would land on exactly these pixels and reproduce the phase-invariant
-    # cast line, driving this diff to the 0.0000 measured above. What normal mode
-    # paints there instead is the "Controls" panel, whose ImGuiCond_FirstUseEver
-    # rectangle (10,20)-(310,380) covers this region; the imgui.ini stash above is
-    # what makes that placement come from the sources rather than from local state.
-    $hudLeak = [ShowcaseFrame]::DiffRatio($danceA, $normalFrame, $castX, $castY, $castW, $castH, $pixelTolerance)
-    Assert-True ($hudLeak -ge 0.10) `
-        ("normal mode shows the editor UI, not the showcase HUD, at client (24,24) (diff {0:N4}, need >= 0.1000)" -f $hudLeak)
-
-    $normalContent = [ShowcaseFrame]::BrightRatio($normalFrame, $hudX, $hudY, $hudW, $hudH, 60)
-    Assert-True ($normalContent -ge 0.05) `
-        ("normal mode still draws its own UI in that region (lit pixel ratio {0:N4}, need >= 0.0500)" -f $normalContent)
-
-    Assert-True (@(Get-ChildItem -LiteralPath $normalBackbufferDir -File -ErrorAction SilentlyContinue).Count -eq 0) `
-        'with README capture mode off the backbuffer writer stays silent even though DX11_README_BACKBUFFER_PNG names a writable path'
-
-    Reset-ShowcaseTopmost -Handle $normalHandle
-    Stop-ShowcaseProcess -Process $normalProcess
-
-    # -----------------------------------------------------------------------
-    # 6. The other half of the opt-in gate: capture mode on, no
+    # 5. The other half of the opt-in gate: capture mode on, no
     #    DX11_README_BACKBUFFER_PNG. This is how the other 36 projects run, and
     #    the writer must publish nothing at all. With no path named, the only
     #    place a publication could land is beside the executable under some
@@ -927,17 +984,17 @@ try {
         ("capture mode without DX11_README_BACKBUFFER_PNG writes no implied default PNG beside the executable (new files: $($newRuntimePngs -join ', '))")
 }
 finally {
+    Reset-ShowcaseTopmost -Handle $showcaseHandle
     Reset-ShowcaseTopmost -Handle $captureHandle
-    Reset-ShowcaseTopmost -Handle $normalHandle
     Reset-ShowcaseTopmost -Handle $gateHandle
+    Stop-ShowcaseProcess -Process $showcaseProcess
     Stop-ShowcaseProcess -Process $captureProcess
-    Stop-ShowcaseProcess -Process $normalProcess
     Stop-ShowcaseProcess -Process $gateProcess
     if ($null -eq $previousCaptureEnv) { Remove-Item Env:\DX11_README_CAPTURE -ErrorAction SilentlyContinue }
     else { $env:DX11_README_CAPTURE = $previousCaptureEnv }
     if ($null -eq $previousBackbufferEnv) { Remove-Item Env:\DX11_README_BACKBUFFER_PNG -ErrorAction SilentlyContinue }
     else { $env:DX11_README_BACKBUFFER_PNG = $previousBackbufferEnv }
-    # Both processes are down, so whatever ini they wrote is final. Discard it and
+    # Every process is down, so whatever ini they wrote is final. Discard it and
     # restore the developer's panel layout byte for byte.
     if (Test-Path -LiteralPath $imguiIniPath -PathType Leaf) {
         Remove-Item -LiteralPath $imguiIniPath -Force -ErrorAction SilentlyContinue

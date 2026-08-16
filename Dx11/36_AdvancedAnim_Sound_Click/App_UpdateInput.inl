@@ -296,19 +296,15 @@ void App::OnUpdate(const float& dt) {
 		XMFLOAT3 sceneCenter = { 0.0f, 0.0f, 0.0f };
 		int sceneModelCount = 0;
 
-		// README capture mode: the portfolio showcase owns the four character
-		// palettes. Everything else (camera, shadows, rendering, input) keeps
-		// running so the window stays responsive during the eight-second capture.
+		// The portfolio showcase owns the four character palettes. Everything else
+		// (camera, shadows, rendering, input) keeps running so the window stays
+		// responsive.
 		const bool showcaseOwnsPalettes = UpdatePortfolioShowcase(dt);
 
 		// ===================== AdvancedRig: player animation and optional socket attachment =====================
 		// - This block handles the player model separately from the shared-data update path.
 		// - The general loop below skips the player model's default FbxAnimation::UpdateAndUpload.
-		// `!showcaseOwnsPalettes` is defence in depth, not load-bearing: capture mode
-		// already forces m_UseAdvancedRig = false in App_Lifecycle.inl, so this branch
-		// cannot run while the showcase owns the palettes. It stays so that removing
-		// that one line cannot silently give two owners to the same bone buffers.
-		if (!showcaseOwnsPalettes && m_->m_UseAdvancedRig && m_->m_CharRigInited) {
+		if (m_->m_UseAdvancedRig && m_->m_CharRigInited) {
 			const int ci = m_->m_CharModelIndex;
 			const int wi = m_->m_WeaponModelIndex;
 			if (ci < 0 || ci >= (int)m_->m_Models.size()) {

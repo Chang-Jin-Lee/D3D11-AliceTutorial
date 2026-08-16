@@ -675,12 +675,9 @@ struct App::Impl {
 	bool m_PublicDemoBgmLoaded = false;
 	bool m_EnemyIdleAuraLoaded = false;
 
-	// ===================== README capture portfolio showcase =====================
-	// Capture-only runtime: drives four public MyAlice characters through a
-	// deterministic eight-second Dance -> Blend/Layer -> CCD IK cycle so the
-	// README GIF always shows the same animation feature tour.
-	enum class PortfolioShowcasePhase { Dance, BlendLayer, Ik, Finish };
-
+	// ===================== Portfolio showcase =====================
+	// Drives four public MyAlice characters from the VRM_* clips embedded in the
+	// player model, so Project 36 opens on its animation feature tour.
 	struct PortfolioAnimatorSlot
 	{
 		int modelIndex = -1;
@@ -692,9 +689,11 @@ struct App::Impl {
 	struct PortfolioShowcaseRuntime
 	{
 		bool initialized = false;
-		bool fallbackToIdle = false;
 		float timeSec = 0.0f;
-		PortfolioShowcasePhase phase = PortfolioShowcasePhase::Dance;
+		// Resolved by name from the player model's scene, in kPortfolioClipNames
+		// order; a slot that could not be resolved stays null.
+		std::array<const aiAnimation*, 7> clips{};
+		int resolvedClipCount = 0;
 		std::array<PortfolioAnimatorSlot, 4> slots{};
 		DirectX::XMFLOAT3 ikTargetMS{ -0.35f, 1.15f, 0.18f };
 		DirectX::XMFLOAT3 ikShoulderWS{};
