@@ -690,10 +690,16 @@ struct App::Impl {
 	{
 		bool initialized = false;
 		float timeSec = 0.0f;
-		// Resolved by name from the player model's scene, in kPortfolioClipNames
-		// order; a slot that could not be resolved stays null.
-		std::array<const aiAnimation*, 7> clips{};
-		int resolvedClipCount = 0;
+		// Resolved by name from the player model's scene, and COMPACTED: only the
+		// clips that actually resolved are stored, in kPortfolioClipNames order.
+		// clips.size() is therefore both the number resolved and the index space the
+		// slot loop wraps around. A sparse table indexed by a count of its non-null
+		// entries would hand every slot a null clip - and freeze the whole cast - the
+		// moment one leading name failed to resolve.
+		std::vector<const aiAnimation*> clips;
+		// clipNames[i] is the name clips[i] answered to. Kept so the HUD and the
+		// diagnostics can name what is actually playing rather than what was asked for.
+		std::vector<std::string> clipNames;
 		std::array<PortfolioAnimatorSlot, 4> slots{};
 		DirectX::XMFLOAT3 ikTargetMS{ -0.35f, 1.15f, 0.18f };
 		DirectX::XMFLOAT3 ikShoulderWS{};

@@ -19,9 +19,13 @@ namespace
 
 	// The showcase clips, in the order they were authored. Animation 0 of
 	// SampleModel.glb is a 0.042 s T-Pose and is deliberately not among them.
-	const char* const kPortfolioClipNames[kPortfolioClipCount] = {
+	// Declared without an explicit extent so kPortfolioClipCount can be checked
+	// against it (see the static_asserts in InitializePortfolioShowcase).
+	const char* const kPortfolioClipNames[] = {
 		"VRM_1", "VRM_2", "VRM_3", "VRM_4", "VRM_5", "VRM_6", "VRM_7"
 	};
+	constexpr size_t kPortfolioClipNameCount =
+		sizeof(kPortfolioClipNames) / sizeof(kPortfolioClipNames[0]);
 
 	// The CCD IK evidence path: the chain RenderPortfolioShowcaseDebug() draws, and
 	// the helpers below that recover it from the uploaded palette. The chain is
@@ -35,6 +39,17 @@ namespace
 	// The cast line reports the number of slots that actually came up, so a partial
 	// initialization can never publish a caption the frame does not support.
 	constexpr const char* kPortfolioHudCastLineFormat = "%d CHARACTERS / LIVE PALETTES";
+
+	// The showcase's observable diagnostics channel. PushLog() records into
+	// m_LogLines, whose only renderer was the editor console panel - which this
+	// build no longer draws - so a line that must survive a plain launch is also
+	// written to the debugger's output stream, where DebugView, WinDbg or the
+	// Visual Studio Output window picks it up without a rebuild.
+	void PortfolioDebugOut(const std::string& line)
+	{
+		OutputDebugStringA(line.c_str());
+		OutputDebugStringA("\n");
+	}
 
 	// Assimp glTF2 clips are authored on a different tick base than the FBX
 	// importer's, so seconds must always come from mDuration / mTicksPerSecond.
@@ -277,10 +292,20 @@ const aiAnimation* App::FindPortfolioClip(const std::string& name) const
 bool App::InitializePortfolioShowcase()
 {
 	auto& showcase = m_->m_PortfolioShowcase;
+
+	// Each count and the table it indexes, pinned together at compile time. Raising
+	// kPortfolioClipCount would walk off kPortfolioClipNames in the resolver loop
+	// below, and changing the slot count would disagree with either the slots array
+	// or the phaseOffsets table the slot loop reads in lock-step with it.
+	static_assert(kPortfolioClipNameCount == (size_t)kPortfolioClipCount,
+		"kPortfolioClipCount must equal the number of entries in kPortfolioClipNames");
+	static_assert(std::tuple_size<decltype(showcase.slots)>::value == (size_t)kPortfolioSlotCount,
+		"kPortfolioSlotCount must equal PortfolioShowcaseRuntime::slots.size()");
+
 	showcase.initialized = false;
 	showcase.timeSec = 0.0f;
-	showcase.clips = {};
-	showcase.resolvedClipCount = 0;
+	showcase.clips.clear();
+	showcase.clipNames.clear();
 	showcase.ikDebugValid = false;
 
 	auto& backbuffer = m_->m_PortfolioBackbuffer;
@@ -302,26 +327,50 @@ bool App::InitializePortfolioShowcase()
 		}
 	}
 
+	// Resolution compacts as it goes: a name that does not resolve contributes
+	// nothing rather than leaving a hole. That is what keeps clips.size() and the
+	// index space the slot loop wraps around describing the same thing, so a partial
+	// re-export costs the cast variety, never motion.
+	showcase.clips.reserve(kPortfolioClipNameCount);
+	showcase.clipNames.reserve(kPortfolioClipNameCount);
 	for (int i = 0; i < kPortfolioClipCount; ++i)
 	{
-		showcase.clips[(size_t)i] = FindPortfolioClip(kPortfolioClipNames[i]);
-		if (showcase.clips[(size_t)i])
+		const aiAnimation* clip = FindPortfolioClip(kPortfolioClipNames[i]);
+		if (!clip)
 		{
-			++showcase.resolvedClipCount;
-			m_->PushLog(std::string("[OK] Portfolio clip ") + kPortfolioClipNames[i] + ": " +
-				std::to_string(PortfolioClipDurationSec(showcase.clips[(size_t)i])) + "s");
+			const std::string missing = std::string("[WARN] Portfolio clip missing: ") + kPortfolioClipNames[i];
+			m_->PushLog(missing);
+			PortfolioDebugOut(missing);
+			continue;
 		}
-		else
-		{
-			m_->PushLog(std::string("[WARN] Portfolio clip missing: ") + kPortfolioClipNames[i]);
-		}
+		showcase.clips.push_back(clip);
+		showcase.clipNames.emplace_back(kPortfolioClipNames[i]);
+		m_->PushLog(std::string("[OK] Portfolio clip ") + kPortfolioClipNames[i] + ": " +
+			std::to_string(PortfolioClipDurationSec(clip)) + "s");
 	}
-	m_->PushLog("[OK] Portfolio clips resolved: " + std::to_string(showcase.resolvedClipCount) +
-		"/" + std::to_string(kPortfolioClipCount));
 
-	if (showcase.resolvedClipCount == 0)
+	// The names are reported, not just the count: with the table compacted, "which
+	// clips is the cast actually rotating through" is no longer inferable from the
+	// count alone, and it is what a partial re-export changes.
+	std::string resolvedSummary = "[OK] Portfolio clips resolved: " +
+		std::to_string(showcase.clips.size()) + "/" + std::to_string(kPortfolioClipCount) + " [";
+	for (size_t i = 0; i < showcase.clipNames.size(); ++i)
 	{
-		m_->PushLog("[WARN] Portfolio showcase disabled: no VRM clips resolved");
+		if (i > 0)
+			resolvedSummary += ", ";
+		resolvedSummary += showcase.clipNames[i];
+	}
+	resolvedSummary += "]";
+	m_->PushLog(resolvedSummary);
+	// Reported on every launch, not only on failure: a full roster is the only cheap
+	// way to tell a healthy run from one quietly playing a shorter rotation.
+	PortfolioDebugOut(resolvedSummary);
+
+	if (showcase.clips.empty())
+	{
+		const std::string disabled = "[WARN] Portfolio showcase disabled: no VRM clips resolved";
+		m_->PushLog(disabled);
+		PortfolioDebugOut(disabled);
 		return false;
 	}
 
@@ -392,7 +441,15 @@ bool App::InitializePortfolioShowcase()
 }
 
 // ---------------------------------------------------------------------------
-// Frame-zero reset, driven by the capture manifest's synthetic left click.
+// Restart the show from t = 0.
+//
+// Now that the showcase runs ungated, the left click that drives this is an
+// ordinary interactive affordance as well as the capture manifest's synthetic
+// one: clicking the window restarts all four characters together, which is the
+// intended way to re-watch the opening of the rotation. It is deliberately NOT
+// scoped to capture mode - a viewer who can only ever join the show mid-clip
+// would be worse off, and every slot keeps its own phase offset across the
+// restart, so the cast stays staggered rather than snapping into lock-step.
 // ---------------------------------------------------------------------------
 void App::ResetPortfolioShowcase()
 {
@@ -434,12 +491,13 @@ bool App::UpdatePortfolioShowcase(float dt)
 			continue;
 		auto& entry = *entryPtr;
 
-		// Placeholder assignment: one clip per slot, in order. Initialization
-		// already refused to run with resolvedClipCount == 0, so the modulus is
-		// safe.
-		const aiAnimation* clip = showcase.clips[slotIndex % (size_t)showcase.resolvedClipCount];
+		// Placeholder assignment: one clip per slot, in resolved order. The modulus
+		// is taken over the size of the very table it indexes, and initialization
+		// refused to run with an empty one, so every slot always receives a clip
+		// that resolved - even when only some of the seven names did.
+		const aiAnimation* clip = showcase.clips[slotIndex % showcase.clips.size()];
 		if (!clip)
-			continue;
+			continue; // unreachable: clips is compacted, so it holds no nulls
 
 		const float clipTime = showcase.timeSec + slot.phaseOffsetSec;
 

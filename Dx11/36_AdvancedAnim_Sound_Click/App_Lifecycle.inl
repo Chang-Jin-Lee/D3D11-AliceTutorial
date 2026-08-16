@@ -134,6 +134,33 @@ void App::LoadDataAsync(std::stop_token stoken)
 	// The showcase owns the four character palettes on every frame, so the advanced
 	// rig must not also drive the player, and the composition below was framed and
 	// lit for the forward path.
+	//
+	// Both assignments switch code off PERMANENTLY - nothing toggles either flag back
+	// at runtime any more, because the editor panels that used to are no longer drawn.
+	// Named explicitly so a later reader can tell parked code from abandoned code:
+	//
+	//   m_UseAdvancedRig = false
+	//     - the `if (m_->m_UseAdvancedRig)` block at the bottom of this function never
+	//       runs, so CharacterAnimController::InitializeRig() is never called and
+	//       m_CharRigInited stays false;
+	//     - with it, the AdvancedRig branch in UpdateInput and RenderAdvancedRigUI.
+	//     NOT expected back: the showcase drives the player itself.
+	//
+	//   m_UseDeferredRendering = false
+	//     - PassMainScene() always takes the forward branch, so PassGBuffer(),
+	//       PassDeferredLight(), RenderDeferredUI() and the deferred-branch
+	//       RenderPortfolioShowcaseDebug() call are all unreachable.
+	//     NOT expected back: the composition above is lit for the forward path.
+	//
+	// EXPECTED BACK IN TASK 4: the IK debug draw. The forward branch still calls
+	// RenderPortfolioShowcaseDebug() unconditionally; it returns immediately only
+	// because nothing sets PortfolioShowcaseRuntime::ikDebugValid while the showcase
+	// plays base clips. Task 4's IK window solves the arm chain, sets that flag, and
+	// the already-wired forward call starts drawing.
+	//
+	// NOT expected back: the ten panel functions in App_ImGuiPanels.inl and
+	// PassDebugDraw(), which now have no call sites at all. They are left in place
+	// deliberately - deleting them is a branch-level decision, not this task's.
 	m_->m_UseAdvancedRig = false;
 	m_->m_UseDeferredRendering = false;
 	m_->m_DirLight.ambient = XMFLOAT4(0.35f, 0.35f, 0.35f, 1.0f);
@@ -224,25 +251,20 @@ void App::LoadDataAsync(std::stop_token stoken)
 			m_->PushLog(message);
 		}
 		};
-	const std::wstring idleClip = L"..\\Resource\\fbx\\Public\\MyAlice\\Animations\\anim_Idle.fbx";
-	const std::wstring walkClip = L"..\\Resource\\fbx\\Public\\MyAlice\\Animations\\Walk_Loop_F_0_Seq.fbx";
-	const std::wstring runClip = L"..\\Resource\\fbx\\Public\\MyAlice\\Animations\\Run_Combat_Loop_F_0_Seq.fbx";
-	const std::wstring rollClip = L"..\\Resource\\fbx\\Public\\MyAlice\\Animations\\Roll_F_0_Seq.fbx";
-	loadExternalClip("Idle", idleClip);
-	loadExternalClip("Walk", walkClip);
-	loadExternalClip("Run", runClip);
-	loadExternalClip("Roll", rollClip);
-
-	// The showcase's own clips are not loaded here: they are the VRM_* animations
-	// already embedded in the player model, resolved by name in
+	// "Idle" is the only external clip with a reachable consumer:
+	// InitializeEnemyIdleRuntime() below reads it for each of the three enemies.
+	//
+	// The Walk / Run / Roll loads and the five placeholder action mappings that used
+	// to sit here were dropped. Their only consumer was
+	// CharacterAnimController::InitializeRig(), inside the `if (m_->m_UseAdvancedRig)`
+	// block at the bottom of this function - which the assignment above makes
+	// permanently false. They imported three more FBX files on every startup for a
+	// library nothing read. Task 4 re-adds whatever it actually reaches.
+	//
+	// The showcase's own clips are not loaded here either: they are the VRM_*
+	// animations already embedded in the player model, resolved by name in
 	// InitializePortfolioShowcase().
-
-	// Placeholder action mappings until dedicated authored clips exist.
-	loadExternalClip("IdleToShoot", rollClip);
-	loadExternalClip("IdleToShoot_Reverse", rollClip);
-	loadExternalClip("Shoot_Stance", idleClip);
-	loadExternalClip("Shoot", rollClip);
-	loadExternalClip("Reload", rollClip);
+	loadExternalClip("Idle", L"..\\Resource\\fbx\\Public\\MyAlice\\Animations\\anim_Idle.fbx");
 
 	m_->m_EnemyModelIndices = { enemy1Index, enemy2Index, enemy3Index };
 	m_->m_EnemyIdleRuntimes.clear();

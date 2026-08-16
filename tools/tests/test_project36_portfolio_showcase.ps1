@@ -142,6 +142,24 @@ public class ShowcaseFrame {
     return (double)bright / (double)(w * h);
   }
 
+  // Fraction of pixels in the region at or below 'threshold' luminance. The HUD
+  // panel is drawn opaque at (0.04, 0.05, 0.08), i.e. luminance ~12, so this reads
+  // near 1.0 over the panel and collapses over any lit scene content behind it.
+  // Paired with BrightRatio it identifies the HUD rather than merely bright pixels:
+  // scene background can be bright OR dark, but it cannot be almost entirely
+  // near-black and still carry legible near-white text.
+  public static double DarkRatio(ShowcaseFrame a, int x, int y, int w, int h, int threshold) {
+    Require(a, x, y, w, h);
+    long dark = 0;
+    for (int yy = y; yy < y + h; ++yy) {
+      int rowBase = yy * a.Width;
+      for (int xx = x; xx < x + w; ++xx) {
+        if (a.Pixels[rowBase + xx] <= threshold) { ++dark; }
+      }
+    }
+    return (double)dark / (double)(w * h);
+  }
+
   // Number of pixels in the region that are strongly yellow. The CCD IK debug pass
   // is the only thing in this scene that emits such a colour, so this counts
   // solved-IK evidence directly.
@@ -217,7 +235,10 @@ public class ShowcaseFrame {
   // two characters standing at different places in the frame are comparable.
   public static double[] MotionProfile(ShowcaseFrame a, ShowcaseFrame b,
       int x, int y, int w, int h, int cellsX, int cellsY, int tolerance) {
+    // Both frames, not just the first: DiffRatio reads the region out of each of
+    // them, so checking only 'a' would leave the second read unguarded.
     Require(a, x, y, w, h);
+    Require(b, x, y, w, h);
     if (cellsX <= 0 || cellsY <= 0 || w < cellsX || h < cellsY) {
       throw new ArgumentOutOfRangeException("cells", string.Format(
         "a {0}x{1} region cannot be split into {2}x{3} cells", w, h, cellsX, cellsY));
@@ -292,11 +313,26 @@ $driftSampleA = 2.6
 $driftSampleB = 3.1
 $slotSampleGapSec = $slotSampleB - $slotSampleA
 
-# The HUD is a fixed-geometry window anchored at client (24,24).
+# The HUD is a fixed-geometry window anchored at client (24,24). The probe sits
+# just inside it, so it samples panel and text only.
 $hudX = 28
 $hudY = 28
 $hudW = 312
 $hudH = 56
+# ImGui draws the panel opaque at (0.04, 0.05, 0.08), which rasterises to
+# luminance ~12, so 40 is a generous ceiling for "this pixel is the panel, not the
+# scene".
+#
+# Measured, not guessed. On a frame with the HUD, this rectangle reads
+# dark = 0.8948 / bright = 0.0315 (identical across all four samples - the panel is
+# static). Sweeping 200 same-sized rectangles across the rest of that same frame -
+# skybox, characters, ground, and every mixture of them - the highest dark ratio
+# any of them reached was 0.1987, and not one satisfied both halves at once. The
+# 0.80 floor therefore sits 4x above anything the scene produces while leaving the
+# real HUD 0.09 of headroom.
+$hudPanelLuminance = 40
+$hudPanelDarkFloor = 0.80
+$hudTextBrightFloor = 0.01
 
 # Band 260-500 is the torso/arm span shared by all four slots (the nearest head is
 # at row ~134 and the farthest feet at row ~653). The composition spaces the four
@@ -359,8 +395,29 @@ $forbiddenTokens = @(
 $deliverables = @()
 $deliverables += Get-ChildItem -LiteralPath $projectDir -File -Recurse |
     Where-Object { $_.Extension -in @('.cpp', '.h', '.inl', '.md', '.vcxproj', '.filters', '.hlsl', '.hlsli', '.fxh') }
-$deliverables += Get-ChildItem -LiteralPath (Join-Path $repoRoot 'Dx11/Resource/fbx/Public/MyAlice/Animations') -File |
-    Where-Object { $_.Name -like 'anim_Portfolio*' }
+
+# The binary assets Project 36 actually ships and loads. Named one by one, and
+# required to exist, rather than matched by a wildcard: the previous glob pointed
+# at anim_Portfolio*.glb, which Task 1 deleted, so it silently matched nothing and
+# the scan covered no binary at all while still reporting a pass. The showcase's
+# animations now live inside SampleModel.glb, so that is where the provenance
+# assertion has to look.
+$shippedAssets = @(
+    'Dx11/Resource/fbx/Public/MyAlice/Player/SampleModel.glb'
+    'Dx11/Resource/fbx/Public/MyAlice/Enemy/AliceEnemy1.glb'
+    'Dx11/Resource/fbx/Public/MyAlice/Enemy/AliceEnemy2.glb'
+    'Dx11/Resource/fbx/Public/MyAlice/Enemy/AliceEnemy3.glb'
+    'Dx11/Resource/fbx/Public/MyAlice/Animations/anim_Idle.fbx'
+)
+$binaryCount = 0
+foreach ($relativeAsset in $shippedAssets) {
+    $assetPath = Join-Path $repoRoot $relativeAsset
+    if (-not (Test-Path -LiteralPath $assetPath -PathType Leaf)) {
+        throw "rights boundary scan cannot find a shipped asset it must cover: $relativeAsset"
+    }
+    $deliverables += Get-Item -LiteralPath $assetPath
+    ++$binaryCount
+}
 
 foreach ($deliverable in $deliverables) {
     $bytes = [System.IO.File]::ReadAllBytes($deliverable.FullName)
@@ -371,7 +428,7 @@ foreach ($deliverable in $deliverables) {
         }
     }
 }
-Write-Host "  ok   rights boundary scan covered $($deliverables.Count) Project 36 deliverables"
+Write-Host "  ok   rights boundary scan covered $($deliverables.Count) Project 36 deliverables ($binaryCount shipped binaries)"
 
 # ---------------------------------------------------------------------------
 # Runtime helpers
@@ -783,11 +840,22 @@ try {
     $driftA = $samples['drift-a']
     $driftB = $samples['drift-b']
 
-    # The HUD is light text on an opaque dark panel: without it this region is
-    # scene background and carries almost no near-white pixels.
+    # The HUD is legible near-white text on an OPAQUE (0.04, 0.05, 0.08) panel, and
+    # it takes both halves of that description to identify it.
+    #
+    # Brightness alone does not discriminate: the same 1%-at-luminance-200 floor was
+    # measured at 0.0218 on a RED run with the showcase entirely absent, satisfied
+    # then by the editor's Controls panel and satisfiable now by a bright patch of
+    # skybox. So require the panel too: nearly every pixel of this rectangle must be
+    # near-black AND a fraction of it must be near-white. Scene content can be dark
+    # or bright, but it cannot be 80% below luminance 40 while still carrying 1%
+    # above 200 - the panel is what makes both true of the same rectangle at once.
+    $hudDark = [ShowcaseFrame]::DarkRatio($slotA, $hudX, $hudY, $hudW, $hudH, $hudPanelLuminance)
     $hudBright = [ShowcaseFrame]::BrightRatio($slotA, $hudX, $hudY, $hudW, $hudH, 200)
-    Assert-True ($hudBright -ge 0.01) `
-        "a plain launch renders the showcase HUD at client (24,24) (bright pixel ratio $([Math]::Round($hudBright,4)), need >= 0.0100)"
+    Assert-True (($hudDark -ge $hudPanelDarkFloor) -and ($hudBright -ge $hudTextBrightFloor)) `
+        ("a plain launch renders the showcase HUD panel and its text at client (24,24) " +
+         "(dark ratio $([Math]::Round($hudDark,4)) need >= $hudPanelDarkFloor; " +
+         "bright ratio $([Math]::Round($hudBright,4)) need >= $hudTextBrightFloor)")
 
     # Separated moving column clusters prove that four characters are live rather
     # than one animating while the rest are frozen - and, because a character
