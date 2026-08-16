@@ -88,6 +88,17 @@ namespace
 		return (int)std::floor(timeSec / kPortfolioSetSeconds);
 	}
 
+	// Seconds elapsed inside the current set - the clock all three technique windows
+	// are cut from. Factored out for the same reason the cycle above is: the update
+	// loop opens the windows from it and the HUD names the active one from it, and two
+	// separate derivations of "how far into this set are we" is how a caption ends up
+	// announcing a technique that is not running. Built on PortfolioCycleForTime so
+	// there is exactly one answer to "which set is this" feeding both.
+	float PortfolioSetTimeForTime(float timeSec)
+	{
+		return timeSec - (float)PortfolioCycleForTime(timeSec) * kPortfolioSetSeconds;
+	}
+
 	// Slot i plays clip ((cycle * 4 + i) % clipCount). Two cycles expose all seven.
 	//
 	// clipCount is the size of the COMPACTED table Task 2 built, not
@@ -564,10 +575,10 @@ bool App::UpdatePortfolioShowcase(float dt)
 	showcase.ikDebugValid = false;
 
 	const int cycle = PortfolioCycleForTime(showcase.timeSec);
-	// Seconds elapsed inside the current set - the clock all three technique windows
-	// are cut from. It is computed here, beside the cycle it belongs to, so that the
-	// windows and the clip assignment can only ever be driven off the same clock.
-	const float setTime = showcase.timeSec - (float)cycle * kPortfolioSetSeconds;
+	// The clock all three technique windows are cut from, read from the same helper
+	// the HUD reads it from, so the windows and the clip assignment can only ever be
+	// driven off the same set time.
+	const float setTime = PortfolioSetTimeForTime(showcase.timeSec);
 	const int clipCount = (int)showcase.clips.size();
 
 	for (size_t slotIndex = 0; slotIndex < showcase.slots.size(); ++slotIndex)
@@ -920,11 +931,18 @@ void App::RenderPortfolioShowcaseHud()
 	// disjoint and the tests are taken in the order they open, so exactly one
 	// label can be selected and a still frame is self-describing: a screenshot of
 	// the IK window says CCD IK on its face rather than needing a timestamp and
-	// this file to decode it. Derived from the same setTime the update loop cuts
-	// the windows from, so the label cannot name a technique that is not running.
-	const float setTime = showcase.timeSec - (float)cycle * kPortfolioSetSeconds;
+	// this file to decode it. Derived from the same PortfolioSetTimeForTime() the
+	// update loop cuts the windows from, so the label cannot name a technique that is
+	// not running.
+	//
+	// The cross-fade branch carries the update loop's cycle > 0 guard as well as its
+	// window: cycle 0 has no predecessor to fade out of, so it plays its clip
+	// directly, and labelling its first 0.6 s BLEND would name a technique that is
+	// off - on precisely the frames an author capturing the opening of the rotation
+	// is most likely to still.
+	const float setTime = PortfolioSetTimeForTime(showcase.timeSec);
 	const char* technique = "BASE";
-	if (setTime < kPortfolioBlendSeconds)                                             technique = "BLEND";
+	if (cycle > 0 && setTime < kPortfolioBlendSeconds)                                technique = "BLEND";
 	else if (setTime >= kPortfolioLayerStartSec && setTime < kPortfolioLayerEndSec)   technique = "UPPER-BODY LAYER";
 	else if (setTime >= kPortfolioIkStartSec   && setTime < kPortfolioIkEndSec)       technique = "CCD IK";
 
