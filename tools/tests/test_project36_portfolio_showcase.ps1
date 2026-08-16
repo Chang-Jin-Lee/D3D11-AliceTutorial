@@ -128,6 +128,28 @@ public class ShowcaseFrame {
     return (double)changed / (double)(w * h);
   }
 
+  // Mean absolute luminance difference over a region, in 0-255 units. DiffRatio
+  // above answers "how much of this region moved"; this answers "by how much",
+  // which is what separates a cross-fade from a cut. A fraction-of-changed-pixels
+  // measure saturates - once a limb has moved past its own width, moving further
+  // does not raise it - so a 0.6 s fade and an instant clip switch both read close
+  // to "all of the character changed" and become indistinguishable. Mean absolute
+  // difference keeps rising with the size of the change, so the step across a set
+  // boundary can be compared against an ordinary step of the same duration.
+  public static double MeanAbsDiff(ShowcaseFrame a, ShowcaseFrame b, int x, int y, int w, int h) {
+    if (a.Width != b.Width || a.Height != b.Height) { return 255.0; }
+    Require(a, x, y, w, h);
+    long sum = 0;
+    for (int yy = y; yy < y + h; ++yy) {
+      int rowBase = yy * a.Width;
+      for (int xx = x; xx < x + w; ++xx) {
+        int delta = a.Pixels[rowBase + xx] - b.Pixels[rowBase + xx];
+        sum += (delta < 0) ? -delta : delta;
+      }
+    }
+    return (double)sum / (double)(w * h);
+  }
+
   // Fraction of pixels in the region at or above 'threshold' luminance. Used to
   // prove that legible light-on-dark HUD text was actually rasterised.
   public static double BrightRatio(ShowcaseFrame a, int x, int y, int w, int h, int threshold) {
@@ -191,9 +213,13 @@ public class ShowcaseFrame {
     return sb.ToString();
   }
 
-  // Number of pixels in the region that are strongly yellow. The CCD IK debug pass
-  // is the only thing in this scene that emits such a colour, so this counts
-  // solved-IK evidence directly.
+  // Number of pixels in the region that are strongly yellow.
+  //
+  // NOT sufficient on its own to find the CCD IK debug pass. The skybox this
+  // showcase renders against is a sunlit brick ruin over yellow-green foliage,
+  // which carries ~6,000 pixels above dominance 120 and reaches 214 - above the
+  // ~146 the antialiased 1 px reach line manages where it crosses that foliage.
+  // No threshold separates them. See YellowOverlayCount below, which does.
   public static int YellowDominantCount(ShowcaseFrame a, int x, int y, int w, int h, int threshold) {
     Require(a, x, y, w, h);
     int count = 0;
@@ -201,6 +227,42 @@ public class ShowcaseFrame {
       int rowBase = yy * a.Width;
       for (int xx = x; xx < x + w; ++xx) {
         if (a.YellowDominance[rowBase + xx] >= threshold) { ++count; }
+      }
+    }
+    return count;
+  }
+
+  // Pixels in the region that are strongly yellow AND differ from the same pixel
+  // of a background reference frame. This is what finds the CCD IK debug pass's
+  // hand-to-target reach line against a scene that is itself full of yellow.
+  //
+  // It works because the two confounders are separable rather than because the
+  // line is bright:
+  //
+  //   - the skybox and the ground never move, so a background pixel is identical
+  //     between any two frames and contributes nothing however yellow it is;
+  //   - the characters do move, but they are pale white - dominance near zero -
+  //     so a body pixel fails the yellow test whichever frame it is in.
+  //
+  // What is left is pixels that are yellow in this frame and were something else
+  // in the reference: the drawn line, and nothing else. The reference must be a
+  // frame in which the region is background - a body standing in it there would
+  // make every frame that does NOT have it standing there score.
+  public static int YellowOverlayCount(ShowcaseFrame a, ShowcaseFrame background,
+      int x, int y, int w, int h, int yellowThreshold, int changeThreshold) {
+    if (a.Width != background.Width || a.Height != background.Height) { return 0; }
+    Require(a, x, y, w, h);
+    int count = 0;
+    for (int yy = y; yy < y + h; ++yy) {
+      int rowBase = yy * a.Width;
+      for (int xx = x; xx < x + w; ++xx) {
+        int index = rowBase + xx;
+        if (a.YellowDominance[index] < yellowThreshold) { continue; }
+        int dominanceDelta = a.YellowDominance[index] - background.YellowDominance[index];
+        if (dominanceDelta < 0) { dominanceDelta = -dominanceDelta; }
+        int luminanceDelta = a.Pixels[index] - background.Pixels[index];
+        if (luminanceDelta < 0) { luminanceDelta = -luminanceDelta; }
+        if (dominanceDelta + luminanceDelta >= changeThreshold) { ++count; }
       }
     }
     return count;
@@ -396,6 +458,108 @@ $hudH = 56
 $hudPanelLuminance = 40
 $hudPanelDarkFloor = 0.80
 $hudTextBrightFloor = 0.01
+
+# The clip line-up's own row inside that panel. The HUD now prints three lines -
+# title, line-up, active technique - at the 20 px font InitImGui() loads, so with
+# ImGui's default 8 px window padding and 4 px item spacing the three text boxes
+# occupy client rows 32-52, 56-76 and 80-100. Everything that asks "what is the
+# line-up doing" therefore measures rows 54-78: that covers the middle box whole
+# with a 2 px margin on each side, and cannot see either neighbour.
+#
+# This band, not the whole panel, is what the line-up assertions read. The
+# technique line is REQUIRED to change while a set runs (it names the window the
+# show is in), and the line-up is required not to; a probe that spanned both could
+# only ever assert one of the two, and over the whole panel it would assert
+# neither - the technique label alone would break the "line-up holds still"
+# check on frames where the line-up is in fact perfectly still.
+$lineUpY = $hudY + 26
+$lineUpH = 24
+
+# Technique windows, in seconds inside each 12 s set (App_PortfolioShowcase.inl):
+# cross-fade 0.0-0.6, upper-body layer 4.0-7.0, CCD IK 8.0-11.4. The three do not
+# overlap, so every sample below reads exactly one technique.
+#
+# Set-boundary step. $boundaryStep is the mean absolute pixel difference between
+# the frames straddling the first set change at t = 12 s, and $medianStep is the
+# median of that same difference over ten consecutive mid-set pairs at the same
+# spacing.
+#
+# The gap has to be short relative to the 0.6 s cross-fade, and the shorter the
+# better. A hard clip switch dumps the entire difference between two unrelated
+# poses into whichever pair contains it, however short that pair is. A cross-fade
+# delivers only smoothstep(gap/0.6) of it - 0.24 across a 0.2 s straddle but 0.07
+# across a 0.1 s one, because smoothstep leaves the origin quadratically - while
+# an ordinary step shrinks only linearly with the gap. So halving the gap roughly
+# halves what an honest fade contributes relative to a normal step, and does
+# nothing at all to help a cut. (Measured at 0.2 s: 7.06 for a correct fade
+# against a 3.25 median - a fade that reads as 2.2x an ordinary step purely
+# because the pair is wide enough to contain a quarter of it.)
+#
+# The straddling pair is FOUND, not assumed. The burst runs across the boundary
+# at $stepGapSec and the pair taken is the one whose HUD clip line-up changes
+# across it, which is by construction the pair the set change falls inside -
+# whatever the residual offset between this stopwatch and the show's own clock.
+# An assumed pair that missed the boundary would compare two ordinary frames and
+# pass vacuously.
+$boundaryBurstStart = 11.75
+$boundaryBurstCount = 7
+$stepGapSec = 0.1
+$stepBurstStart = 25.0
+$stepBurstCount = 11
+# Measured over the scene rows only. The HUD sits at client rows 24-108 and its
+# line-up genuinely changes at the boundary, so including it would credit the
+# boundary step with a caption change that is not the cast snapping.
+$stepRegionTop = 120
+
+# Upper-body layer. The layer runs on slot 0 alone and CharacterAnimator masks it
+# to the spine/neck/head/arm chain, so it moves slot 0's arms while the base clip
+# keeps driving its legs. The measurement is the ratio of slot 0's arm-band change
+# to its own leg-band change, averaged over the two frame pairs that sit inside
+# the window, so a moment where the base clip happens to be quiet or busy cannot
+# decide the answer on its own.
+#
+# The bands are the arm span (rows 250-340) against hips-to-shins (rows 340-560),
+# NOT the whole torso: rows 150-250 are head and hair, which sway under the base
+# clip in every frame and swamped the arm signal completely - with them included
+# the metric read 0.581 without the layer and 0.576 with it.
+#
+# $layerRatioFloor is calibrated, not guessed. Over the same two pairs, with the
+# same bands and the same sample times, the metric read 0.915 with the layer
+# absent (the RED run, before Step 3-6 were written) and 1.317 with it present.
+# 1.10 sits between them with ~18% margin on each side. This is the weakest of
+# the three technique assertions and the task-4 report says so: no pixel statistic
+# I could find separates a layered upper body from an unlayered one by the 2x the
+# design asked for, because the layer changes WHERE the arms go, not how far they
+# travel in half a second.
+$layerUpperTop = 250
+$layerUpperBottom = 340
+$layerLowerTop = 340
+$layerLowerBottom = 560
+$layerRatioFloor = 1.10
+
+# CCD IK. The debug pass draws the solved chain green, the target cross red and
+# the hand-to-target reach line yellow, and the reach line is the only one of the
+# three that is reliably visible: the chain lines run inside the arm mesh and are
+# depth-occluded by it, and the cross rasterises pale pink.
+#
+# A plain yellow-threshold count cannot find it. This showcase renders against a
+# sunlit brick ruin over yellow-green foliage, which carries ~6,000 pixels above
+# dominance 120 and reaches 214, while the antialiased 1 px line only reaches ~146
+# where it crosses that foliage - measured, both frames, every threshold from 90
+# to 230. Red and green planes were no better (the wall is orange, the leaves are
+# green). So the count is differenced against a background reference frame
+# instead, which works because the skybox is static and the characters are white:
+# see YellowOverlayCount.
+#
+# The box is the patch of open air beside slot 0 that the IK target sweeps into.
+# Measured: identical background in all 14 sampled frames outside the window and
+# in every frame of the RED run, in both runs, to the pixel.
+$ikYellowThreshold = 100
+$ikOverlayChangeThreshold = 60
+$ikBoxX = 760
+$ikBoxY = 285
+$ikBoxW = 140
+$ikBoxH = 110
 
 # Band 260-500 is the torso/arm span shared by all four slots (the nearest head is
 # at row ~134 and the farthest feet at row ~653). The composition spaces the four
@@ -934,6 +1098,21 @@ try {
     Wait-ShowcaseScene -Process $showcaseProcess -Handle $showcaseHandle -Width $clientWidth -Height $clientHeight `
         -ProbePath (Join-Path $frameDir 'showcase-probe.png') -ClickToStart
 
+    # Put the show back to t = 0 and start the sampling clock on the same instant.
+    #
+    # A left click calls ResetPortfolioShowcase(), which is the documented way to
+    # re-watch the rotation from its opening. Without this, the only thing that
+    # started the show was whichever click Wait-ShowcaseScene happened to land
+    # last, ~700 ms plus a screen capture before it returned - so every sample
+    # below was taken most of a second later in the show than its name says. That
+    # slack did not matter while the only time-sensitive samples sat in the middle
+    # of a 12 s set, but the technique windows are 0.6-3.4 s wide and the boundary
+    # pair has to straddle a single instant, so the clocks now have to agree.
+    #
+    # Send-ShowcaseClick posts WM_LBUTTONDOWN, waits 40 ms, then posts the button
+    # up; the reset fires on the down transition, one message pump apart. So by
+    # the time it returns the show is ~40 ms old, and the stopwatch starts there.
+    Send-ShowcaseClick -Handle $showcaseHandle -ClientX ([int]($clientWidth / 2)) -ClientY ([int]($clientHeight / 2))
     $showcaseClock = [System.Diagnostics.Stopwatch]::StartNew()
     $samples = [ordered]@{}
     foreach ($sample in @(
@@ -951,20 +1130,71 @@ try {
     # cycle 0 and t = 18 s in the middle of cycle 1 - as far from a set boundary as
     # a sample can be, which is what makes the comparison robust to the second or so
     # of slack between the click that starts the show and this clock.
+    # Clip-rotation and technique sampling, in one time-ordered schedule.
+    #
+    #   layer-a/layer-b  4.4 / 4.9 s - inside the 4.0-7.0 s upper-body layer, where
+    #                    layerAlpha = sin(layer01 * pi) is still climbing steeply
+    #                    (0.446 -> 0.837), so the layer moves the upper body on its
+    #                    own as well as playing a second clip through it.
+    #   ik-out / ik-in   7.5 / 9.5 s - one sample in the base gap between the layer
+    #                    and IK windows, one in the middle of the 8.0-11.4 s IK
+    #                    window where the eased weight has reached 1.0.
+    #   boundary-a       11.5 s - the last still of cycle 0, one set-length of
+    #                    negative-cycle outgoing-clip lookups after t = 0.
     $cycleFrames = [ordered]@{}
-    foreach ($sample in @(
-            @{ Name = 'cycle0-04'; At = 4.0 },
-            @{ Name = 'cycle0-06'; At = 6.0 },
-            @{ Name = 'cycle0-08'; At = 8.0 },
-            @{ Name = 'cycle1-14'; At = 14.0 },
-            @{ Name = 'cycle1-16'; At = 16.0 },
-            @{ Name = 'cycle1-18'; At = 18.0 },
-            @{ Name = 'cycle1-22'; At = 22.0 })) {
-        $waitMs = [int](($sample.At * 1000.0) - $showcaseClock.Elapsed.TotalMilliseconds)
-        if ($waitMs -gt 0) { Start-Sleep -Milliseconds $waitMs }
-        $cycleFrames[$sample.Name] = Save-ShowcaseFrame -Handle $showcaseHandle -Width $clientWidth -Height $clientHeight `
-            -Path (Join-Path $frameDir "showcase-$($sample.Name).png")
+    $takeSamples = {
+        param($Schedule)
+
+        foreach ($sample in $Schedule) {
+            $waitMs = [int](($sample.At * 1000.0) - $showcaseClock.Elapsed.TotalMilliseconds)
+            if ($waitMs -gt 0) { Start-Sleep -Milliseconds $waitMs }
+            $cycleFrames[$sample.Name] = Save-ShowcaseFrame -Handle $showcaseHandle -Width $clientWidth -Height $clientHeight `
+                -Path (Join-Path $frameDir "showcase-$($sample.Name).png")
+        }
     }
+    # A burst with no PNG behind it. Saving a 1600x900 file per frame costs more
+    # than the 0.1 s cadence allows, and these frames are a measurement rather
+    # than evidence a human reads.
+    $takeBurst = {
+        param([double]$Start, [int]$Count)
+
+        $burst = @()
+        for ($burstIndex = 0; $burstIndex -lt $Count; ++$burstIndex) {
+            $burstAt = $Start + ($burstIndex * $stepGapSec)
+            $waitMs = [int](($burstAt * 1000.0) - $showcaseClock.Elapsed.TotalMilliseconds)
+            if ($waitMs -gt 0) { Start-Sleep -Milliseconds $waitMs }
+            $burst += Save-ShowcaseFrame -Handle $showcaseHandle -Width $clientWidth -Height $clientHeight
+        }
+        return , $burst
+    }
+
+    & $takeSamples @(
+        @{ Name = 'cycle0-04'; At = 4.0 },
+        @{ Name = 'layer-a'; At = 4.4 },
+        @{ Name = 'layer-b'; At = 4.9 },
+        @{ Name = 'cycle0-06'; At = 6.0 },
+        @{ Name = 'ik-out'; At = 7.5 },
+        @{ Name = 'cycle0-08'; At = 8.0 },
+        @{ Name = 'ik-in'; At = 9.5 },
+        @{ Name = 'boundary-a'; At = 11.5 })
+
+    # Across the first set change, at the same cadence the mid-set reference burst
+    # below uses. Seven frames spanning 11.75-12.35 s cover t = 12 s with three
+    # frames of slack on each side, which is far more than the residual offset
+    # between this stopwatch and the show's clock.
+    $boundaryFrames = & $takeBurst $boundaryBurstStart $boundaryBurstCount
+
+    & $takeSamples @(
+        @{ Name = 'cycle1-14'; At = 14.0 },
+        @{ Name = 'cycle1-16'; At = 16.0 },
+        @{ Name = 'cycle1-18'; At = 18.0 },
+        @{ Name = 'cycle1-22'; At = 22.0 })
+
+    # The mid-set reference for $medianStep: eleven frames giving ten consecutive
+    # pairs, at 25.0-26.0 s - set time 1.0-2.0 of cycle 2 - which is past the
+    # cross-fade and well before the layer window, so every pair measures nothing
+    # but four characters playing their base clips.
+    $stepFrames = & $takeBurst $stepBurstStart $stepBurstCount
     $showcaseClock.Stop()
 
     $showcaseProcess.Refresh()
@@ -1002,19 +1232,19 @@ try {
     # noise would pass the difference check.
     $frameCycle0 = $cycleFrames['cycle0-06']
     $frameCycle1 = $cycleFrames['cycle1-18']
-    $cycle0Hud = [ShowcaseFrame]::Signature($frameCycle0, $hudX, $hudY, $hudW, $hudH)
-    $cycle1Hud = [ShowcaseFrame]::Signature($frameCycle1, $hudX, $hudY, $hudW, $hudH)
+    $cycle0Hud = [ShowcaseFrame]::Signature($frameCycle0, $hudX, $lineUpY, $hudW, $lineUpH)
+    $cycle1Hud = [ShowcaseFrame]::Signature($frameCycle1, $hudX, $lineUpY, $hudW, $lineUpH)
     Assert-True ($cycle0Hud -ne $cycle1Hud) `
         'the clip assignment rotates between cycles (HUD names differ at t=6s and t=18s)'
 
     $withinCycle0 = @('cycle0-04', 'cycle0-06', 'cycle0-08' | ForEach-Object {
-            [ShowcaseFrame]::Signature($cycleFrames[$_], $hudX, $hudY, $hudW, $hudH) })
+            [ShowcaseFrame]::Signature($cycleFrames[$_], $hudX, $lineUpY, $hudW, $lineUpH) })
     $distinctWithinCycle0 = @($withinCycle0 | Select-Object -Unique).Count
     Assert-True ($distinctWithinCycle0 -eq 1) `
         "the clip line-up holds still inside one 12 s set (found $distinctWithinCycle0 distinct HUD signatures at t=4,6,8 s)"
 
     $hudSignatures = @($cycleFrames.Keys | ForEach-Object {
-            [ShowcaseFrame]::Signature($cycleFrames[$_], $hudX, $hudY, $hudW, $hudH) })
+            [ShowcaseFrame]::Signature($cycleFrames[$_], $hudX, $lineUpY, $hudW, $lineUpH) })
     $distinctHudSignatures = @($hudSignatures | Select-Object -Unique).Count
     Assert-True ($distinctHudSignatures -ge 2) `
         "at least two distinct clip line-ups appear over 24s (found $distinctHudSignatures)"
@@ -1024,7 +1254,7 @@ try {
     # the second HUD line - or printed one name and three empty slots - cannot pass
     # the two assertions above by removing text instead of rotating it.
     $lineUpInk = @($cycleFrames.Keys | ForEach-Object {
-            [ShowcaseFrame]::BrightRatio($cycleFrames[$_], $hudX, ($hudY + 22), $hudW, 20, 200) })
+            [ShowcaseFrame]::BrightRatio($cycleFrames[$_], $hudX, $lineUpY, $hudW, $lineUpH, 200) })
     $minLineUpInk = ($lineUpInk | Measure-Object -Minimum).Minimum
     Assert-True ($minLineUpInk -ge 0.02) `
         ("every sampled HUD line-up rasterises four clip names (min bright ratio " +
@@ -1150,6 +1380,154 @@ try {
     Assert-True ($maxEdgeFraction -lt $edgeBodyThreshold) `
         ("no body crosses a frame edge across any sampled pair (max edge changed-pixel fractions $edgeReport; " +
          "all need < $edgeBodyThreshold; per-pair $($edgePairReports -join ' | '))")
+
+    # -----------------------------------------------------------------------
+    # Technique windows. Each 12 s set runs a cross-fade at 0.0-0.6 s, an
+    # upper-body layer on slot 0 at 4.0-7.0 s, and a CCD IK solve on slot 0's
+    # left hand at 8.0-11.4 s. The three windows do not overlap, so each of the
+    # three measurements below reads one technique with the other two off.
+    # -----------------------------------------------------------------------
+
+    # Locate the set change inside the boundary burst by the one thing that marks
+    # it unambiguously: the HUD's clip line-up, which changes at a set boundary and
+    # nowhere else. The pair it changes across IS the straddling pair, so the
+    # measurement cannot be defeated by a residual offset between this stopwatch
+    # and the show's clock - and cannot pass vacuously on two ordinary frames,
+    # because a burst that never crossed the boundary yields no such pair at all
+    # and fails here instead.
+    $stepRegionHeight = $clientHeight - $stepRegionTop
+    $boundarySignatures = @($boundaryFrames | ForEach-Object {
+            [ShowcaseFrame]::Signature($_, $hudX, $lineUpY, $hudW, $lineUpH) })
+    $boundaryPairIndex = -1
+    for ($sigIndex = 0; $sigIndex + 1 -lt $boundarySignatures.Count; ++$sigIndex) {
+        if ($boundarySignatures[$sigIndex] -ne $boundarySignatures[$sigIndex + 1]) {
+            $boundaryPairIndex = $sigIndex
+            break
+        }
+    }
+    Assert-True ($boundaryPairIndex -ge 0) `
+        ("the ${boundaryBurstCount}-frame burst from t=${boundaryBurstStart}s spans the first set change " +
+         "(a consecutive pair changes the clip line-up), so the cross-fade measurement below is not vacuous")
+
+    $stepValues = @()
+    for ($stepIndex = 0; $stepIndex + 1 -lt $stepFrames.Count; ++$stepIndex) {
+        $stepValues += [ShowcaseFrame]::MeanAbsDiff($stepFrames[$stepIndex], $stepFrames[$stepIndex + 1],
+            0, $stepRegionTop, $clientWidth, $stepRegionHeight)
+    }
+    $sortedSteps = @($stepValues | Sort-Object)
+    $medianStep = if ($sortedSteps.Count -gt 0) { [double]$sortedSteps[[int][Math]::Floor($sortedSteps.Count / 2)] } else { 0.0 }
+    $boundarySteps = @()
+    for ($stepIndex = 0; $stepIndex + 1 -lt $boundaryFrames.Count; ++$stepIndex) {
+        $boundarySteps += [ShowcaseFrame]::MeanAbsDiff($boundaryFrames[$stepIndex], $boundaryFrames[$stepIndex + 1],
+            0, $stepRegionTop, $clientWidth, $stepRegionHeight)
+    }
+    $boundaryStep = if ($boundaryPairIndex -ge 0) { [double]$boundarySteps[$boundaryPairIndex] } else { [double]::MaxValue }
+    Write-Host ("  ..   boundary burst steps " + (($boundarySteps | ForEach-Object { [Math]::Round($_, 3) }) -join ' ') +
+        " (set change across pair $boundaryPairIndex); mid-set steps " +
+        (($stepValues | ForEach-Object { [Math]::Round($_, 3) }) -join ' '))
+
+    # A hard clip switch replaces every character's pose between one frame and the
+    # next, so the whole difference between two unrelated poses lands in the single
+    # pair that contains the boundary - many times an ordinary 0.2 s step. A 0.6 s
+    # cross-fade spreads it: at t = 12.1 s only smoothstep(0.1/0.6) = 0.074 of the
+    # incoming line-up has arrived, so the boundary pair stays in the same league
+    # as a mid-set one. Catches a regression that drops the blend, mistimes its
+    # window, or breaks the outgoing clip's continuity at the seam.
+    Assert-True ($boundaryStep -le ($medianStep * 2.0)) `
+        ("the set boundary cross-fades rather than snapping (boundary step $([Math]::Round($boundaryStep,2)) vs median $([Math]::Round($medianStep,2)))")
+
+    # Negative-cycle coverage for PortfolioClipIndexForSlot. Throughout cycle 0 the
+    # per-slot loop looks the outgoing line-up up with cycle - 1 == -1 on every slot
+    # of every frame. C++ '%' truncates toward zero, so the raw remainder there is
+    # -4..-1; only that function's fold-back turns it into a real index, and without
+    # it showcase.clips[(size_t)index] would read a 7-element vector at ~2^64 and
+    # take the Debug build down with it. This is that path's first automated caller:
+    # it requires the whole of cycle 0 to have been rendered by a process that was
+    # still alive and still drawing its HUD at t = 11.5 s - the last still before
+    # the first set change - with four characters separable throughout.
+    $showcaseProcess.Refresh()
+    $cycle0EndDark = [ShowcaseFrame]::DarkRatio($cycleFrames['boundary-a'], $hudX, $hudY, $hudW, $hudH, $hudPanelLuminance)
+    $cycle0EndBright = [ShowcaseFrame]::BrightRatio($cycleFrames['boundary-a'], $hudX, $hudY, $hudW, $hudH, 200)
+    Assert-True ((-not $showcaseProcess.HasExited) -and ($clusters -ge 4) -and
+        ($cycle0EndDark -ge $hudPanelDarkFloor) -and ($cycle0EndBright -ge $hudTextBrightFloor)) `
+        ("cycle 0 renders through its negative (cycle - 1 = -1) outgoing-clip lookup on every slot of every " +
+         "frame (alive at t=11.5s, $clusters separable characters, HUD dark " +
+         "$([Math]::Round($cycle0EndDark,4)) / bright $([Math]::Round($cycle0EndBright,4)))")
+
+    # Upper-body layer on slot 0. Screen order left to right is slot 1, slot 2,
+    # slot 0, slot 3 (see kPortfolioScreenOrderToSlot), so the third of the four
+    # separated envelopes measured above is slot 0's - derived from the frames
+    # rather than hard-coded, exactly as the motion-variety assertion derives them.
+    $slot0Band = if ($slotBands.Count -eq 4) { $slotBands[2] } else { $null }
+    $layerUpperDelta = 0.0
+    $layerBaselineDelta = 0.0
+    $layerReport = ''
+    if ($null -eq $slot0Band) {
+        $layerReport = "only $($slotBands.Count) character bands were separable, so slot 0's band is unknown"
+    }
+    else {
+        $layerRatio = {
+            param([ShowcaseFrame]$A, [ShowcaseFrame]$B)
+
+            $upper = [ShowcaseFrame]::MeanAbsDiff($A, $B, $slot0Band.X, $layerUpperTop,
+                $slot0Band.Width, ($layerUpperBottom - $layerUpperTop))
+            $lower = [ShowcaseFrame]::MeanAbsDiff($A, $B, $slot0Band.X, $layerLowerTop,
+                $slot0Band.Width, ($layerLowerBottom - $layerLowerTop))
+            if ($lower -le 0.0001) { return 0.0 }
+            return $upper / $lower
+        }
+        # Two pairs, both wholly inside the 4.0-7.0 s window: 4.0-4.4 s where
+        # layerAlpha climbs 0 -> 0.446, and 4.4-4.9 s where it climbs to 0.837.
+        # Averaged, because a single pair is at the mercy of what the base clip
+        # happens to be doing across that half second.
+        $layerWindowRatios = @(
+            (& $layerRatio $cycleFrames['cycle0-04'] $cycleFrames['layer-a']),
+            (& $layerRatio $cycleFrames['layer-a'] $cycleFrames['layer-b'])
+        )
+        $layerUpperDelta = ($layerWindowRatios | Measure-Object -Average).Average
+        # Reported, not asserted on: the same ratio over a base-clip pair before
+        # the window opens. It shows the metric is a window-specific calibration
+        # rather than a claim that the layer always raises the ratio above every
+        # base moment - out-of-window values range 1.5-3.4 across the show.
+        $layerBaselineDelta = & $layerRatio $samples['drift-a'] $samples['drift-b']
+        $layerReport = ("slot 0 band x $($slot0Band.X)-$($slot0Band.X + $slot0Band.Width); " +
+            "per-pair " + (($layerWindowRatios | ForEach-Object { [Math]::Round($_, 3) }) -join '/') +
+            "; out-of-window baseline $([Math]::Round($layerBaselineDelta,3))")
+    }
+
+    # With the layer on, slot 0's arms follow a second clip through a ramping
+    # layerAlpha while its legs keep following the base clip, so the arm band moves
+    # out of proportion to the leg band. Measured at 0.915 with the layer absent
+    # and 1.317 with it present, over these same two pairs. Catches a regression
+    # that drops desc.upper, layers it onto the wrong slot, or leaves layerAlpha
+    # at zero - all of which return the ratio to its unlayered value.
+    Assert-True ($layerUpperDelta -ge $layerRatioFloor) `
+        ("slot 0's upper body diverges during the layer window (delta $([Math]::Round($layerUpperDelta,4)) vs floor $layerRatioFloor; measured 0.915 with the layer removed); $layerReport")
+
+    # CCD IK on slot 0's left hand, counted as the reach line the debug pass draws
+    # from the solved hand to the target - the one piece of that pass that is not
+    # hidden inside the arm mesh. Counted against a background reference (drift-b,
+    # a pure base-clip frame in which this box is untouched background), which is
+    # what lets a static-skybox scene full of yellow foliage yield a clean count:
+    # see YellowOverlayCount.
+    #
+    # in-window is a frame at set time 9.5 s, where the eased weight has reached
+    # 1.0; out-of-window is one at 7.5 s, in the base gap between the layer and IK
+    # windows. Catches a regression that never enables the solve, never sets
+    # ikDebugValid, moves the window, or lets the IK run outside it. Measured 62
+    # in / 0 out here, and 0 in / 0 out against the build that had no IK at all.
+    $ikBackgroundFrame = $samples['drift-b']
+    $ikYellowInWindow = [ShowcaseFrame]::YellowOverlayCount($cycleFrames['ik-in'], $ikBackgroundFrame,
+        $ikBoxX, $ikBoxY, $ikBoxW, $ikBoxH, $ikYellowThreshold, $ikOverlayChangeThreshold)
+    $ikYellowOutsideWindow = [ShowcaseFrame]::YellowOverlayCount($cycleFrames['ik-out'], $ikBackgroundFrame,
+        $ikBoxX, $ikBoxY, $ikBoxW, $ikBoxH, $ikYellowThreshold, $ikOverlayChangeThreshold)
+    # Every other sampled frame, so a regression that drew the chain permanently
+    # would be visible rather than hidden behind a single out-of-window sample.
+    $ikElsewhere = @($cycleFrames.Keys | Where-Object { $_ -ne 'ik-in' -and $_ -ne 'cycle0-08' -and $_ -ne 'cycle1-22' } |
+        ForEach-Object { "$($_)=$([ShowcaseFrame]::YellowOverlayCount($cycleFrames[$_], $ikBackgroundFrame, $ikBoxX, $ikBoxY, $ikBoxW, $ikBoxH, $ikYellowThreshold, $ikOverlayChangeThreshold))" })
+    Write-Host ("  ..   IK reach-line px outside the window: " + ($ikElsewhere -join ' '))
+    Assert-True ($ikYellowInWindow -ge 40 -and $ikYellowInWindow -ge (4 * $ikYellowOutsideWindow + 20)) `
+        ("CCD IK runs only in its window (yellow px in $ikYellowInWindow, out $ikYellowOutsideWindow)")
 
     Assert-True (@(Get-ChildItem -LiteralPath $plainBackbufferDir -File -ErrorAction SilentlyContinue).Count -eq 0) `
         'with README capture mode off the backbuffer writer stays silent even though DX11_README_BACKBUFFER_PNG names a writable path'

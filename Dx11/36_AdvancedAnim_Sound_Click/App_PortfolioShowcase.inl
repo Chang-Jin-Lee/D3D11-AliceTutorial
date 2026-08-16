@@ -46,6 +46,36 @@ namespace
 	// so a set never cuts a clip off before it has been seen through once.
 	constexpr float kPortfolioSetSeconds = 12.0f;
 
+	// The three technique windows, in seconds from the start of each set. They are
+	// deliberately disjoint - and separated by base-clip gaps - so that any still
+	// frame the author captures shows exactly one of them, and so the showcase test
+	// can measure each with the other two provably off.
+	//
+	//   0.0 - 0.6   cross-fade from the outgoing line-up into the incoming one
+	//   4.0 - 7.0   upper-body layer on slot 0
+	//   8.0 - 11.4  CCD IK on slot 0's left hand
+	//
+	// The IK window closes at 11.4 rather than at the set edge so the eased weight
+	// is back at zero, and the arm back on its clip, 0.6 s before the next
+	// cross-fade opens; ending it at 12.0 would hand the blend a pose no clip
+	// authored.
+	constexpr float kPortfolioBlendSeconds  = 0.6f;
+	constexpr float kPortfolioLayerStartSec = 4.0f;
+	constexpr float kPortfolioLayerEndSec   = 7.0f;
+	constexpr float kPortfolioIkStartSec    = 8.0f;
+	constexpr float kPortfolioIkEndSec      = 11.4f;
+	constexpr float kPortfolioIkRampSec     = 0.4f;
+
+	// Hermite ease. Used for both the cross-fade and the IK weight, so neither
+	// starts or stops with a velocity step: a linear blend01 is continuous in
+	// position but not in its derivative, which reads as a flick at each end of a
+	// window even though no pose ever jumps.
+	float SmoothStep(float t)
+	{
+		t = std::clamp(t, 0.0f, 1.0f);
+		return t * t * (3.0f - 2.0f * t);
+	}
+
 	// Which set the show is in. Factored out because the motion and the caption must
 	// never disagree about it: UpdatePortfolioShowcase picks the clips from this and
 	// RenderPortfolioShowcaseHud names them from it, and two separate derivations of
@@ -81,9 +111,9 @@ namespace
 	}
 
 	// The CCD IK evidence path: the chain RenderPortfolioShowcaseDebug() draws, and
-	// the helpers below that recover it from the uploaded palette. The chain is
-	// held here, unsolved, while the showcase plays base clips only; the IK
-	// windows that drive it are not part of this change.
+	// the helpers below that recover it from the uploaded palette. The solve itself
+	// runs on slot 0 inside kPortfolioIkStartSec..kPortfolioIkEndSec; these three
+	// name the arm it moves, tip first.
 	constexpr const char* kPortfolioIkTipBone = "J_Bip_L_Hand";
 	constexpr const char* kPortfolioIkElbowBone = "J_Bip_L_LowerArm";
 	constexpr const char* kPortfolioIkShoulderBone = "J_Bip_L_UpperArm";
@@ -534,12 +564,11 @@ bool App::UpdatePortfolioShowcase(float dt)
 	showcase.ikDebugValid = false;
 
 	const int cycle = PortfolioCycleForTime(showcase.timeSec);
-	// Seconds elapsed inside the current set. Nothing reads it yet: Task 4 consumes
-	// it to cross-fade the outgoing line-up into the incoming one at a set boundary.
-	// It is computed here, beside the cycle it belongs to, so that blend and this
-	// assignment can only ever be driven off the same clock.
+	// Seconds elapsed inside the current set - the clock all three technique windows
+	// are cut from. It is computed here, beside the cycle it belongs to, so that the
+	// windows and the clip assignment can only ever be driven off the same clock.
 	const float setTime = showcase.timeSec - (float)cycle * kPortfolioSetSeconds;
-	(void)setTime;
+	const int clipCount = (int)showcase.clips.size();
 
 	for (size_t slotIndex = 0; slotIndex < showcase.slots.size(); ++slotIndex)
 	{
@@ -560,27 +589,199 @@ bool App::UpdatePortfolioShowcase(float dt)
 		// the size of the very table it indexes, and initialization refused to run
 		// with an empty one, so every slot always receives a clip that resolved -
 		// even when only some of the seven names did.
-		const int clipIndex = PortfolioClipIndexForSlot(cycle, (int)slotIndex, (int)showcase.clips.size());
+		const int clipIndex = PortfolioClipIndexForSlot(cycle, (int)slotIndex, clipCount);
 		const aiAnimation* clip = showcase.clips[(size_t)clipIndex];
 		if (!clip)
 			continue; // unreachable: clips is compacted, so it holds no nulls
 
 		const float clipTime = showcase.timeSec + slot.phaseOffsetSec;
+		const bool isMainSlot = (slotIndex == 0);
+
+		// The line-up this slot was playing in the PREVIOUS set - the one the
+		// cross-fade below fades out of. cycle - 1 is negative for the whole of
+		// cycle 0, which is exactly the case PortfolioClipIndexForSlot folds back
+		// into range: C++ '%' truncates toward zero, so the raw remainder there is
+		// -4..-1 and indexing clips with it would walk off the front of the vector.
+		const int previousClipIndex = PortfolioClipIndexForSlot(cycle - 1, (int)slotIndex, clipCount);
+		const aiAnimation* previousClip = showcase.clips[(size_t)previousClipIndex];
 
 		CharacterAnimator::UpdateDesc desc{};
 		desc.dt = dt;
+
+		// ---- Technique 1: cross-fade at the set boundary ---------------------
+		// Without this the whole cast changes pose between one frame and the next
+		// every twelve seconds - the single most visible defect in a rotation of
+		// this shape. Over the first 0.6 s of every set after the first, the
+		// outgoing clip is eased into the incoming one instead.
+		//
+		// Both sides of the fade are read at clipTime, the same continuous showcase
+		// clock the whole show runs on, so the outgoing clip keeps advancing from
+		// exactly where the previous set left it and the fade starts from the pose
+		// that was on screen one frame earlier.
+		//
+		// The design called for timeA = clipTime + kPortfolioSetSeconds, on the
+		// reading that the outgoing clip would otherwise restart. It would not:
+		// clipTime is showcase.timeSec + phaseOffset, which never resets, so adding
+		// a set length does not continue the outgoing clip - it jumps it forward by
+		// 12 s. Assimp wraps sample times modulo clip duration, so that jump lands
+		// each slot at (12 mod duration) into its clip: 0.125 s for VRM_1 and 0.25 s
+		// for VRM_3, but 4.667 s for VRM_2 and 2.333 s for VRM_4 - two of the four
+		// characters snap to an unrelated pose at the exact instant the seam is
+		// meant to be invisible. Measured across a 0.2 s straddling pair: 13.99
+		// for a hard cut, 10.23 with the offset and 7.06 without it, against a
+		// 3.25 mid-set step of the same width. The showcase test measures the
+		// same quantity over a tighter 0.1 s pair. See the task-4 report.
+		//
+		// cycle 0 has no predecessor to fade out of, so it starts on its clip
+		// directly; previousClip is still resolved above, because that lookup is
+		// the negative-cycle path and it must not be short-circuited out of the
+		// only set that exercises it.
 		desc.base.enabled = true;
-		desc.base.animA = clip;
-		desc.base.animB = clip;
-		desc.base.timeA = clipTime;
-		desc.base.timeB = clipTime;
-		desc.base.blend01 = 0.0f;
+		if (cycle > 0 && previousClip && setTime < kPortfolioBlendSeconds)
+		{
+			desc.base.animA   = previousClip;
+			desc.base.timeA   = clipTime;
+			desc.base.animB   = clip;
+			desc.base.timeB   = clipTime;
+			desc.base.blend01 = SmoothStep(setTime / kPortfolioBlendSeconds);
+		}
+		else
+		{
+			desc.base.animA   = clip;
+			desc.base.animB   = clip;
+			desc.base.timeA   = clipTime;
+			desc.base.timeB   = clipTime;
+			desc.base.blend01 = 0.0f;
+		}
 		desc.base.layerAlpha = 1.0f;
+
+		// ---- Technique 2: upper-body layer on slot 0 -------------------------
+		// CharacterAnimator masks desc.upper to the spine/neck/head/arm chain, so
+		// this plays a second clip from the waist up while the base clip keeps
+		// driving the legs. The layered clip is PortfolioClipIndexForSlot(cycle,
+		// kPortfolioSlotCount): slot index 4 is deliberately outside the 0..3 slot
+		// range, and the function is pure modular arithmetic, so it names the clip
+		// that comes after the four on screen. The layered motion is therefore one
+		// no other character is showing at the same moment, which is what makes the
+		// layer legible rather than looking like a copy of a neighbour.
+		if (isMainSlot && setTime >= kPortfolioLayerStartSec && setTime < kPortfolioLayerEndSec)
+		{
+			const int nextClipIndex = PortfolioClipIndexForSlot(cycle, kPortfolioSlotCount, clipCount);
+			const aiAnimation* layerClip = showcase.clips[(size_t)nextClipIndex];
+			if (layerClip)
+			{
+				const float layer01 = (setTime - kPortfolioLayerStartSec) /
+				                      (kPortfolioLayerEndSec - kPortfolioLayerStartSec);
+				desc.upper.enabled    = true;
+				desc.upper.animA      = layerClip;
+				desc.upper.animB      = layerClip;
+				desc.upper.timeA      = clipTime;
+				desc.upper.timeB      = clipTime;
+				desc.upper.blend01    = 0.0f;
+				// A half sine: zero at both ends of the window, one in the middle.
+				// The layer therefore arrives and leaves without a step, and no
+				// frame outside the window carries any of it.
+				desc.upper.layerAlpha = std::sin(layer01 * XM_PI);
+			}
+		}
+
+		// ---- Technique 3: CCD IK on slot 0's left hand -----------------------
+		// The target orbits a point beside the character once across the window, so
+		// the solved arm is visibly tracking something rather than holding a pose.
+		// The weight is eased in over the first kPortfolioIkRampSec and out over the
+		// last, so the arm neither snaps onto the target nor drops off it.
+		if (isMainSlot && setTime >= kPortfolioIkStartSec && setTime < kPortfolioIkEndSec)
+		{
+			const float ikSpan   = kPortfolioIkEndSec - kPortfolioIkStartSec;
+			const float ikLocal  = setTime - kPortfolioIkStartSec;
+			const float rampIn   = std::min(ikLocal / kPortfolioIkRampSec, 1.0f);
+			const float rampOut  = std::min((ikSpan - ikLocal) / kPortfolioIkRampSec, 1.0f);
+			const float ikTime   = ikLocal / ikSpan;
+
+			desc.ik.enabled  = true;
+			desc.ik.tipBone  = kPortfolioIkTipBone;
+			desc.ik.chainLen = 3;
+			desc.ik.targetMS = XMVectorSet(
+				-0.32f + 0.18f * std::cos(ikTime * XM_2PI),
+				 1.08f + 0.16f * std::sin(ikTime * XM_2PI),
+				 0.20f, 1.0f);
+			desc.ik.weight = SmoothStep(std::min(rampIn, rampOut));
+			XMStoreFloat3(&showcase.ikTargetMS, desc.ik.targetMS);
+		}
 
 		slot.animator.Update(desc);
 
 		entry.fbxBaseAnimator.EnsureBoneCB(m_->m_pDevice, MAX_BONES);
 		entry.fbxBaseAnimator.UploadPalette(m_->m_pDeviceContext, slot.animator.finalTransforms);
+
+		if (isMainSlot && desc.ik.enabled)
+		{
+			// Recover the arm chain's node globals from the uploaded palette:
+			//   final = globalInverse * nodeGlobal * boneOffset
+			// so nodeGlobal = globalInverse^-1 * final * boneOffset^-1.
+			//
+			// Read back out of the palette rather than out of the animator's
+			// internals so the line the debug pass draws is the chain that was
+			// actually skinned this frame - if the solve did not reach the palette,
+			// nothing is drawn rather than a line describing a pose nobody sees.
+			const auto& fbx = *entry.shared->fbx;
+			const auto& boneNames = fbx.GetBoneNames();
+			const auto& boneOffsets = fbx.GetBoneOffsets();
+			const auto& palette = slot.animator.finalTransforms;
+
+			const int shoulderIndex = FindPortfolioBoneIndex(boneNames, kPortfolioIkShoulderBone);
+			const int elbowIndex = FindPortfolioBoneIndex(boneNames, kPortfolioIkElbowBone);
+			const int handIndex = FindPortfolioBoneIndex(boneNames, kPortfolioIkTipBone);
+
+			XMMATRIX globalInverseInv{};
+			const bool globalInverseOk =
+				TryInvertPortfolioMatrix(XMLoadFloat4x4(&fbx.GetGlobalInverse()), globalInverseInv);
+
+			const XMMATRIX modelWorld = entry.GetWorldMatrix();
+			XMFLOAT3 resolved[3]{};
+			bool allResolved = globalInverseOk;
+			const int boneIndices[3] = { shoulderIndex, elbowIndex, handIndex };
+
+			for (int i = 0; i < 3 && allResolved; ++i)
+			{
+				const int boneIndex = boneIndices[i];
+				if (boneIndex < 0 ||
+					(size_t)boneIndex >= palette.size() ||
+					(size_t)boneIndex >= boneOffsets.size())
+				{
+					allResolved = false;
+					break;
+				}
+
+				XMMATRIX boneOffsetInv{};
+				if (!TryInvertPortfolioMatrix(XMLoadFloat4x4(&boneOffsets[(size_t)boneIndex]), boneOffsetInv))
+				{
+					allResolved = false;
+					break;
+				}
+
+				const XMMATRIX nodeGlobal = globalInverseInv * palette[(size_t)boneIndex] * boneOffsetInv;
+				if (!PortfolioMatrixIsFinite(nodeGlobal))
+				{
+					allResolved = false;
+					break;
+				}
+
+				XMStoreFloat3(&resolved[i], XMVector3TransformCoord(PortfolioNodeTranslation(nodeGlobal), modelWorld));
+			}
+
+			// All four points or none: a chain drawn from a half-recovered set of
+			// positions would be evidence of nothing.
+			if (allResolved)
+			{
+				showcase.ikShoulderWS = resolved[0];
+				showcase.ikElbowWS = resolved[1];
+				showcase.ikHandWS = resolved[2];
+				XMStoreFloat3(&showcase.ikTargetWS,
+					XMVector3TransformCoord(XMLoadFloat3(&showcase.ikTargetMS), modelWorld));
+				showcase.ikDebugValid = true;
+			}
+		}
 	}
 
 	return true;
@@ -667,8 +868,15 @@ void App::RenderPortfolioShowcaseHud()
 		return;
 
 	// Fixed geometry and an opaque panel keep the captured frames deterministic.
+	//
+	// The height carries three text lines, not two. InitImGui() loads its font at
+	// 20 px, and with ImGui's default 8 px window padding and 4 px item spacing
+	// three lines need 8 + 20 + 4 + 20 + 4 + 20 + 8 = 84. At the old 64 the third
+	// line fell outside the content region and this window draws with
+	// NoScrollbar, so it would have been silently clipped away rather than
+	// visibly overflowing.
 	ImGui::SetNextWindowPos(ImVec2(24.0f, 24.0f), ImGuiCond_Always);
-	ImGui::SetNextWindowSize(ImVec2(320.0f, 64.0f), ImGuiCond_Always);
+	ImGui::SetNextWindowSize(ImVec2(320.0f, 84.0f), ImGuiCond_Always);
 	ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.04f, 0.05f, 0.08f, 1.0f));
 	ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
 
@@ -708,10 +916,23 @@ void App::RenderPortfolioShowcaseHud()
 		lineUp += showcase.clipNames[(size_t)PortfolioClipIndexForSlot(cycle, slot, clipCount)];
 	}
 
+	// Which technique the frame in front of the viewer is showing. The windows are
+	// disjoint and the tests are taken in the order they open, so exactly one
+	// label can be selected and a still frame is self-describing: a screenshot of
+	// the IK window says CCD IK on its face rather than needing a timestamp and
+	// this file to decode it. Derived from the same setTime the update loop cuts
+	// the windows from, so the label cannot name a technique that is not running.
+	const float setTime = showcase.timeSec - (float)cycle * kPortfolioSetSeconds;
+	const char* technique = "BASE";
+	if (setTime < kPortfolioBlendSeconds)                                             technique = "BLEND";
+	else if (setTime >= kPortfolioLayerStartSec && setTime < kPortfolioLayerEndSec)   technique = "UPPER-BODY LAYER";
+	else if (setTime >= kPortfolioIkStartSec   && setTime < kPortfolioIkEndSec)       technique = "CCD IK";
+
 	if (ImGui::Begin("PortfolioShowcaseHud", nullptr, hudFlags))
 	{
 		ImGui::TextUnformatted(kPortfolioHudTitleLine);
 		ImGui::TextUnformatted(lineUp.c_str());
+		ImGui::TextUnformatted(technique);
 	}
 	ImGui::End();
 	ImGui::PopStyleColor(2);
