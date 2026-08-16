@@ -160,6 +160,37 @@ public class ShowcaseFrame {
     return (double)dark / (double)(w * h);
   }
 
+  // A coarse ink profile of a region, rendered as a comparable string: the number
+  // of near-white (text) pixels in each 8 px column, quantised. The HUD panel is
+  // opaque and fixed-geometry, so one caption rasterises to one profile on every
+  // frame that shows it, while a different clip line-up moves enough ink between
+  // columns to change it.
+  //
+  // Quantising is what keeps the comparison honest. A raw pixel hash would differ
+  // whenever a single captured byte wobbled, which would satisfy "these two
+  // signatures differ" no matter what the clip assignment did - a vacuous pass.
+  // Bucketing the per-column ink makes an identical caption produce an identical
+  // string, so the companion assertion below (the signature is STABLE inside one
+  // set) has real force, and the two together can only both hold if the line-up
+  // genuinely changes at the set boundary and only there.
+  public static string Signature(ShowcaseFrame a, int x, int y, int w, int h) {
+    Require(a, x, y, w, h);
+    const int band = 8;
+    System.Text.StringBuilder sb = new System.Text.StringBuilder();
+    for (int cx = x; cx < x + w; cx += band) {
+      int right = Math.Min(cx + band, x + w);
+      int ink = 0;
+      for (int yy = y; yy < y + h; ++yy) {
+        int rowBase = yy * a.Width;
+        for (int xx = cx; xx < right; ++xx) {
+          if (a.Pixels[rowBase + xx] >= 128) { ++ink; }
+        }
+      }
+      sb.Append(ink / 4).Append('.');
+    }
+    return sb.ToString();
+  }
+
   // Number of pixels in the region that are strongly yellow. The CCD IK debug pass
   // is the only thing in this scene that emits such a colour, so this counts
   // solved-IK evidence directly.
@@ -828,6 +859,25 @@ try {
         $samples[$sample.Name] = Save-ShowcaseFrame -Handle $showcaseHandle -Width $clientWidth -Height $clientHeight `
             -Path (Join-Path $frameDir "showcase-$($sample.Name).png")
     }
+
+    # Clip-rotation sampling. A set lasts 12 s, so t = 6 s sits in the middle of
+    # cycle 0 and t = 18 s in the middle of cycle 1 - as far from a set boundary as
+    # a sample can be, which is what makes the comparison robust to the second or so
+    # of slack between the click that starts the show and this clock.
+    $cycleFrames = [ordered]@{}
+    foreach ($sample in @(
+            @{ Name = 'cycle0-04'; At = 4.0 },
+            @{ Name = 'cycle0-06'; At = 6.0 },
+            @{ Name = 'cycle0-08'; At = 8.0 },
+            @{ Name = 'cycle1-14'; At = 14.0 },
+            @{ Name = 'cycle1-16'; At = 16.0 },
+            @{ Name = 'cycle1-18'; At = 18.0 },
+            @{ Name = 'cycle1-22'; At = 22.0 })) {
+        $waitMs = [int](($sample.At * 1000.0) - $showcaseClock.Elapsed.TotalMilliseconds)
+        if ($waitMs -gt 0) { Start-Sleep -Milliseconds $waitMs }
+        $cycleFrames[$sample.Name] = Save-ShowcaseFrame -Handle $showcaseHandle -Width $clientWidth -Height $clientHeight `
+            -Path (Join-Path $frameDir "showcase-$($sample.Name).png")
+    }
     $showcaseClock.Stop()
 
     $showcaseProcess.Refresh()
@@ -856,6 +906,42 @@ try {
         ("a plain launch renders the showcase HUD panel and its text at client (24,24) " +
          "(dark ratio $([Math]::Round($hudDark,4)) need >= $hudPanelDarkFloor; " +
          "bright ratio $([Math]::Round($hudBright,4)) need >= $hudTextBrightFloor)")
+
+    # The clip assignment rotates: slot i plays clip ((cycle * 4 + i) % 7), so the
+    # four names the HUD prints must change when the set does and must not change
+    # while a set is running. Both halves are asserted, because either alone is
+    # satisfiable by an implementation that is simply wrong: a caption that never
+    # changed would pass the stability check, and one that flickered on capture
+    # noise would pass the difference check.
+    $frameCycle0 = $cycleFrames['cycle0-06']
+    $frameCycle1 = $cycleFrames['cycle1-18']
+    $cycle0Hud = [ShowcaseFrame]::Signature($frameCycle0, $hudX, $hudY, $hudW, $hudH)
+    $cycle1Hud = [ShowcaseFrame]::Signature($frameCycle1, $hudX, $hudY, $hudW, $hudH)
+    Assert-True ($cycle0Hud -ne $cycle1Hud) `
+        'the clip assignment rotates between cycles (HUD names differ at t=6s and t=18s)'
+
+    $withinCycle0 = @('cycle0-04', 'cycle0-06', 'cycle0-08' | ForEach-Object {
+            [ShowcaseFrame]::Signature($cycleFrames[$_], $hudX, $hudY, $hudW, $hudH) })
+    $distinctWithinCycle0 = @($withinCycle0 | Select-Object -Unique).Count
+    Assert-True ($distinctWithinCycle0 -eq 1) `
+        "the clip line-up holds still inside one 12 s set (found $distinctWithinCycle0 distinct HUD signatures at t=4,6,8 s)"
+
+    $hudSignatures = @($cycleFrames.Keys | ForEach-Object {
+            [ShowcaseFrame]::Signature($cycleFrames[$_], $hudX, $hudY, $hudW, $hudH) })
+    $distinctHudSignatures = @($hudSignatures | Select-Object -Unique).Count
+    Assert-True ($distinctHudSignatures -ge 2) `
+        "at least two distinct clip line-ups appear over 24s (found $distinctHudSignatures)"
+
+    # The caption has to name clips, not merely differ. Every sampled line-up must
+    # carry as much ink as four "VRM_n" tokens do, so an implementation that blanked
+    # the second HUD line - or printed one name and three empty slots - cannot pass
+    # the two assertions above by removing text instead of rotating it.
+    $lineUpInk = @($cycleFrames.Keys | ForEach-Object {
+            [ShowcaseFrame]::BrightRatio($cycleFrames[$_], $hudX, ($hudY + 22), $hudW, 20, 200) })
+    $minLineUpInk = ($lineUpInk | Measure-Object -Minimum).Minimum
+    Assert-True ($minLineUpInk -ge 0.02) `
+        ("every sampled HUD line-up rasterises four clip names (min bright ratio " +
+         "$([Math]::Round($minLineUpInk,4)) over the line-up row, need >= 0.02)")
 
     # Separated moving column clusters prove that four characters are live rather
     # than one animating while the rest are frozen - and, because a character

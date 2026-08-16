@@ -27,6 +27,47 @@ namespace
 	constexpr size_t kPortfolioClipNameCount =
 		sizeof(kPortfolioClipNames) / sizeof(kPortfolioClipNames[0]);
 
+	// One set of assignments lasts this long. Four slots drawn from a seven-clip
+	// table means two sets put every clip on screen (0,1,2,3 then 4,5,6,0), and the
+	// whole rotation closes after seven, by which time each clip has visited each
+	// slot. Twelve seconds is a little longer than the longest clip (VRM_1, 11.9 s),
+	// so a set never cuts a clip off before it has been seen through once.
+	constexpr float kPortfolioSetSeconds = 12.0f;
+
+	// Which set the show is in. Factored out because the motion and the caption must
+	// never disagree about it: UpdatePortfolioShowcase picks the clips from this and
+	// RenderPortfolioShowcaseHud names them from it, and two separate derivations of
+	// "which set is this" is exactly how a HUD ends up announcing a clip the cast is
+	// not playing. std::floor rather than a cast so the answer stays monotonic if the
+	// clock is ever read at a negative time; truncation would round toward zero and
+	// hand back set 0 twice.
+	int PortfolioCycleForTime(float timeSec)
+	{
+		return (int)std::floor(timeSec / kPortfolioSetSeconds);
+	}
+
+	// Slot i plays clip ((cycle * 4 + i) % clipCount). Two cycles expose all seven.
+	//
+	// clipCount is the size of the COMPACTED table Task 2 built, not
+	// kPortfolioClipCount. On a healthy model the two are the same 7 and the mapping
+	// is exactly the designed one; if a re-export drops a name, indexing by 7 would
+	// walk off the end of a shorter vector, so the rotation shortens to the clips
+	// that actually resolved instead. kPortfolioClipCount stays the authority on how
+	// many names the model is EXPECTED to carry - that is what the static_asserts and
+	// the name table are pinned to - and clipCount is the authority on how many it
+	// actually answered to.
+	//
+	// cycle may be negative: Task 4 asks for the outgoing line-up with cycle - 1, and
+	// C++ '%' truncates toward zero, so a negative remainder is folded back into
+	// [0, clipCount) rather than indexing backwards off the front of the vector.
+	int PortfolioClipIndexForSlot(int cycle, int slot, int clipCount)
+	{
+		if (clipCount <= 0)
+			return 0;
+		const int raw = (cycle * kPortfolioSlotCount + slot) % clipCount;
+		return raw < 0 ? raw + clipCount : raw;
+	}
+
 	// The CCD IK evidence path: the chain RenderPortfolioShowcaseDebug() draws, and
 	// the helpers below that recover it from the uploaded palette. The chain is
 	// held here, unsolved, while the showcase plays base clips only; the IK
@@ -36,9 +77,11 @@ namespace
 	constexpr const char* kPortfolioIkShoulderBone = "J_Bip_L_UpperArm";
 
 	constexpr const char* kPortfolioHudTitleLine = "VRM ANIMATION SHOWCASE";
-	// The cast line reports the number of slots that actually came up, so a partial
-	// initialization can never publish a caption the frame does not support.
-	constexpr const char* kPortfolioHudCastLineFormat = "%d CHARACTERS / LIVE PALETTES";
+	// The second HUD line is now built per frame from the clips actually playing (see
+	// RenderPortfolioShowcaseHud), so there is no fixed cast-line format any more. It
+	// still reports only slots that came up, which is what the old "%d CHARACTERS"
+	// line was for: a partial initialization cannot publish a caption the frame does
+	// not support.
 
 	// The showcase's observable diagnostics channel. PushLog() records into
 	// m_LogLines, whose only renderer was the editor console panel - which this
@@ -478,6 +521,14 @@ bool App::UpdatePortfolioShowcase(float dt)
 	showcase.timeSec += dt;
 	showcase.ikDebugValid = false;
 
+	const int cycle = PortfolioCycleForTime(showcase.timeSec);
+	// Seconds elapsed inside the current set. Nothing reads it yet: Task 4 consumes
+	// it to cross-fade the outgoing line-up into the incoming one at a set boundary.
+	// It is computed here, beside the cycle it belongs to, so that blend and this
+	// assignment can only ever be driven off the same clock.
+	const float setTime = showcase.timeSec - (float)cycle * kPortfolioSetSeconds;
+	(void)setTime;
+
 	for (size_t slotIndex = 0; slotIndex < showcase.slots.size(); ++slotIndex)
 	{
 		auto& slot = showcase.slots[slotIndex];
@@ -491,11 +542,14 @@ bool App::UpdatePortfolioShowcase(float dt)
 			continue;
 		auto& entry = *entryPtr;
 
-		// Placeholder assignment: one clip per slot, in resolved order. The modulus
-		// is taken over the size of the very table it indexes, and initialization
-		// refused to run with an empty one, so every slot always receives a clip
-		// that resolved - even when only some of the seven names did.
-		const aiAnimation* clip = showcase.clips[slotIndex % showcase.clips.size()];
+		// The rotation. Every set advances the whole cast by four clips, so a viewer
+		// who watches two sets has seen all seven, and one who stays for seven has
+		// seen each of them in each of the four positions. The modulus is taken over
+		// the size of the very table it indexes, and initialization refused to run
+		// with an empty one, so every slot always receives a clip that resolved -
+		// even when only some of the seven names did.
+		const int clipIndex = PortfolioClipIndexForSlot(cycle, (int)slotIndex, (int)showcase.clips.size());
+		const aiAnimation* clip = showcase.clips[(size_t)clipIndex];
 		if (!clip)
 			continue; // unreachable: clips is compacted, so it holds no nulls
 
@@ -612,17 +666,34 @@ void App::RenderPortfolioShowcaseHud()
 		ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
 		ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoInputs;
 
-	int liveSlots = 0;
-	for (const auto& slot : showcase.slots)
+	// The line-up currently playing, left to right. Two things keep it honest:
+	//
+	//   - the cycle comes from PortfolioCycleForTime() reading the same
+	//     showcase.timeSec that UpdatePortfolioShowcase() drove the assignment from,
+	//     and the index from the same PortfolioClipIndexForSlot(), so the caption
+	//     cannot name a clip the cast is not playing;
+	//   - the names come from showcase.clipNames, which records what each entry of
+	//     the compacted table actually answered to, so a partial re-export prints
+	//     the shorter rotation it really got rather than the seven it asked for.
+	//
+	// A slot that never came up contributes nothing, which preserves the old cast
+	// line's property: the HUD only ever describes characters the frame supports.
+	const int cycle = PortfolioCycleForTime(showcase.timeSec);
+	const int clipCount = (int)showcase.clips.size();
+	std::string lineUp;
+	for (int slot = 0; slot < kPortfolioSlotCount; ++slot)
 	{
-		if (slot.initialized)
-			++liveSlots;
+		if ((size_t)slot >= showcase.slots.size() || !showcase.slots[(size_t)slot].initialized)
+			continue;
+		if (!lineUp.empty())
+			lineUp += "  ";
+		lineUp += showcase.clipNames[(size_t)PortfolioClipIndexForSlot(cycle, slot, clipCount)];
 	}
 
 	if (ImGui::Begin("PortfolioShowcaseHud", nullptr, hudFlags))
 	{
 		ImGui::TextUnformatted(kPortfolioHudTitleLine);
-		ImGui::Text(kPortfolioHudCastLineFormat, liveSlots);
+		ImGui::TextUnformatted(lineUp.c_str());
 	}
 	ImGui::End();
 	ImGui::PopStyleColor(2);
