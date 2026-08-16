@@ -142,8 +142,11 @@ The runtime test needs an interactive unlocked desktop, as before.
 ## Out of scope
 
 - Capturing the PNG or GIF. The author does that by hand.
-- Removing the mascot logo from the 37 project READMEs — same repository, unrelated change, separate commit.
 - Any change to `Dx11/Common/Animation`.
+
+## Tracked separately
+
+Removing the mascot logo from the 37 project READMEs is unrelated to the showcase but was requested alongside it. The implementation plan carries it as its own task and its own commit so it can be reviewed and reverted independently.
 
 ## Constraints
 
