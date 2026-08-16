@@ -428,14 +428,47 @@ $slotMotionShapeThreshold = 0.20
 $castHeightMinFraction = 0.55
 $castHeightMaxFraction = 0.65
 
+# MovingRowExtent's own row-scan parameters. Declared as their own constants
+# rather than reused from the column scan just above, because that scan's
+# $bandColumnWidth/$bandMovingFraction answer a different question (a 20 px-wide
+# column over a 240 px torso/arm band) and retuning them would otherwise
+# silently re-quantise this row-over-full-width measurement too.
+#
+# $castRowHeight only ever coincided with $bandColumnWidth's value (20); it has
+# nothing to do with columns.
+#
+# $castRowMovingFraction cannot reuse $bandMovingFraction's value (0.10) even
+# though it reuses its meaning: the column scan's denominator is one 20 px-wide
+# column over a 240 px torso/arm band (4,800 px), while a row's denominator here
+# is the full 1,600 px width, ~5x larger. Against that much bigger denominator, a
+# single limb's sway - a hand, a swaying head, a stepping foot - never reaches
+# 10% of the row, so 0.10 collapsed the measured extent to just the densest
+# torso rows (260-440, 20% of frame height) and missed the actual head-to-feet
+# envelope entirely.
+# 0.005 was chosen by measuring the per-row fraction directly (diagnostic run
+# kept in the task-3 report): every row from y=180 through y=700 carries
+# 0.0069-0.21 of real motion, every row at y<=160 and y>=740 carries exactly 0,
+# and the values step distinctly through that gap rather than hovering near
+# 0.005 - so small shifts in the exact crossing row move the measured fraction
+# by only a percentage point or two, not enough to threaten either band edge. At
+# 0.005 the extent lands at rows 180-720, exactly 60% of the 900 px frame - dead
+# center of the required 0.55-0.65 band. This is the most drift-sensitive of the
+# four cast/edge thresholds on this page, which is why it is declared here
+# beside the others instead of ~620 lines below at its point of use.
+$castRowHeight = 20
+$castRowMovingFraction = 0.005
+
 # No body at a frame edge: the relaxed half of the same ruling. Finger tips and
 # cloth/spring bones may brush an edge briefly; a torso, limb, or head may not.
-# Measured directly on this composition across the slot-a/slot-b half second (see
-# the assertion below and the task-3 report for the per-edge numbers): all four
-# edges - both full-height side columns and both full-width top/bottom rows -
-# came in at exactly 0.0, reproduced identically on repeated runs. 0.02 (2% of an
-# edge line) sits with essentially unlimited margin above that measured 0 - room
-# for an occasional fingertip or sleeve tip to register a handful of pixels on a
+# Measured directly on this composition across six consecutive frame pairs
+# spanning both 12 s sets - slot-a/slot-b plus the five $cycleFrames pairs at
+# t=4/6/8s (cycle 0) and t=14/16/18/22s (cycle 1) - not just a single half second
+# near t=1s (see the assertion below and the task-3 report for the per-pair,
+# per-edge numbers): all four edges - both full-height side columns and both
+# full-width top/bottom rows - came in at exactly 0.0 on every one of those six
+# pairs, reproduced identically on repeated runs. 0.02 (2% of an edge line) sits
+# with essentially unlimited margin above that measured 0 - room for an
+# occasional fingertip or sleeve tip to register a handful of pixels on a
 # different sampled instant - while staying far below the several-percent run of
 # changed pixels a body's width crossing an edge would actually produce.
 $edgeBodyThreshold = 0.02
@@ -1057,27 +1090,12 @@ try {
     # every row bin across the full frame width and marks it moving at the same
     # pixel tolerance ($bandTolerance) the column scan uses, then returns the
     # first and last row that qualified. Measured over the same slot-a/slot-b
-    # half second the motion assertions above use.
-    #
-    # The moving-fraction threshold cannot reuse $bandMovingFraction's value
-    # (0.10) even though it reuses its meaning: the column scan's denominator is
-    # one 20 px-wide column over a 240 px torso/arm band (4,800 px), while a
-    # row's denominator here is the full 1,600 px width, ~5x larger. Against
-    # that much bigger denominator, a single limb's sway - a hand, a swaying
-    # head, a stepping foot - never reaches 10% of the row, so 0.10 collapsed
-    # the measured extent to just the densest torso rows (260-440, 20% of frame
-    # height) and missed the actual head-to-feet envelope entirely.
-    # 0.005 was chosen by measuring the per-row fraction directly (Diagnostic
-    # run kept in the task-3 report): every row from y=180 through y=700 carries
-    # 0.0069-0.21 of real motion, every row at y<=160 and y>=740 carries exactly
-    # 0, and the values step distinctly through that gap rather than hovering
-    # near 0.005 - so small shifts in the exact crossing row move the measured
-    # fraction by only a percentage point or two, not enough to threaten either
-    # band edge. At 0.005 the extent lands at rows 180-720, exactly 60% of the
-    # 900 px frame - dead center of the required 0.55-0.65 band.
-    $castRowMovingFraction = 0.005
+    # half second the motion assertions above use. $castRowHeight and
+    # $castRowMovingFraction are declared beside $castHeightMinFraction /
+    # $castHeightMaxFraction above - see the comment there for why each needs its
+    # own constant instead of reusing the column scan's.
     $castExtent = [ShowcaseFrame]::MovingRowExtent($slotA, $slotB, 0, $clientWidth,
-        $bandColumnWidth, $bandTolerance, $castRowMovingFraction)
+        $castRowHeight, $bandTolerance, $castRowMovingFraction)
     $castHeightFraction = if ($castExtent.Length -eq 2) { ($castExtent[1] - $castExtent[0]) / [double]$clientHeight } else { 0.0 }
     $castRowsText = if ($castExtent.Length -eq 2) { "rows $($castExtent[0])-$($castExtent[1]) of $clientHeight" } else { 'no moving rows found' }
     Assert-True (($castExtent.Length -eq 2) -and ($castHeightFraction -ge $castHeightMinFraction) -and ($castHeightFraction -le $castHeightMaxFraction)) `
@@ -1092,16 +1110,46 @@ try {
     # of the four edge lines (both full-height side columns and both full-width
     # top/bottom rows) is measured with the same DiffRatio/tolerance the rest of
     # this file uses, and every edge must stay under the threshold.
-    $edgeFractions = [ordered]@{
-        left   = [ShowcaseFrame]::DiffRatio($slotA, $slotB, 0, 0, 1, $clientHeight, $bandTolerance)
-        right  = [ShowcaseFrame]::DiffRatio($slotA, $slotB, ($clientWidth - 1), 0, 1, $clientHeight, $bandTolerance)
-        top    = [ShowcaseFrame]::DiffRatio($slotA, $slotB, 0, 0, $clientWidth, 1, $bandTolerance)
-        bottom = [ShowcaseFrame]::DiffRatio($slotA, $slotB, 0, ($clientHeight - 1), $clientWidth, 1, $bandTolerance)
+    #
+    # Measured over every consecutive pair the show already gave us a frame for,
+    # not just the slot-a/slot-b half second at t=0.6-1.1s: that window is barely
+    # a second into a 24 s show, and the $cycleFrames captured above for the
+    # HUD-signature checks (t=4/6/8s in cycle 0, t=14/16/18/22s in cycle 1) supply
+    # five more consecutive pairs spanning both 12 s sets - including every slot
+    # in cycle 1, which the slot-a/slot-b window alone never reaches - at zero
+    # extra runtime. Each pair contributes its own four edge fractions and
+    # $maxEdgeFraction takes the maximum per edge across all of them, so a body
+    # that only grazes an edge at, say, t=14-16s cannot be missed by a guard that
+    # only ever looked at t=0.6-1.1s.
+    $edgeFramePairs = @(
+        , @($slotA, $slotB)
+        , @($cycleFrames['cycle0-04'], $cycleFrames['cycle0-06'])
+        , @($cycleFrames['cycle0-06'], $cycleFrames['cycle0-08'])
+        , @($cycleFrames['cycle1-14'], $cycleFrames['cycle1-16'])
+        , @($cycleFrames['cycle1-16'], $cycleFrames['cycle1-18'])
+        , @($cycleFrames['cycle1-18'], $cycleFrames['cycle1-22'])
+    )
+    $edgeFractions = [ordered]@{ left = 0.0; right = 0.0; top = 0.0; bottom = 0.0 }
+    $edgePairReports = @()
+    foreach ($edgePair in $edgeFramePairs) {
+        $pairA = $edgePair[0]
+        $pairB = $edgePair[1]
+        $pairEdges = [ordered]@{
+            left   = [ShowcaseFrame]::DiffRatio($pairA, $pairB, 0, 0, 1, $clientHeight, $bandTolerance)
+            right  = [ShowcaseFrame]::DiffRatio($pairA, $pairB, ($clientWidth - 1), 0, 1, $clientHeight, $bandTolerance)
+            top    = [ShowcaseFrame]::DiffRatio($pairA, $pairB, 0, 0, $clientWidth, 1, $bandTolerance)
+            bottom = [ShowcaseFrame]::DiffRatio($pairA, $pairB, 0, ($clientHeight - 1), $clientWidth, 1, $bandTolerance)
+        }
+        foreach ($edgeKey in $pairEdges.Keys) {
+            if ($pairEdges[$edgeKey] -gt $edgeFractions[$edgeKey]) { $edgeFractions[$edgeKey] = $pairEdges[$edgeKey] }
+        }
+        $edgePairReports += ($pairEdges.Keys | ForEach-Object { "$($_)=$([Math]::Round($pairEdges[$_],4))" }) -join ','
     }
     $maxEdgeFraction = ($edgeFractions.Values | Measure-Object -Maximum).Maximum
     $edgeReport = ($edgeFractions.Keys | ForEach-Object { "$($_)=$([Math]::Round($edgeFractions[$_],4))" }) -join ', '
     Assert-True ($maxEdgeFraction -lt $edgeBodyThreshold) `
-        ("no body crosses a frame edge (edge changed-pixel fractions $edgeReport; all need < $edgeBodyThreshold)")
+        ("no body crosses a frame edge across any sampled pair (max edge changed-pixel fractions $edgeReport; " +
+         "all need < $edgeBodyThreshold; per-pair $($edgePairReports -join ' | '))")
 
     Assert-True (@(Get-ChildItem -LiteralPath $plainBackbufferDir -File -ErrorAction SilentlyContinue).Count -eq 0) `
         'with README capture mode off the backbuffer writer stays silent even though DX11_README_BACKBUFFER_PNG names a writable path'

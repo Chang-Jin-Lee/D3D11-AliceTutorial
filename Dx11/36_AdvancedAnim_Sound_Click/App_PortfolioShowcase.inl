@@ -17,6 +17,18 @@ namespace
 	constexpr int kPortfolioClipCount = 7;
 	constexpr int kPortfolioSlotCount = 4;
 
+	// Slot order - player, enemy 1, enemy 2, enemy 3, the order
+	// InitializePortfolioShowcase() below builds showcase.slots in and
+	// App_Lifecycle.inl's characterPositions is laid out in - is not left-to-right
+	// screen order. The composition places the four slots at different depths and
+	// x offsets (ndc +0.240 / -0.719 / -0.241 / +0.719 for slot 0/1/2/3
+	// respectively; see App_Lifecycle.inl's characterPositions comment for the
+	// derivation), so left to right on screen is slot 1, slot 2, slot 0, slot 3.
+	// RenderPortfolioShowcaseHud orders its caption by this table so the printed
+	// name lines up with the character a viewer actually sees at each position,
+	// rather than with the order the slots were constructed in.
+	constexpr int kPortfolioScreenOrderToSlot[kPortfolioSlotCount] = { 1, 2, 0, 3 };
+
 	// The showcase clips, in the order they were authored. Animation 0 of
 	// SampleModel.glb is a 0.042 s T-Pose and is deliberately not among them.
 	// Declared without an explicit extent so kPortfolioClipCount can be checked
@@ -666,7 +678,9 @@ void App::RenderPortfolioShowcaseHud()
 		ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
 		ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoInputs;
 
-	// The line-up currently playing, left to right. Two things keep it honest:
+	// The line-up currently playing, ordered left to right on screen via
+	// kPortfolioScreenOrderToSlot (slot construction order and screen order are not
+	// the same - see that table's comment). Three things keep it honest:
 	//
 	//   - the cycle comes from PortfolioCycleForTime() reading the same
 	//     showcase.timeSec that UpdatePortfolioShowcase() drove the assignment from,
@@ -674,15 +688,19 @@ void App::RenderPortfolioShowcaseHud()
 	//     cannot name a clip the cast is not playing;
 	//   - the names come from showcase.clipNames, which records what each entry of
 	//     the compacted table actually answered to, so a partial re-export prints
-	//     the shorter rotation it really got rather than the seven it asked for.
+	//     the shorter rotation it really got rather than the seven it asked for;
+	//   - the iteration order comes from kPortfolioScreenOrderToSlot rather than
+	//     the raw slot index, so the name printed at each position is the one
+	//     actually running on the character standing there.
 	//
 	// A slot that never came up contributes nothing, which preserves the old cast
 	// line's property: the HUD only ever describes characters the frame supports.
 	const int cycle = PortfolioCycleForTime(showcase.timeSec);
 	const int clipCount = (int)showcase.clips.size();
 	std::string lineUp;
-	for (int slot = 0; slot < kPortfolioSlotCount; ++slot)
+	for (int screenIndex = 0; screenIndex < kPortfolioSlotCount; ++screenIndex)
 	{
+		const int slot = kPortfolioScreenOrderToSlot[screenIndex];
 		if ((size_t)slot >= showcase.slots.size() || !showcase.slots[(size_t)slot].initialized)
 			continue;
 		if (!lineUp.empty())

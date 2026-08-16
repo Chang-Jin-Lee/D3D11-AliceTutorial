@@ -172,17 +172,12 @@ void App::LoadDataAsync(std::stop_token stoken)
 	// player, enemy 1, enemy 2, enemy 3 - the same order InitializePortfolioShowcase()
 	// builds its animator slots in.
 	//
-	// Geometry, derived rather than guessed. Camera::SetFrustum uses a 90 degree
+	// Geometry, derived rather than guessed. Camera::SetFrustum uses a 40 degree
 	// *vertical* FOV at 16:9, so the visible height at camera-space depth d is
-	// exactly 2d and the visible width is 2*(16/9)*d. A character silhouette
-	// measures 126.8 world units at scale 80 (measured from captured frames), so
-	// d ~= 90 makes the nearest character span ~70% of a 900 px frame.
-	//
-	// The x values then spread the four silhouettes evenly. They are spaced by the
-	// *animated* envelope each slot sweeps (measured at 219 / 139 / 359 / 239 px
-	// wide - the near slot is both closer and swings the widest), not by the model
-	// origins, which is why they are not symmetric: origins project to x = 202 /
-	// 528 / 893 / 1359 px and leave a ~140 px gap between every neighbouring pair.
+	// 0.72794 * d and the visible width is 1.29412 * d (see the camera comment
+	// below for the derivation). A character silhouette measures 126.5 world
+	// units at scale 80, so d = 290 - the nearest slot's actual depth - makes the
+	// nearest character span ~60% of the frame height.
 	const XMFLOAT3 characterScale(80.0f, 80.0f, 80.0f);
 
 	const std::array<int, 4> characterModelIndices = { playerIndex, enemy1Index, enemy2Index, enemy3Index };
@@ -190,9 +185,13 @@ void App::LoadDataAsync(std::stop_token stoken)
 	// directly behind slot 0 and only three characters were ever observable.
 	// Placed by normalised screen position, not by world x, because the four slots
 	// sit at different depths. At the capture FOV the half-width is 0.64706 * depth,
-	// so ndc_x = x / (0.64706 * depth). The four are spread to ndc -0.72 / -0.24 /
-	// +0.24 / +0.72, giving a uniform 0.48 gap - wider than a character's ~0.43 ndc
-	// span with both arms out, so no silhouette overlaps another.
+	// so ndc_x = x / (0.64706 * depth). Left to right on screen the four are spread
+	// to ndc -0.719 / -0.241 / +0.240 / +0.719 (screen order; the slot order below -
+	// player, enemy 1, enemy 2, enemy 3 - is instead +0.240 / -0.719 / -0.241 /
+	// +0.719), giving a uniform 0.48 gap. A typical torso/limb pose stays within a
+	// ~0.43 ndc span (~80 world units); fingertips and cloth/spring bones may reach
+	// the measured lateral extreme of 0.50-0.57 ndc and brush a neighbour, which is
+	// the same overlap the frame-edge check allows.
 	const std::array<XMFLOAT3, 4> characterPositions = {
 		XMFLOAT3{ 45.0f, 0.0f, 5.0f },
 		XMFLOAT3{ -155.0f, 0.0f, 48.0f },
@@ -233,9 +232,6 @@ void App::LoadDataAsync(std::stop_token stoken)
 	m_->m_WeaponModelIndex = -1;
 
 	// ====================================== 카메라 ======================================
-	// Eye height 73 puts the cast's mid-height on the view axis once the 5 degree
-	// downward pitch is accounted for; z = -85 leaves 90 units to the nearest
-	// character, which is the distance the 70%-of-frame-height figure above solves to.
 	// Cast height is targeted at ~60% of the frame rather than the 70% the earlier
 	// composition aimed for. Measurement showed the two cannot both hold: once the
 	// height fraction is fixed the width-to-height relationship is fixed with it, and
