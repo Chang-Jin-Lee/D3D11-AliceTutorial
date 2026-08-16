@@ -12,9 +12,6 @@
 
 ## 06. PMX (A-Pose)
 
-<!-- README-BRAND:START -->
-<!-- README-BRAND:END -->
-
 - 내용: PMX 캐릭터를 A-포즈 실루엣(흰색)으로 단순 렌더링
 - 주요 구현:
   - Assimp로 PMX 로드, 노드 계층(Global Transform) 적용 병합

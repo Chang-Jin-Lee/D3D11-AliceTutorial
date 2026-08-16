@@ -12,9 +12,6 @@
 
 ## 21. MultiModels With Animations (21_MultiModels_With_Animations)
 
-<!-- README-BRAND:START -->
-<!-- README-BRAND:END -->
-
 - 내용 : 여러 모델에 애니메이션을 적용한 예제입니다
 - 주요 구현
   - 18번 프로젝트에서 만든 애니메이션을 벡터로 담아 실행합니다

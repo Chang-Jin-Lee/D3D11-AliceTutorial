@@ -12,9 +12,6 @@
 
 # 33. Sound Animation Camera Motion
 
-<!-- README-BRAND:START -->
-<!-- README-BRAND:END -->
-
 - 내용: 사운드, 애니메이션, 카메라 모션을 함께 확인하는 프로젝트입니다.
 - 주요 구현
   - 캐릭터 애니메이션 재생

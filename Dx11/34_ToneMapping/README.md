@@ -12,9 +12,6 @@
 
 # 34. Tone Mapping
 
-<!-- README-BRAND:START -->
-<!-- README-BRAND:END -->
-
 - 내용: HDR 렌더링 결과에 톤매핑을 적용하는 프로젝트입니다.
 - 주요 구현
   - PBR/IBL 장면 렌더링

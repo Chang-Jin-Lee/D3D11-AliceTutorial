@@ -12,9 +12,6 @@
 
 ## 09. Lighting (09_Lighting)
 
-<!-- README-BRAND:START -->
-<!-- README-BRAND:END -->
-
 - 내용: Directional Light로 큐브를 비추는 예제
 - 주요 구현:
   - Vertex: POSITION/NORMAL/COLOR, NORMAL을 VS에서 월드 노말로 변환(g_WorldInvTranspose)

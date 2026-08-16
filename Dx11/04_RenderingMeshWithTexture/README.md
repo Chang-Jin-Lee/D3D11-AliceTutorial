@@ -12,9 +12,6 @@
 
 ## 04. RenderingMeshWithTexture
 
-<!-- README-BRAND:START -->
-<!-- README-BRAND:END -->
-
 - 내용: 큐브 각 면에 서로 다른 텍스처를 적용하여 렌더링
 - 주요 구현:
   - `VertexPosTex`(POSITION, TEXCOORD)로 24 정점/36 인덱스 구성

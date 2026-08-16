@@ -12,9 +12,6 @@
 
 ## 28.  scene shared3d model
 
-<!-- README-BRAND:START -->
-<!-- README-BRAND:END -->
-
 - 내용 : 애셋 매니저를 만든 예제입니다
 - 주요 구현
   - fbx 데이터를 로드할때 에셋 매니저에서 캐시 데이터가 있는지 확인합니다.

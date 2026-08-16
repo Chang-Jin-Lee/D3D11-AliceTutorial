@@ -12,9 +12,6 @@
 
 ## 29.  mouse picking
 
-<!-- README-BRAND:START -->
-<!-- README-BRAND:END -->
-
 - 내용 : 마우스로 오브젝트를 선택해 클릭하는 예제입니다.
 - 구현방법
   - 원점, 방향을 가지는 레이를 만듭니다

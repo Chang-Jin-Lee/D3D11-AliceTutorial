@@ -12,9 +12,6 @@
 
 ## 20. Depth Buffer and Alpha Blending artifact (20_Depth_And_Alpha_Issue)
 
-<!-- README-BRAND:START -->
-<!-- README-BRAND:END -->
-
 - 내용 : Depth Buffer and Alpha Blending artifact가 일어나는 상황을 보여주는 예제입니다.
 - 주요 구현
   1. PixelShader에서 패딩으로 투명 구간만 통과시키고 불투명은 버립니다. 깊이만 업데이트 합니다

@@ -13,9 +13,6 @@
 
 ## 01. RenderingQuadangle
 
-<!-- README-BRAND:START -->
-<!-- README-BRAND:END -->
-
 - 내용: NDC 좌표계를 기반으로 두 개의 삼각형을 그려 사각형을 렌더링  
 - 주요 구현:
   - Vertex / Index Buffer 생성

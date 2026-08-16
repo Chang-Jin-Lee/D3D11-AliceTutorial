@@ -12,9 +12,6 @@
 
 ## 23. Rigid, Skinned Animation (23_Rigid_Animation)
 
-<!-- README-BRAND:START -->
-<!-- README-BRAND:END -->
-
 - 내용 : Rigid, Skinned Animation 분기처리를 합니다
 - 주요 구현
   - 본을 읽어 개수가 0이고 애니메이션 개수도 0이면 Static Mesh입니다

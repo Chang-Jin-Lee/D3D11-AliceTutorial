@@ -12,9 +12,6 @@
 
 # 16. NormalMapping (16_NormalMapping)
 
-<!-- README-BRAND:START -->
-<!-- README-BRAND:END -->
-
 - 내용 : Cube의 각 면에 Normal Mapping을 하는 예제입니다.
 - 주요 구현
   - TBN. 탄젠트, 비탄젠트, 노말 (Tangent, Bitangent, Normal)을 정의하고 쉐이더 코드로 GPU에 데이터를 전달합니다

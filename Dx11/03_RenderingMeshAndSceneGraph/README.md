@@ -12,9 +12,6 @@
 
 ## 03. RenderingMeshAndSceneGraph
 
-<!-- README-BRAND:START -->
-<!-- README-BRAND:END -->
-
 - 내용: 부모-자식 계층(Scene Graph)으로 3개의 메쉬를 렌더링
 - 주요 구현:
   - `m_CBuffers`에 3개의 상수 버퍼 데이터를 유지

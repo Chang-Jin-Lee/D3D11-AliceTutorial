@@ -18,41 +18,70 @@ try {
     [IO.File]::WriteAllText((Join-Path $fixture 'Dx11\TutorialApp.sln'), ($solutionLines -join "`r`n") + "`r`n", [Text.UTF8Encoding]::new($false))
     @{ expectedProjectCount = 37; projects = @($projectDirectories | ForEach-Object { @{ directory = $_ } }) } |
         ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $fixture 'tools\manifest.json') -Encoding utf8NoBOM
+
     [IO.File]::WriteAllText((Join-Path $fixture 'README.md'), "# Root`r`n`r`n> Root quote`r`n", [Text.UTF8Encoding]::new($false))
     $rootBefore = [IO.File]::ReadAllBytes((Join-Path $fixture 'README.md'))
+
+    # 01_Test still carries a legacy README-BRAND block, as a project README
+    # would have held the mascot logo before it was removed. It also carries
+    # an unrelated navigation marker that must survive untouched.
     [IO.File]::WriteAllText((Join-Path $fixture 'Dx11\01_Test\README.md'), "<!-- README-NAV-TOP:START -->`nnav`n<!-- README-NAV-TOP:END -->`n`n## One`n`n<!-- README-BRAND:START -->`nold project block`n<!-- README-BRAND:END -->`n- Project list`n", [Text.UTF8Encoding]::new($false))
-    [IO.File]::WriteAllText((Join-Path $fixture 'Dx11\02_Test\README.md'), "### Two`n`n본문 two`n", [Text.Encoding]::GetEncoding(949))
+
+    # 02_Test is CP949-encoded (as some legacy READMEs are) and also carries
+    # a legacy brand block, exercising the encoding-fallback read/rewrite path.
+    [IO.File]::WriteAllText((Join-Path $fixture 'Dx11\02_Test\README.md'), "### Two`n`n본문 two`n`n<!-- README-BRAND:START -->`nold logo`n<!-- README-BRAND:END -->`n`n마지막 문단`n", [Text.Encoding]::GetEncoding(949))
+
+    # Every other project README already reflects the new contract: no
+    # markers, no logo. The updater must leave these completely untouched.
     foreach ($directory in $projectDirectories | Select-Object -Skip 2) {
         [IO.File]::WriteAllText((Join-Path $fixture "Dx11\$directory\README.md"), "# $directory`n`nBody`n", [Text.UTF8Encoding]::new($false))
     }
+    $threeBefore = [IO.File]::ReadAllBytes((Join-Path $fixture 'Dx11\03_Test\README.md'))
+
     [IO.File]::WriteAllText((Join-Path $fixture 'Dx11\99_Unselected\README.md'), "# Unselected`n", [Text.UTF8Encoding]::new($false))
     $unselectedBefore = [IO.File]::ReadAllBytes((Join-Path $fixture 'Dx11\99_Unselected\README.md'))
 
     & $updater -RepoRoot $fixture -Manifest 'tools/manifest.json'
     $rootFirst = Get-Content -Raw -LiteralPath (Join-Path $fixture 'README.md')
     $oneFirst = Get-Content -Raw -LiteralPath (Join-Path $fixture 'Dx11\01_Test\README.md')
+    $twoFirstBytes = [IO.File]::ReadAllBytes((Join-Path $fixture 'Dx11\02_Test\README.md'))
     $twoFirst = Get-Content -Raw -LiteralPath (Join-Path $fixture 'Dx11\02_Test\README.md')
     & $updater -RepoRoot $fixture -Manifest 'tools/manifest.json'
     $rootSecond = Get-Content -Raw -LiteralPath (Join-Path $fixture 'README.md')
     $oneSecond = Get-Content -Raw -LiteralPath (Join-Path $fixture 'Dx11\01_Test\README.md')
+    $twoSecond = Get-Content -Raw -LiteralPath (Join-Path $fixture 'Dx11\02_Test\README.md')
 
-    $newBehaviorFailures = [Collections.Generic.List[string]]::new()
-
+    # Root README (never had a brand block) must be completely unaffected.
     Assert-True ($rootFirst.Contains("`r`n")) 'CRLF root README newline style changed'
     Assert-True ([System.Collections.StructuralComparisons]::StructuralEqualityComparer.Equals($rootBefore, [IO.File]::ReadAllBytes((Join-Path $fixture 'README.md')))) 'root README must remain byte-identical'
     Assert-True ($rootFirst -notmatch 'README-BRAND:(?:START|END)') 'root README brand block must remain absent'
-    if ($rootFirst -cne $rootSecond) { $newBehaviorFailures.Add('second run must keep the root README byte-idempotent') }
-    Assert-True ($oneFirst -match 'width="520"') 'project width must be 520'
-    if ($oneFirst -notmatch '<!-- README-BRAND:END -->\n\n- Project list') { $newBehaviorFailures.Add('project list must have one blank line after README-BRAND:END') }
-    if ($oneFirst -match '<!-- README-BRAND:END -->\n\n\n') { $newBehaviorFailures.Add('project block must not gain extra blank lines') }
-    Assert-True (($oneFirst | Select-String 'README-BRAND:START' -AllMatches).Matches.Count -eq 1) 'brand block duplicated'
-    Assert-True ($oneFirst -ceq $oneSecond) 'second run must be idempotent'
-    Assert-True ($oneFirst.IndexOf('README-BRAND:START') -gt $oneFirst.IndexOf('## One')) 'brand block must follow first Markdown heading'
-    Assert-True ($twoFirst.IndexOf('README-BRAND:START') -gt $twoFirst.IndexOf('### Two')) 'brand block must follow H3 heading'
-    Assert-True ([BitConverter]::ToString(([IO.File]::ReadAllBytes((Join-Path $fixture 'Dx11\02_Test\README.md'))[0..2])) -ne 'EF-BB-BF') 'updated README must not have a UTF-8 BOM'
+    Assert-True ($rootFirst -ceq $rootSecond) 'second run must keep the root README byte-idempotent'
+
+    # The legacy block -- including its content, not just its markers -- must
+    # be gone, and the rest of the file must be preserved exactly.
+    Assert-True ($oneFirst -notmatch 'README-BRAND:(?:START|END)') 'legacy brand markers must be removed from 01_Test'
+    Assert-True ($oneFirst -notmatch 'old project block') 'legacy brand block content must be removed from 01_Test'
+    Assert-True ($oneFirst -match '## One\n\n- Project list') 'exactly one blank line must remain where the brand block was'
+    Assert-True ($oneFirst -notmatch '## One\n\n\n') 'removing the brand block must not leave an extra blank line'
     Assert-True ($oneFirst -match 'README-NAV-TOP:START') 'existing navigation marker changed'
+    Assert-True ($oneFirst -ceq $oneSecond) 'second run must be idempotent'
+
+    # Same removal guarantee through the CP949 decode/UTF-8 re-encode path,
+    # with the surrounding Korean text preserved on both sides of the block.
+    Assert-True ($twoFirst -notmatch 'README-BRAND:(?:START|END)') 'legacy brand markers must be removed from 02_Test'
+    Assert-True ($twoFirst -notmatch 'old logo') 'legacy brand block content must be removed from 02_Test'
+    Assert-True ($twoFirst -match '본문 two') 'Korean body text before the block must survive re-encoding'
+    Assert-True ($twoFirst -match '마지막 문단') 'Korean body text after the block must survive re-encoding'
+    Assert-True ([BitConverter]::ToString($twoFirstBytes[0..2]) -ne 'EF-BB-BF') 'updated README must not have a UTF-8 BOM'
+    Assert-True ($twoFirst -ceq $twoSecond) 'second run must be idempotent for the re-encoded README'
+
+    # Durability: a README that never had a brand block must not be
+    # rewritten at all, proving the generator no longer touches clean files.
+    Assert-True ([System.Collections.StructuralComparisons]::StructuralEqualityComparer.Equals($threeBefore, [IO.File]::ReadAllBytes((Join-Path $fixture 'Dx11\03_Test\README.md')))) 'README with no brand markers must be left byte-identical'
     Assert-True ([System.Collections.StructuralComparisons]::StructuralEqualityComparer.Equals($unselectedBefore, [IO.File]::ReadAllBytes((Join-Path $fixture 'Dx11\99_Unselected\README.md')))) 'unselected README changed'
 
+    # Malformed markers (END before START) must fail loudly and must not
+    # partially update any file, including unrelated READMEs.
     $rootBeforeMalformed = [IO.File]::ReadAllBytes((Join-Path $fixture 'README.md'))
     [IO.File]::WriteAllText((Join-Path $fixture 'Dx11\01_Test\README.md'), "## One`n<!-- README-BRAND:END -->`n<!-- README-BRAND:START -->`n", [Text.UTF8Encoding]::new($false))
     $failed = $false
@@ -60,20 +89,11 @@ try {
     Assert-True $failed 'END-before-START must fail'
     Assert-True ([System.Collections.StructuralComparisons]::StructuralEqualityComparer.Equals($rootBeforeMalformed, [IO.File]::ReadAllBytes((Join-Path $fixture 'README.md')))) 'malformed markers partially updated root README'
 
-    [IO.File]::WriteAllText((Join-Path $fixture 'Dx11\01_Test\README.md'), "## One`n`nBody one`n`n<!-- README-BRAND:START -->`nold block`n<!-- README-BRAND:END -->`n", [Text.UTF8Encoding]::new($false))
-    & $updater -RepoRoot $fixture -Manifest 'tools/manifest.json'
-    $movedBlock = Get-Content -Raw -LiteralPath (Join-Path $fixture 'Dx11\01_Test\README.md')
-    Assert-True ($movedBlock -match "## One`n`n<!-- README-BRAND:START -->") 'existing brand block must move immediately after first Markdown heading'
-    Assert-True (($movedBlock | Select-String 'README-BRAND:START' -AllMatches).Matches.Count -eq 1) 'moved brand block duplicated'
-
-    $beforeMissingH1 = [IO.File]::ReadAllBytes((Join-Path $fixture 'README.md'))
-    [IO.File]::WriteAllText((Join-Path $fixture 'Dx11\02_Test\README.md'), "No heading`n", [Text.UTF8Encoding]::new($false))
-    $failed = $false
-    try { & $updater -RepoRoot $fixture -Manifest 'tools/manifest.json' } catch { $failed = $_.Exception.Message -match 'first Markdown heading' }
-    Assert-True $failed 'missing Markdown heading must fail'
-    Assert-True ([System.Collections.StructuralComparisons]::StructuralEqualityComparer.Equals($beforeMissingH1, [IO.File]::ReadAllBytes((Join-Path $fixture 'README.md')))) 'validation failure partially updated root README'
-
+    # Restore 01_Test and 02_Test to clean, marker-free content before the
+    # manifest-validation negative cases below.
+    [IO.File]::WriteAllText((Join-Path $fixture 'Dx11\01_Test\README.md'), "# 01_Test`n`nBody`n", [Text.UTF8Encoding]::new($false))
     [IO.File]::WriteAllText((Join-Path $fixture 'Dx11\02_Test\README.md'), "### Two`n`nBody two`n", [Text.UTF8Encoding]::new($false))
+
     $manifestFailures = [Collections.Generic.List[string]]::new()
     $negativeCases = @(
         [pscustomobject]@{
@@ -101,8 +121,7 @@ try {
             $manifestFailures.Add("$($case.Name) manifest caused a write before rejection")
         }
     }
-    foreach ($failure in $manifestFailures) { $newBehaviorFailures.Add($failure) }
-    Assert-True ($newBehaviorFailures.Count -eq 0) ($newBehaviorFailures -join '; ')
+    Assert-True ($manifestFailures.Count -eq 0) ($manifestFailures -join '; ')
 
     'README branding updater tests passed'
 }

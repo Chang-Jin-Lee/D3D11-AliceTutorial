@@ -12,9 +12,6 @@
 
 # 30. PBR BRDF (Physically Based Rendering)
 
-<!-- README-BRAND:START -->
-<!-- README-BRAND:END -->
-
 ## Screenshot
 
 | README capture |

@@ -107,39 +107,13 @@ $rootReadme = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'README.md')
 Assert-True ($rootReadme -notmatch 'README-BRAND:(?:START|END)') 'root README brand markers must be absent'
 Assert-True ($rootReadme -notmatch 'alice-tutorial-logo\.png') 'root README logo reference must be absent'
 
-$readmes = @($manifest.projects | ForEach-Object {
-    [pscustomobject]@{
-        Path = Join-Path $repoRoot "Dx11/$($_.directory)/README.md"
-        Relative = '../../docs/media/branding/alice-tutorial-logo.png'
-        Width = 520
-    }
-})
+$readmes = @($manifest.projects | ForEach-Object { Join-Path $repoRoot "Dx11/$($_.directory)/README.md" })
 
 Assert-True ($readmes.Count -eq 37) 'expected 37 project READMEs'
-foreach ($entry in $readmes) {
-    $content = Get-Content -Raw -LiteralPath $entry.Path
-    $brandStart = '<!-- README-BRAND:START -->'
-    $brandEnd = '<!-- README-BRAND:END -->'
-
-    Assert-True (([regex]::Matches($content, [regex]::Escape($brandStart))).Count -eq 1) "brand start count invalid: $($entry.Path)"
-    Assert-True (([regex]::Matches($content, [regex]::Escape($brandEnd))).Count -eq 1) "brand end count invalid: $($entry.Path)"
-
-    $brandIndex = $content.IndexOf($brandStart, [StringComparison]::Ordinal)
-    $brandEndIndex = $content.IndexOf($brandEnd, [StringComparison]::Ordinal)
-    Assert-True ($brandIndex -lt $brandEndIndex) "brand markers out of order: $($entry.Path)"
-    $brandBlockLength = $brandEndIndex + $brandEnd.Length - $brandIndex
-    $brandBlock = $content.Substring($brandIndex, $brandBlockLength)
-    $expectedImage = "<p align=`"center`"><img src=`"$($entry.Relative)`" width=`"$($entry.Width)`" alt=`"D3D11 Alice Tutorial mascot logo`" /></p>"
-    $expectedBlockPattern = '\A' + [regex]::Escape($brandStart) + '\r?\n' + [regex]::Escape($expectedImage) + '\r?\n' + [regex]::Escape($brandEnd) + '\z'
-    Assert-True ([regex]::IsMatch($brandBlock, $expectedBlockPattern)) "brand block content invalid: $($entry.Path)"
-    $afterBrandBlock = $content.Substring($brandEndIndex + $brandEnd.Length)
-    Assert-True ([regex]::IsMatch($afterBrandBlock, '\A(?<newline>\r?\n)\k<newline>(?!\r?\n)')) "brand block must have exactly one trailing blank line: $($entry.Path)"
-
-    $heading = [regex]::Match($content, '(?m)^#{1,6}\s+.+$')
-    Assert-True $heading.Success "Markdown heading missing: $($entry.Path)"
-    Assert-True ($brandIndex -gt ($heading.Index + $heading.Length)) "brand block must follow first Markdown heading: $($entry.Path)"
-    $betweenHeadingAndBrand = $content.Substring($heading.Index + $heading.Length, $brandIndex - ($heading.Index + $heading.Length))
-    Assert-True ($betweenHeadingAndBrand -match '^\s*$') "brand block must be immediately after first Markdown heading: $($entry.Path)"
+foreach ($path in $readmes) {
+    $content = Get-Content -Raw -LiteralPath $path
+    Assert-True ($content -notmatch 'README-BRAND:(?:START|END)') "project README brand markers must be absent: $path"
+    Assert-True ($content -notmatch 'alice-tutorial-logo\.png') "project README logo reference must be absent: $path"
 }
 
 $sourceFiles = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'Dx11') -Recurse -File -Include *.cpp, *.h, *.rc, *.targets)

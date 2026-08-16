@@ -12,9 +12,6 @@
 
 ## 26. ShadowMap PCF (26_ShadowMap_PCF)
 
-<!-- README-BRAND:START -->
-<!-- README-BRAND:END -->
-
 - 내용 : ShadowMap을 보여주는 예제 입니다.
 - 주요 구현
   - 깊이 텍스쳐 (DSV, SRV 겸용임)를 생성합니다

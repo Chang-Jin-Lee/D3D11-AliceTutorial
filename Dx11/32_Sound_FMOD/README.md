@@ -12,9 +12,6 @@
 
 ### 32. FMOD + 애니메이션 동기화
 
-<!-- README-BRAND:START -->
-<!-- README-BRAND:END -->
-
 ## Screenshot
 
 | README capture |

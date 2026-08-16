@@ -12,9 +12,6 @@
 
 ## 25. ToonShading Outline (25_ToonShading_Outline)
 
-<!-- README-BRAND:START -->
-<!-- README-BRAND:END -->
-
 - 내용 : ToonShading과 Outline을 보여주는 예제입니다. 이전 쉐이더들과 한눈에 비교할 수 있게 배치했습니다.
 - 주요 구현
   - Diffuse에서 Theta를 나누어서 계단식으로 그리게끔 만들었습니다.

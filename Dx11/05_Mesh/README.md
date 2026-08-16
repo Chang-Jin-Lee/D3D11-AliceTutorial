@@ -12,9 +12,6 @@
 
 ## 05. Mesh (FBX)
 
-<!-- README-BRAND:START -->
-<!-- README-BRAND:END -->
-
 - 내용: FBX 메시를 로드해 머티리얼별 서브셋을 렌더링
 - 주요 구현:
   - Assimp로 FBX 로드, 노드 계층(Global Transform) 적용 병합

@@ -12,9 +12,6 @@
 
 ## 08. ImguiSystemInfo (08_ImguiSystemInfo)
 
-<!-- README-BRAND:START -->
-<!-- README-BRAND:END -->
-
 - 내용: ImGui로 시스템 정보와 간단한 이미지 뷰어(파일 열기 포함)를 구현한 예제
 - 주요 구현:
   - System Info: FPS(1초 갱신), GPU/CPU, RAM/VRAM, page file 표시

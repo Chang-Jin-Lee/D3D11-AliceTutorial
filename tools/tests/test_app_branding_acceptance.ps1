@@ -4,7 +4,16 @@ function Assert-True([bool]$Condition, [string]$Message) {
     if (-not $Condition) { throw $Message }
 }
 
-function Write-CanonicalReadme([string]$Path, [string]$ImagePath, [int]$Width) {
+function Write-CanonicalReadme([string]$Path) {
+    $content = @(
+        '# Fixture',
+        '',
+        'Body'
+    ) -join "`n"
+    [IO.File]::WriteAllText($Path, $content + "`n", [Text.UTF8Encoding]::new($false))
+}
+
+function Write-BrandedReadme([string]$Path, [string]$ImagePath, [int]$Width) {
     $content = @(
         '# Fixture',
         '',
@@ -32,7 +41,7 @@ function New-BaseFixture([string]$Path, [string]$AcceptanceScript, [string]$Repo
     [IO.File]::WriteAllText((Join-Path $Path 'README.md'), "# Fixture`n`nBody`n", [Text.UTF8Encoding]::new($false))
     foreach ($directory in $Directories | Sort-Object -Unique) {
         New-Item -ItemType Directory -Force -Path (Join-Path $Path "Dx11\$directory") | Out-Null
-        Write-CanonicalReadme (Join-Path $Path "Dx11\$directory\README.md") '../../docs/media/branding/alice-tutorial-logo.png' 520
+        Write-CanonicalReadme (Join-Path $Path "Dx11\$directory\README.md")
     }
 }
 
@@ -91,17 +100,16 @@ try {
             Mutate = {
                 param($path)
                 $readme = Join-Path $path 'README.md'
-                Write-CanonicalReadme $readme 'docs/media/branding/alice-tutorial-logo.png' 720
+                Write-BrandedReadme $readme 'docs/media/branding/alice-tutorial-logo.png' 720
             }
         },
         [pscustomobject]@{
-            Name = 'immediate project list follower'
-            Pattern = 'brand block must have exactly one trailing blank line'
+            Name = 'project README logo block'
+            Pattern = 'project README brand markers must be absent'
             Mutate = {
                 param($path)
                 $readme = Join-Path $path 'Dx11\01_Test\README.md'
-                $content = [IO.File]::ReadAllText($readme).Replace("<!-- README-BRAND:END -->`n`nBody", "<!-- README-BRAND:END -->`n- Item")
-                [IO.File]::WriteAllText($readme, $content, [Text.UTF8Encoding]::new($false))
+                Write-BrandedReadme $readme '../../docs/media/branding/alice-tutorial-logo.png' 520
             }
         },
         [pscustomobject]@{

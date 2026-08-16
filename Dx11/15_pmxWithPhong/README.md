@@ -12,9 +12,6 @@
 
 ## 15. pmxWithPhong (15_pmxWithPhong)
 
-<!-- README-BRAND:START -->
-<!-- README-BRAND:END -->
-
 - 내용 : Phong 쉐이딩을 사용한 pmx 로더 예제입니다.
 - 주요 구현
   - Phong 쉐이더를 사용합니다

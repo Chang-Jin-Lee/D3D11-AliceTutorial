@@ -12,9 +12,6 @@
 
 ## 17. fbx_pmx_obj (17_fbx_pmx_obj_WithPhong)
 
-<!-- README-BRAND:START -->
-<!-- README-BRAND:END -->
-
 - 내용 : Phong Shading을 사용하고 fbx, pmx, obj 모델을 로드하여 렌더링하는 프로젝트입니다.
 - 주요 구현
   - assimp에서 모델 파일 안에 텍스처가 있는지 확인합니다. 만약 있다면 그 텍스처를 사용합니다.

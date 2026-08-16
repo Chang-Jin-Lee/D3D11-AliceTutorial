@@ -12,9 +12,6 @@
 
 # 36. Animation, FMOD 3D Sound, Multithread
 
-<!-- README-BRAND:START -->
-<!-- README-BRAND:END -->
-
 이 이후의 애니메이션 구현은 다음의 레포에서 계속됩니다.
 
 https://github.com/Chang-Jin-Lee/D3D11-AliceAnimation

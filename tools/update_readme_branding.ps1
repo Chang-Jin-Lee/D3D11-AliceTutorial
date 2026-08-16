@@ -35,14 +35,6 @@ if (($sortedManifestDirectories -join "`n") -cne ($sortedSolutionProjectNames -j
     throw 'manifest project directories must exactly match TutorialApp.sln application projects'
 }
 
-function New-BrandBlock([string]$ImagePath, [int]$Width, [string]$Newline) {
-    return @(
-        '<!-- README-BRAND:START -->',
-        "<p align=`"center`"><img src=`"$ImagePath`" width=`"$Width`" alt=`"D3D11 Alice Tutorial mascot logo`" /></p>",
-        '<!-- README-BRAND:END -->'
-    ) -join $Newline
-}
-
 function Read-ReadmeContent([string]$Path) {
     try {
         return [IO.File]::ReadAllText($Path, [Text.UTF8Encoding]::new($false, $true))
@@ -53,38 +45,49 @@ function Read-ReadmeContent([string]$Path) {
     }
 }
 
-function Get-UpdatedReadme([string]$Path, [string]$ImagePath, [int]$Width) {
-    $content = Read-ReadmeContent $Path
-    $newline = if ($content.Contains("`r`n")) { "`r`n" } else { "`n" }
+# The mascot logo used to live in a generated <!-- README-BRAND:START -->
+# / <!-- README-BRAND:END --> block inserted right after the first Markdown
+# heading of every project README. The author asked for the logo to be
+# removed from those READMEs because it is unnecessary, so this script no
+# longer builds or inserts that block. The 37 checked-in READMEs no longer
+# carry the (now-empty) marker comments either -- there is nothing left for
+# them to bound, and no other tool keys off them.
+#
+# This function only strips a README-BRAND block if one is still present,
+# so that re-running this generator is durable: it can never reintroduce the
+# logo, and it cleans up a block if one is ever pasted back in by hand or
+# survives from an old checkout.
+function Remove-LegacyBrandBlock([string]$Path, [string]$Content) {
+    $newline = if ($Content.Contains("`r`n")) { "`r`n" } else { "`n" }
     $start = '<!-- README-BRAND:START -->'
     $end = '<!-- README-BRAND:END -->'
-    $startMatches = [regex]::Matches($content, [regex]::Escape($start))
-    $endMatches = [regex]::Matches($content, [regex]::Escape($end))
+    $startMatches = [regex]::Matches($Content, [regex]::Escape($start))
+    $endMatches = [regex]::Matches($Content, [regex]::Escape($end))
     $startCount = $startMatches.Count
     $endCount = $endMatches.Count
     if ($startCount -ne $endCount -or $startCount -gt 1) { throw "malformed README-BRAND markers: $Path" }
-    if ($startCount -eq 1 -and $startMatches[0].Index -gt $endMatches[0].Index) { throw "malformed README-BRAND markers: $Path" }
-    $block = New-BrandBlock $ImagePath $Width $newline
-    if ($startCount -eq 1) {
-        $blockEnd = $endMatches[0].Index + $end.Length
-        $content = $content.Remove($startMatches[0].Index, $blockEnd - $startMatches[0].Index)
-    }
-    $heading = [regex]::Match($content, '(?m)^#{1,6}\s+.+?(?=\r?$)')
-    if (-not $heading.Success) { throw "first Markdown heading missing: $Path" }
-    $insertAt = $heading.Index + $heading.Length
-    $suffix = $content.Substring($insertAt)
-    $suffix = [regex]::Replace($suffix, '\A(?:[ \t]*\r?\n)+', '')
-    return $content.Substring(0, $insertAt) + $newline + $newline + $block + $newline + $newline + $suffix
+    if ($startCount -eq 0) { return $Content }
+    if ($startMatches[0].Index -gt $endMatches[0].Index) { throw "malformed README-BRAND markers: $Path" }
+    $blockStart = $startMatches[0].Index
+    $blockEnd = $endMatches[0].Index + $end.Length
+    $before = [regex]::Replace($Content.Substring(0, $blockStart), '(?:[ \t]*\r?\n)+\z', '')
+    $after = [regex]::Replace($Content.Substring($blockEnd), '\A(?:[ \t]*\r?\n)+', '')
+    if ($after.Length -eq 0) { return $before }
+    return $before + $newline + $newline + $after
 }
 
 $targets = [Collections.Generic.List[object]]::new()
 foreach ($project in @($data.projects)) {
-    $targets.Add([pscustomobject]@{ Path = Join-Path $root "Dx11/$($project.directory)/README.md"; Image = '../../docs/media/branding/alice-tutorial-logo.png'; Width = 520 })
+    $targets.Add([pscustomobject]@{ Path = Join-Path $root "Dx11/$($project.directory)/README.md" })
 }
 
 $updates = foreach ($target in $targets) {
     if (-not (Test-Path -LiteralPath $target.Path)) { throw "README missing: $($target.Path)" }
-    [pscustomobject]@{ Path = $target.Path; Content = Get-UpdatedReadme $target.Path $target.Image $target.Width }
+    $original = Read-ReadmeContent $target.Path
+    $updated = Remove-LegacyBrandBlock $target.Path $original
+    if ($updated -cne $original) {
+        [pscustomobject]@{ Path = $target.Path; Content = $updated }
+    }
 }
 
 $encoding = [Text.UTF8Encoding]::new($false)

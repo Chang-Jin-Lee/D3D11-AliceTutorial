@@ -12,9 +12,6 @@
 
 ## 14. LightingPhong (14_Lighting_Phong)
 
-<!-- README-BRAND:START -->
-<!-- README-BRAND:END -->
-
 - 이미지를 클릭하면 이동합니다
 
 | [유튜브](https://www.youtube.com/watch?v=k1ex_n8N5AU) | [블로그](https://velog.io/@whoamicj/DX11-14LightingPhong-Phong-%EC%85%B0%EC%9D%B4%EB%94%A9-%EC%95%8C%ED%8C%8C-%ED%88%AC%EB%AA%85%EC%B2%98%EB%A6%AC-%EB%9F%AC%ED%94%84%EB%8B%88%EC%8A%A4) |

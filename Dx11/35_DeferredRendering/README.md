@@ -12,9 +12,6 @@
 
 # 35. Deferred Rendering
 
-<!-- README-BRAND:START -->
-<!-- README-BRAND:END -->
-
 ## Screenshot
 
 | README capture |

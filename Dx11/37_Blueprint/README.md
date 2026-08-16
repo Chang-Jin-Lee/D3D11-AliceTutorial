@@ -12,9 +12,6 @@
 
 # 37. Blueprint
 
-<!-- README-BRAND:START -->
-<!-- README-BRAND:END -->
-
 - 내용: imgui-node-editor를 사용해 노드 기반 UI를 실험하는 프로젝트입니다.
 - 주요 구현
   - 노드 에디터 샘플 실행
