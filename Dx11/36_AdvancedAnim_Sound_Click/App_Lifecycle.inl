@@ -188,11 +188,16 @@ void App::LoadDataAsync(std::stop_token stoken)
 	const std::array<int, 4> characterModelIndices = { playerIndex, enemy1Index, enemy2Index, enemy3Index };
 	// Slot 2 carries a non-zero x deliberately: at x = 0 it stood on the view axis
 	// directly behind slot 0 and only three characters were ever observable.
+	// Placed by normalised screen position, not by world x, because the four slots
+	// sit at different depths. At the capture FOV the half-width is 0.64706 * depth,
+	// so ndc_x = x / (0.64706 * depth). The four are spread to ndc -0.72 / -0.24 /
+	// +0.24 / +0.72, giving a uniform 0.48 gap - wider than a character's ~0.43 ndc
+	// span with both arms out, so no silhouette overlaps another.
 	const std::array<XMFLOAT3, 4> characterPositions = {
-		XMFLOAT3{ 19.0f, 0.0f, 5.0f },
-		XMFLOAT3{ -177.0f, 0.0f, 48.0f },
-		XMFLOAT3{ -89.0f, 0.0f, 62.0f },
-		XMFLOAT3{ 166.0f, 0.0f, 48.0f }
+		XMFLOAT3{ 45.0f, 0.0f, 5.0f },
+		XMFLOAT3{ -155.0f, 0.0f, 48.0f },
+		XMFLOAT3{ -54.0f, 0.0f, 62.0f },
+		XMFLOAT3{ 155.0f, 0.0f, 48.0f }
 	};
 
 	for (size_t i = 0; i < characterModelIndices.size(); ++i) {
@@ -213,7 +218,10 @@ void App::LoadDataAsync(std::stop_token stoken)
 
 	if (auto* ground = modelAt(groundIndex)) {
 		ground->pos = XMFLOAT3(0.0f, -2.0f, 0.0f);
-		ground->scale = XMFLOAT3(2.0f, 1.0f, 8.0f);
+		// Enlarged for the pulled-back showcase camera. At z = -285 the old
+		// (2, 1, 8) plane ended inside the frame, drawing a hard seam across the
+		// shot at about knee height where it met the skybox.
+		ground->scale = XMFLOAT3(12.0f, 1.0f, 32.0f);
 		ground->useInstancePbrMaterial = true;
 		ground->instancePbrMaterial.baseColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f);
 		ground->instancePbrMaterial.metalness = 0.01f;
@@ -228,9 +236,20 @@ void App::LoadDataAsync(std::stop_token stoken)
 	// Eye height 73 puts the cast's mid-height on the view axis once the 5 degree
 	// downward pitch is accounted for; z = -85 leaves 90 units to the nearest
 	// character, which is the distance the 70%-of-frame-height figure above solves to.
+	// Cast height is targeted at ~60% of the frame rather than the 70% the earlier
+	// composition aimed for. Measurement showed the two cannot both hold: once the
+	// height fraction is fixed the width-to-height relationship is fixed with it, and
+	// at 70% four worst-case-wide characters need ~2129px of a 1600px frame. Bodies
+	// clear the edges from about 60% down; only finger tips and cloth spring bones
+	// may brush an edge, which the showcase test allows and the body check forbids.
+	//
+	// Character height is 126.5 world units at scale 80. At the capture FOV the
+	// visible height is 0.72794 * depth, so 0.60 fill solves to depth 289.6 for the
+	// nearest slot at z = 5 - hence z = -285. A 2 degree pitch drops the view axis
+	// 10.1 units over that distance, putting eye height 73 on the cast's mid-height.
 	m_Camera.SetSpeed(15.0f);
-	m_Camera.SetPosition(XMFLOAT3(0.0f, 73.0f, -85.0f));
-	m_Camera.SetRotation(XMFLOAT3(5.0f, 0.0f, 0.0f));
+	m_Camera.SetPosition(XMFLOAT3(0.0f, 73.0f, -285.0f));
+	m_Camera.SetRotation(XMFLOAT3(2.0f, 0.0f, 0.0f));
 
 	m_->m_OutlineThickness = 0.3f;
 	m_->m_OutlineColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 1);
@@ -664,7 +683,12 @@ bool App::InitScene() {
 	// 카메라(View/Proj)로 상수 버퍼를 준비합니다
 	m_->m_baseProjection.world = XMMatrixIdentity();
 	// 카메라 초기 프러스텀 값들 설정
-	m_Camera.SetFrustum(XMConvertToRadians(90.0f), AspectRatio(), 0.01f, 10000.0f);
+	// 40 degrees vertical, not the repo-wide 90. A 90 degree vertical FOV is about
+	// 121 degrees horizontal at 16:9 - near-fisheye - and it visibly stretches
+	// whatever sits near the frame edges, which is where three of the four showcase
+	// characters stand. A longer lens keeps the outer three looking like the middle
+	// one. This narrows Project 36's frustum only; Camera::SetFrustum is untouched.
+	m_Camera.SetFrustum(XMConvertToRadians(40.0f), AspectRatio(), 0.01f, 10000.0f);
 	m_->m_baseProjection.view = XMMatrixTranspose(m_Camera.GetViewMatrixXM());
 	m_->m_baseProjection.proj = XMMatrixTranspose(m_Camera.GetProjMatrixXM());
 	m_->m_baseProjection.worldInvTranspose =
