@@ -260,6 +260,38 @@ public class ShowcaseFrame {
     return MovingColumnRanges(frames, y0, y1, columnWidth, tolerance, minChangedFraction, minGapColumns).Length / 2;
   }
 
+  // The vertical counterpart of MovingColumnRanges, but answering a different
+  // question. That method separates each character's own horizontal envelope by
+  // clustering with gaps; this one measures how tall the WHOLE cast's silhouette
+  // is, top to bottom, across a single pair of frames. A gap between the
+  // nearest character's feet and the farthest character's knees is exactly as
+  // much a part of the cast's vertical footprint as the rows themselves are, so
+  // there is no clustering here: the answer is one bounding box, not several.
+  //
+  // Computed the same way as the column scan: split the frame into fixed-height
+  // rows, mark a row moving when its changed-pixel fraction (at the caller's
+  // tolerance) meets minChangedFraction, and return the pixel extent
+  // [firstRow, lastRowExclusive] spanning every row that qualified. Returns an
+  // empty array if no row met the threshold at all.
+  public static int[] MovingRowExtent(ShowcaseFrame a, ShowcaseFrame b, int x0, int x1,
+      int rowHeight, int tolerance, double minChangedFraction) {
+    if (a.Width != b.Width || a.Height != b.Height) { return new int[0]; }
+    int rows = a.Height / rowHeight;
+    int bandWidth = x1 - x0;
+    int first = -1;
+    int last = -1;
+    for (int r = 0; r < rows; ++r) {
+      int y = r * rowHeight;
+      double ratio = DiffRatio(a, b, x0, y, bandWidth, rowHeight, tolerance);
+      if (ratio >= minChangedFraction) {
+        if (first < 0) { first = y; }
+        last = y + rowHeight;
+      }
+    }
+    if (first < 0) { return new int[0]; }
+    return new int[] { first, last };
+  }
+
   // Per-cell motion inside a region: for each of cellsX*cellsY sub-rectangles, the
   // fraction of its pixels whose luminance changed between the two frames. This
   // describes how a region moved rather than what it looks like, so the profiles of
@@ -385,6 +417,28 @@ $bandMinGapColumns = 4
 $slotMotionCellsX = 6
 $slotMotionCellsY = 6
 $slotMotionShapeThreshold = 0.20
+
+# Cast height band: the human's ruling on the four-characters-large vs.
+# nothing-clips tradeoff, encoded as a number instead of left to drift. Four
+# characters at 70% frame height need ~2129 px of width for the worst-case-wide
+# ones out of this 1600 px frame - they clear the edges only around 53%. The
+# chosen composition sits at ~60%, confirmed by eye at ~57%. 55-65% is a real
+# band around that, not a rubber stamp: it fails on a composition change that
+# meaningfully grows or shrinks the cast while tolerating normal per-clip sway.
+$castHeightMinFraction = 0.55
+$castHeightMaxFraction = 0.65
+
+# No body at a frame edge: the relaxed half of the same ruling. Finger tips and
+# cloth/spring bones may brush an edge briefly; a torso, limb, or head may not.
+# Measured directly on this composition across the slot-a/slot-b half second (see
+# the assertion below and the task-3 report for the per-edge numbers): all four
+# edges - both full-height side columns and both full-width top/bottom rows -
+# came in at exactly 0.0, reproduced identically on repeated runs. 0.02 (2% of an
+# edge line) sits with essentially unlimited margin above that measured 0 - room
+# for an occasional fingertip or sleeve tip to register a handful of pixels on a
+# different sampled instant - while staying far below the several-percent run of
+# changed pixels a body's width crossing an edge would actually produce.
+$edgeBodyThreshold = 0.02
 
 # ---------------------------------------------------------------------------
 # 1. The built binary must exist and must be newer than the sources it is built
@@ -995,6 +1049,59 @@ try {
 
     Assert-True ($slotPairsDiffering -eq 6) `
         "all four characters show different motion (differing slot pairs $slotPairsDiffering of 6; over $slotSampleGapSec s, shape distances $($slotPairReport -join ' ') vs threshold $slotMotionShapeThreshold)"
+
+    # Cast height band. Computed the same way MovingColumnRanges finds a
+    # character's horizontal envelope, but over rows and without clustering: the
+    # cast's vertical extent is one bounding box (head of the nearest character to
+    # feet of the farthest), not four separated bands, so MovingRowExtent walks
+    # every row bin across the full frame width and marks it moving at the same
+    # pixel tolerance ($bandTolerance) the column scan uses, then returns the
+    # first and last row that qualified. Measured over the same slot-a/slot-b
+    # half second the motion assertions above use.
+    #
+    # The moving-fraction threshold cannot reuse $bandMovingFraction's value
+    # (0.10) even though it reuses its meaning: the column scan's denominator is
+    # one 20 px-wide column over a 240 px torso/arm band (4,800 px), while a
+    # row's denominator here is the full 1,600 px width, ~5x larger. Against
+    # that much bigger denominator, a single limb's sway - a hand, a swaying
+    # head, a stepping foot - never reaches 10% of the row, so 0.10 collapsed
+    # the measured extent to just the densest torso rows (260-440, 20% of frame
+    # height) and missed the actual head-to-feet envelope entirely.
+    # 0.005 was chosen by measuring the per-row fraction directly (Diagnostic
+    # run kept in the task-3 report): every row from y=180 through y=700 carries
+    # 0.0069-0.21 of real motion, every row at y<=160 and y>=740 carries exactly
+    # 0, and the values step distinctly through that gap rather than hovering
+    # near 0.005 - so small shifts in the exact crossing row move the measured
+    # fraction by only a percentage point or two, not enough to threaten either
+    # band edge. At 0.005 the extent lands at rows 180-720, exactly 60% of the
+    # 900 px frame - dead center of the required 0.55-0.65 band.
+    $castRowMovingFraction = 0.005
+    $castExtent = [ShowcaseFrame]::MovingRowExtent($slotA, $slotB, 0, $clientWidth,
+        $bandColumnWidth, $bandTolerance, $castRowMovingFraction)
+    $castHeightFraction = if ($castExtent.Length -eq 2) { ($castExtent[1] - $castExtent[0]) / [double]$clientHeight } else { 0.0 }
+    $castRowsText = if ($castExtent.Length -eq 2) { "rows $($castExtent[0])-$($castExtent[1]) of $clientHeight" } else { 'no moving rows found' }
+    Assert-True (($castExtent.Length -eq 2) -and ($castHeightFraction -ge $castHeightMinFraction) -and ($castHeightFraction -le $castHeightMaxFraction)) `
+        ("the cast occupies a $castHeightMinFraction-$castHeightMaxFraction fraction of frame height across the " +
+         "${slotSampleGapSec}s slot-a/slot-b sample (measured $([Math]::Round($castHeightFraction,4)); $castRowsText)")
+
+    # No body at a frame edge. The relaxed requirement the human ruled on: finger
+    # tips and cloth/spring bones may brush an edge briefly; a torso, limb, or
+    # head may not, ever. The discriminator is run length - a body crossing an
+    # edge changes a large run of that edge line across this half second, while a
+    # fingertip or sleeve tip changes only a handful of pixels along it - so each
+    # of the four edge lines (both full-height side columns and both full-width
+    # top/bottom rows) is measured with the same DiffRatio/tolerance the rest of
+    # this file uses, and every edge must stay under the threshold.
+    $edgeFractions = [ordered]@{
+        left   = [ShowcaseFrame]::DiffRatio($slotA, $slotB, 0, 0, 1, $clientHeight, $bandTolerance)
+        right  = [ShowcaseFrame]::DiffRatio($slotA, $slotB, ($clientWidth - 1), 0, 1, $clientHeight, $bandTolerance)
+        top    = [ShowcaseFrame]::DiffRatio($slotA, $slotB, 0, 0, $clientWidth, 1, $bandTolerance)
+        bottom = [ShowcaseFrame]::DiffRatio($slotA, $slotB, 0, ($clientHeight - 1), $clientWidth, 1, $bandTolerance)
+    }
+    $maxEdgeFraction = ($edgeFractions.Values | Measure-Object -Maximum).Maximum
+    $edgeReport = ($edgeFractions.Keys | ForEach-Object { "$($_)=$([Math]::Round($edgeFractions[$_],4))" }) -join ', '
+    Assert-True ($maxEdgeFraction -lt $edgeBodyThreshold) `
+        ("no body crosses a frame edge (edge changed-pixel fractions $edgeReport; all need < $edgeBodyThreshold)")
 
     Assert-True (@(Get-ChildItem -LiteralPath $plainBackbufferDir -File -ErrorAction SilentlyContinue).Count -eq 0) `
         'with README capture mode off the backbuffer writer stays silent even though DX11_README_BACKBUFFER_PNG names a writable path'
