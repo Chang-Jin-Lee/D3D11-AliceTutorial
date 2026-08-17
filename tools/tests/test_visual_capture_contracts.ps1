@@ -57,7 +57,7 @@ Assert-True (($project36ActionTypes -join ',') -eq 'click,wait') 'project 36 fal
 Assert-True ([int]$project36.delayMs -ge 7000) 'project 36 capture delay must cover local public-model loading'
 # Thirteen seconds at 8 fps is the shortest whole-second capture that reaches past
 # the first set boundary at t = 12.0, which is where the cross-fade first runs; the
-# layer and the IK are already inside set 0. See the derivation in
+# upper-body layer is already inside set 0. See the derivation in
 # tools/tests/test_project36_portfolio_media.ps1.
 Assert-True ([int]$project36.gifSeconds -eq 13 -and [int]$manifest.gifFps -eq 8) 'project 36 must request a thirteen-second 8fps GIF'
 Assert-True ([bool]$project36.readmeBackbufferCapture) 'project 36 must opt into README backbuffer capture'

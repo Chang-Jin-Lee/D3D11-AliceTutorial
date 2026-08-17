@@ -400,7 +400,6 @@ void App::PassMainScene() {
 		PassDeferredLight();
 
 		m_->m_pDeviceContext->OMSetDepthStencilState(m_->m_pDepthStencilState, 0);
-		RenderPortfolioShowcaseDebug();
 
 		// ========== 스카이박스 렌더링 (포워드) ==========
 		// Light 패스가 끝난 후 깊이 버퍼는 G-Buffer의 깊이 정보를 유지하고 있음
@@ -686,8 +685,6 @@ void App::PassMainScene() {
 			DirectX::XMFLOAT2(-0.9f, 0.85f), 0.08f, m_->m_pLineInputLayout,
 			m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
 	}
-
-	RenderPortfolioShowcaseDebug();
 }
 
 // G-Buffer 패스: 지오메트리 정보를 G-Buffer에 렌더링

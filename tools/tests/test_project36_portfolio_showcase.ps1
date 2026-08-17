@@ -73,18 +73,12 @@ public class ShowcaseFrame {
   public int Width;
   public int Height;
   public byte[] Pixels;
-  // Per-pixel yellow dominance, min(r,g) - b, clamped at 0. Nothing in this scene is
-  // yellow - the models are pale, the ground and sky are neutral grey, the shadows
-  // are black - so this plane isolates the CCD IK debug pass's hand-to-target reach
-  // line from everything else in the frame.
-  public byte[] YellowDominance;
 
   public static ShowcaseFrame FromBgra(byte[] buffer, int stride, int width, int height) {
     ShowcaseFrame frame = new ShowcaseFrame();
     frame.Width = width;
     frame.Height = height;
     frame.Pixels = new byte[width * height];
-    frame.YellowDominance = new byte[width * height];
     for (int y = 0; y < height; ++y) {
       int rowBase = y * stride;
       int outBase = y * width;
@@ -93,8 +87,6 @@ public class ShowcaseFrame {
         int g = buffer[rowBase + x * 4 + 1];
         int r = buffer[rowBase + x * 4 + 2];
         frame.Pixels[outBase + x] = (byte)((r * 77 + g * 151 + b * 28) >> 8);
-        int warm = ((r < g) ? r : g) - b;
-        frame.YellowDominance[outBase + x] = (byte)(warm > 0 ? warm : 0);
       }
     }
     return frame;
@@ -233,61 +225,6 @@ public class ShowcaseFrame {
       sb.Append(ink / 4).Append('.');
     }
     return sb.ToString();
-  }
-
-  // Number of pixels in the region that are strongly yellow.
-  //
-  // NOT sufficient on its own to find the CCD IK debug pass. The skybox this
-  // showcase renders against is a sunlit brick ruin over yellow-green foliage,
-  // which carries ~6,000 pixels above dominance 120 and reaches 214 - above the
-  // ~146 the antialiased 1 px reach line manages where it crosses that foliage.
-  // No threshold separates them. See YellowOverlayCount below, which does.
-  public static int YellowDominantCount(ShowcaseFrame a, int x, int y, int w, int h, int threshold) {
-    Require(a, x, y, w, h);
-    int count = 0;
-    for (int yy = y; yy < y + h; ++yy) {
-      int rowBase = yy * a.Width;
-      for (int xx = x; xx < x + w; ++xx) {
-        if (a.YellowDominance[rowBase + xx] >= threshold) { ++count; }
-      }
-    }
-    return count;
-  }
-
-  // Pixels in the region that are strongly yellow AND differ from the same pixel
-  // of a background reference frame. This is what finds the CCD IK debug pass's
-  // hand-to-target reach line against a scene that is itself full of yellow.
-  //
-  // It works because the two confounders are separable rather than because the
-  // line is bright:
-  //
-  //   - the skybox and the ground never move, so a background pixel is identical
-  //     between any two frames and contributes nothing however yellow it is;
-  //   - the characters do move, but they are pale white - dominance near zero -
-  //     so a body pixel fails the yellow test whichever frame it is in.
-  //
-  // What is left is pixels that are yellow in this frame and were something else
-  // in the reference: the drawn line, and nothing else. The reference must be a
-  // frame in which the region is background - a body standing in it there would
-  // make every frame that does NOT have it standing there score.
-  public static int YellowOverlayCount(ShowcaseFrame a, ShowcaseFrame background,
-      int x, int y, int w, int h, int yellowThreshold, int changeThreshold) {
-    if (a.Width != background.Width || a.Height != background.Height) { return 0; }
-    Require(a, x, y, w, h);
-    int count = 0;
-    for (int yy = y; yy < y + h; ++yy) {
-      int rowBase = yy * a.Width;
-      for (int xx = x; xx < x + w; ++xx) {
-        int index = rowBase + xx;
-        if (a.YellowDominance[index] < yellowThreshold) { continue; }
-        int dominanceDelta = a.YellowDominance[index] - background.YellowDominance[index];
-        if (dominanceDelta < 0) { dominanceDelta = -dominanceDelta; }
-        int luminanceDelta = a.Pixels[index] - background.Pixels[index];
-        if (luminanceDelta < 0) { luminanceDelta = -luminanceDelta; }
-        if (dominanceDelta + luminanceDelta >= changeThreshold) { ++count; }
-      }
-    }
-    return count;
   }
 
   // Splits the band [y0, y1) into fixed-width columns, marks a column as moving
@@ -498,8 +435,10 @@ $lineUpY = $hudY + 26
 $lineUpH = 24
 
 # Technique windows, in seconds inside each 12 s set (App_PortfolioShowcase.inl):
-# cross-fade 0.0-0.6, upper-body layer 4.0-7.0, CCD IK 8.0-11.4. The three do not
-# overlap, so every sample below reads exactly one technique.
+# cross-fade 0.0-0.6 and upper-body layer 4.0-7.0. The two do not overlap, so every
+# sample below reads at most one technique. A CCD IK window at 8.0-11.4 was removed
+# from the runtime, and its reach-line assertion with it, because the solve fought
+# the baked clip driving the same arm; set time 7.0-12.0 is now plain base clip.
 #
 # Set-boundary step. $boundaryStep is the mean absolute pixel difference between
 # the frames straddling the first set change at t = 12 s, and $medianStep is the
@@ -548,8 +487,8 @@ $stepRegionTop = 120
 # $layerRatioFloor is calibrated, not guessed. Over the same two pairs, with the
 # same bands and the same sample times, the metric read 0.915 with the layer
 # absent (the RED run, before Step 3-6 were written) and 1.317 with it present.
-# 1.10 sits between them with ~18% margin on each side. This is the weakest of
-# the three technique assertions and the task-4 report says so: no pixel statistic
+# 1.10 sits between them with ~18% margin on each side. This is the weaker of the
+# two surviving technique assertions and the task-4 report said so: no pixel statistic
 # I could find separates a layered upper body from an unlayered one by the 2x the
 # design asked for, because the layer changes WHERE the arms go, not how far they
 # travel in half a second.
@@ -558,30 +497,6 @@ $layerUpperBottom = 340
 $layerLowerTop = 340
 $layerLowerBottom = 560
 $layerRatioFloor = 1.10
-
-# CCD IK. The debug pass draws the solved chain green, the target cross red and
-# the hand-to-target reach line yellow, and the reach line is the only one of the
-# three that is reliably visible: the chain lines run inside the arm mesh and are
-# depth-occluded by it, and the cross rasterises pale pink.
-#
-# A plain yellow-threshold count cannot find it. This showcase renders against a
-# sunlit brick ruin over yellow-green foliage, which carries ~6,000 pixels above
-# dominance 120 and reaches 214, while the antialiased 1 px line only reaches ~146
-# where it crosses that foliage - measured, both frames, every threshold from 90
-# to 230. Red and green planes were no better (the wall is orange, the leaves are
-# green). So the count is differenced against a background reference frame
-# instead, which works because the skybox is static and the characters are white:
-# see YellowOverlayCount.
-#
-# The box is the patch of open air beside slot 0 that the IK target sweeps into.
-# Measured: identical background in all 14 sampled frames outside the window and
-# in every frame of the RED run, in both runs, to the pixel.
-$ikYellowThreshold = 100
-$ikOverlayChangeThreshold = 60
-$ikBoxX = 760
-$ikBoxY = 285
-$ikBoxW = 140
-$ikBoxH = 110
 
 # Band 260-500 is the torso/arm span shared by all four slots (the nearest head is
 # at row ~134 and the farthest feet at row ~653). The composition spaces the four
@@ -1203,9 +1118,12 @@ try {
     #                    layerAlpha = sin(layer01 * pi) is still climbing steeply
     #                    (0.446 -> 0.837), so the layer moves the upper body on its
     #                    own as well as playing a second clip through it.
-    #   ik-out / ik-in   7.5 / 9.5 s - one sample in the base gap between the layer
-    #                    and IK windows, one in the middle of the 8.0-11.4 s IK
-    #                    window where the eased weight has reached 1.0.
+    #   cycle0-075 /     7.5 / 9.5 s - two base-clip stills in the second half of
+    #   cycle0-095       set 0. Nothing but the base clips runs after 7.0 s (this is
+    #                    where the removed CCD IK window used to sit), so these two
+    #                    are kept for the HUD line-up assertions, which read EVERY
+    #                    sampled frame, and as evidence for the author that slot 0's
+    #                    arms now move like the other three across that stretch.
     #   boundary-a       11.5 s - the last still of cycle 0, one set-length of
     #                    negative-cycle outgoing-clip lookups after t = 0.
     $cycleFrames = [ordered]@{}
@@ -1240,9 +1158,9 @@ try {
         @{ Name = 'layer-a'; At = 4.4 },
         @{ Name = 'layer-b'; At = 4.9 },
         @{ Name = 'cycle0-06'; At = 6.0 },
-        @{ Name = 'ik-out'; At = 7.5 },
+        @{ Name = 'cycle0-075'; At = 7.5 },
         @{ Name = 'cycle0-08'; At = 8.0 },
-        @{ Name = 'ik-in'; At = 9.5 },
+        @{ Name = 'cycle0-095'; At = 9.5 },
         @{ Name = 'boundary-a'; At = 11.5 })
 
     # Across the first set change, at the same cadence the mid-set reference burst
@@ -1477,10 +1395,9 @@ try {
          "all need < $edgeBodyThreshold; per-pair $($edgePairReports -join ' | '))")
 
     # -----------------------------------------------------------------------
-    # Technique windows. Each 12 s set runs a cross-fade at 0.0-0.6 s, an
-    # upper-body layer on slot 0 at 4.0-7.0 s, and a CCD IK solve on slot 0's
-    # left hand at 8.0-11.4 s. The three windows do not overlap, so each of the
-    # three measurements below reads one technique with the other two off.
+    # Technique windows. Each 12 s set runs a cross-fade at 0.0-0.6 s and an
+    # upper-body layer on slot 0 at 4.0-7.0 s. The two windows do not overlap, so
+    # each of the two measurements below reads one technique with the other off.
     # -----------------------------------------------------------------------
 
     # Locate the set change inside the boundary burst by the one thing that marks
@@ -1599,30 +1516,15 @@ try {
     Assert-True ($layerUpperDelta -ge $layerRatioFloor) `
         ("slot 0's upper body diverges during the layer window (delta $([Math]::Round($layerUpperDelta,4)) vs floor $layerRatioFloor; measured 0.915 with the layer removed); $layerReport")
 
-    # CCD IK on slot 0's left hand, counted as the reach line the debug pass draws
-    # from the solved hand to the target - the one piece of that pass that is not
-    # hidden inside the arm mesh. Counted against a background reference (drift-b,
-    # a pure base-clip frame in which this box is untouched background), which is
-    # what lets a static-skybox scene full of yellow foliage yield a clean count:
-    # see YellowOverlayCount.
-    #
-    # in-window is a frame at set time 9.5 s, where the eased weight has reached
-    # 1.0; out-of-window is one at 7.5 s, in the base gap between the layer and IK
-    # windows. Catches a regression that never enables the solve, never sets
-    # ikDebugValid, moves the window, or lets the IK run outside it. Measured 62
-    # in / 0 out here, and 0 in / 0 out against the build that had no IK at all.
-    $ikBackgroundFrame = $samples['drift-b']
-    $ikYellowInWindow = [ShowcaseFrame]::YellowOverlayCount($cycleFrames['ik-in'], $ikBackgroundFrame,
-        $ikBoxX, $ikBoxY, $ikBoxW, $ikBoxH, $ikYellowThreshold, $ikOverlayChangeThreshold)
-    $ikYellowOutsideWindow = [ShowcaseFrame]::YellowOverlayCount($cycleFrames['ik-out'], $ikBackgroundFrame,
-        $ikBoxX, $ikBoxY, $ikBoxW, $ikBoxH, $ikYellowThreshold, $ikOverlayChangeThreshold)
-    # Every other sampled frame, so a regression that drew the chain permanently
-    # would be visible rather than hidden behind a single out-of-window sample.
-    $ikElsewhere = @($cycleFrames.Keys | Where-Object { $_ -ne 'ik-in' -and $_ -ne 'cycle0-08' -and $_ -ne 'cycle1-22' } |
-        ForEach-Object { "$($_)=$([ShowcaseFrame]::YellowOverlayCount($cycleFrames[$_], $ikBackgroundFrame, $ikBoxX, $ikBoxY, $ikBoxW, $ikBoxH, $ikYellowThreshold, $ikOverlayChangeThreshold))" })
-    Write-Host ("  ..   IK reach-line px outside the window: " + ($ikElsewhere -join ' '))
-    Assert-True ($ikYellowInWindow -ge 40 -and $ikYellowInWindow -ge (4 * $ikYellowOutsideWindow + 20)) `
-        ("CCD IK runs only in its window (yellow px in $ikYellowInWindow, out $ikYellowOutsideWindow)")
+    # There is no third technique assertion. A CCD IK window ran on slot 0's left
+    # hand at set time 8.0-11.4 and was measured here as the yellow reach line its
+    # debug pass drew; both the window and the debug pass are gone from the runtime,
+    # so the assertion went with them rather than being retimed onto a window that no
+    # longer exists. Nothing replaces it, and nothing needs to: set time 7.0-12.0 now
+    # runs no named technique, so there is no claim about it left to make. The three
+    # samples still taken inside that stretch - cycle0-075, cycle0-08 and cycle0-095 -
+    # are read by the HUD line-up assertions, which walk every sampled frame, and
+    # cycle0-06/cycle0-08 is one of the pairs the frame-edge guard measures.
 
     Assert-True (@(Get-ChildItem -LiteralPath $plainBackbufferDir -File -ErrorAction SilentlyContinue).Count -eq 0) `
         'with README capture mode off the backbuffer writer stays silent even though DX11_README_BACKBUFFER_PNG names a writable path'

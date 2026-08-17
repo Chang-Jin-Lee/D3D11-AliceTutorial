@@ -1,13 +1,17 @@
 # Project 36 representative media contract.
 #
 # Project 36 is the portfolio showcase: four front-facing characters rotating
-# through the VRM_* clips in twelve-second sets, with three technique windows cut
+# through the VRM_* clips in twelve-second sets, with two technique windows cut
 # from each set's own clock (App_PortfolioShowcase.inl):
 #
 #   set time  0.0 - 0.6    cross-fade out of the previous set's line-up, and only
 #                          when cycle > 0 - set 0 has no predecessor to fade from
 #   set time  4.0 - 7.0    upper-body layer on slot 0
-#   set time  8.0 - 11.4   CCD IK on slot 0's left hand
+#
+# A third window ran CCD IK on slot 0's left hand over set time 8.0 - 11.4 and was
+# removed from the runtime (it fought the baked clip driving the same arm; see the
+# window list in App_PortfolioShowcase.inl). Set time 7.0 - 12.0 is now plain base
+# clip, so this file no longer certifies a ccd-ik phase.
 #
 # The published PNG and GIF are the only evidence a reader of the README ever
 # sees, so this test checks the media itself rather than the runtime that produced
@@ -21,14 +25,15 @@
 # the only window the capture can address deterministically is [0, gifSeconds), and
 # GIF frame k is showcase time k/8 s.
 #
-# The layer and the IK both run in set 0, so both are already inside [0, 12).
+# The layer runs in set 0, so it is already inside [0, 12).
 # The cross-fade is not: it is guarded on cycle > 0, so its first occurrence is the
 # set boundary at t = 12.0 and it closes at t = 12.6. The last frame that can carry
 # it is frame 100 (t = 12.500; frame 101 is t = 12.625, already past the close), so
 # the capture needs at least 101 frames, i.e. at least 12.625 s. gifSeconds must be
 # a whole number (Test-ReadmeMediaManifest requires a positive integer), so thirteen
-# seconds - 104 frames at 8 fps - is the SHORTEST capture that can contain all three
-# techniques at once.
+# seconds - 104 frames at 8 fps - is the SHORTEST capture that can contain both
+# techniques at once. Dropping the IK window does NOT shorten this: the thirteen
+# seconds were forced by where the cross-fade first occurs, not by the IK.
 #
 # The -PngPath/-GifPath parameters let the same contract run against staged
 # capture output before publication and against the published files afterwards.
@@ -66,13 +71,18 @@ $gifMaxBytes = 5242880
 $minimumLuminanceVariance = 4.0
 $minimumSampledColors = 8
 
-# The three technique windows, in GIF frame indices at 8 fps, derived from the
+# The two technique windows, in GIF frame indices at 8 fps, derived from the
 # runtime constants above with frame k at showcase time k/8 s:
 #
 #   upper-body layer  frames 34..53   t 4.250 .. 6.625   set 0's 4.0-7.0 window
-#   ccd-ik            frames 66..89   t 8.250 .. 11.125  set 0's 8.0-11.4 window
 #   cross-fade        frames 98..100  t 12.250 .. 12.500 set 1's 0.0-0.6 window,
 #                                                        which is t 12.0-12.6
+#
+# Frames 66..89 (t 8.250 .. 11.125) used to carry a ccd-ik phase over set 0's IK
+# window. That window is gone from the runtime, so those frames now hold nothing
+# but base-clip motion; certifying a ccd-ik phase there would have this gate
+# attest to a technique the media does not contain, so the entry was deleted
+# rather than renamed or retimed.
 #
 # Every range is inset from its window's edges rather than filling it, because a
 # captured frame's CONTENT is not from the instant the frame was sampled. The two
@@ -105,12 +115,12 @@ $minimumSampledColors = 8
 #
 # The cross-fade range is three frames because that is all a 0.6 s window inset by
 # 0.25 s can hold - frames 98, 99 and 100, with 101 already past the close. Frames
-# unclaimed by any range - the base-clip gaps at frames 0..33, 54..65 and 90..97,
-# and the tail at frames 101..103 - are deliberately unconstrained: no technique is
-# running there, so there is nothing to assert about them.
+# unclaimed by any range - the base-clip gaps at frames 0..33 and 54..97, and the
+# tail at frames 101..103 - are deliberately unconstrained: no technique is running
+# there, so there is nothing to assert about them.
 #
 # Nothing here names a "dance" or "finish" beat. The showcase has no such phases:
-# every slot plays a VRM_* clip continuously for the whole capture, and the three
+# every slot plays a VRM_* clip continuously for the whole capture, and the two
 # ranges above are the only intervals in which a NAMED technique is on.
 #
 # MinimumDistinctHashes is the floor on distinct central-region hashes inside the
@@ -131,7 +141,6 @@ $minimumSampledColors = 8
 #   retry after a transient open failure can collapse a pair the same way.
 #
 #   upper-body layer  20 frames, floor 4 - a duplicate or two costs nothing
-#   ccd-ik            24 frames, floor 4 - likewise
 #   cross-fade         3 frames, floor 2 - one duplicate has to be survivable
 #
 # On the cross-fade, a ~14 ms hold in a 125 ms period is roughly a one-in-ten
@@ -142,7 +151,6 @@ $minimumSampledColors = 8
 # stopped moving during the fade collapses all three frames onto one hash.
 $phases = @(
     [pscustomobject]@{ Label = 'upper-body layer'; Start = 34; End = 53;  MinimumDistinctHashes = 4 }
-    [pscustomobject]@{ Label = 'ccd-ik';           Start = 66; End = 89;  MinimumDistinctHashes = 4 }
     [pscustomobject]@{ Label = 'cross-fade';       Start = 98; End = 100; MinimumDistinctHashes = 2 }
 )
 

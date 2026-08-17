@@ -46,30 +46,35 @@ namespace
 	// so a set never cuts a clip off before it has been seen through once.
 	constexpr float kPortfolioSetSeconds = 12.0f;
 
-	// The three technique windows, in seconds from the start of each set. They are
+	// The two technique windows, in seconds from the start of each set. They are
 	// deliberately disjoint - and separated by base-clip gaps - so that any still
-	// frame the author captures shows exactly one of them, and so the showcase test
-	// can measure each with the other two provably off.
+	// frame the author captures shows at most one of them, and so the showcase test
+	// can measure each with the other provably off.
 	//
 	//   0.0 - 0.6   cross-fade from the outgoing line-up into the incoming one
 	//   4.0 - 7.0   upper-body layer on slot 0
-	//   8.0 - 11.4  CCD IK on slot 0's left hand
 	//
-	// The IK window closes at 11.4 rather than at the set edge so the eased weight
-	// is back at zero, and the arm back on its clip, 0.6 s before the next
-	// cross-fade opens; ending it at 12.0 would hand the blend a pose no clip
-	// authored.
+	// Set time 7.0 - 12.0 is an ordinary base-clip stretch: all four characters just
+	// play their clips.
+	//
+	// A THIRD window used to run CCD IK on slot 0's left hand over 8.0 - 11.4 s, with
+	// a debug pass drawing the solved chain and its target. It was removed on purpose
+	// and should not be re-added in that shape. The target traced a fixed orbit in
+	// model space while the same arm was still playing a baked VRM clip, so the solve
+	// and the clip fought each other on every frame; CCD here carries no joint limits,
+	// so the loser was the elbow and the wrist, which twisted through poses no clip
+	// authored. Mirroring the target's X sign only moved the identical breakage to the
+	// other arm. Anything that brings IK back needs a target derived from the clip's
+	// own hand path - or joint limits plus an arm masked out of the base clip - not
+	// another hand-picked target position.
 	constexpr float kPortfolioBlendSeconds  = 0.6f;
 	constexpr float kPortfolioLayerStartSec = 4.0f;
 	constexpr float kPortfolioLayerEndSec   = 7.0f;
-	constexpr float kPortfolioIkStartSec    = 8.0f;
-	constexpr float kPortfolioIkEndSec      = 11.4f;
-	constexpr float kPortfolioIkRampSec     = 0.4f;
 
-	// Hermite ease. Used for both the cross-fade and the IK weight, so neither
-	// starts or stops with a velocity step: a linear blend01 is continuous in
-	// position but not in its derivative, which reads as a flick at each end of a
-	// window even though no pose ever jumps.
+	// Hermite ease. Used for the cross-fade weight, so it neither starts nor stops
+	// with a velocity step: a linear blend01 is continuous in position but not in its
+	// derivative, which reads as a flick at each end of a window even though no pose
+	// ever jumps.
 	float SmoothStep(float t)
 	{
 		t = std::clamp(t, 0.0f, 1.0f);
@@ -88,8 +93,8 @@ namespace
 		return (int)std::floor(timeSec / kPortfolioSetSeconds);
 	}
 
-	// Seconds elapsed inside the current set - the clock all three technique windows
-	// are cut from. Factored out for the same reason the cycle above is: the update
+	// Seconds elapsed inside the current set - the clock both technique windows are
+	// cut from. Factored out for the same reason the cycle above is: the update
 	// loop opens the windows from it and the HUD names the active one from it, and two
 	// separate derivations of "how far into this set are we" is how a caption ends up
 	// announcing a technique that is not running. Built on PortfolioCycleForTime so
@@ -123,14 +128,6 @@ namespace
 		return raw < 0 ? raw + clipCount : raw;
 	}
 
-	// The CCD IK evidence path: the chain RenderPortfolioShowcaseDebug() draws, and
-	// the helpers below that recover it from the uploaded palette. The solve itself
-	// runs on slot 0 inside kPortfolioIkStartSec..kPortfolioIkEndSec; these three
-	// name the arm it moves, tip first.
-	constexpr const char* kPortfolioIkTipBone = "J_Bip_L_Hand";
-	constexpr const char* kPortfolioIkElbowBone = "J_Bip_L_LowerArm";
-	constexpr const char* kPortfolioIkShoulderBone = "J_Bip_L_UpperArm";
-
 	constexpr const char* kPortfolioHudTitleLine = "VRM ANIMATION SHOWCASE";
 	// The second HUD line is now built per frame from the clips actually playing (see
 	// RenderPortfolioShowcaseHud), so there is no fixed cast-line format any more. It
@@ -159,40 +156,6 @@ namespace
 		if (ticksPerSecond <= 0.0 || clip->mDuration <= 0.0)
 			return 0.0f;
 		return (float)(clip->mDuration / ticksPerSecond);
-	}
-
-	int FindPortfolioBoneIndex(const std::vector<std::string>& boneNames, const char* boneName)
-	{
-		if (!boneName)
-			return -1;
-		for (size_t i = 0; i < boneNames.size(); ++i)
-		{
-			if (boneNames[i] == boneName)
-				return (int)i;
-		}
-		return -1;
-	}
-
-	bool PortfolioMatrixIsFinite(DirectX::FXMMATRIX source)
-	{
-		return !XMMatrixIsNaN(source) && !XMMatrixIsInfinite(source);
-	}
-
-	bool TryInvertPortfolioMatrix(DirectX::FXMMATRIX source, DirectX::XMMATRIX& out)
-	{
-		XMVECTOR determinant = XMMatrixDeterminant(source);
-		if (std::fabs(XMVectorGetX(determinant)) < 1.0e-8f)
-			return false;
-		out = XMMatrixInverse(&determinant, source);
-		return PortfolioMatrixIsFinite(out);
-	}
-
-	// CharacterAnimator keeps Assimp's column-vector convention, so a node
-	// global's translation lives in the last column (see GetTranslation_Col in
-	// Common/Animation/Animator.h), not in row 3.
-	XMVECTOR PortfolioNodeTranslation(DirectX::FXMMATRIX nodeGlobal)
-	{
-		return XMMatrixTranspose(nodeGlobal).r[3];
 	}
 
 	// ------------------------------------------------------------------------
@@ -404,7 +367,6 @@ bool App::InitializePortfolioShowcase()
 	showcase.timeSec = 0.0f;
 	showcase.clips.clear();
 	showcase.clipNames.clear();
-	showcase.ikDebugValid = false;
 
 	auto& backbuffer = m_->m_PortfolioBackbuffer;
 	backbuffer.requestedPath.clear();
@@ -553,7 +515,6 @@ void App::ResetPortfolioShowcase()
 {
 	auto& showcase = m_->m_PortfolioShowcase;
 	showcase.timeSec = 0.0f;
-	showcase.ikDebugValid = false;
 }
 
 // ---------------------------------------------------------------------------
@@ -574,11 +535,10 @@ bool App::UpdatePortfolioShowcase(float dt)
 	}
 
 	showcase.timeSec += dt;
-	showcase.ikDebugValid = false;
 
 	const int cycle = PortfolioCycleForTime(showcase.timeSec);
-	// The clock all three technique windows are cut from, read from the same helper
-	// the HUD reads it from, so the windows and the clip assignment can only ever be
+	// The clock both technique windows are cut from, read from the same helper the
+	// HUD reads it from, so the windows and the clip assignment can only ever be
 	// driven off the same set time.
 	const float setTime = PortfolioSetTimeForTime(showcase.timeSec);
 	const int clipCount = (int)showcase.clips.size();
@@ -699,176 +659,13 @@ bool App::UpdatePortfolioShowcase(float dt)
 			}
 		}
 
-		// ---- Technique 3: CCD IK on slot 0's left hand -----------------------
-		// The target orbits a point beside the character once across the window, so
-		// the solved arm is visibly tracking something rather than holding a pose.
-		// The weight is eased in over the first kPortfolioIkRampSec and out over the
-		// last, so the arm neither snaps onto the target nor drops off it.
-		if (isMainSlot && setTime >= kPortfolioIkStartSec && setTime < kPortfolioIkEndSec)
-		{
-			const float ikSpan   = kPortfolioIkEndSec - kPortfolioIkStartSec;
-			const float ikLocal  = setTime - kPortfolioIkStartSec;
-			const float rampIn   = std::min(ikLocal / kPortfolioIkRampSec, 1.0f);
-			const float rampOut  = std::min((ikSpan - ikLocal) / kPortfolioIkRampSec, 1.0f);
-			const float ikTime   = ikLocal / ikSpan;
-
-			desc.ik.enabled  = true;
-			desc.ik.tipBone  = kPortfolioIkTipBone;
-			desc.ik.chainLen = 3;
-			desc.ik.targetMS = XMVectorSet(
-				-0.32f + 0.18f * std::cos(ikTime * XM_2PI),
-				 1.08f + 0.16f * std::sin(ikTime * XM_2PI),
-				 0.20f, 1.0f);
-			desc.ik.weight = SmoothStep(std::min(rampIn, rampOut));
-			XMStoreFloat3(&showcase.ikTargetMS, desc.ik.targetMS);
-		}
-
 		slot.animator.Update(desc);
 
 		entry.fbxBaseAnimator.EnsureBoneCB(m_->m_pDevice, MAX_BONES);
 		entry.fbxBaseAnimator.UploadPalette(m_->m_pDeviceContext, slot.animator.finalTransforms);
-
-		if (isMainSlot && desc.ik.enabled)
-		{
-			// Recover the arm chain's node globals from the uploaded palette:
-			//   final = globalInverse * nodeGlobal * boneOffset
-			// so nodeGlobal = globalInverse^-1 * final * boneOffset^-1.
-			//
-			// Read back out of the palette rather than out of the animator's
-			// internals so the line the debug pass draws is the chain that was
-			// actually skinned this frame - if the solve did not reach the palette,
-			// nothing is drawn rather than a line describing a pose nobody sees.
-			const auto& fbx = *entry.shared->fbx;
-			const auto& boneNames = fbx.GetBoneNames();
-			const auto& boneOffsets = fbx.GetBoneOffsets();
-			const auto& palette = slot.animator.finalTransforms;
-
-			const int shoulderIndex = FindPortfolioBoneIndex(boneNames, kPortfolioIkShoulderBone);
-			const int elbowIndex = FindPortfolioBoneIndex(boneNames, kPortfolioIkElbowBone);
-			const int handIndex = FindPortfolioBoneIndex(boneNames, kPortfolioIkTipBone);
-
-			XMMATRIX globalInverseInv{};
-			const bool globalInverseOk =
-				TryInvertPortfolioMatrix(XMLoadFloat4x4(&fbx.GetGlobalInverse()), globalInverseInv);
-
-			const XMMATRIX modelWorld = entry.GetWorldMatrix();
-			XMFLOAT3 resolved[3]{};
-			bool allResolved = globalInverseOk;
-			const int boneIndices[3] = { shoulderIndex, elbowIndex, handIndex };
-
-			for (int i = 0; i < 3 && allResolved; ++i)
-			{
-				const int boneIndex = boneIndices[i];
-				if (boneIndex < 0 ||
-					(size_t)boneIndex >= palette.size() ||
-					(size_t)boneIndex >= boneOffsets.size())
-				{
-					allResolved = false;
-					break;
-				}
-
-				XMMATRIX boneOffsetInv{};
-				if (!TryInvertPortfolioMatrix(XMLoadFloat4x4(&boneOffsets[(size_t)boneIndex]), boneOffsetInv))
-				{
-					allResolved = false;
-					break;
-				}
-
-				const XMMATRIX nodeGlobal = globalInverseInv * palette[(size_t)boneIndex] * boneOffsetInv;
-				if (!PortfolioMatrixIsFinite(nodeGlobal))
-				{
-					allResolved = false;
-					break;
-				}
-
-				XMStoreFloat3(&resolved[i], XMVector3TransformCoord(PortfolioNodeTranslation(nodeGlobal), modelWorld));
-			}
-
-			// All four points or none: a chain drawn from a half-recovered set of
-			// positions would be evidence of nothing.
-			if (allResolved)
-			{
-				showcase.ikShoulderWS = resolved[0];
-				showcase.ikElbowWS = resolved[1];
-				showcase.ikHandWS = resolved[2];
-				XMStoreFloat3(&showcase.ikTargetWS,
-					XMVector3TransformCoord(XMLoadFloat3(&showcase.ikTargetMS), modelWorld));
-				showcase.ikDebugValid = true;
-			}
-		}
 	}
 
 	return true;
-}
-
-// ---------------------------------------------------------------------------
-// IK evidence: the solved arm chain and its target, drawn with LineRenderer.
-// ---------------------------------------------------------------------------
-void App::RenderPortfolioShowcaseDebug()
-{
-	const auto& showcase = m_->m_PortfolioShowcase;
-	if (!showcase.initialized || !showcase.ikDebugValid)
-		return;
-	if (!m_->m_LineRenderer || !m_->m_pLineVS || !m_->m_pLineInputLayout)
-		return;
-
-	// The recovered positions are already world space, so the line pass draws
-	// with an identity world matrix.
-	ConstantBuffer lineCB = m_->m_ConstantBuffer;
-	const XMMATRIX identity = XMMatrixIdentity();
-	lineCB.world = XMMatrixTranspose(identity);
-	lineCB.worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, identity));
-	lineCB.view = m_->m_baseProjection.view;
-	lineCB.proj = m_->m_baseProjection.proj;
-	lineCB.pad = 3.0f; // line marker path
-	lineCB.boundsBoneIndex = -1;
-
-	D3D11_MAPPED_SUBRESOURCE mappedLine{};
-	if (FAILED(m_->m_pDeviceContext->Map(m_->m_pConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedLine)))
-		return;
-	memcpy_s(mappedLine.pData, sizeof(ConstantBuffer), &lineCB, sizeof(ConstantBuffer));
-	m_->m_pDeviceContext->Unmap(m_->m_pConstantBuffer, 0);
-	m_->m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
-	m_->m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_->m_pConstantBuffer);
-
-	ID3D11VertexShader* previousVS = nullptr;
-	m_->m_pDeviceContext->VSGetShader(&previousVS, nullptr, nullptr);
-	ID3D11Buffer* previousVSb1 = nullptr;
-	m_->m_pDeviceContext->VSGetConstantBuffers(1, 1, &previousVSb1);
-	ID3D11InputLayout* previousIL = nullptr;
-	m_->m_pDeviceContext->IAGetInputLayout(&previousIL);
-
-	m_->m_pDeviceContext->VSSetShader(m_->m_pLineVS, nullptr, 0);
-	m_->m_pDeviceContext->IASetInputLayout(m_->m_pLineInputLayout);
-	ID3D11Buffer* nullBoneCB = nullptr;
-	m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &nullBoneCB);
-
-	auto drawLine = [&](const XMFLOAT3& from, const XMFLOAT3& to, const XMFLOAT4& color) {
-		m_->m_LineRenderer->DrawLine(m_->m_pDeviceContext, from, to, color,
-			m_->m_pLineInputLayout, m_->m_pLineVS, m_->m_pPixelShader, m_->m_pConstantBuffer);
-		};
-
-	const XMFLOAT4 chainColor(0.15f, 1.0f, 0.35f, 1.0f);
-	const XMFLOAT4 reachColor(1.0f, 0.85f, 0.1f, 1.0f);
-	const XMFLOAT4 targetColor(1.0f, 0.25f, 0.25f, 1.0f);
-
-	drawLine(showcase.ikShoulderWS, showcase.ikElbowWS, chainColor);
-	drawLine(showcase.ikElbowWS, showcase.ikHandWS, chainColor);
-	drawLine(showcase.ikHandWS, showcase.ikTargetWS, reachColor);
-
-	// Three-axis cross at the IK target.
-	const float crossHalfLength = 8.0f;
-	const XMFLOAT3& target = showcase.ikTargetWS;
-	drawLine(XMFLOAT3(target.x - crossHalfLength, target.y, target.z),
-		XMFLOAT3(target.x + crossHalfLength, target.y, target.z), targetColor);
-	drawLine(XMFLOAT3(target.x, target.y - crossHalfLength, target.z),
-		XMFLOAT3(target.x, target.y + crossHalfLength, target.z), targetColor);
-	drawLine(XMFLOAT3(target.x, target.y, target.z - crossHalfLength),
-		XMFLOAT3(target.x, target.y, target.z + crossHalfLength), targetColor);
-
-	if (previousVS) { m_->m_pDeviceContext->VSSetShader(previousVS, nullptr, 0); previousVS->Release(); }
-	if (previousVSb1) { m_->m_pDeviceContext->VSSetConstantBuffers(1, 1, &previousVSb1); previousVSb1->Release(); }
-	if (previousIL) { m_->m_pDeviceContext->IASetInputLayout(previousIL); previousIL->Release(); }
 }
 
 // ---------------------------------------------------------------------------
@@ -931,12 +728,13 @@ void App::RenderPortfolioShowcaseHud()
 	}
 
 	// Which technique the frame in front of the viewer is showing. The windows are
-	// disjoint and the tests are taken in the order they open, so exactly one
-	// label can be selected and a still frame is self-describing: a screenshot of
-	// the IK window says CCD IK on its face rather than needing a timestamp and
-	// this file to decode it. Derived from the same PortfolioSetTimeForTime() the
-	// update loop cuts the windows from, so the label cannot name a technique that is
-	// not running.
+	// disjoint and the tests are taken in the order they open, so at most one label
+	// can be selected and a still frame is self-describing: a screenshot of the layer
+	// window says UPPER-BODY LAYER on its face rather than needing a timestamp and
+	// this file to decode it. Outside both windows the label is BASE, which is what
+	// the whole of set time 7.0 - 12.0 now reads. Derived from the same
+	// PortfolioSetTimeForTime() the update loop cuts the windows from, so the label
+	// cannot name a technique that is not running.
 	//
 	// The cross-fade branch carries the update loop's cycle > 0 guard as well as its
 	// window: cycle 0 has no predecessor to fade out of, so it plays its clip
@@ -947,7 +745,6 @@ void App::RenderPortfolioShowcaseHud()
 	const char* technique = "BASE";
 	if (cycle > 0 && setTime < kPortfolioBlendSeconds)                                technique = "BLEND";
 	else if (setTime >= kPortfolioLayerStartSec && setTime < kPortfolioLayerEndSec)   technique = "UPPER-BODY LAYER";
-	else if (setTime >= kPortfolioIkStartSec   && setTime < kPortfolioIkEndSec)       technique = "CCD IK";
 
 	if (ImGui::Begin("PortfolioShowcaseHud", nullptr, hudFlags))
 	{

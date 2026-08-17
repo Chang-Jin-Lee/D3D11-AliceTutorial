@@ -1,6 +1,6 @@
 # Project 36 VRM Animation Showcase — Design
 
-Supersedes the animation-source half of `2026-08-10-project36-portfolio-showcase-design.md`. The camera composition, the per-project GIF contract, and the backbuffer capture provider from that design remain in force.
+Supersedes the animation-source half of `2026-08-10-project36-portfolio-showcase-design.md`. The camera composition, the per-project GIF contract, and the backbuffer capture provider from that design remain in force — except for that design's requirement that the GIF demonstrate CCD IK, which is withdrawn; see [Removed: the CCD IK window](#removed-the-ccd-ik-window).
 
 ## Why
 
@@ -13,7 +13,9 @@ Two further problems with the current state:
 
 ## Goal
 
-Launching Project 36 shows four current public `MyAlice` characters, front-facing, each playing a different one of the seven VRM animations, cycling so all seven appear. Animation blending, upper-body layering, and CCD IK continue to be demonstrated on top of that motion.
+Launching Project 36 shows four current public `MyAlice` characters, front-facing, each playing a different one of the seven VRM animations, cycling so all seven appear. Animation blending and upper-body layering are demonstrated on top of that motion.
+
+> **Amended 2026-08-17.** This goal originally also demanded CCD IK. That window shipped, was reviewed by the author, and was removed; see [Removed: the CCD IK window](#removed-the-ccd-ik-window). What ships is the cross-fade, the upper-body layer, and the seven-clip rotation.
 
 The author captures the PNG and GIF by hand. This work delivers the runtime only.
 
@@ -67,15 +69,32 @@ Two cycles expose all seven. Twelve seconds is the shortest interval that lets t
 
 ### Technique windows inside each 12-second set
 
-The three techniques are retained and now serve the animation showcase rather than replacing it. Times are relative to the start of a set:
+Two techniques serve the animation showcase rather than replacing it. Times are relative to the start of a set:
 
 | Window | Technique | What happens |
 |---|---|---|
 | 0.0 – 0.6 s | **Blend** | Cross-fade every slot from its previous clip into its new one, `blend01 = SmoothStep(t / 0.6)`. Makes the cycle seamless and demonstrates blending as a working transition, not a set piece. |
 | 4.0 – 7.0 s | **Layer** | On slot 0 only, layer the *next* clip's upper body over the current clip's lower body. `layerAlpha = sin(pi * (t - 4.0) / 3.0)`, so it eases in and out. |
-| 8.0 – 11.4 s | **CCD IK** | On slot 0 only, `tipBone = "J_Bip_L_Hand"`, `chainLen = 3`, target orbiting in model space, `weight = SmoothStep` ramped in and out over the first and last 0.4 s. |
+| 7.0 – 12.0 s | *(none)* | Base clip on every slot. |
 
 Windows do not overlap, so each technique reads clearly in a screenshot. Slots 1–3 play their base clip throughout.
+
+### Removed: the CCD IK window
+
+A third window ran CCD IK on slot 0 over set time 8.0 – 11.4 s (`tipBone = "J_Bip_L_Hand"`, `chainLen = 3`, a target orbiting in model space, `weight = SmoothStep` ramped over the first and last 0.4 s), with a `LineRenderer` debug pass drawing the solved chain, the reach line, and a target cross. It shipped, and the author removed it on 2026-08-17 after looking at it. **Do not re-add it in that shape.**
+
+Why it did not work:
+
+- The target traced a *fixed* orbit in model space while the same arm was simultaneously playing a baked VRM clip. The solve and the clip fought each other on every frame, and the arm read as broken rather than as reaching for something.
+- The CCD solver applies no joint limits, so what absorbed the conflict was the elbow and the wrist, twisting through poses no clip authored.
+- Mirroring the target's X sign — the obvious first fix, since the tip bone is the *left* hand — only moved the identical breakage onto the other arm. The sign was never the problem.
+- It was also the one technique with no honest automated proof. Its runtime assertion measured the solver's own residual, so it passed while the solve was dead.
+
+What a future attempt would need: an IK target derived from the clip's own hand path (so the goal and the animation agree), or joint limits on the chain plus the arm masked out of the base clip so only one thing drives it. A different target *position* is not a fix.
+
+Removed with it: `RenderPortfolioShowcaseDebug()` and the palette-inversion recovery that fed it, the `ccd-ik` phase in `tools/tests/test_project36_portfolio_media.ps1`, and the reach-line assertion in `tools/tests/test_project36_portfolio_showcase.ps1`.
+
+Unchanged by the removal, deliberately: the 12-second set length, both surviving windows, the frozen composition, and the media gate's 13-second / 104-frame capture window. That capture length was derived from where the cross-fade first occurs (its `cycle > 0` guard puts the first fade at t 12.0 – 12.6), not from the IK, so dropping the IK does not shorten it.
 
 ### Gating
 
@@ -97,7 +116,7 @@ One input-free, title-free panel at client `(24, 24)`:
 
 ```
 VRM_1 · VRM_2 · VRM_3 · VRM_4
-BLEND | LAYER | CCD IK          <- only the active one is highlighted
+BLEND | UPPER-BODY LAYER | BASE   <- one label, naming the active window
 ```
 
 Kept small so it does not intrude on hand-taken screenshots.
@@ -132,7 +151,6 @@ The existing runtime test harness is reused; its assertions are replaced to matc
 | All seven clips appear | Over two cycles the HUD region shows seven distinct clip-name renderings |
 | Blend window | Cross-fade produces intermediate poses at the set boundary rather than a pose jump |
 | Layer window | Slot 0's upper body diverges from its lower body during 4.0 – 7.0 s |
-| CCD IK window | Slot 0's left hand tracks the target during 8.0 – 11.4 s |
 | Rights boundary | Project 36 deliverables contain none of the banned legacy tokens |
 
 Plus: a Debug x64 rebuild at the existing ~30-warning baseline with no new warning, and confirmation that the clips resolve by name with the expected durations.

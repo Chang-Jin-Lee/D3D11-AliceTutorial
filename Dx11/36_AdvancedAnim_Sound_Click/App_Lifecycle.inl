@@ -109,8 +109,15 @@ void App::LoadDataAsync(std::stop_token stoken)
 	const int enemy1Index = loadModel(L"..\\Resource\\fbx\\Public\\MyAlice\\Enemy\\AliceEnemy1.glb", "enemy 1");
 	m_fLoadingProgress = 0.9f;
 	if (stoken.stop_requested()) return;
-	const int enemy2Index = loadModel(L"..\\Resource\\fbx\\Public\\MyAlice\\Enemy\\AliceEnemy2.glb", "enemy 2");
-	const int enemy3Index = loadModel(L"..\\Resource\\fbx\\Public\\MyAlice\\Enemy\\AliceEnemy3.glb", "enemy 3");
+	// Slots 2 and 3 originally used AliceEnemy2/AliceEnemy3. Their outfit textures
+	// shimmered badly under animation even after model textures gained mip chains -
+	// AliceEnemy3's skirt in particular reads as a mirror, which looks like a
+	// metallic material baked into that asset rather than a sampling artifact.
+	// The author chose to reuse the player model for those slots instead of chasing
+	// per-asset material problems. loadModel appends a fresh entry per call, so the
+	// duplicates pose and animate independently.
+	const int enemy2Index = loadModel(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb", "showcase 2");
+	const int enemy3Index = loadModel(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb", "showcase 3");
 	const int groundIndex = loadModel(L"..\\Resource\\fbx\\Study\\Ground.fbx", "ground");
 
 	m_fLoadingProgress = 0.95f;
@@ -149,17 +156,14 @@ void App::LoadDataAsync(std::stop_token stoken)
 	//
 	//   m_UseDeferredRendering = false
 	//     - PassMainScene() always takes the forward branch, so PassGBuffer(),
-	//       PassDeferredLight(), RenderDeferredUI() and the deferred-branch
-	//       RenderPortfolioShowcaseDebug() call are all unreachable.
+	//       PassDeferredLight() and RenderDeferredUI() are all unreachable.
 	//     NOT expected back: the composition above is lit for the forward path.
 	//
-	// The IK debug draw is NOT parked. The forward branch calls
-	// RenderPortfolioShowcaseDebug() unconditionally, and the showcase's IK window
-	// sets PortfolioShowcaseRuntime::ikDebugValid once it has recovered the solved
-	// arm chain from the uploaded palette. So the chain and its target are drawn on
-	// no frame OUTSIDE that window, and inside it on every frame whose recovery
-	// succeeded - the flag is raised only after all three bone lookups resolve and
-	// the global inverse inverts, so a frame that fails either step draws nothing.
+	// The showcase draws no debug geometry of its own any more. The line pass it used
+	// to own, RenderPortfolioShowcaseDebug(), existed only to evidence the CCD IK
+	// window, and both were deleted with that window (see the window list in
+	// App_PortfolioShowcase.inl for why the IK went). LineRenderer is still used
+	// here, but only by the axis overlay in App_RenderPasses.inl.
 	//
 	// NOT expected back: the ten panel functions in App_ImGuiPanels.inl and
 	// PassDebugDraw(), which now have no call sites at all. They are left in place

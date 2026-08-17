@@ -701,12 +701,6 @@ struct App::Impl {
 		// diagnostics can name what is actually playing rather than what was asked for.
 		std::vector<std::string> clipNames;
 		std::array<PortfolioAnimatorSlot, 4> slots{};
-		DirectX::XMFLOAT3 ikTargetMS{ -0.35f, 1.15f, 0.18f };
-		DirectX::XMFLOAT3 ikShoulderWS{};
-		DirectX::XMFLOAT3 ikElbowWS{};
-		DirectX::XMFLOAT3 ikHandWS{};
-		DirectX::XMFLOAT3 ikTargetWS{};
-		bool ikDebugValid = false;
 	};
 
 	PortfolioShowcaseRuntime m_PortfolioShowcase;
