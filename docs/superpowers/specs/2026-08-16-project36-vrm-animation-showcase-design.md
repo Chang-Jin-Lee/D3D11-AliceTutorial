@@ -150,7 +150,13 @@ Removing the mascot logo from the 37 project READMEs is unrelated to the showcas
 
 ## Constraints
 
-- Never copy, commit, render, trace, retarget, or derive output from the legacy NIKKE Alice model, its named dance clips, or its audio. **Open item:** the provenance of `VRM_1` … `VRM_7` is unconfirmed. Confirm before any media is published.
+- Never copy, commit, render, trace, retarget, or derive output from the legacy NIKKE Alice model, its named dance clips, or its audio.
+
+## Animation provenance
+
+`VRM_1` … `VRM_7` are VRMA motions from BOOTH, distributed for use: <https://vroid.booth.pm/items/5512385>. Confirmed by the repository owner on 2026-08-17. They are unrelated to the legacy NIKKE Alice assets the constraint above excludes.
+
+A rights scan over the Project 36 deliverables and `SampleModel.glb` for the legacy tokens (`NIKKE`, `Alice_.fbx`, `CaramellaDansen`, `RabbitHole`, `Specialist`, `CaliforniaGirls`) returns no matches.
 - Keep the root and Project 36 README markup and media paths unchanged.
 - No junctions, symlinks, or reparse points.
 - Do not touch the other worktrees (`project-readme-visual-gallery`, `project36-fbx-showcase`) or `.superpowers/` workspaces belonging to other plans.
