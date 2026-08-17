@@ -110,9 +110,10 @@ namespace
 	// static_asserts and the name table are pinned to - and clipCount is the
 	// authority on how many it actually answered to.
 	//
-	// cycle may be negative: the cross-fade in UpdatePortfolioShowcase() asks for the
-	// outgoing line-up with cycle - 1, and C++ '%' truncates toward zero, so a
-	// negative remainder is folded back into [0, clipCount) rather than indexing
+	// cycle may be negative: UpdatePortfolioShowcase() resolves the outgoing line-up
+	// with cycle - 1 for every slot on every frame - unconditionally, not only on the
+	// frames the cross-fade actually blends on - and C++ '%' truncates toward zero, so
+	// a negative remainder is folded back into [0, clipCount) rather than indexing
 	// backwards off the front of the vector.
 	int PortfolioClipIndexForSlot(int cycle, int slot, int clipCount)
 	{

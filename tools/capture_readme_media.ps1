@@ -58,6 +58,30 @@ $SWP_SHOWWINDOW = 0x0040
 $WM_LBUTTONDOWN = 0x0201
 $WM_LBUTTONUP = 0x0202
 $MK_LBUTTON = 0x0001
+# How long a synthesised click holds the left button down before releasing it.
+#
+# This is not cosmetic: it is what makes the click observable at all. The
+# applications drain their ENTIRE message queue before running a single Update()
+# (`GameApp::Run` in Dx11/Common/GameApp.cpp only calls Update()/Render() in the
+# PeekMessage-returned-false branch), and DirectXTK's Mouse keeps a LEVEL state -
+# WM_LBUTTONDOWN sets leftButton true, WM_LBUTTONUP sets it false. A down and an
+# up posted back to back therefore land in the same drain burst, so the state the
+# next InputSystem::Update samples is already "released" and
+# Mouse::ButtonStateTracker never reports PRESSED. Every edge-triggered click
+# handler - project 36's showcase reset among them - simply does not fire.
+#
+# Holding the button across at least one application frame puts the down and the
+# up in different drains, so the tracker sees false -> true -> false and reports
+# the PRESSED edge. 40 ms is the value tools/tests/test_project36_portfolio_showcase.ps1
+# already drives the real window with (Send-ShowcaseClick), where it is observed
+# to land the reset every run; these applications present with no vsync
+# (Present(0, 0)), so a frame is far shorter than that even while the README
+# backbuffer publisher is encoding.
+#
+# The cost is bounded: GIF frame targets are absolute (see Invoke-GifCapture), so
+# a held click delays only the frame it is dispatched on and every later frame
+# still lands on its own k * frameIntervalMs mark.
+$ClickButtonHoldMs = 40
 $PngSignature = [byte[]](0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
 $VirtualKeyCodes = @{ W = 0x57; A = 0x41; S = 0x53; D = 0x44 }
 
@@ -140,23 +164,54 @@ function Copy-ReadmeBackbufferPng {
     # until the first frame lands, share the file with the writer, and copy the
     # decoded image into a detached bitmap so the tool's handle is gone - and the
     # publisher's next replace unblocked - before this returns.
+    #
+    # HOW LONG that handle is held is a correctness property, not a performance
+    # one. The share mode below omits FILE_SHARE_DELETE, so for as long as this
+    # tool holds the source open the publisher's MoveFileExW replace
+    # (PublishPortfolioBackbufferPng in App_PortfolioShowcase.inl) fails with a
+    # sharing violation and the frame is dropped - and the publisher's throttle
+    # has already advanced, so the next publication is a whole interval later.
+    # Drop enough of them in a row and the effective publication gap exceeds the
+    # capture's sample interval, two consecutive samples read the identical file,
+    # and the GIF contains a duplicated frame.
+    #
+    # So the encode - which is by far the expensive half - is deliberately done
+    # AFTER the source handle is closed. Measured on a real 1600x900 published
+    # frame: open+decode+copy 14 ms, Save a further 44 ms. Saving inside the
+    # handle's scope held the source for ~58 ms of every 125 ms sample period;
+    # saving outside it holds the source for ~14 ms.
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     $lastError = 'no attempt was made'
     while ($true) {
-        $stream = $null
-        $image = $null
         $detached = $null
         $copied = $false
         $wrongSize = $null
         try {
-            $stream = [System.IO.File]::Open($SourcePath, [System.IO.FileMode]::Open,
-                [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
-            $image = [System.Drawing.Image]::FromStream($stream, $false, $true)
-            if ($image.Width -ne $Width -or $image.Height -ne $Height) {
-                $wrongSize = "backbuffer PNG has unexpected dimensions $($image.Width)x$($image.Height), expected ${Width}x${Height}: $SourcePath"
+            # Inner scope: everything that needs the published source open, and
+            # nothing else. Note the finally, which closes the source before the
+            # Save below ever starts.
+            $stream = $null
+            $image = $null
+            try {
+                $stream = [System.IO.File]::Open($SourcePath, [System.IO.FileMode]::Open,
+                    [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+                $image = [System.Drawing.Image]::FromStream($stream, $false, $true)
+                if ($image.Width -ne $Width -or $image.Height -ne $Height) {
+                    $wrongSize = "backbuffer PNG has unexpected dimensions $($image.Width)x$($image.Height), expected ${Width}x${Height}: $SourcePath"
+                }
+                else {
+                    # The Bitmap(Image) constructor renders into fresh storage, so
+                    # this bitmap owns its pixels and outlives both the decoder and
+                    # the stream.
+                    $detached = New-Object System.Drawing.Bitmap($image)
+                }
             }
-            else {
-                $detached = New-Object System.Drawing.Bitmap($image)
+            finally {
+                if ($null -ne $image) { $image.Dispose() }
+                if ($null -ne $stream) { $stream.Dispose() }
+            }
+
+            if ($null -ne $detached) {
                 $detached.Save($OutputPath, [System.Drawing.Imaging.ImageFormat]::Png)
                 $copied = $true
             }
@@ -166,8 +221,6 @@ function Copy-ReadmeBackbufferPng {
         }
         finally {
             if ($null -ne $detached) { $detached.Dispose() }
-            if ($null -ne $image) { $image.Dispose() }
-            if ($null -ne $stream) { $stream.Dispose() }
         }
 
         if ($copied) {
@@ -599,6 +652,11 @@ function Invoke-CaptureAction {
             $clientY = [int][Math]::Round(([double]$Action.y) * ($CaptureSession.ClientHeight - 1))
             $lParam = [IntPtr]((($clientY -band 0xffff) -shl 16) -bor ($clientX -band 0xffff))
             & $MessageSink $CaptureSession.Handle ([uint32]$WM_LBUTTONDOWN) ([IntPtr]$MK_LBUTTON) $lParam
+            # Hold the button down across an application frame, or the target
+            # never sees a press EDGE at all - see $ClickButtonHoldMs above. This
+            # sleep is unconditional: it is part of what a click IS here, not a
+            # pacing detail, so -AllowWait does not gate it.
+            Start-Sleep -Milliseconds $ClickButtonHoldMs
             & $MessageSink $CaptureSession.Handle ([uint32]$WM_LBUTTONUP) ([IntPtr]::Zero) $lParam
         }
         'keyDown' {

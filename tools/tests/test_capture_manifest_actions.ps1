@@ -73,7 +73,12 @@ Assert-True (@(Get-GifActionSchedule -Actions @($null) -FrameCount 5 -FrameInter
 $messageLog = [System.Collections.Generic.List[object]]::new()
 $messageSink = {
     param([IntPtr]$Handle, [uint32]$Message, [IntPtr]$WParam, [IntPtr]$LParam)
-    $messageLog.Add([pscustomobject]@{ Handle = $Handle; Message = $Message; WParam = $WParam; LParam = $LParam })
+    # Ticks is a high-resolution stamp of when the tool asked for this message to
+    # go out, which is what the click-hold assertion below measures.
+    $messageLog.Add([pscustomobject]@{
+        Handle = $Handle; Message = $Message; WParam = $WParam; LParam = $LParam
+        Ticks = [System.Diagnostics.Stopwatch]::GetTimestamp()
+    })
 }.GetNewClosure()
 $session = [pscustomobject]@{ Handle = [IntPtr]42; ClientWidth = 1600; ClientHeight = 900 }
 $pressedKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
@@ -103,6 +108,30 @@ Release-CaptureKeys -CaptureSession $session -PressedKeys $validActionKeys
 Invoke-CaptureAction -CaptureSession $session -Action ([pscustomobject]@{ type = 'click'; x = 0.5; y = 0.5 }) -PressedKeys $pressedKeys -MessageSink $messageSink
 Assert-True ($messageLog.Count -eq 2) 'one click must emit exactly two window messages'
 Assert-True ($messageLog[0].Message -eq 0x0201 -and $messageLog[1].Message -eq 0x0202) 'one click must emit exactly one targeted down/up pair'
+
+# Emitting the pair is not enough: the target has to be able to OBSERVE a press
+# edge. GameApp::Run (Dx11/Common/GameApp.cpp) drains the whole message queue
+# before it calls Update() once, and DirectXTK's Mouse keeps a level state, so a
+# down and an up delivered in the same drain leave leftButton false when
+# InputSystem::Update samples it and Mouse::ButtonStateTracker never reports
+# PRESSED. Project 36's frame-zero showcase reset is exactly such a click, and
+# when it is missed every phase index in
+# tools/tests/test_project36_portfolio_media.ps1 addresses the wrong runtime
+# window while still passing - so the miss is invisible unless something here
+# catches it.
+#
+# WHAT THIS PROVES: the tool leaves at least one 60 Hz frame between the down and
+# the up, so an edit that collapses them back to back - which is what the tool
+# used to do - fails here. WHAT IT DOES NOT PROVE: that any application actually
+# observed the edge. There is no window, no message pump and no InputSystem in
+# this test; the sink is a script block and the handle is a made-up IntPtr. The
+# end-to-end evidence stays where it has to be, in the GUI test
+# tools/tests/test_project36_portfolio_showcase.ps1, which drives the real window
+# and reads the showcase clock back out of the HUD.
+$minimumClickHoldMs = 16.0
+$clickHoldMs = ($messageLog[1].Ticks - $messageLog[0].Ticks) * 1000.0 / [System.Diagnostics.Stopwatch]::Frequency
+Assert-True ($clickHoldMs -ge $minimumClickHoldMs) `
+    ("a click must hold the button down across an application frame: measured {0:N1} ms between down and up (need >= {1:N0} ms)" -f $clickHoldMs, $minimumClickHoldMs)
 
 Invoke-CaptureAction -CaptureSession $session -Action ([pscustomobject]@{ type = 'keyDown'; key = 'D' }) -PressedKeys $pressedKeys -MessageSink $messageSink
 Release-CaptureKeys -CaptureSession $session -PressedKeys $pressedKeys -MessageSink $messageSink

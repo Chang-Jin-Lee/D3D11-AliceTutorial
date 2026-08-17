@@ -156,8 +156,10 @@ void App::LoadDataAsync(std::stop_token stoken)
 	// The IK debug draw is NOT parked. The forward branch calls
 	// RenderPortfolioShowcaseDebug() unconditionally, and the showcase's IK window
 	// sets PortfolioShowcaseRuntime::ikDebugValid once it has recovered the solved
-	// arm chain from the uploaded palette, so the chain and its target are drawn on
-	// every frame inside that window and on no frame outside it.
+	// arm chain from the uploaded palette. So the chain and its target are drawn on
+	// no frame OUTSIDE that window, and inside it on every frame whose recovery
+	// succeeded - the flag is raised only after all three bone lookups resolve and
+	// the global inverse inverts, so a frame that fails either step draws nothing.
 	//
 	// NOT expected back: the ten panel functions in App_ImGuiPanels.inl and
 	// PassDebugDraw(), which now have no call sites at all. They are left in place

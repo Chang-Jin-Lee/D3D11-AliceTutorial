@@ -23,11 +23,12 @@
 #
 # The layer and the IK both run in set 0, so both are already inside [0, 12).
 # The cross-fade is not: it is guarded on cycle > 0, so its first occurrence is the
-# set boundary at t = 12.0 and it closes at t = 12.6. Covering four whole frames of
-# it needs frames 97..100, i.e. t 12.125 .. 12.500, i.e. at least 101 frames, i.e.
-# at least 12.625 s. gifSeconds must be a whole number (Test-ReadmeMediaManifest
-# requires a positive integer), so thirteen seconds - 104 frames at 8 fps - is the
-# SHORTEST capture that can contain all three techniques at once.
+# set boundary at t = 12.0 and it closes at t = 12.6. The last frame that can carry
+# it is frame 100 (t = 12.500; frame 101 is t = 12.625, already past the close), so
+# the capture needs at least 101 frames, i.e. at least 12.625 s. gifSeconds must be
+# a whole number (Test-ReadmeMediaManifest requires a positive integer), so thirteen
+# seconds - 104 frames at 8 fps - is the SHORTEST capture that can contain all three
+# techniques at once.
 #
 # The -PngPath/-GifPath parameters let the same contract run against staged
 # capture output before publication and against the published files afterwards.
@@ -70,44 +71,80 @@ $minimumSampledColors = 8
 #
 #   upper-body layer  frames 34..53   t 4.250 .. 6.625   set 0's 4.0-7.0 window
 #   ccd-ik            frames 66..89   t 8.250 .. 11.125  set 0's 8.0-11.4 window
-#   cross-fade        frames 97..100  t 12.125 .. 12.500 set 1's 0.0-0.6 window,
+#   cross-fade        frames 98..100  t 12.250 .. 12.500 set 1's 0.0-0.6 window,
 #                                                        which is t 12.0-12.6
 #
-# Every range is inset from its window's edges rather than filling it. Two things
-# move the content of a captured frame off its nominal time, both in the same
-# direction: the showcase publishes its back buffer at 12 fps, so a frame sampled
-# at 8 fps shows a render up to 83 ms old, and the frame-zero reset click is only
-# observed on the application's next input poll. The captured content therefore
-# sits up to ~0.1 s EARLIER than k/8, and the insets - 0.25 s at the layer's
-# opening edge, 0.25 s at the IK's, 0.125 s at the cross-fade's - keep every named
-# frame inside its window anyway.
+# Every range is inset from its window's edges rather than filling it, because a
+# captured frame's CONTENT is not from the instant the frame was sampled. The two
+# error sources do NOT push the same way:
 #
-# The cross-fade range is four frames because that is all there is: the fade lasts
-# 0.6 s, which is 4.8 frames at 8 fps, and a fifth frame would have to sit on one
-# of the two edges. Frames unclaimed by any range - the base-clip gaps at frames
-# 0..33, 54..65 and 90..96, and the tail at frames 101..103 - are deliberately
-# unconstrained: no technique is running there, so there is nothing to assert about
-# them.
+#   EARLIER (the dominant one). The showcase throttles its back-buffer publication
+#   with kPortfolioBackbufferMinIntervalMs = 1000ull / 12ull, which is integer
+#   division - 83 ms, not 83.33 - and compares it against GetTickCount64()
+#   (App_PortfolioShowcase.inl), whose ~15.6 ms tick means the first tick at or
+#   after the deadline is ~94 ms out. So the real publication period is ~94 ms, and
+#   the WIC encode and the MoveFileExW that follow are on top of that. A sample
+#   therefore reads a render that is at least one encode old and up to ~94 ms +
+#   encode old: call the budget up to ~0.12 s. A publication dropped on a sharing
+#   violation (see Copy-ReadmeBackbufferPng in tools/capture_readme_media.ps1)
+#   doubles that for one interval.
+#
+#   LATER. The capture paces its frames with
+#   Start-Sleep -Milliseconds ([Math]::Min(10, remaining)) and only re-reads the
+#   clock after each chunk, so the last sleep of a frame can overshoot by the
+#   ~15 ms system timer granularity and sample the frame that much AFTER its
+#   nominal k/8 mark, pushing its content later.
+#
+# Budget, then: content from ~0.12 s earlier to ~0.02 s later than k/8. All three
+# opening edges are inset by 0.25 s, which covers the earlier error with room for
+# one dropped publication; all three closing edges keep at least 0.1 s, which
+# covers the later error several times over. The cross-fade's opening inset used to
+# be 0.125 s, i.e. frame 97 - which does not cover the ~0.12 s earlier budget at
+# all, so frame 97 can carry a render from before the fade even opened. The range
+# now starts at 98.
+#
+# The cross-fade range is three frames because that is all a 0.6 s window inset by
+# 0.25 s can hold - frames 98, 99 and 100, with 101 already past the close. Frames
+# unclaimed by any range - the base-clip gaps at frames 0..33, 54..65 and 90..97,
+# and the tail at frames 101..103 - are deliberately unconstrained: no technique is
+# running there, so there is nothing to assert about them.
 #
 # Nothing here names a "dance" or "finish" beat. The showcase has no such phases:
 # every slot plays a VRM_* clip continuously for the whole capture, and the three
 # ranges above are the only intervals in which a NAMED technique is on.
-$phases = @(
-    [pscustomobject]@{ Label = 'upper-body layer'; Start = 34; End = 53 }
-    [pscustomobject]@{ Label = 'ccd-ik';           Start = 66; End = 89 }
-    [pscustomobject]@{ Label = 'cross-fade';       Start = 97; End = 100 }
-)
-
-# At least this many distinct central-region hashes per phase. A frozen render, a
-# dropped animation update, or a capture that repeated one frame collapses to a
-# single hash and fails.
 #
-# On the four-frame cross-fade range that means every frame in it must differ. That
-# is not as tight as it sounds: the showcase publishes at 12 fps and the capture
-# samples at 8 fps, so consecutive samples are 125 ms apart across an 83 ms
-# publication interval and can never be the same published render. A repeat there
-# means the application really did stop drawing.
-$minimumDistinctPhaseHashes = 4
+# MinimumDistinctHashes is the floor on distinct central-region hashes inside the
+# range. A frozen render, a dropped animation update, or a capture that repeated
+# one frame collapses to a single hash and fails. The floor is PER PHASE rather
+# than shared because the ranges are not the same length and duplicates are not
+# impossible:
+#
+#   Copy-ReadmeBackbufferPng opens the published PNG with FileShare.ReadWrite,
+#   which does not include FILE_SHARE_DELETE, so while that handle is open the
+#   publisher's MoveFileExW replace fails and the frame is dropped - and the
+#   publisher's throttle has already advanced, so the next publication is a further
+#   ~94 ms out. The resulting ~190 ms gap is longer than the 125 ms sample
+#   interval, and two consecutive samples then read the identical file and hash
+#   identically. Moving the PNG encode out of that handle's scope cut the hold from
+#   ~58 ms to ~14 ms of each 125 ms period - measured on a real 1600x900 published
+#   frame - which makes a duplicate uncommon, not impossible. The tool's 100 ms
+#   retry after a transient open failure can collapse a pair the same way.
+#
+#   upper-body layer  20 frames, floor 4 - a duplicate or two costs nothing
+#   ccd-ik            24 frames, floor 4 - likewise
+#   cross-fade         3 frames, floor 2 - one duplicate has to be survivable
+#
+# On the cross-fade, a ~14 ms hold in a 125 ms period is roughly a one-in-ten
+# chance of a duplicate per frame boundary, and the range has two boundaries, so
+# demanding all 3 hashes distinct would redden about one good capture in five.
+# Demanding 2 fires only when BOTH boundaries duplicate, about one run in a
+# hundred, and it still catches what this assertion exists to catch: a render that
+# stopped moving during the fade collapses all three frames onto one hash.
+$phases = @(
+    [pscustomobject]@{ Label = 'upper-body layer'; Start = 34; End = 53;  MinimumDistinctHashes = 4 }
+    [pscustomobject]@{ Label = 'ccd-ik';           Start = 66; End = 89;  MinimumDistinctHashes = 4 }
+    [pscustomobject]@{ Label = 'cross-fade';       Start = 98; End = 100; MinimumDistinctHashes = 2 }
+)
 
 $failures = [System.Collections.Generic.List[string]]::new()
 
@@ -301,6 +338,7 @@ function Assert-PhaseMotion {
         [string[]]$Frames,
         [int]$Start,
         [int]$End,
+        [int]$MinimumDistinctHashes,
         [string]$Label
     )
 
@@ -313,8 +351,8 @@ function Assert-PhaseMotion {
     for ($index = $Start; $index -le $End; $index++) {
         $null = $distinct.Add($Frames[$index])
     }
-    Assert-True ($distinct.Count -ge $minimumDistinctPhaseHashes) `
-        ("$Label phase animates across frames $Start..$End`: $($distinct.Count) distinct central-region hashes (need >= $minimumDistinctPhaseHashes)")
+    Assert-True ($distinct.Count -ge $MinimumDistinctHashes) `
+        ("$Label phase animates across frames $Start..$End`: $($distinct.Count) distinct central-region hashes (need >= $MinimumDistinctHashes)")
 }
 
 # --------------------------------------------------------------------------
@@ -389,7 +427,8 @@ try {
     Write-Host "  distinct central-region hashes across the whole GIF: $($distinctOverall.Count) of $gifFrameCount"
 
     foreach ($phase in $phases) {
-        Assert-PhaseMotion -Frames $decodedFrames -Start $phase.Start -End $phase.End -Label $phase.Label
+        Assert-PhaseMotion -Frames $decodedFrames -Start $phase.Start -End $phase.End `
+            -MinimumDistinctHashes $phase.MinimumDistinctHashes -Label $phase.Label
     }
 }
 finally {
