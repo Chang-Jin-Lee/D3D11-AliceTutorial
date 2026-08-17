@@ -471,6 +471,9 @@ void App::PassMainScene() {
 		cb.pbrRoughness = defPbr.roughness;
 		cb.pbrAO = defPbr.ambientOcclusion;
 		cb.shadingMode = (int)m_->m_ShadingMode;
+		// 툰은 모델별로만 켜진다. 여기(전역 기본값)는 항상 꺼둬야 바닥/큐브/
+		// 오버레이처럼 이 상수 버퍼를 그대로 물려받는 드로우콜이 툰에 물들지 않는다.
+		cb.toonEnabled = 0;
 		cb.enableNormalMap = 0;
 		cb.useSpecularMap = 0;
 		cb.useDiffuseMap = 1;
@@ -614,6 +617,7 @@ void App::PassMainScene() {
 				XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranspose(W)));
 			cb.material = (mdlPtr->useInstanceMaterial ? mdlPtr->instanceMaterial : m_->m_Material);
 			cb.shadingMode = (int)mdlPtr->modelShading;
+			cb.toonEnabled = mdlPtr->useToonShading ? 1 : 0;
 			if (!mdlPtr->useInstancePbrMaterial)
 			{
 				cb.enableNormalMap = m_->m_EnableNormalMapForCube;

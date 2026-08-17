@@ -76,7 +76,12 @@ cbuffer ConstantBuffer              : register(b0)
 
     // Debug/Lines: AABB에 루트 본(또는 지정 본) 변환을 적용할 때 사용
     int    g_BoundsBoneIndex;           // <0: 사용 안함, >=0: g_BonePalette[idx] 적용
-    float3 g_BoundsPad;
+    // 드로우콜 단위 툰 셰이딩 스위치. 쇼케이스의 네 캐릭터만 1이고 바닥과
+    // 스카이박스는 0이라, 씬 쪽 셰이딩은 예전 그대로 남는다.
+    // (C++ 쪽은 ModelEntry::useToonShading - useInstancePbrMaterial과 같은 방식)
+    // 기존 float3 패딩을 쪼갠 것이라 상수 버퍼 크기/정렬은 변하지 않는다.
+    int    g_ToonEnabled;               // 0/1
+    float2 g_BoundsPad;
 }
 
 // GPU 스키닝을 위한 레지스터 (b1)
@@ -189,7 +194,18 @@ float3 ACESFilm(float3 x)
 
 // -----------------------------------------------------------------------------
 // 그림자 계산 함수
+//
+// 이 함수가 돌려주는 값은 "가시성"이 아니라 "그림자를 적용한 뒤의 밝기 배율"이다.
+// 예전에는 순수 가시성 0~1을 그대로 돌려줬고, 호출부가 그걸 litColor 전체에
+// 곱했다. 앰비언트까지 같이 0이 되어, 완전히 가려진 픽셀은 진짜 (0,0,0)이 됐다 -
+// 바닥의 캐스트 그림자가 새까만 실루엣으로 보이던 원인이 이것이다.
+// kShadowIntensity로 상한을 두면 가려진 곳도 (1 - kShadowIntensity)만큼은 남아
+// 형태가 읽힌다.
+//
+// PCF도 3x3에서 5x5로 넓혔다. 3x3은 단계가 9개뿐이라 경계가 계단처럼 끊겼다.
 // -----------------------------------------------------------------------------
+static const float kShadowIntensity = 0.78f; // 0: 그림자 없음, 1: 예전처럼 완전 검정
+
 float CalcShadowFactor(float4 posShadowH)
 {
     // 그림자가 꺼져 있으면 그림자 없음(1.0) 반환
@@ -216,10 +232,10 @@ float CalcShadowFactor(float4 posShadowH)
     int taps = 0;
 
     [unroll]
-        for (int dy = -1; dy <= 1; ++dy)
+        for (int dy = -2; dy <= 2; ++dy)
         {
             [unroll]
-            for (int dx = -1; dx <= 1; ++dx)
+            for (int dx = -2; dx <= 2; ++dx)
             {
                 float2 uvOff = uv + float2(dx, dy) * r;
                 float mapDepth = g_ShadowMap.Sample(g_ShadowSamp, uvOff).r;
@@ -235,5 +251,6 @@ float CalcShadowFactor(float4 posShadowH)
             }
         }
 
-    return sum / max(taps, 1);
+    float visibility = sum / max(taps, 1);
+    return saturate(lerp(1.0f, visibility, kShadowIntensity));
 }

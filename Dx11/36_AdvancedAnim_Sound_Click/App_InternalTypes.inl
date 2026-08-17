@@ -52,7 +52,10 @@ struct ConstantBuffer {
 	int shadowEnabled = 1;
 	// Debug/Lines
 	int boundsBoneIndex = -1;
-	XMFLOAT3 boundsPad = { 0, 0, 0 };
+	// 드로우콜 단위 툰 셰이딩 스위치 (36_Shared.fxh의 g_ToonEnabled).
+	// 기존 XMFLOAT3 패딩을 쪼갠 것이므로 상수 버퍼 크기와 정렬은 그대로다.
+	int toonEnabled = 0;
+	XMFLOAT2 boundsPad = { 0, 0 };
 };
 
 struct PostProcessConstantBuffer {
@@ -127,6 +130,10 @@ struct ModelEntry {
 	bool useSpecularMap = false;
 	PBRMaterialCPU instancePbrMaterial{};
 	bool useInstancePbrMaterial = false;
+	// 모델별 툰 셰이딩 선택. useInstancePbrMaterial과 같은 방식 - 전역 모드가
+	// 아니라 이 모델의 드로우콜에만 실린다. 쇼케이스의 네 캐릭터만 켜고
+	// 바닥은 끈 채로 두어야 씬은 원래 셰이딩을 유지한다.
+	bool useToonShading = false;
 
 	// 사전 계산된 메시 통계
 	MeshStats meshStats{};
