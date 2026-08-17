@@ -106,7 +106,16 @@ Consequence, accepted deliberately: Project 36 no longer opens on its tutorial s
 
 ### Composition
 
-Unchanged from the measured values already on this branch: camera `(0, 73, -85)` with 5° pitch, characters at world x `19 / -177 / -89 / 166` and z `5 / 48 / 62 / 48`, `rotDeg.y = 0` (front-facing), scale 80. That composition was derived by inverting the 90° vertical frustum and confirmed against captured frames at 71.6 % of frame height with four separated silhouettes.
+Vertical FOV **40°**, camera `(0, 73, -285)` with 2° pitch, characters at world x `45 / -155 / -54 / 155` and z `5 / 48 / 62 / 48`, `rotDeg.y = 0` (front-facing), scale 80, ground plane `(12, 1, 32)`.
+
+Derived by inverting the frustum, not tuned by eye. Two findings forced it away from the earlier 90° / `z = -85` / 70 %-fill values:
+
+- **90° vertical is ~121° horizontal at 16:9** — near-fisheye, and it visibly stretched the three outer characters. 40° keeps them looking like the middle one.
+- **Four separated characters and a large on-screen cast are geometrically incompatible.** Once the cast height fraction is fixed, the width-to-height relationship is fixed with it: at 70 % height four worst-case-wide characters need ~2129 px of a 1600 px frame. They never clip only at about 53 %. The author chose ~60 % and relaxed the requirement from "nothing leaves frame" to "**no body leaves frame**" — finger tips and cloth spring bones may brush an edge, bodies may not. Measured 60 % exactly, rows 180–720.
+
+The old ground plane `(2, 1, 8)` ended inside the frame at the pulled-back camera and drew a hard seam at knee height; `(12, 1, 32)` puts its far edge at the horizon.
+
+Two runtime guards hold this in place: a cast-height band of 55–65 %, and a no-body-at-an-edge check over six frame pairs spanning both cycles.
 
 If the new model's proportions differ enough to break that, re-derive rather than nudge.
 
