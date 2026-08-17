@@ -41,15 +41,17 @@ float4 main(VertexOut pIn) : SV_Target
 
 	// PBR을 사용하기 위한 베이스 알베도
 	// BaseColor 텍스처는 sRGB로 저장되어 있으므로 선형 공간으로 변환 필요
-	// Roughness/Metalness는 데이터 텍스처이므로 선형 그대로 사용
+	//
+	// g_UseDiffuseMap은 "알베도 맵이 있다"는 뜻이지 "ORM 맵이 있다"는 뜻이 아니다.
+	// 예전에는 여기서 알베도의 .g/.b를 러프니스/메탈니스로 읽었다. 그 규약을 쓰는
+	// 텍스처가 이 프로젝트에는 없다. VRoid 캐릭터 텍스처는 색상 맵이라 흰 옷은
+	// 메탈니스가 살아 금속이 되고 검은 옷은 러프니스가 0이 되어 거울면이 됐다.
+	// 둘 다 IBL 스카이박스를 반사해, 애니메이션을 따라 옷 위에서 반짝였다.
+	// 재질은 스칼라 머티리얼 값이 정한다. 전용 ORM 맵이 생기면 자기 텍스처
+	// 슬롯과 자기 플래그를 가져야 한다 - 알베도 슬롯 재사용이 이 버그였다.
 	float4 kd;
-	float roughnessTex = 1.0f;
-	float metalnessTex = 0.0f;
 	if (g_UseDiffuseMap != 0)
 	{
-		// Roughness/Metalness는 데이터 텍스처이므로 선형 그대로 (감마 디코딩 전에 미리 저장)
-		roughnessTex = textureColor.g;
-		metalnessTex = textureColor.b;
 		
 		// BaseColor는 sRGB 텍스처를 선형 공간으로 디코딩: Linear = pow(sRGB, 2.2)
 		float3 linearColor = pow(max(textureColor.rgb, 0.0f), 2.2f);
@@ -105,8 +107,6 @@ float4 main(VertexOut pIn) : SV_Target
 		if (g_UseTextureColor != 0 && g_UseDiffuseMap != 0)
 		{
 			albedoPBR = texLinear * g_PBRBaseColor.rgb;
-			metalness = saturate(metalness * metalnessTex);
-			roughness = saturate(roughness * roughnessTex);
 		}
 		else
 		{
