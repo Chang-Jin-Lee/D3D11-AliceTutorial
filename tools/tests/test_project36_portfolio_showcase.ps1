@@ -182,6 +182,28 @@ public class ShowcaseFrame {
     return (double)dark / (double)(w * h);
   }
 
+  // Count of distinct luminance byte values (0-255) present in the region. A
+  // photographic scene - stone, foliage, and a bright opening all sitting at
+  // different brightnesses - rasterises across a wide spread of luminance
+  // values, while a flat clear-colour fill rasterises to exactly one value
+  // everywhere (or a small handful, if antialiasing at its border lands inside
+  // the region). This is variety, not brightness: a uniformly bright or
+  // uniformly dark region still collapses to one value, so the count cannot be
+  // fooled by a fill that merely happens to be light or dark rather than grey.
+  public static int DistinctLuminanceCount(ShowcaseFrame a, int x, int y, int w, int h) {
+    Require(a, x, y, w, h);
+    bool[] seen = new bool[256];
+    int distinct = 0;
+    for (int yy = y; yy < y + h; ++yy) {
+      int rowBase = yy * a.Width;
+      for (int xx = x; xx < x + w; ++xx) {
+        int v = a.Pixels[rowBase + xx];
+        if (!seen[v]) { seen[v] = true; ++distinct; }
+      }
+    }
+    return distinct;
+  }
+
   // A coarse ink profile of a region, rendered as a comparable string: the number
   // of near-white (text) pixels in each 8 px column, quantised. The HUD panel is
   // opaque and fixed-geometry, so one caption rasterises to one profile on every
@@ -636,6 +658,51 @@ $castRowMovingFraction = 0.005
 # different sampled instant - while staying far below the several-percent run of
 # changed pixels a body's width crossing an edge would actually produce.
 $edgeBodyThreshold = 0.02
+
+# The single-line probe above is maximally sensitive to a capture rectangle
+# landing one pixel off: this test has been seen to fail with top=1, left=0.0067,
+# right=0.01, bottom=0.0062 and then pass with all four at exactly 0 on the very
+# next run of the identical binary - one edge line completely different while the
+# other three merely shifted, which is a screen-capture alignment artifact, not a
+# body. A body crossing an edge occupies a thick region; a one-pixel offset only
+# ever disturbs the outermost line of pixels and leaves the pixels one or more
+# steps further in reading whatever the show already has there (typically ~0).
+# So each edge is measured at $edgeBandDepth successive single-pixel depths
+# stepping inward from the physical edge, and the MINIMUM across those depths is
+# what gets compared against $edgeBodyThreshold - not the outermost depth alone,
+# and not an average, which a 25%-of-one-line spike could still push over 0.02
+# after only widening the sampled region. A one-pixel offset spikes depth 0 and
+# leaves depths 1..3 near 0, so the minimum collapses back to ~0. A body is many
+# times wider than 4 px, so every depth in the band changes together and the
+# minimum stays high. $edgeBodyThreshold itself is unchanged: this only changes
+# how robustly it is measured, not what value it takes.
+$edgeBandDepth = 4
+
+# Skybox variety. The showcase renders a photographic outdoor scene above the
+# horizon - stone ruins, foliage, a bright opening - which spans a wide range of
+# luminance values; earlier in this project's history the same region rendered
+# as a flat grey fill, which collapses to a single luminance value everywhere.
+# DistinctLuminanceCount is the discriminator because it reads variety rather
+# than brightness: a uniformly bright or uniformly dark fill still collapses to
+# one value, so a regression that merely changed the fill's shade could not
+# satisfy this the way it could satisfy a brightness-based check.
+#
+# Region: client columns 400-1590, rows 120-380 - clear of the HUD panel (client
+# cols 24-344, rows 24-108) and safely above the ~430 px horizon on every sampled
+# frame, since the skybox and ground never move once the scene is live.
+#
+# Measured on slot-a of a real run: 256 distinct luminance values over this
+# region - the photographic scene spans the whole 0-255 luminance range. A flat
+# fill reads 1 (or a small handful, if the region happened to straddle an
+# antialiased edge). 40 sits 6.4x below the measured 256 while still leaving a
+# flat-fill regression a 40x gap it cannot clear, so the floor has room on both
+# sides: comfortably below what the real scene produces, and comfortably above
+# anything a solid fill could produce.
+$skyX = 400
+$skyY = 120
+$skyW = 1190
+$skyH = 260
+$skyDistinctLuminanceFloor = 40
 
 # ---------------------------------------------------------------------------
 # 1. The built binary must exist and must be newer than the sources it is built
@@ -1207,6 +1274,16 @@ try {
     $driftA = $samples['drift-a']
     $driftB = $samples['drift-b']
 
+    # The skybox renders a real photographic scene rather than a flat fill. See
+    # $skyDistinctLuminanceFloor above for the region, the measured value, and the
+    # margin: the count is of distinct luminance values, which reads variety
+    # rather than brightness, so a regression back to a flat clear-colour fill
+    # cannot pass merely by matching the scene's average brightness.
+    $skyDistinctLuminance = [ShowcaseFrame]::DistinctLuminanceCount($slotA, $skyX, $skyY, $skyW, $skyH)
+    Assert-True ($skyDistinctLuminance -ge $skyDistinctLuminanceFloor) `
+        ("the skybox renders a photographic scene rather than a flat fill (distinct luminance values " +
+         "$skyDistinctLuminance over cols $skyX-$($skyX + $skyW), rows $skyY-$($skyY + $skyH); need >= $skyDistinctLuminanceFloor)")
+
     # The HUD is legible near-white text on an OPAQUE (0.04, 0.05, 0.08) panel, and
     # it takes both halves of that description to identify it.
     #
@@ -1341,6 +1418,12 @@ try {
     # top/bottom rows) is measured with the same DiffRatio/tolerance the rest of
     # this file uses, and every edge must stay under the threshold.
     #
+    # Each edge is read as the MINIMUM DiffRatio across $edgeBandDepth successive
+    # single-pixel depths stepping inward from the physical edge, not the
+    # outermost line alone - see $edgeBandDepth above for why: that is what keeps
+    # this guard from firing on a capture rectangle that landed one pixel off
+    # while staying just as sensitive to an actual body.
+    #
     # Measured over every consecutive pair the show already gave us a frame for,
     # not just the slot-a/slot-b half second at t=0.6-1.1s: that window is barely
     # a second into a 24 s show, and the $cycleFrames captured above for the
@@ -1364,11 +1447,23 @@ try {
     foreach ($edgePair in $edgeFramePairs) {
         $pairA = $edgePair[0]
         $pairB = $edgePair[1]
+        # $edgeBandDepth successive single-pixel lines stepping inward from each
+        # physical edge; the MINIMUM across them is the per-edge reading below (see
+        # $edgeBandDepth above), so a one-pixel capture offset - which only ever
+        # disturbs depth 0 - cannot pass for a body, which disturbs every depth.
+        $leftDepths = @(0..($edgeBandDepth - 1) | ForEach-Object {
+                [ShowcaseFrame]::DiffRatio($pairA, $pairB, $_, 0, 1, $clientHeight, $bandTolerance) })
+        $rightDepths = @(0..($edgeBandDepth - 1) | ForEach-Object {
+                [ShowcaseFrame]::DiffRatio($pairA, $pairB, ($clientWidth - 1 - $_), 0, 1, $clientHeight, $bandTolerance) })
+        $topDepths = @(0..($edgeBandDepth - 1) | ForEach-Object {
+                [ShowcaseFrame]::DiffRatio($pairA, $pairB, 0, $_, $clientWidth, 1, $bandTolerance) })
+        $bottomDepths = @(0..($edgeBandDepth - 1) | ForEach-Object {
+                [ShowcaseFrame]::DiffRatio($pairA, $pairB, 0, ($clientHeight - 1 - $_), $clientWidth, 1, $bandTolerance) })
         $pairEdges = [ordered]@{
-            left   = [ShowcaseFrame]::DiffRatio($pairA, $pairB, 0, 0, 1, $clientHeight, $bandTolerance)
-            right  = [ShowcaseFrame]::DiffRatio($pairA, $pairB, ($clientWidth - 1), 0, 1, $clientHeight, $bandTolerance)
-            top    = [ShowcaseFrame]::DiffRatio($pairA, $pairB, 0, 0, $clientWidth, 1, $bandTolerance)
-            bottom = [ShowcaseFrame]::DiffRatio($pairA, $pairB, 0, ($clientHeight - 1), $clientWidth, 1, $bandTolerance)
+            left   = ($leftDepths | Measure-Object -Minimum).Minimum
+            right  = ($rightDepths | Measure-Object -Minimum).Minimum
+            top    = ($topDepths | Measure-Object -Minimum).Minimum
+            bottom = ($bottomDepths | Measure-Object -Minimum).Minimum
         }
         foreach ($edgeKey in $pairEdges.Keys) {
             if ($pairEdges[$edgeKey] -gt $edgeFractions[$edgeKey]) { $edgeFractions[$edgeKey] = $pairEdges[$edgeKey] }
