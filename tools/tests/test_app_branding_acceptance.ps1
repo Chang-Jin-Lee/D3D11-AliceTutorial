@@ -91,7 +91,7 @@ try {
                 @{ expectedProjectCount = 37; projects = @($directories | ForEach-Object { @{ directory = $_ } }) } |
                     ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $path 'tools\readme_media_manifest.json') -Encoding utf8NoBOM
                 New-Item -ItemType Directory -Force -Path (Join-Path $path 'Dx11\99_External') | Out-Null
-                Write-CanonicalReadme (Join-Path $path 'Dx11\99_External\README.md') '../../docs/media/branding/alice-tutorial-logo.png' 520
+                Write-CanonicalReadme (Join-Path $path 'Dx11\99_External\README.md')
             }
         },
         [pscustomobject]@{

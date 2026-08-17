@@ -101,18 +101,19 @@ namespace
 
 	// Slot i plays clip ((cycle * 4 + i) % clipCount). Two cycles expose all seven.
 	//
-	// clipCount is the size of the COMPACTED table Task 2 built, not
-	// kPortfolioClipCount. On a healthy model the two are the same 7 and the mapping
-	// is exactly the designed one; if a re-export drops a name, indexing by 7 would
-	// walk off the end of a shorter vector, so the rotation shortens to the clips
-	// that actually resolved instead. kPortfolioClipCount stays the authority on how
-	// many names the model is EXPECTED to carry - that is what the static_asserts and
-	// the name table are pinned to - and clipCount is the authority on how many it
-	// actually answered to.
+	// clipCount is the size of the compacted table InitializePortfolioShowcase()
+	// built, not kPortfolioClipCount. On a healthy model the two are the same 7 and
+	// the mapping is exactly the designed one; if a re-export drops a name, indexing
+	// by 7 would walk off the end of a shorter vector, so the rotation shortens to
+	// the clips that actually resolved instead. kPortfolioClipCount stays the
+	// authority on how many names the model is EXPECTED to carry - that is what the
+	// static_asserts and the name table are pinned to - and clipCount is the
+	// authority on how many it actually answered to.
 	//
-	// cycle may be negative: Task 4 asks for the outgoing line-up with cycle - 1, and
-	// C++ '%' truncates toward zero, so a negative remainder is folded back into
-	// [0, clipCount) rather than indexing backwards off the front of the vector.
+	// cycle may be negative: the cross-fade in UpdatePortfolioShowcase() asks for the
+	// outgoing line-up with cycle - 1, and C++ '%' truncates toward zero, so a
+	// negative remainder is folded back into [0, clipCount) rather than indexing
+	// backwards off the front of the vector.
 	int PortfolioClipIndexForSlot(int cycle, int slot, int clipCount)
 	{
 		if (clipCount <= 0)
@@ -640,8 +641,9 @@ bool App::UpdatePortfolioShowcase(float dt)
 		// characters snap to an unrelated pose at the exact instant the seam is
 		// meant to be invisible. Measured across a 0.2 s straddling pair: 13.99
 		// for a hard cut, 10.23 with the offset and 7.06 without it, against a
-		// 3.25 mid-set step of the same width. The showcase test measures the
-		// same quantity over a tighter 0.1 s pair. See the task-4 report.
+		// 3.25 mid-set step of the same width. The showcase test
+		// (tools/tests/test_project36_portfolio_showcase.ps1) measures the same
+		// quantity over a tighter 0.1 s pair.
 		//
 		// cycle 0 has no predecessor to fade out of, so it starts on its clip
 		// directly; previousClip is still resolved above, because that lookup is

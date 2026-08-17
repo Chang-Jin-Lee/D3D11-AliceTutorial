@@ -1,9 +1,33 @@
 # Project 36 representative media contract.
 #
-# Project 36 is the portfolio showcase: an eight-second Dance -> BlendLayer -> IK
-# -> Finish cycle rendered by four front-facing characters. The published PNG and
-# GIF are the only evidence a reader of the README ever sees, so this test checks
-# the media itself rather than the runtime that produced it.
+# Project 36 is the portfolio showcase: four front-facing characters rotating
+# through the VRM_* clips in twelve-second sets, with three technique windows cut
+# from each set's own clock (App_PortfolioShowcase.inl):
+#
+#   set time  0.0 - 0.6    cross-fade out of the previous set's line-up, and only
+#                          when cycle > 0 - set 0 has no predecessor to fade from
+#   set time  4.0 - 7.0    upper-body layer on slot 0
+#   set time  8.0 - 11.4   CCD IK on slot 0's left hand
+#
+# The published PNG and GIF are the only evidence a reader of the README ever
+# sees, so this test checks the media itself rather than the runtime that produced
+# it.
+#
+# ---------------------------------------------------------------------------
+# The capture window, and why it is thirteen seconds
+# ---------------------------------------------------------------------------
+# tools/readme_media_manifest.json drives the GIF with a left click at frame zero,
+# which calls ResetPortfolioShowcase() and puts showcase time 0 on GIF frame 0. So
+# the only window the capture can address deterministically is [0, gifSeconds), and
+# GIF frame k is showcase time k/8 s.
+#
+# The layer and the IK both run in set 0, so both are already inside [0, 12).
+# The cross-fade is not: it is guarded on cycle > 0, so its first occurrence is the
+# set boundary at t = 12.0 and it closes at t = 12.6. Covering four whole frames of
+# it needs frames 97..100, i.e. t 12.125 .. 12.500, i.e. at least 101 frames, i.e.
+# at least 12.625 s. gifSeconds must be a whole number (Test-ReadmeMediaManifest
+# requires a positive integer), so thirteen seconds - 104 frames at 8 fps - is the
+# SHORTEST capture that can contain all three techniques at once.
 #
 # The -PngPath/-GifPath parameters let the same contract run against staged
 # capture output before publication and against the published files afterwards.
@@ -29,8 +53,8 @@ $expectedPngWidth = 1600
 $expectedPngHeight = 900
 $expectedGifWidth = 800
 $expectedGifHeight = 450
-$expectedGifFrameCount = 64
-$expectedGifSeconds = 8.0
+$expectedGifFrameCount = 104
+$expectedGifSeconds = 13.0
 $gifSecondsTolerance = 0.5
 $gifMaxBytes = 5242880
 
@@ -41,17 +65,48 @@ $gifMaxBytes = 5242880
 $minimumLuminanceVariance = 4.0
 $minimumSampledColors = 8
 
-# The deterministic phase cycle, in GIF frame indices at 8 fps. Frames 60..63 are
-# the Finish beat and are deliberately unconstrained: the cycle ends there.
+# The three technique windows, in GIF frame indices at 8 fps, derived from the
+# runtime constants above with frame k at showcase time k/8 s:
+#
+#   upper-body layer  frames 34..53   t 4.250 .. 6.625   set 0's 4.0-7.0 window
+#   ccd-ik            frames 66..89   t 8.250 .. 11.125  set 0's 8.0-11.4 window
+#   cross-fade        frames 97..100  t 12.125 .. 12.500 set 1's 0.0-0.6 window,
+#                                                        which is t 12.0-12.6
+#
+# Every range is inset from its window's edges rather than filling it. Two things
+# move the content of a captured frame off its nominal time, both in the same
+# direction: the showcase publishes its back buffer at 12 fps, so a frame sampled
+# at 8 fps shows a render up to 83 ms old, and the frame-zero reset click is only
+# observed on the application's next input poll. The captured content therefore
+# sits up to ~0.1 s EARLIER than k/8, and the insets - 0.25 s at the layer's
+# opening edge, 0.25 s at the IK's, 0.125 s at the cross-fade's - keep every named
+# frame inside its window anyway.
+#
+# The cross-fade range is four frames because that is all there is: the fade lasts
+# 0.6 s, which is 4.8 frames at 8 fps, and a fifth frame would have to sit on one
+# of the two edges. Frames unclaimed by any range - the base-clip gaps at frames
+# 0..33, 54..65 and 90..96, and the tail at frames 101..103 - are deliberately
+# unconstrained: no technique is running there, so there is nothing to assert about
+# them.
+#
+# Nothing here names a "dance" or "finish" beat. The showcase has no such phases:
+# every slot plays a VRM_* clip continuously for the whole capture, and the three
+# ranges above are the only intervals in which a NAMED technique is on.
 $phases = @(
-    [pscustomobject]@{ Label = 'dance';       Start = 0;  End = 23 }
-    [pscustomobject]@{ Label = 'blend-layer'; Start = 24; End = 41 }
-    [pscustomobject]@{ Label = 'ccd-ik';      Start = 42; End = 59 }
+    [pscustomobject]@{ Label = 'upper-body layer'; Start = 34; End = 53 }
+    [pscustomobject]@{ Label = 'ccd-ik';           Start = 66; End = 89 }
+    [pscustomobject]@{ Label = 'cross-fade';       Start = 97; End = 100 }
 )
 
 # At least this many distinct central-region hashes per phase. A frozen render, a
 # dropped animation update, or a capture that repeated one frame collapses to a
 # single hash and fails.
+#
+# On the four-frame cross-fade range that means every frame in it must differ. That
+# is not as tight as it sounds: the showcase publishes at 12 fps and the capture
+# samples at 8 fps, so consecutive samples are 125 ms apart across an 83 ms
+# publication interval and can never be the same published render. A repeat there
+# means the application really did stop drawing.
 $minimumDistinctPhaseHashes = 4
 
 $failures = [System.Collections.Generic.List[string]]::new()
@@ -160,15 +215,30 @@ function Assert-ImageDimensions {
 }
 
 function Get-CentralModelRegion {
-    # The characters stand centred and fill roughly 70% of the frame height. This
-    # box brackets them while excluding the HUD panel, which the runtime anchors
-    # at client (24,24) and which is phase-constant anyway: motion found here is
-    # motion of the models, not of the caption.
+    # The box that brackets the whole cast.
+    #
+    # HORIZONTAL. The four characters are spread across the frame, not clustered in
+    # the middle: App_Lifecycle.inl places them at ndc x -0.719 / -0.241 / +0.240 /
+    # +0.719, which is 14.1% / 38.0% / 62.0% / 86.0% of the frame width. A typical
+    # pose spans ~0.43 ndc, so the outer two reach out to roughly 3% and 97%. The
+    # old 25%-75% box therefore sampled only the inner two characters and missed
+    # half the cast, so half the animation could freeze without this test noticing.
+    #
+    # VERTICAL. The cast fills ~60% of the frame height (see the camera derivation
+    # in App_Lifecycle.inl: character height 126.5 world units at scale 80, visible
+    # height 0.72794 * 289.6). With the 2 degree pitch the bodies run from about 20%
+    # to 80% of the frame, so 15%-90% brackets them with margin at both ends.
+    #
+    # It is that vertical bound, not the horizontal one, that excludes the HUD
+    # panel: the runtime anchors it at client (24,24) at 320x84, which is the top
+    # 12% of the frame. Keeping it out still matters for the same reason as before -
+    # motion found in this box must be motion of the models, not of the caption -
+    # but the caption is phase-constant within a range anyway.
     param([int]$Width, [int]$Height)
 
-    $x = [int][Math]::Round($Width * 0.25)
+    $x = [int][Math]::Round($Width * 0.03)
     $y = [int][Math]::Round($Height * 0.15)
-    $regionWidth = [int][Math]::Round($Width * 0.50)
+    $regionWidth = [int][Math]::Round($Width * 0.94)
     $regionHeight = [int][Math]::Round($Height * 0.75)
     if (($x + $regionWidth) -gt $Width -or ($y + $regionHeight) -gt $Height) {
         throw "central model region ($x,$y) ${regionWidth}x${regionHeight} does not fit a ${Width}x${Height} frame"

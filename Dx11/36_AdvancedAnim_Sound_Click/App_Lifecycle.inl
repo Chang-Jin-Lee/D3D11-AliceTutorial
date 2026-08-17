@@ -143,7 +143,8 @@ void App::LoadDataAsync(std::stop_token stoken)
 	//     - the `if (m_->m_UseAdvancedRig)` block at the bottom of this function never
 	//       runs, so CharacterAnimController::InitializeRig() is never called and
 	//       m_CharRigInited stays false;
-	//     - with it, the AdvancedRig branch in UpdateInput and RenderAdvancedRigUI.
+	//     - and with that flag off, the AdvancedRig branch in UpdateInput and
+	//       RenderAdvancedRigUI() are unreachable too.
 	//     NOT expected back: the showcase drives the player itself.
 	//
 	//   m_UseDeferredRendering = false
@@ -152,11 +153,11 @@ void App::LoadDataAsync(std::stop_token stoken)
 	//       RenderPortfolioShowcaseDebug() call are all unreachable.
 	//     NOT expected back: the composition above is lit for the forward path.
 	//
-	// EXPECTED BACK IN TASK 4: the IK debug draw. The forward branch still calls
-	// RenderPortfolioShowcaseDebug() unconditionally; it returns immediately only
-	// because nothing sets PortfolioShowcaseRuntime::ikDebugValid while the showcase
-	// plays base clips. Task 4's IK window solves the arm chain, sets that flag, and
-	// the already-wired forward call starts drawing.
+	// The IK debug draw is NOT parked. The forward branch calls
+	// RenderPortfolioShowcaseDebug() unconditionally, and the showcase's IK window
+	// sets PortfolioShowcaseRuntime::ikDebugValid once it has recovered the solved
+	// arm chain from the uploaded palette, so the chain and its target are drawn on
+	// every frame inside that window and on no frame outside it.
 	//
 	// NOT expected back: the ten panel functions in App_ImGuiPanels.inl and
 	// PassDebugDraw(), which now have no call sites at all. They are left in place
@@ -274,7 +275,7 @@ void App::LoadDataAsync(std::stop_token stoken)
 	// CharacterAnimController::InitializeRig(), inside the `if (m_->m_UseAdvancedRig)`
 	// block at the bottom of this function - which the assignment above makes
 	// permanently false. They imported three more FBX files on every startup for a
-	// library nothing read. Task 4 re-adds whatever it actually reaches.
+	// library nothing read.
 	//
 	// The showcase's own clips are not loaded here either: they are the VRM_*
 	// animations already embedded in the player model, resolved by name in

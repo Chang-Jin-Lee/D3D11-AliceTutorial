@@ -55,7 +55,11 @@ $project36 = Get-Project '36'
 $project36ActionTypes = @($project36.preCaptureActions | ForEach-Object { $_.type })
 Assert-True (($project36ActionTypes -join ',') -eq 'click,wait') 'project 36 fallback actions must remain ordered after the load delay'
 Assert-True ([int]$project36.delayMs -ge 7000) 'project 36 capture delay must cover local public-model loading'
-Assert-True ([int]$project36.gifSeconds -eq 8 -and [int]$manifest.gifFps -eq 8) 'project 36 must request an eight-second 8fps GIF'
+# Thirteen seconds at 8 fps is the shortest whole-second capture that reaches past
+# the first set boundary at t = 12.0, which is where the cross-fade first runs; the
+# layer and the IK are already inside set 0. See the derivation in
+# tools/tests/test_project36_portfolio_media.ps1.
+Assert-True ([int]$project36.gifSeconds -eq 13 -and [int]$manifest.gifFps -eq 8) 'project 36 must request a thirteen-second 8fps GIF'
 Assert-True ([bool]$project36.readmeBackbufferCapture) 'project 36 must opt into README backbuffer capture'
 $project36GifActions = @($project36.gifActions)
 Assert-True ($project36GifActions.Count -eq 1 -and $project36GifActions[0].type -eq 'click' -and [int]$project36GifActions[0].atMs -eq 0) 'project 36 must reset with a frame-zero click'
