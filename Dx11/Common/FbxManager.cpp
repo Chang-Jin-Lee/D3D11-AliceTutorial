@@ -10,6 +10,7 @@
 #include <assimp/postprocess.h>
 #include <directxtk/WICTextureLoader.h>
 #include "../Common/Helper.h"
+#include <stb_image.h>
 
 using Microsoft::WRL::ComPtr;
 
@@ -592,6 +593,146 @@ bool FbxManager::Load(ID3D11Device* device, const std::wstring& pathW)
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// 모델 텍스처 밉맵 체인
+//
+// 샘플러는 어디서나 MIN_MAG_MIP_LINEAR + MaxLOD = FLOAT32_MAX 로 밉을 요구하는데
+// 정작 모델 텍스처에는 밉이 하나뿐이었다. 축소되어 그려지는 캐릭터는 픽셀마다
+// 거의 임의의 텍셀을 집게 되고, 포즈가 서브픽셀만 움직여도 다시 뽑히므로 옷이
+// 끓어 보인다(shimmer).
+//
+// 밉은 CPU에서 박스 필터로 만든다. 모델 로딩은 백그라운드 스레드에서 일어날 수
+// 있는데 ID3D11DeviceContext는 스레드 안전하지 않아 GenerateMips/UpdateSubresource를
+// 쓸 수 없다. ID3D11Device 메서드는 free-threaded 라서 어느 스레드에서든 안전하다.
+// ---------------------------------------------------------------------------
+
+// pixels: 4바이트/픽셀, 행 간격 width*4 로 꽉 찬 버퍼.
+// 밉 체인 생성이 실패하면 기존과 동일한 단일 밉 텍스처로 폴백한다.
+static HRESULT CreateSRVWithCpuMips(ID3D11Device* device, const void* pixels,
+    UINT width, UINT height, DXGI_FORMAT format, ID3D11ShaderResourceView** outSRV)
+{
+    if (!device || !pixels || !outSRV || width == 0 || height == 0) return E_INVALIDARG;
+    *outSRV = nullptr;
+
+    UINT mipCount = 1;
+    for (UINT w = width, h = height; w > 1 || h > 1; ++mipCount)
+    {
+        w = (w > 1) ? (w >> 1) : 1;
+        h = (h > 1) ? (h >> 1) : 1;
+    }
+
+    std::vector<std::vector<uint8_t>> levels(mipCount);
+    std::vector<D3D11_SUBRESOURCE_DATA> sd(mipCount);
+
+    try
+    {
+        const uint8_t* prev = static_cast<const uint8_t*>(pixels);
+        UINT pw = width, ph = height;
+        for (UINT level = 1; level < mipCount; ++level)
+        {
+            const UINT cw = (pw > 1) ? (pw >> 1) : 1;
+            const UINT ch = (ph > 1) ? (ph >> 1) : 1;
+            levels[level].resize(static_cast<size_t>(cw) * ch * 4);
+            uint8_t* dst = levels[level].data();
+            for (UINT y = 0; y < ch; ++y)
+            {
+                const UINT y0 = (ph > 1) ? (y * 2) : 0;
+                const UINT y1 = (ph > 1) ? (y0 + 1) : 0;
+                for (UINT x = 0; x < cw; ++x)
+                {
+                    const UINT x0 = (pw > 1) ? (x * 2) : 0;
+                    const UINT x1 = (pw > 1) ? (x0 + 1) : 0;
+                    const uint8_t* p00 = prev + (static_cast<size_t>(y0) * pw + x0) * 4;
+                    const uint8_t* p10 = prev + (static_cast<size_t>(y0) * pw + x1) * 4;
+                    const uint8_t* p01 = prev + (static_cast<size_t>(y1) * pw + x0) * 4;
+                    const uint8_t* p11 = prev + (static_cast<size_t>(y1) * pw + x1) * 4;
+                    uint8_t* o = dst + (static_cast<size_t>(y) * cw + x) * 4;
+                    for (int c = 0; c < 4; ++c)
+                        o[c] = static_cast<uint8_t>((static_cast<UINT>(p00[c]) + p10[c] + p01[c] + p11[c] + 2) / 4);
+                }
+            }
+            prev = levels[level].data();
+            pw = cw; ph = ch;
+        }
+    }
+    catch (const std::bad_alloc&)
+    {
+        mipCount = 1; // 메모리가 부족하면 밉 없이라도 올린다.
+    }
+
+    {
+        UINT pw = width, ph = height;
+        for (UINT level = 0; level < mipCount; ++level)
+        {
+            sd[level].pSysMem = (level == 0) ? pixels : static_cast<const void*>(levels[level].data());
+            sd[level].SysMemPitch = pw * 4;
+            sd[level].SysMemSlicePitch = 0;
+            pw = (pw > 1) ? (pw >> 1) : 1;
+            ph = (ph > 1) ? (ph >> 1) : 1;
+        }
+    }
+
+    D3D11_TEXTURE2D_DESC td{}; td.Width = width; td.Height = height; td.MipLevels = mipCount; td.ArraySize = 1;
+    td.Format = format; td.SampleDesc.Count = 1; td.Usage = D3D11_USAGE_IMMUTABLE; td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+
+    ComPtr<ID3D11Texture2D> tex;
+    HRESULT hr = device->CreateTexture2D(&td, sd.data(), tex.GetAddressOf());
+    if (FAILED(hr) && mipCount > 1)
+    {
+        // 밉 체인 생성 실패 → 기존과 동일한 단일 밉 텍스처로 폴백
+        mipCount = 1;
+        td.MipLevels = 1;
+        hr = device->CreateTexture2D(&td, sd.data(), tex.GetAddressOf());
+    }
+    if (FAILED(hr)) return hr;
+
+    D3D11_SHADER_RESOURCE_VIEW_DESC srvd{}; srvd.Format = format; srvd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+    srvd.Texture2D.MipLevels = mipCount; srvd.Texture2D.MostDetailedMip = 0;
+    return device->CreateShaderResourceView(tex.Get(), &srvd, outSRV);
+}
+
+// 압축 이미지(PNG/JPG 등)를 CPU에서 디코드해 밉 체인과 함께 올린다.
+// 디코드할 수 없으면(지원하지 않는 포맷, 16비트 PNG 등) nullptr을 돌려주고
+// 호출부가 기존 DirectXTK 경로로 폴백한다.
+static ID3D11ShaderResourceView* CreateSRVFromCompressedWithMips(ID3D11Device* device,
+    const uint8_t* data, size_t size)
+{
+    if (!device || !data || size == 0 || size > 0x7FFFFFFFull) return nullptr;
+
+    // 16비트 PNG는 stb가 8비트로 떨어뜨리므로 기존 WIC 경로에 맡긴다.
+    if (stbi_is_16_bit_from_memory(data, static_cast<int>(size))) return nullptr;
+
+    int w = 0, h = 0, comp = 0;
+    stbi_uc* px = stbi_load_from_memory(data, static_cast<int>(size), &w, &h, &comp, STBI_rgb_alpha);
+    if (!px) return nullptr;
+    if (w <= 0 || h <= 0) { stbi_image_free(px); return nullptr; }
+
+    ID3D11ShaderResourceView* srv = nullptr;
+    HRESULT hr = CreateSRVWithCpuMips(device, px, static_cast<UINT>(w), static_cast<UINT>(h),
+        DXGI_FORMAT_R8G8B8A8_UNORM, &srv);
+    stbi_image_free(px);
+    if (FAILED(hr)) { if (srv) srv->Release(); return nullptr; }
+    return srv;
+}
+
+// 외부 이미지 파일을 통째로 읽어 위 경로로 넘긴다. 실패하면 nullptr.
+static ID3D11ShaderResourceView* CreateSRVFromFileWithMips(ID3D11Device* device, const wchar_t* file)
+{
+    if (!device || !file) return nullptr;
+    try
+    {
+        std::ifstream f(file, std::ios::binary);
+        if (!f) return nullptr;
+        std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+        if (bytes.empty()) return nullptr;
+        return CreateSRVFromCompressedWithMips(device, bytes.data(), bytes.size());
+    }
+    catch (...)
+    {
+        return nullptr;
+    }
+}
+
 bool FbxManager::LoadMaterials(ID3D11Device* device, const aiScene* scene, const std::wstring& baseDir)
 {
     if (!m_->pWhite)
@@ -628,21 +769,19 @@ bool FbxManager::LoadMaterials(ID3D11Device* device, const aiScene* scene, const
                     if (at->mHeight == 0)
                     {
                         // 이미지를 읽어옴. 압축 버퍼를 사용함 (PNG/JPG 등)
-                    if (SUCCEEDED(CreateWICTextureFromMemory(device, reinterpret_cast<const uint8_t*>(at->pcData), at->mWidth, res.GetAddressOf(), &srv)))
+                        // 밉 체인까지 만드는 경로를 먼저 쓰고, 디코드가 안 되면 기존 DirectXTK 경로로 폴백한다.
+                        if (auto* mipped = CreateSRVFromCompressedWithMips(device, reinterpret_cast<const uint8_t*>(at->pcData), at->mWidth))
+                            m_->MaterialSRVs[m] = mipped;
+                        else if (SUCCEEDED(CreateWICTextureFromMemory(device, reinterpret_cast<const uint8_t*>(at->pcData), at->mWidth, res.GetAddressOf(), &srv)))
                             m_->MaterialSRVs[m] = srv;
                     }
                     else
                     {
                         // RAW BGRA8 픽셀 데이터
-                        D3D11_TEXTURE2D_DESC td{}; td.Width = at->mWidth; td.Height = at->mHeight; td.MipLevels = 1; td.ArraySize = 1;
-                        td.Format = DXGI_FORMAT_B8G8R8A8_UNORM; td.SampleDesc.Count = 1; td.Usage = D3D11_USAGE_IMMUTABLE; td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-                        D3D11_SUBRESOURCE_DATA sd{}; sd.pSysMem = at->pcData; sd.SysMemPitch = at->mWidth * sizeof(aiTexel);
-                        ComPtr<ID3D11Texture2D> tex;
-                        if (SUCCEEDED(device->CreateTexture2D(&td, &sd, tex.GetAddressOf())))
-                        {
-                            D3D11_SHADER_RESOURCE_VIEW_DESC srvd{}; srvd.Format = td.Format; srvd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D; srvd.Texture2D.MipLevels = 1; srvd.Texture2D.MostDetailedMip = 0;
-                            if (SUCCEEDED(device->CreateShaderResourceView(tex.Get(), &srvd, &srv))) m_->MaterialSRVs[m] = srv;
-                        }
+                        // 밉 체인을 만들어 축소 시 텍셀이 튀는 현상(shimmer)을 막는다.
+                        if (SUCCEEDED(CreateSRVWithCpuMips(device, at->pcData, at->mWidth, at->mHeight,
+                            DXGI_FORMAT_B8G8R8A8_UNORM, &srv)))
+                            m_->MaterialSRVs[m] = srv;
                     }
                 }
             }
@@ -659,20 +798,17 @@ bool FbxManager::LoadMaterials(ID3D11Device* device, const aiScene* scene, const
                         ComPtr<ID3D11Resource> res; ID3D11ShaderResourceView* srv = nullptr;
                         if (at->mHeight == 0)
                         {
-                            if (SUCCEEDED(CreateWICTextureFromMemory(device, reinterpret_cast<const uint8_t*>(at->pcData), at->mWidth, res.GetAddressOf(), &srv)))
+                            if (auto* mipped = CreateSRVFromCompressedWithMips(device, reinterpret_cast<const uint8_t*>(at->pcData), at->mWidth))
+                                m_->MaterialSRVs[m] = mipped;
+                            else if (SUCCEEDED(CreateWICTextureFromMemory(device, reinterpret_cast<const uint8_t*>(at->pcData), at->mWidth, res.GetAddressOf(), &srv)))
                                 m_->MaterialSRVs[m] = srv;
                         }
                         else
                         {
-                            D3D11_TEXTURE2D_DESC td{}; td.Width = at->mWidth; td.Height = at->mHeight; td.MipLevels = 1; td.ArraySize = 1;
-                            td.Format = DXGI_FORMAT_B8G8R8A8_UNORM; td.SampleDesc.Count = 1; td.Usage = D3D11_USAGE_IMMUTABLE; td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-                            D3D11_SUBRESOURCE_DATA sd{}; sd.pSysMem = at->pcData; sd.SysMemPitch = at->mWidth * sizeof(aiTexel);
-                            ComPtr<ID3D11Texture2D> tex;
-                            if (SUCCEEDED(device->CreateTexture2D(&td, &sd, tex.GetAddressOf())))
-                            {
-                                D3D11_SHADER_RESOURCE_VIEW_DESC srvd{}; srvd.Format = td.Format; srvd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D; srvd.Texture2D.MipLevels = 1; srvd.Texture2D.MostDetailedMip = 0;
-                                if (SUCCEEDED(device->CreateShaderResourceView(tex.Get(), &srvd, &srv))) m_->MaterialSRVs[m] = srv;
-                            }
+                            // 밉 체인을 만들어 축소 시 텍셀이 튀는 현상(shimmer)을 막는다.
+                            if (SUCCEEDED(CreateSRVWithCpuMips(device, at->pcData, at->mWidth, at->mHeight,
+                                DXGI_FORMAT_B8G8R8A8_UNORM, &srv)))
+                                m_->MaterialSRVs[m] = srv;
                         }
                     }
                 }
@@ -688,7 +824,12 @@ bool FbxManager::LoadMaterials(ID3D11Device* device, const aiScene* scene, const
                 else
                 {
                     ComPtr<ID3D11Resource> res; ID3D11ShaderResourceView* srv = nullptr;
-                    if (SUCCEEDED(CreateWICTextureFromFile(device, full.c_str(), res.GetAddressOf(), &srv))) { m_->MaterialSRVs[m] = srv; addCache(full, srv); }
+                    // 밉 체인을 직접 만든 텍스처를 먼저 시도하고, 안 되면 기존 경로로 폴백한다.
+                    if (auto* mipped = CreateSRVFromFileWithMips(device, full.c_str()))
+                    {
+                        m_->MaterialSRVs[m] = mipped; addCache(full, mipped);
+                    }
+                    else if (SUCCEEDED(CreateWICTextureFromFile(device, full.c_str(), res.GetAddressOf(), &srv))) { m_->MaterialSRVs[m] = srv; addCache(full, srv); }
                 }
             }
         }
