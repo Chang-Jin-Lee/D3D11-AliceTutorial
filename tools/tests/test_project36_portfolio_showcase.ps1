@@ -434,6 +434,29 @@ $hudTextBrightFloor = 0.01
 $lineUpY = $hudY + 26
 $lineUpH = 24
 
+# The third box - the active technique - on the same reasoning: rows 82-106 cover
+# it whole with a margin on each side and cannot see the line-up above it or the
+# panel edge at row 108 below it.
+#
+# This band is not compared against a calibrated ink value. It is read across the
+# whole layer sweep and SELF-CALIBRATED: the sweep straddles the window, so the
+# caption takes exactly two values over it, and the frames carrying the layer are
+# the ones whose row carries more ink - "UPPER-BODY LAYER" is a longer string than
+# "BASE", which is a fact about the two literals App_PortfolioShowcase.inl prints
+# rather than a threshold this file has to keep in step with a font size. The
+# midpoint between the sweep's own minimum and maximum is the cut, and the sweep
+# has to produce a maximum at least $techniqueCaptionInkRatio times its minimum
+# for the reading to be used at all - so a run whose sweep never left one caption,
+# or one where the technique line stopped rendering, fails instead of quietly
+# selecting every frame or none.
+#
+# Measured, identical on all six runs of both builds: "BASE" rows read 0.0088 and
+# "UPPER-BODY LAYER" rows read 0.0236, a 2.68x step, and the flip landed on the
+# same sampled frame every time.
+$techniqueY = $hudY + 54
+$techniqueH = 24
+$techniqueCaptionInkRatio = 1.5
+
 # Technique windows, in seconds inside each 12 s set (App_PortfolioShowcase.inl):
 # cross-fade 0.0-0.6 and upper-body layer 4.0-7.0. The two do not overlap, so every
 # sample below reads at most one technique. A CCD IK window at 8.0-11.4 was removed
@@ -473,30 +496,86 @@ $stepBurstCount = 11
 $stepRegionTop = 120
 
 # Upper-body layer. The layer runs on slot 0 alone and CharacterAnimator masks it
-# to the spine/neck/head/arm chain, so it moves slot 0's arms while the base clip
-# keeps driving its legs. The measurement is the ratio of slot 0's arm-band change
-# to its own leg-band change, averaged over the two frame pairs that sit inside
-# the window, so a moment where the base clip happens to be quiet or busy cannot
-# decide the answer on its own.
+# to the spine/neck/head/arm chain, so it plays a second clip from the waist up
+# while the base clip keeps driving the legs.
 #
-# The bands are the arm span (rows 250-340) against hips-to-shins (rows 340-560),
-# NOT the whole torso: rows 150-250 are head and hair, which sway under the base
-# clip in every frame and swamped the arm signal completely - with them included
-# the metric read 0.581 without the layer and 0.576 with it.
+# The measurement is a RATIO TO A CONTROL: slot 0's arm-band change across half a
+# second, divided by the mean of the same rows' change on the three companion
+# slots in the same two frames. The companions never receive the layer, so they
+# are a control for everything slot 0 shares with them - the lighting, the shadow
+# softening, the exposure, the capture instant, the camera, the frame. A re-light
+# that makes bodies shift harder against the ground moves numerator and
+# denominator together and the ratio barely notices; that is exactly what the
+# previous version of this measurement could not do.
 #
-# $layerRatioFloor is calibrated, not guessed. Over the same two pairs, with the
-# same bands and the same sample times, the metric read 0.915 with the layer
-# absent (the RED run, before Step 3-6 were written) and 1.317 with it present.
-# 1.10 sits between them with ~18% margin on each side. This is the weaker of the
-# two surviving technique assertions and the task-4 report said so: no pixel statistic
-# I could find separates a layered upper body from an unlayered one by the 2x the
-# design asked for, because the layer changes WHERE the arms go, not how far they
-# travel in half a second.
+# What it replaced, and why. The old metric divided slot 0's arm band by slot 0's
+# OWN leg band and asserted the quotient cleared 1.10. Measured against a scratch
+# build with `desc.upper.enabled = false` and nothing else changed, that same
+# quotient over set 0's whole window reads 1.15-1.16 with the layer and 0.90-0.91
+# without it - a ~27% gap that ordinary clip content swings further than the layer
+# does, and one the toon-banded re-lighting closed entirely (it landed at 0.974,
+# under its own floor, on a build whose layer is provably intact). The two pairs
+# it actually sampled did not even agree with each other (0.74 and 1.208). It was
+# measuring which clip was playing, not whether the layer was running - and its
+# denominator, slot 0's own legs, is precisely the band the re-lighting inflated.
+#
+# WHERE it is measured matters as much as what. The layer changes WHERE the arms
+# go, not how far they travel, so it is only legible where the base clip is not
+# already flinging the same arms around. Measured over both sets with the scratch
+# build, the best separation any variant of this statistic reaches inside set 0's
+# window is 1.26x - the base clip there (VRM_1) spins slot 0 through a full turn
+# across 4-7 s and drowns everything. Set 1's window is the opposite: slot 0 plays
+# VRM_5, which is nearly still through 4-7 s, so the layer is the only thing
+# moving that upper body. The layer code has no per-set branch - it is
+# `isMainSlot && setTime >= 4 && setTime < 7` on every set - so measuring set 1's
+# window exercises exactly the same path, with a signal that can actually be read.
+#
+# The rows are the arm span (250-340), NOT the whole torso: rows 150-250 are head
+# and hair, which sway under the base clip on every frame and swamped the arm
+# signal (with them included the old statistic read 0.581 without the layer and
+# 0.576 with it). The SAME rows are read on the companions, so a lighting change
+# that stirs one horizontal band of the frame stirs it for all four characters.
+#
+# The statistic over those pairs is the LOWER QUARTILE of the per-pair ratios, not
+# the mean and not the median. What the layer guarantees is that slot 0's upper
+# body never goes quiet while the window is open - it is being driven by a second
+# clip through an alpha that only touches zero at the two ends - so the claim
+# lives in the bottom tail. With the layer removed the per-pair ratios are
+# strongly bimodal (about half land at 0.05-0.22 where VRM_5 is still, the rest at
+# 0.4-1.0 where it is not), which puts the MEDIAN right on the boundary between
+# the two lumps and makes it swing 0.22-0.45 on the count of sampled pairs alone.
+# The quartile sits in the low lump, and every order statistic from the 2nd to the
+# 7th smallest of 14 separates by 4.4-5.6x, so the choice is a plateau rather than
+# a perch - the 8th, the median, is the first one that falls off it.
+#
+# Measured, three runs of each state, scratch build vs shipped build:
+#
+#   layer present:  0.747 / 0.755 / 0.753
+#   layer removed:  0.110 / 0.122 / 0.133
+#
+# $layerControlRatioFloor = 0.30 is the geometric midpoint of that gap: the layer
+# reads 2.5x above it and the layer-removed build 2.3x below it. Re-measured with
+# the first three and the last three sampled pairs dropped - a stand-in for the
+# sample window sliding 0.6 s against the show's clock - the layered runs never
+# fall below 0.521 and the unlayered ones never rise above 0.133, so the floor
+# keeps ~1.7x of margin on the side that matters even then.
 $layerUpperTop = 250
 $layerUpperBottom = 340
-$layerLowerTop = 340
-$layerLowerBottom = 560
-$layerRatioFloor = 1.10
+$layerControlRatioFloor = 0.30
+
+# The sweep the ratio is taken over: set 1's layer window, bracketed on both sides
+# by base-clip frames. 15.6-19.4 s is set time 3.6-7.4, so the 4.0-7.0 window sits
+# inside it with two spare frames at each end - which is what lets the frames be
+# selected by the HUD's own technique caption (below) instead of by this
+# stopwatch, and what proves the selection discriminates at all.
+$layerSweepStartSec = 15.6
+$layerSweepEndSec = 19.4
+$layerSweepStepSec = 0.2
+# 14 consecutive in-window pairs were selected on every one of the six measured
+# runs. 10 leaves room for the caption to flip a frame or two earlier or later
+# than this stopwatch expects while still failing loudly - rather than measuring a
+# quartile of nothing - if the window has moved or closed.
+$layerMinPairs = 10
 
 # Band 260-500 is the torso/arm span shared by all four slots (the nearest head is
 # at row ~134 and the farthest feet at row ~653). The composition spaces the four
@@ -1114,10 +1193,18 @@ try {
     # of slack between the click that starts the show and this clock.
     # Clip-rotation and technique sampling, in one time-ordered schedule.
     #
-    #   layer-a/layer-b  4.4 / 4.9 s - inside the 4.0-7.0 s upper-body layer, where
-    #                    layerAlpha = sin(layer01 * pi) is still climbing steeply
-    #                    (0.446 -> 0.837), so the layer moves the upper body on its
-    #                    own as well as playing a second clip through it.
+    #   layer-a/layer-b  4.4 / 4.9 s - inside SET 0's 4.0-7.0 s upper-body layer,
+    #                    where layerAlpha = sin(layer01 * pi) is climbing steeply
+    #                    (0.446 -> 0.837). The layer assertion is NOT taken here:
+    #                    slot 0's base clip in set 0 is VRM_1, which spins the whole
+    #                    character through a turn across exactly this window, and no
+    #                    variant of the measurement separates a layered upper body
+    #                    from an unlayered one by more than 1.26x against that (see
+    #                    $layerControlRatioFloor). The assertion is taken over set
+    #                    1's window instead, where slot 0 plays the near-still
+    #                    VRM_5; these two stills stay as stills - they feed the HUD
+    #                    line-up assertions, which read EVERY sampled frame, and
+    #                    they are what a reader looks at to see set 0's layer.
     #   cycle0-075 /     7.5 / 9.5 s - two base-clip stills in the second half of
     #   cycle0-095       set 0. Nothing but the base clips runs after 7.0 s (this is
     #                    where the removed CCD IK window used to sit), so these two
@@ -1169,11 +1256,33 @@ try {
     # between this stopwatch and the show's clock.
     $boundaryFrames = & $takeBurst $boundaryBurstStart $boundaryBurstCount
 
-    & $takeSamples @(
-        @{ Name = 'cycle1-14'; At = 14.0 },
-        @{ Name = 'cycle1-16'; At = 16.0 },
-        @{ Name = 'cycle1-18'; At = 18.0 },
-        @{ Name = 'cycle1-22'; At = 22.0 })
+    & $takeSamples @(@{ Name = 'cycle1-14'; At = 14.0 })
+
+    # Set 1's upper-body layer window, swept at $layerSweepStepSec so the ratio
+    # below has a distribution to take a quartile of rather than two lucky pairs.
+    # The sweep starts before the window opens and ends after it closes, which is
+    # what lets the HUD's technique caption pick the in-window frames out of it.
+    #
+    # t = 16.0 s and t = 18.0 s fall on this grid and are the instants the
+    # cycle1-16 / cycle1-18 samples already stood at, so the sweep keeps their
+    # names at those two steps instead of capturing the same moment twice: the
+    # frame-edge guard and the HUD-signature assertions go on reading exactly the
+    # frames they read before.
+    $layerSweepNames = @()
+    $layerSweep = @()
+    for ($sweepAt = $layerSweepStartSec; $sweepAt -le ($layerSweepEndSec + 0.0001); $sweepAt += $layerSweepStepSec) {
+        $sweepTime = [Math]::Round($sweepAt, 2)
+        $sweepName = switch ($sweepTime) {
+            16.0 { 'cycle1-16' }
+            18.0 { 'cycle1-18' }
+            default { 'layer-{0:0000}' -f [int][Math]::Round($sweepTime * 100) }
+        }
+        $layerSweep += @{ Name = $sweepName; At = $sweepTime }
+        $layerSweepNames += $sweepName
+    }
+    & $takeSamples $layerSweep
+
+    & $takeSamples @(@{ Name = 'cycle1-22'; At = 22.0 })
 
     # The mid-set reference for $medianStep: eleven frames giving ten consecutive
     # pairs, at 25.0-26.0 s - set time 1.0-2.0 of cycle 2 - which is past the
@@ -1471,50 +1580,101 @@ try {
     # separated envelopes measured above is slot 0's - derived from the frames
     # rather than hard-coded, exactly as the motion-variety assertion derives them.
     $slot0Band = if ($slotBands.Count -eq 4) { $slotBands[2] } else { $null }
-    $layerUpperDelta = 0.0
-    $layerBaselineDelta = 0.0
+    $layerControlRatio = 0.0
+    $layerWindowPairCount = 0
+    $layerCaptionSeparates = $false
     $layerReport = ''
     if ($null -eq $slot0Band) {
         $layerReport = "only $($slotBands.Count) character bands were separable, so slot 0's band is unknown"
     }
     else {
+        # Slot 0's arm band against the SAME rows on the three companions. The
+        # companions are screen positions 0, 1 and 3 - slots 1, 2 and 3, none of
+        # which is ever handed desc.upper - and they are read out of the same two
+        # frames, so every lighting, exposure and capture property the four
+        # characters share divides out. Their mean, not one of them: a single
+        # companion whose clip happens to be still for half a second would other-
+        # wise decide the answer on its own.
+        $layerControlSlots = @(0, 1, 3)
         $layerRatio = {
             param([ShowcaseFrame]$A, [ShowcaseFrame]$B)
 
-            $upper = [ShowcaseFrame]::MeanAbsDiff($A, $B, $slot0Band.X, $layerUpperTop,
-                $slot0Band.Width, ($layerUpperBottom - $layerUpperTop))
-            $lower = [ShowcaseFrame]::MeanAbsDiff($A, $B, $slot0Band.X, $layerLowerTop,
-                $slot0Band.Width, ($layerLowerBottom - $layerLowerTop))
-            if ($lower -le 0.0001) { return 0.0 }
-            return $upper / $lower
+            $bandHeight = $layerUpperBottom - $layerUpperTop
+            $main = [ShowcaseFrame]::MeanAbsDiff($A, $B, $slot0Band.X, $layerUpperTop, $slot0Band.Width, $bandHeight)
+            $controls = @($layerControlSlots | ForEach-Object {
+                    [ShowcaseFrame]::MeanAbsDiff($A, $B, $slotBands[$_].X, $layerUpperTop,
+                        $slotBands[$_].Width, $bandHeight) })
+            $control = ($controls | Measure-Object -Average).Average
+            if ($control -le 0.0001) { return 0.0 }
+            return $main / $control
         }
-        # Two pairs, both wholly inside the 4.0-7.0 s window: 4.0-4.4 s where
-        # layerAlpha climbs 0 -> 0.446, and 4.4-4.9 s where it climbs to 0.837.
-        # Averaged, because a single pair is at the mercy of what the base clip
-        # happens to be doing across that half second.
-        $layerWindowRatios = @(
-            (& $layerRatio $cycleFrames['cycle0-04'] $cycleFrames['layer-a']),
-            (& $layerRatio $cycleFrames['layer-a'] $cycleFrames['layer-b'])
-        )
-        $layerUpperDelta = ($layerWindowRatios | Measure-Object -Average).Average
-        # Reported, not asserted on: the same ratio over a base-clip pair before
-        # the window opens. It shows the metric is a window-specific calibration
-        # rather than a claim that the layer always raises the ratio above every
-        # base moment - out-of-window values range 1.5-3.4 across the show.
-        $layerBaselineDelta = & $layerRatio $samples['drift-a'] $samples['drift-b']
+
+        # Which of the swept frames the show itself says the layer is running on.
+        # Self-calibrating: the sweep straddles the window, so its technique row
+        # carries exactly two ink values, and the layer's caption is the longer of
+        # the two strings - see $techniqueY. The stopwatch picks WHEN to capture;
+        # the HUD picks which captures count, so a residual offset between this
+        # clock and the show's slides the sampled instants without ever sampling
+        # the wrong side of the window boundary.
+        $layerCaptionInk = [ordered]@{}
+        foreach ($sweepName in $layerSweepNames) {
+            $layerCaptionInk[$sweepName] = [ShowcaseFrame]::BrightRatio($cycleFrames[$sweepName],
+                $hudX, $techniqueY, $hudW, $techniqueH, 200)
+        }
+        $minCaptionInk = ($layerCaptionInk.Values | Measure-Object -Minimum).Minimum
+        $maxCaptionInk = ($layerCaptionInk.Values | Measure-Object -Maximum).Maximum
+        $layerCaptionSeparates = ($minCaptionInk -gt 0.0) -and
+            ($maxCaptionInk -ge ($minCaptionInk * $techniqueCaptionInkRatio))
+        $captionCut = ($minCaptionInk + $maxCaptionInk) / 2.0
+
+        $layerWindowRatios = @()
+        $layerBaseRatios = @()
+        for ($sweepIndex = 0; $sweepIndex + 1 -lt $layerSweepNames.Count; ++$sweepIndex) {
+            $firstIn = $layerCaptionInk[$layerSweepNames[$sweepIndex]] -ge $captionCut
+            $secondIn = $layerCaptionInk[$layerSweepNames[$sweepIndex + 1]] -ge $captionCut
+            $pairRatio = & $layerRatio $cycleFrames[$layerSweepNames[$sweepIndex]] `
+                $cycleFrames[$layerSweepNames[$sweepIndex + 1]]
+            # Pairs that straddle the boundary belong to neither side and are
+            # dropped: half of that half second carries the layer and half does not.
+            if ($firstIn -and $secondIn) { $layerWindowRatios += $pairRatio }
+            elseif ((-not $firstIn) -and (-not $secondIn)) { $layerBaseRatios += $pairRatio }
+        }
+        $layerWindowPairCount = $layerWindowRatios.Count
+        if ($layerWindowPairCount -gt 0) {
+            $sortedLayerRatios = @($layerWindowRatios | Sort-Object)
+            $layerControlRatio = [double]$sortedLayerRatios[[int][Math]::Floor($sortedLayerRatios.Count / 4)]
+        }
+        # Reported, not asserted on: the same ratio over the swept pairs the HUD
+        # calls BASE. It reads 0.10-0.22 whether or not the layer exists - the
+        # window is the only place slot 0's upper body is asked to do anything the
+        # companions are not - which is what makes the in-window reading a claim
+        # about the layer rather than about slot 0 being a busier character.
+        $layerBaseReport = if ($layerBaseRatios.Count -gt 0) {
+            (($layerBaseRatios | ForEach-Object { [Math]::Round($_, 3) }) -join '/')
+        }
+        else { 'none sampled' }
         $layerReport = ("slot 0 band x $($slot0Band.X)-$($slot0Band.X + $slot0Band.Width); " +
-            "per-pair " + (($layerWindowRatios | ForEach-Object { [Math]::Round($_, 3) }) -join '/') +
-            "; out-of-window baseline $([Math]::Round($layerBaselineDelta,3))")
+            "$layerWindowPairCount in-window pairs, per-pair " +
+            (($layerWindowRatios | ForEach-Object { [Math]::Round($_, 2) }) -join ' ') +
+            "; caption ink $([Math]::Round($minCaptionInk,4))-$([Math]::Round($maxCaptionInk,4)); " +
+            "out-of-window pairs $layerBaseReport")
     }
 
-    # With the layer on, slot 0's arms follow a second clip through a ramping
-    # layerAlpha while its legs keep following the base clip, so the arm band moves
-    # out of proportion to the leg band. Measured at 0.915 with the layer absent
-    # and 1.317 with it present, over these same two pairs. Catches a regression
-    # that drops desc.upper, layers it onto the wrong slot, or leaves layerAlpha
-    # at zero - all of which return the ratio to its unlayered value.
-    Assert-True ($layerUpperDelta -ge $layerRatioFloor) `
-        ("slot 0's upper body diverges during the layer window (delta $([Math]::Round($layerUpperDelta,4)) vs floor $layerRatioFloor; measured 0.915 with the layer removed); $layerReport")
+    # With the layer on, slot 0's upper body is driven by a second clip through an
+    # alpha that only reaches zero at the two ends of the window, so it never goes
+    # quiet while the window is open: on a typical sampled half second its arm band
+    # changes about as much as the companions' do, and on its quietest one still
+    # about three quarters as much. With desc.upper dropped, layered onto the wrong
+    # slot, or left at layerAlpha = 0, slot 0 falls back to VRM_5's own near-still
+    # 4-7 s and the quartile collapses to ~0.12 - measured on a scratch build that
+    # changed nothing but `desc.upper.enabled`. See $layerControlRatioFloor above
+    # for the six runs behind those numbers and for why the floor sits where it does.
+    Assert-True ($layerCaptionSeparates -and ($layerWindowPairCount -ge $layerMinPairs) -and
+        ($layerControlRatio -ge $layerControlRatioFloor)) `
+        ("slot 0's upper body keeps pace with the cast only while the layer runs (lower-quartile ratio " +
+         "$([Math]::Round($layerControlRatio,4)) vs floor $layerControlRatioFloor; measured 0.11-0.13 with the layer " +
+         "removed; need >= $layerMinPairs in-window pairs and a technique caption that changes across the sweep, " +
+         "which was $layerCaptionSeparates); $layerReport")
 
     # There is no third technique assertion. A CCD IK window ran on slot 0's left
     # hand at set time 8.0-11.4 and was measured here as the yellow reach line its
