@@ -106,16 +106,13 @@ void App::LoadDataAsync(std::stop_token stoken)
 	const int playerIndex = loadModel(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb", "player");
 	m_fLoadingProgress = 0.8f;
 	if (stoken.stop_requested()) return;
-	const int enemy1Index = loadModel(L"..\\Resource\\fbx\\Public\\MyAlice\\Enemy\\AliceEnemy1.glb", "enemy 1");
+	const int enemy1Index = loadModel(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb", "showcase 1");
 	m_fLoadingProgress = 0.9f;
 	if (stoken.stop_requested()) return;
-	// Slots 2 and 3 originally used AliceEnemy2/AliceEnemy3. Their outfit textures
-	// shimmered badly under animation even after model textures gained mip chains -
-	// AliceEnemy3's skirt in particular reads as a mirror, which looks like a
-	// metallic material baked into that asset rather than a sampling artifact.
-	// The author chose to reuse the player model for those slots instead of chasing
-	// per-asset material problems. loadModel appends a fresh entry per call, so the
-	// duplicates pose and animate independently.
+	// All companion slots deliberately reuse SampleModel. AliceEnemy2/AliceEnemy3
+	// shimmered under animation, while AliceEnemy1 broke the unified silhouette.
+	// loadModel appends a fresh entry per call, so all four copies pose and animate
+	// independently while sharing one consistent material and toon response.
 	const int enemy2Index = loadModel(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb", "showcase 2");
 	const int enemy3Index = loadModel(L"..\\Resource\\fbx\\Public\\MyAlice\\Player\\SampleModel.glb", "showcase 3");
 	const int groundIndex = loadModel(L"..\\Resource\\fbx\\Study\\Ground.fbx", "ground");
@@ -135,7 +132,7 @@ void App::LoadDataAsync(std::stop_token stoken)
 
 	for (auto& model : m_->m_Models) {
 		if (model)
-			model->modelShading = ShadingMode::BlinnPhong;
+			model->modelShading = ShadingMode::PBR;
 	}
 
 	// The showcase owns the four character palettes on every frame, so the advanced
@@ -170,45 +167,20 @@ void App::LoadDataAsync(std::stop_token stoken)
 	// deliberately - deleting them is a branch-level decision, not this task's.
 	m_->m_UseAdvancedRig = false;
 	m_->m_UseDeferredRendering = false;
+	m_->m_Exposure = -0.25f; // Preserve highlight detail in the bright HDR courtyard.
 	// ============================== Key light ==============================
-	// The showcase used to inherit the app-wide default direction (0, -1.1, 1),
-	// which is a flat frontal light: no lateral component at all, so every
-	// character's shadow was cast straight down the view axis and read as a blob
-	// that converged toward the frame centre, and every front-facing surface got
-	// the same NdotL. The cast was blown out at the front and had no shape.
-	//
-	// (-0.45, -1.15, 0.62) - normalised (-0.326, -0.832, 0.449) - is a portrait
-	// key: 56 degrees of elevation, 36 degrees off the view axis, from the upper
-	// FRONT RIGHT of the frame.
-	//   - Elevation up from 47.7 to 56.3 degrees shortens the ground shadow from
-	//     ~115 to ~84 world units for a 126-unit character, so it no longer rakes
-	//     the length of the ground plane.
-	//   - The lateral term throws the shadow to screen LEFT instead of straight
-	//     back, which is what makes it read as a shape rather than a smear.
-	//   - A front-facing surface still sits at NdotL 0.45 and an upward-facing one
-	//     at 0.83, so faces and chests stay lit while the sides fall away - that
-	//     falloff is what the toon bands below have to bite on. The old light gave
-	//     the whole front one value and nothing to band. 36_BasicPS.hlsl's top
-	//     band starts at 0.42 so 0.45 lands inside it: fronts read as the lit
-	//     tone, and only surfaces turning away from the key step down.
-	//
-	// Ambient 0.35 -> 0.16. At 0.35 a near-white character sat at 0.35 + NdotL,
-	// which ACES compressed into a 177-238 sRGB sliver - measured on a frame, not
-	// assumed: every toon band would have landed within a few levels of every
-	// other and the banding would have been invisible. At 0.16 the same bands
-	// measure 144/163/187/212/231 across a thigh, which reads as a ramp. This is
-	// the light, not the scene: the ground is lit almost head-on by the key, so
-	// it only moves 233 -> 231, and the skybox has its own shader and does not
-	// move at all. Shadowed areas do not get darker for it either -
-	// CalcShadowFactor's new floor and the toon ramp both hold them up, and they
-	// used to reach literal black anyway.
-	m_->m_DirLight.direction = XMFLOAT3(-0.45f, -1.15f, 0.62f);
+	// A high three-quarter key gives the four white-costumed characters readable
+	// light and shadow planes instead of a flat frontal wash. The lateral term
+	// separates the cast shadows; the lowered exposure preserves lace and hair
+	// highlights in the HDR courtyard. ToonPBR applies a warm 0.70 lit palette
+	// and a restrained cool 0.50 shadow palette before restoring PBR specular.
+	m_->m_DirLight.direction = XMFLOAT3(-0.50f, -1.20f, 0.92f);
 	m_->m_DirLight.ambient = XMFLOAT4(0.16f, 0.16f, 0.16f, 1.0f);
 	m_->m_DirLight.diffuse = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
-	m_->m_DirLight.intensity = 2.5f;
+	m_->m_DirLight.intensity = 1.45f;
 
 	// =========================== Character composition ============================
-	// The four public MyAlice characters line up for the showcase. Slot order is
+	// Four independent SampleModel instances line up for the showcase. Slot order is
 	// player, enemy 1, enemy 2, enemy 3 - the same order InitializePortfolioShowcase()
 	// builds its animator slots in.
 	//

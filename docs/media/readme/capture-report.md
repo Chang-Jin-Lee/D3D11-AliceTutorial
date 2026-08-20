@@ -1,6 +1,6 @@
 # README media capture report
 
-Generated: 2026-08-09 21:11:16
+Generated: 2026-08-19 21:38:10
 
 | Project | Attempt | Exe | Output | Status | Dimensions | Bytes | Notes |
 |---|---:|---|---|---|---|---:|---|
@@ -74,7 +74,7 @@ Generated: 2026-08-09 21:11:16
 | 34 | 1 | 34_ToneMapping.exe | docs/media/readme/34-ToneMapping.gif | Success | 800x450 | 376079 | GIF captured; source frames collected in 3968 ms |
 | 35 | 1 | 35_DeferredRendering.exe | docs/media/readme/35-DeferredRendering.png | Success | 1600x900 | 1487866 | PNG captured |
 | 35 | 1 | 35_DeferredRendering.exe | docs/media/readme/35-DeferredRendering.gif | Success | 800x450 | 356813 | GIF captured; source frames collected in 3970 ms |
-| 36 | 1 | 36_AdvancedAnim_Sound_Click.exe | docs/media/readme/36-AdvancedAnim-Sound-Click.png | Success | 1600x900 | 1917734 | PNG captured |
-| 36 | 1 | 36_AdvancedAnim_Sound_Click.exe | docs/media/readme/36-advanced-anim-sound-click.gif | Success | 800x450 | 404267 | GIF captured; source frames collected in 3981 ms |
+| 36 | 1 | 36_AdvancedAnim_Sound_Click.exe | docs/media/readme/36-AdvancedAnim-Sound-Click.png | Success | 1600x900 | 1876785 | PNG captured |
+| 36 | 1 | 36_AdvancedAnim_Sound_Click.exe | docs/media/readme/36-advanced-anim-sound-click.gif | Success | 800x450 | 4136168 | GIF captured; source frames collected in 12983 ms |
 | 37 | 1 | 37_Blueprint.exe | docs/media/readme/37-Blueprint.png | Success | 1600x900 | 75980 | PNG captured |
 | 37 | 1 | 37_Blueprint.exe | docs/media/readme/37-Blueprint.gif | Success | 800x450 | 1397691 | GIF generated from the captured PNG with the reproducible presentation-pan stage |

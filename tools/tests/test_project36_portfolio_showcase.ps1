@@ -1,10 +1,10 @@
 # Observable-behavior test for the Project 36 portfolio showcase.
 #
 # This test launches the built executable and inspects the frames it actually
-# renders. It deliberately does NOT grep the C++ sources: source text asserts the
-# shape of the code, not the behaviour, and passes whether or not the feature
-# works. Every requirement below is verified through rendered pixels, process
-# liveness, or file content.
+# renders. User-visible requirements are verified through rendered pixels,
+# process liveness, or file content. One narrow source-level wiring guard remains:
+# the anime palette lives exclusively in the PBR shader branch, so the showcase
+# characters must opt into that branch rather than merely compiling dead HLSL.
 [CmdletBinding()]
 param(
     [switch]$KeepFrames
@@ -73,12 +73,18 @@ public class ShowcaseFrame {
   public int Width;
   public int Height;
   public byte[] Pixels;
+  public byte[] Red;
+  public byte[] Green;
+  public byte[] Blue;
 
   public static ShowcaseFrame FromBgra(byte[] buffer, int stride, int width, int height) {
     ShowcaseFrame frame = new ShowcaseFrame();
     frame.Width = width;
     frame.Height = height;
     frame.Pixels = new byte[width * height];
+    frame.Red = new byte[width * height];
+    frame.Green = new byte[width * height];
+    frame.Blue = new byte[width * height];
     for (int y = 0; y < height; ++y) {
       int rowBase = y * stride;
       int outBase = y * width;
@@ -86,7 +92,11 @@ public class ShowcaseFrame {
         int b = buffer[rowBase + x * 4 + 0];
         int g = buffer[rowBase + x * 4 + 1];
         int r = buffer[rowBase + x * 4 + 2];
-        frame.Pixels[outBase + x] = (byte)((r * 77 + g * 151 + b * 28) >> 8);
+        int index = outBase + x;
+        frame.Pixels[index] = (byte)((r * 77 + g * 151 + b * 28) >> 8);
+        frame.Red[index] = (byte)r;
+        frame.Green[index] = (byte)g;
+        frame.Blue[index] = (byte)b;
       }
     }
     return frame;
@@ -194,6 +204,101 @@ public class ShowcaseFrame {
       }
     }
     return distinct;
+  }
+
+  private static bool IsNavyAccent(int r, int g, int b, int luma) {
+    return b > r + 35 && b > g + 20 && b > 60 && luma < 95;
+  }
+
+  private static bool IsToonPaletteCandidate(int r, int g, int b, int luma) {
+    int maxChannel = Math.Max(r, Math.Max(g, b));
+    int minChannel = Math.Min(r, Math.Min(g, b));
+    int chroma = maxChannel - minChannel;
+    return luma >= 70 && luma < 220 && minChannel >= 55 &&
+      chroma > 5 && chroma <= 80 && !IsNavyAccent(r, g, b, luma);
+  }
+
+  // Unit-sized negative control for the rendered palette probe. This exact dark
+  // cool colour satisfies the old costume mask and the navy-shoe predicate; it
+  // must now be classified only as the model accent, never as a toon shadow.
+  public static bool IsToonPaletteCandidateRgb(int r, int g, int b) {
+    if (r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255) {
+      throw new ArgumentOutOfRangeException("RGB channels must be bytes");
+    }
+    int luma = (r * 77 + g * 151 + b * 28) >> 8;
+    return IsToonPaletteCandidate(r, g, b, luma);
+  }
+
+  // SampleModel's shoes carry a saturated navy-blue accent. Counting that
+  // rendered accent in each independently moving slot distinguishes the agreed
+  // four-copies composition from the old AliceEnemy1 rabbit model, whose boots
+  // contain none of these pixels in the same lower-body band.
+  public static int BlueAccentCount(ShowcaseFrame a, int x, int y, int w, int h) {
+    Require(a, x, y, w, h);
+    int count = 0;
+    for (int yy = y; yy < y + h; ++yy) {
+      int rowBase = yy * a.Width;
+      for (int xx = x; xx < x + w; ++xx) {
+        int index = rowBase + xx;
+        int r = a.Red[index];
+        int g = a.Green[index];
+        int b = a.Blue[index];
+        int luma = a.Pixels[index];
+        if (IsNavyAccent(r, g, b, luma)) { ++count; }
+      }
+    }
+    return count;
+  }
+
+  // Palette measurements over pixels belonging to the moving character in both
+  // frames. Requiring motion removes the static floor/background; requiring the
+  // pale, moderately chromatic costume range removes the saturated navy shoes.
+  // The result is { cool shadow, warm light, strong purple, candidate count }.
+  public static double[] MovingToonPaletteRatios(ShowcaseFrame a, ShowcaseFrame other,
+                                                  int x, int y, int w, int h,
+                                                  int motionTolerance) {
+    if (a.Width != other.Width || a.Height != other.Height) {
+      throw new ArgumentException("toon palette frames must be the same size");
+    }
+    Require(a, x, y, w, h);
+    Require(other, x, y, w, h);
+    long candidates = 0;
+    long cool = 0;
+    long warm = 0;
+    long strongPurple = 0;
+    for (int yy = y; yy < y + h; ++yy) {
+      int rowBase = yy * a.Width;
+      for (int xx = x; xx < x + w; ++xx) {
+        int index = rowBase + xx;
+        int r = a.Red[index];
+        int g = a.Green[index];
+        int b = a.Blue[index];
+        int rOther = other.Red[index];
+        int gOther = other.Green[index];
+        int bOther = other.Blue[index];
+        int maxDelta = Math.Max(Math.Abs(r - rOther),
+          Math.Max(Math.Abs(g - gOther), Math.Abs(b - bOther)));
+        if (maxDelta <= motionTolerance) { continue; }
+
+        int luma = a.Pixels[index];
+        int otherLuma = other.Pixels[index];
+        bool currentCandidate = IsToonPaletteCandidate(r, g, b, luma);
+        bool otherCandidate = IsToonPaletteCandidate(rOther, gOther, bOther, otherLuma);
+        if (!currentCandidate || !otherCandidate) { continue; }
+
+        ++candidates;
+        if (b > r + 8 && b > g + 3) { ++cool; }
+        if (r > b + 2 && r >= g - 6) { ++warm; }
+        if (b > r + 38 && b > g + 18) { ++strongPurple; }
+      }
+    }
+    if (candidates == 0) { return new double[] { 0.0, 0.0, 1.0, 0.0 }; }
+    return new double[] {
+      (double)cool / (double)candidates,
+      (double)warm / (double)candidates,
+      (double)strongPurple / (double)candidates,
+      (double)candidates
+    };
   }
 
   // A coarse ink profile of a region, rendered as a comparable string: the number
@@ -589,6 +694,23 @@ $bandTolerance = 24
 $bandMovingFraction = 0.10
 $bandMinGapColumns = 4
 
+# Rendered-style guard. The navy-shoe probe uses only the foot band and a dark,
+# saturated blue predicate, so the costume's cool toon shadow cannot impersonate
+# the model-specific accent. Palette balance is measured only where pale costume
+# pixels move between two frames: every slot must show the cool shadow at least
+# once, every sample must retain some warm light, and strongly purple pixels must
+# remain a small minority. Candidate count keeps all ratios non-vacuous.
+$toonShoeTop = 580
+$toonShoeBottom = 760
+$toonBlueAccentMinimum = 200
+$toonCostumeTop = 430
+$toonCostumeBottom = 700
+$toonMotionColorTolerance = 24
+$toonPaletteCandidateMinimum = 200
+$toonCoolShadowMinimum = 0.30
+$toonWarmLightMinimum = 0.15
+$toonStrongPurpleMaximum = 0.12
+
 # Each band's half second of motion is described by a 6x6 grid of changed-pixel
 # fractions, normalised so only its shape is compared (see MotionShapeDistance).
 # Two bands count as showing different motion when at least a fifth of that motion
@@ -720,6 +842,14 @@ if ($staleSources.Count -gt 0) {
 }
 
 Write-Host "  ok   built binary is present and newer than its sources"
+
+$lifecycleSource = Get-Content -Raw -LiteralPath (Join-Path $projectDir 'App_Lifecycle.inl')
+$toonPbrIsWired = ($lifecycleSource -match 'model->modelShading\s*=\s*ShadingMode::PBR\s*;') -and
+    ($lifecycleSource -match 'model->useToonShading\s*=\s*true\s*;') -and
+    ($lifecycleSource -notmatch 'model->modelShading\s*=\s*ShadingMode::BlinnPhong\s*;')
+Assert-True $toonPbrIsWired 'the showcase models select PBR plus the per-model toon flag, making anime ToonPBR reachable'
+Assert-True (-not [ShowcaseFrame]::IsToonPaletteCandidateRgb(65, 75, 115)) `
+    'the toon costume mask rejects a dark navy shoe pixel that otherwise satisfies its colour range'
 
 # ---------------------------------------------------------------------------
 # 2. Rights boundary. A provenance assertion about the bytes that ship, not a
@@ -1392,6 +1522,55 @@ try {
     # Widest four, left to right: if the scene ever produced a spurious fifth
     # cluster, the four character envelopes are the substantial ones.
     $slotBands = @($slotBands | Sort-Object -Property Width -Descending | Select-Object -First 4 | Sort-Object -Property X)
+
+    $blueAccentCounts = @()
+    $coolShadowRatios = @()
+    $warmLightSamples = @()
+    $strongPurpleSamples = @()
+    $toonPaletteCandidateCounts = @()
+    if ($slotBands.Count -eq 4) {
+        $toonShoeHeight = $toonShoeBottom - $toonShoeTop
+        $toonCostumeHeight = $toonCostumeBottom - $toonCostumeTop
+        $toonStyleSamples = @(
+            @{ Frame = $slotA; Reference = $slotB },
+            @{ Frame = $cycleFrames['cycle0-06']; Reference = $cycleFrames['cycle0-04'] },
+            @{ Frame = $cycleFrames['cycle0-08']; Reference = $cycleFrames['cycle0-095'] },
+            @{ Frame = $cycleFrames['cycle1-16']; Reference = $cycleFrames['cycle1-14'] }
+        )
+        foreach ($slotBand in $slotBands) {
+            $blueAccentCounts += [ShowcaseFrame]::BlueAccentCount(
+                $slotA, $slotBand.X, $toonShoeTop, $slotBand.Width, $toonShoeHeight)
+            $slotCoolSamples = @()
+            foreach ($sample in $toonStyleSamples) {
+                $ratios = @([ShowcaseFrame]::MovingToonPaletteRatios(
+                    $sample.Frame, $sample.Reference, $slotBand.X, $toonCostumeTop,
+                    $slotBand.Width, $toonCostumeHeight, $toonMotionColorTolerance))
+                $slotCoolSamples += $ratios[0]
+                $warmLightSamples += $ratios[1]
+                $strongPurpleSamples += $ratios[2]
+                $toonPaletteCandidateCounts += [int]$ratios[3]
+            }
+            $coolShadowRatios += ($slotCoolSamples | Measure-Object -Maximum).Maximum
+        }
+    }
+    $minBlueAccent = if ($blueAccentCounts.Count -eq 4) { ($blueAccentCounts | Measure-Object -Minimum).Minimum } else { 0 }
+    $minCoolShadow = if ($coolShadowRatios.Count -eq 4) { ($coolShadowRatios | Measure-Object -Minimum).Minimum } else { 0.0 }
+    $minWarmLight = if ($warmLightSamples.Count -eq 16) { ($warmLightSamples | Measure-Object -Minimum).Minimum } else { 0.0 }
+    $maxStrongPurple = if ($strongPurpleSamples.Count -eq 16) { ($strongPurpleSamples | Measure-Object -Maximum).Maximum } else { 1.0 }
+    $minPaletteCandidates = if ($toonPaletteCandidateCounts.Count -eq 16) {
+        ($toonPaletteCandidateCounts | Measure-Object -Minimum).Minimum
+    } else { 0 }
+    Assert-True (($slotBands.Count -eq 4) -and ($minBlueAccent -ge $toonBlueAccentMinimum)) `
+        ("all four rendered characters use SampleModel's navy shoe accent (counts " +
+         "$(($blueAccentCounts | ForEach-Object { $_ }) -join '/') pixels; each needs >= $toonBlueAccentMinimum)")
+    Assert-True (($slotBands.Count -eq 4) -and ($minCoolShadow -ge $toonCoolShadowMinimum) -and
+        ($minWarmLight -ge $toonWarmLightMinimum) -and ($maxStrongPurple -le $toonStrongPurpleMaximum) -and
+        ($minPaletteCandidates -ge $toonPaletteCandidateMinimum)) `
+        ("toon shadows stay cool and balanced across all four moving costumes (per-slot cool peaks " +
+         "$(($coolShadowRatios | ForEach-Object { [Math]::Round($_, 3) }) -join '/'); " +
+         "min warm $([Math]::Round($minWarmLight, 3)) >= $toonWarmLightMinimum; " +
+         "max strong-purple $([Math]::Round($maxStrongPurple, 3)) <= $toonStrongPurpleMaximum; " +
+         "min candidates $minPaletteCandidates >= $toonPaletteCandidateMinimum)")
 
     $slotPairsDiffering = 0
     $slotPairReport = @()
