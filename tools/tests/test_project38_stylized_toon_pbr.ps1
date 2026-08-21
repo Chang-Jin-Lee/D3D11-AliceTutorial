@@ -25,6 +25,35 @@ function Get-CppFunctionBody([string]$Text, [string]$SignaturePattern) {
     throw "Unterminated C++ function body: $SignaturePattern"
 }
 
+function Test-GpuLatencySourceContract([string]$HeaderText, [string]$SourceText, [string]$AppText) {
+    $slotMatch = [regex]::Match($HeaderText, 'kQuerySlotCount\s*=\s*(\d+)')
+    $delayMatch = [regex]::Match($HeaderText, 'kResolveDelay\s*=\s*(\d+)')
+    if (-not $slotMatch.Success -or -not $delayMatch.Success) { return $false }
+
+    $slotValue = [int]$slotMatch.Groups[1].Value
+    $delayValue = [int]$delayMatch.Groups[1].Value
+    $endFrame = Get-CppFunctionBody $SourceText 'void\s+GpuProfiler::EndFrame\s*\([^)]*\)'
+    $resolve = Get-CppFunctionBody $SourceText 'void\s+GpuProfiler::Resolve\s*\([^)]*\)'
+    $onRender = Get-CppFunctionBody $AppText 'void\s+App::OnRender\s*\(\s*\)'
+    $submittedIndex = $endFrame.LastIndexOf('slot.submitted = true')
+    $writeAdvance = [regex]::Match(
+        $endFrame,
+        'm_writeSlot\s*=\s*\(\s*m_writeSlot\s*\+\s*1\s*\)\s*%\s*kQuerySlotCount\s*;')
+    $resolveFormula = [regex]::Match(
+        $resolve,
+        'const\s+size_t\s+resolveSlot\s*=\s*\(\s*m_writeSlot\s*\+\s*kQuerySlotCount\s*-\s*kResolveDelay\s*\)\s*%\s*kQuerySlotCount\s*;')
+    $orderedAppCalls = [regex]::IsMatch(
+        $onRender,
+        'm_gpuProfiler\.EndFrame\s*\(\s*m_context\.Get\s*\(\s*\)\s*\)\s*;\s*m_gpuProfiler\.Resolve\s*\(\s*m_context\.Get\s*\(\s*\)\s*\)\s*;')
+
+    return $slotValue -eq 4 -and
+        $delayValue -eq 2 -and
+        $submittedIndex -ge 0 -and
+        $writeAdvance.Success -and $writeAdvance.Index -gt $submittedIndex -and
+        $resolveFormula.Success -and
+        $orderedAppCalls
+}
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $projectName = '38_StylizedToonPBR'
 $projectGuid = '{4B6A5522-0C57-41E0-A222-6AA813BBCE5C}'
@@ -188,7 +217,7 @@ Assert-True ($endFrameBody -match 'submitted\s*=\s*true') 'EndFrame must mark th
 
 $resolveDelay = [regex]::Match($profilerHeaderText, 'kResolveDelay\s*=\s*(\d+)')
 Assert-True $resolveDelay.Success 'GpuProfiler delayed resolve constant missing'
-Assert-True (([int]$resolveDelay.Groups[1].Value -gt 0) -and ([int]$resolveDelay.Groups[1].Value -lt [int]$slotCount.Groups[1].Value)) 'GpuProfiler must resolve an older ring slot'
+Assert-True ([int]$resolveDelay.Groups[1].Value -eq 2) 'GpuProfiler must resolve exactly two ring positions behind the upcoming write head'
 Assert-True ($resolveBody -match '\bkResolveDelay\b') 'Resolve must select its slot using the delayed resolve constant'
 Assert-True ($resolveBody -match 'if\s*\([^)]*!\s*slot\.submitted[^)]*\)\s*\{\s*return\s*;') 'Resolve must ignore a slot that has not been submitted'
 
@@ -348,6 +377,47 @@ $endFrameCallIndex = $onRenderBody.LastIndexOf('m_gpuProfiler.EndFrame')
 $resolveCallIndex = $onRenderBody.LastIndexOf('m_gpuProfiler.Resolve')
 Assert-True ($endFrameCallIndex -ge 0 -and $resolveCallIndex -gt $endFrameCallIndex) 'break: EndFrame must advance the write slot before Resolve selects the delayed completed sample'
 
+Assert-True (Test-GpuLatencySourceContract $profilerHeaderText $profilerSourceText $appSourceText) 'break: actual GPU latency source contract must be valid'
+$latencyMutationCases = @(
+    [pscustomobject]@{
+        Name = 'five query slots'
+        Header = $profilerHeaderText.Replace('kQuerySlotCount = 4', 'kQuerySlotCount = 5')
+        Source = $profilerSourceText
+        App = $appSourceText
+    },
+    [pscustomobject]@{
+        Name = 'three-slot resolve delay'
+        Header = $profilerHeaderText.Replace('kResolveDelay = 2', 'kResolveDelay = 3')
+        Source = $profilerSourceText
+        App = $appSourceText
+    },
+    [pscustomobject]@{
+        Name = 'write head advances by two'
+        Header = $profilerHeaderText
+        Source = $profilerSourceText.Replace('m_writeSlot = (m_writeSlot + 1) % kQuerySlotCount;', 'm_writeSlot = (m_writeSlot + 2) % kQuerySlotCount;')
+        App = $appSourceText
+    },
+    [pscustomobject]@{
+        Name = 'resolve selects one slot behind'
+        Header = $profilerHeaderText
+        Source = $profilerSourceText.Replace('(m_writeSlot + kQuerySlotCount - kResolveDelay) % kQuerySlotCount', '(m_writeSlot + kQuerySlotCount - 1) % kQuerySlotCount')
+        App = $appSourceText
+    },
+    [pscustomobject]@{
+        Name = 'Resolve runs before EndFrame'
+        Header = $profilerHeaderText
+        Source = $profilerSourceText
+        App = ([regex]::new('m_gpuProfiler\.EndFrame\(m_context\.Get\(\)\);\s*m_gpuProfiler\.Resolve\(m_context\.Get\(\)\);')).Replace(
+            $appSourceText,
+            "m_gpuProfiler.Resolve(m_context.Get());`r`n    m_gpuProfiler.EndFrame(m_context.Get());",
+            1)
+    }
+)
+foreach ($mutation in $latencyMutationCases) {
+    Assert-True ($mutation.Header -cne $profilerHeaderText -or $mutation.Source -cne $profilerSourceText -or $mutation.App -cne $appSourceText) "latency mutation fixture did not alter input: $($mutation.Name)"
+    Assert-True (-not (Test-GpuLatencySourceContract $mutation.Header $mutation.Source $mutation.App)) "latency source contract accepted mutation: $($mutation.Name)"
+}
+
 # Break caught: shader outputs/features are simplified until the showcase contract is no longer observable.
 Assert-True ($characterVertexShaderText -match '#include\s+"38_Shared\.fxh"') 'break: character VS must share the C++/HLSL buffer contract'
 Assert-True ($characterVertexShaderText -match '\bcbBones\b') 'break: character VS must skin from the FbxModel bone palette'
@@ -410,35 +480,42 @@ function Assert-DocumentationContract([bool]$Condition, [string]$Message) {
     if (-not $Condition) { $script:documentationContractFailures.Add($Message) }
 }
 
+function Get-HtmlAttributeValue([string]$Attributes, [string]$Name) {
+    $attributePattern = '(?is)(?:^|\s)' + [regex]::Escape($Name) + '\s*=\s*(?:"(?<double>[^"]*)"|''(?<single>[^'']*)''|(?<unquoted>[^\s"''=<>`]+))'
+    $attributeMatch = [regex]::Match($Attributes, $attributePattern)
+    if (-not $attributeMatch.Success) { return $null }
+
+    foreach ($captureName in @('double', 'single', 'unquoted')) {
+        if ($attributeMatch.Groups[$captureName].Success) {
+            return $attributeMatch.Groups[$captureName].Value
+        }
+    }
+    return $null
+}
+
+function Test-MascotImageHtml([string]$Html) {
+    return [regex]::IsMatch(
+        $Html,
+        '(?is)<img\b(?=[^>]*(?:alice-tutorial-logo\.png|\bmascot(?:\s+logo)?\b|D3D11\s+Alice\s+Tutorial))[^>]*>')
+}
+
 function Test-CenteredMascotImageBlock([string]$Text) {
-    $centeredMascotPattern = @'
-(?isx)
-(?:
-    <(?<wrapper>center)\b[^>]*>
-  |
-    <(?<wrapper>p|div)\b
-        (?=
-            [^>]*
-            (?:
-                \balign\s*=\s*(?:"\s*center\s*"|'\s*center\s*'|center\b)
-              |
-                \bstyle\s*=\s*(?:
-                    "[^"]*\btext-align\s*:\s*center\b[^"]*"
-                  |
-                    '[^']*\btext-align\s*:\s*center\b[^']*'
-                )
-            )
-        )
-        [^>]*>
-)
-.*?
-<img\b
-    (?=[^>]*(?:alice-tutorial-logo\.png|\bmascot(?:\s+logo)?\b|D3D11\s+Alice\s+Tutorial))
-    [^>]*>
-.*?
-</\k<wrapper>\s*>
-'@
-    return [regex]::IsMatch($Text, $centeredMascotPattern)
+    foreach ($centerBlock in [regex]::Matches($Text, '(?is)<center\b[^>]*>(?<body>.*?)</center\s*>')) {
+        if (Test-MascotImageHtml $centerBlock.Groups['body'].Value) { return $true }
+    }
+
+    foreach ($wrapperBlock in [regex]::Matches($Text, '(?is)<(?<tag>p|div)\b(?<attributes>[^>]*)>(?<body>.*?)</\k<tag>\s*>')) {
+        $attributes = $wrapperBlock.Groups['attributes'].Value
+        $align = Get-HtmlAttributeValue $attributes 'align'
+        $style = Get-HtmlAttributeValue $attributes 'style'
+        $alignsCenter = $null -ne $align -and $align -match '(?i)^\s*center\s*$'
+        $stylesCenter = $null -ne $style -and $style -match '(?i)(?:^|;)\s*text-align\s*:\s*center(?:\s*!important)?\s*(?:;|$)'
+        if (($alignsCenter -or $stylesCenter) -and (Test-MascotImageHtml $wrapperBlock.Groups['body'].Value)) {
+            return $true
+        }
+    }
+
+    return $false
 }
 
 $centeredMascotBypassFixtures = @(
@@ -446,7 +523,9 @@ $centeredMascotBypassFixtures = @(
     "<div align='center'><img src='alice-tutorial-logo.png' alt='mascot logo' /></div>",
     '<p align=center><img src="alice-tutorial-logo.png" alt="mascot logo" /></p>',
     '<center><img src="alice-tutorial-logo.png" alt="mascot logo" /></center>',
-    '<div style="display: block; text-align: center"><a href="./"><img src="mascot.png" alt="D3D11 Alice Tutorial mascot logo" /></a></div>'
+    '<div style="display: block; text-align: center"><a href="./"><img src="mascot.png" alt="D3D11 Alice Tutorial mascot logo" /></a></div>',
+    "<p style='display:block; text-align : center'><img src='mascot.png' alt='mascot logo' /></p>",
+    '<div style = text-align:center><img src="mascot.png" alt="mascot logo" /></div>'
 )
 foreach ($fixture in $centeredMascotBypassFixtures) {
     Assert-DocumentationContract (Test-CenteredMascotImageBlock $fixture) "docs: centered mascot detector accepted an HTML alignment bypass: $fixture"
@@ -454,6 +533,7 @@ foreach ($fixture in $centeredMascotBypassFixtures) {
 foreach ($fixture in @(
     '[![Project preview](docs/media/readme/38-StylizedToonPBR.png)](Dx11/38_StylizedToonPBR)',
     '<div align="center">[<img src="docs/media/readme/38-StylizedToonPBR.png" width="200"/>](Dx11/38_StylizedToonPBR)</div>',
+    '<div style=text-align:center>[<img src="docs/media/readme/38-StylizedToonPBR.png" width="200"/>](Dx11/38_StylizedToonPBR)</div>',
     '<p align="center"><img src="../../docs/media/readme/info/38-StylizedToonPBR-info.png" width="100%" /></p>'
 )) {
     Assert-DocumentationContract (-not (Test-CenteredMascotImageBlock $fixture)) "docs: centered mascot detector rejected ordinary project gallery/info markup: $fixture"
