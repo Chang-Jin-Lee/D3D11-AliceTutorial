@@ -9,6 +9,30 @@
       <UniqueIdentifier>{93995380-89BD-4B04-88EB-625FBE52EBFB}</UniqueIdentifier>
       <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
     </Filter>
+    <Filter Include="셰이더 파일">
+      <UniqueIdentifier>{F4C7EC88-CDE5-4CC5-9D11-C2C8CA310CA8}</UniqueIdentifier>
+      <Extensions>hlsl;hlsli;fxh</Extensions>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <CopyFileToFolders Include="38_Shared.fxh">
+      <Filter>셰이더 파일</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="38_CharacterVS.hlsl">
+      <Filter>셰이더 파일</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="38_CharacterPS.hlsl">
+      <Filter>셰이더 파일</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="38_FullscreenVS.hlsl">
+      <Filter>셰이더 파일</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="38_OutlinePS.hlsl">
+      <Filter>셰이더 파일</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="38_ToneMapPS.hlsl">
+      <Filter>셰이더 파일</Filter>
+    </CopyFileToFolders>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="App.cpp">

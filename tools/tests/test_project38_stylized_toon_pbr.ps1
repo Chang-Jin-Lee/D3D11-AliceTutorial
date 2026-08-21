@@ -32,8 +32,18 @@ $projectDirectory = Join-Path $repoRoot "Dx11\$projectName"
 $projectPath = Join-Path $projectDirectory "$projectName.vcxproj"
 $filtersPath = "$projectPath.filters"
 $readmePath = Join-Path $projectDirectory 'README.md'
+$appHeaderPath = Join-Path $projectDirectory 'App.h'
+$appSourcePath = Join-Path $projectDirectory 'App.cpp'
 $profilerHeaderPath = Join-Path $projectDirectory 'GpuProfiler.h'
 $profilerSourcePath = Join-Path $projectDirectory 'GpuProfiler.cpp'
+$shaderFiles = @(
+    '38_Shared.fxh',
+    '38_CharacterVS.hlsl',
+    '38_CharacterPS.hlsl',
+    '38_FullscreenVS.hlsl',
+    '38_OutlinePS.hlsl',
+    '38_ToneMapPS.hlsl'
+)
 
 $solutionText = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'Dx11\TutorialApp.sln')
 $solutionProjectNames = @(
@@ -86,11 +96,13 @@ foreach ($path in @(
     $projectPath,
     $filtersPath,
     (Join-Path $projectDirectory 'WinMain.cpp'),
-    (Join-Path $projectDirectory 'App.h'),
-    (Join-Path $projectDirectory 'App.cpp'),
+    $appHeaderPath,
+    $appSourcePath,
     $profilerHeaderPath,
     $profilerSourcePath,
     $readmePath
+) + @(
+    $shaderFiles | ForEach-Object { Join-Path $projectDirectory $_ }
 )) {
     Assert-True (Test-Path -LiteralPath $path -PathType Leaf) "Project 38 required file missing: $path"
 }
@@ -117,7 +129,8 @@ $compileFiles = @($projectXml.SelectNodes('//msb:ClCompile', $namespace) | ForEa
 $includeFiles = @($projectXml.SelectNodes('//msb:ClInclude', $namespace) | ForEach-Object { $_.Include })
 Assert-True ((@($compileFiles | Sort-Object) -join ',') -ceq (@('App.cpp', 'GpuProfiler.cpp', 'WinMain.cpp') -join ',')) 'Project 38 vcxproj must declare the Task 3 C++ sources'
 Assert-True ((@($includeFiles | Sort-Object) -join ',') -ceq (@('App.h', 'GpuProfiler.h') -join ',')) 'Project 38 vcxproj must declare the Task 3 headers'
-Assert-True (@($projectXml.SelectNodes('//msb:FxCompile | //msb:CopyFileToFolders | //msb:None[contains(@Include, ".hlsl") or contains(@Include, ".hlsli") or contains(@Include, ".fxh")]', $namespace)).Count -eq 0) 'Task 2 must not declare runtime HLSL files'
+$declaredShaderFiles = @($projectXml.SelectNodes('//msb:FxCompile | //msb:CopyFileToFolders | //msb:None[contains(@Include, ".hlsl") or contains(@Include, ".hlsli") or contains(@Include, ".fxh")]', $namespace) | ForEach-Object { $_.Include })
+Assert-True ((@($declaredShaderFiles | Sort-Object) -join ',') -ceq (@($shaderFiles | Sort-Object) -join ',')) 'break: Project 38 must publish exactly the six planned HLSL/FXH runtime files'
 
 $projectText = Get-Content -Raw -LiteralPath $projectPath
 Assert-True ($projectText -match '\$\(SolutionDir\)Resource\\\*') 'Project 38 must copy the public Resource directory'
@@ -130,6 +143,8 @@ $filteredCompiles = @($filtersXml.SelectNodes('//msb:ClCompile', $filtersNamespa
 $filteredIncludes = @($filtersXml.SelectNodes('//msb:ClInclude', $filtersNamespace) | ForEach-Object { $_.Include })
 Assert-True ((@($filteredCompiles | Sort-Object) -join ',') -ceq (@('App.cpp', 'GpuProfiler.cpp', 'WinMain.cpp') -join ',')) 'Project 38 filters must declare the Task 3 C++ sources'
 Assert-True ((@($filteredIncludes | Sort-Object) -join ',') -ceq (@('App.h', 'GpuProfiler.h') -join ',')) 'Project 38 filters must declare the Task 3 headers'
+$filteredShaderFiles = @($filtersXml.SelectNodes('//msb:FxCompile | //msb:CopyFileToFolders | //msb:None[contains(@Include, ".hlsl") or contains(@Include, ".hlsli") or contains(@Include, ".fxh")]', $filtersNamespace) | ForEach-Object { $_.Include })
+Assert-True ((@($filteredShaderFiles | Sort-Object) -join ',') -ceq (@($shaderFiles | Sort-Object) -join ',')) 'break: Project 38 filters must register exactly the six planned HLSL/FXH files'
 
 $profilerHeaderText = Get-Content -Raw -LiteralPath $profilerHeaderPath
 $profilerSourceText = Get-Content -Raw -LiteralPath $profilerSourcePath
@@ -187,9 +202,144 @@ Assert-True ($resolveBody -match 'GpuTimings\s+resolved') 'Resolve must assemble
 Assert-True ([regex]::Matches($resolveBody, 'm_latest\s*=').Count -eq 1) 'Resolve must publish Latest only once after a complete sample'
 Assert-True ($resolveBody.LastIndexOf('m_latest =') -gt $resolveBody.LastIndexOf('GetData')) 'Resolve must preserve Latest until every query result is ready'
 
+$appHeaderText = Get-Content -Raw -LiteralPath $appHeaderPath
+$appSourceText = Get-Content -Raw -LiteralPath $appSourcePath
+$sharedShaderText = Get-Content -Raw -LiteralPath (Join-Path $projectDirectory '38_Shared.fxh')
+$characterVertexShaderText = Get-Content -Raw -LiteralPath (Join-Path $projectDirectory '38_CharacterVS.hlsl')
+$characterPixelShaderText = Get-Content -Raw -LiteralPath (Join-Path $projectDirectory '38_CharacterPS.hlsl')
+$fullscreenVertexShaderText = Get-Content -Raw -LiteralPath (Join-Path $projectDirectory '38_FullscreenVS.hlsl')
+$outlinePixelShaderText = Get-Content -Raw -LiteralPath (Join-Path $projectDirectory '38_OutlinePS.hlsl')
+$toneMapPixelShaderText = Get-Content -Raw -LiteralPath (Join-Path $projectDirectory '38_ToneMapPS.hlsl')
+
+# Break caught: another model path silently replaces or supplements the approved public Alice asset.
+$modelPathMatches = [regex]::Matches($appSourceText, '(?i)\.\.[\\/]Resource[\\/]fbx[\\/][^"\r\n]+')
+Assert-True ($modelPathMatches.Count -eq 1) 'break: Project 38 must reference exactly one runtime FBX/GLB model path'
+Assert-True ($modelPathMatches[0].Value -ceq '..\Resource\fbx\Public\MyAlice\Player\SampleModel.glb') 'break: Project 38 must load only the approved public SampleModel.glb'
+Assert-True ($appSourceText -match 'AssetManager::GetInstance\s*\(\s*\)\.GetFbxModel\s*\(') 'break: SampleModel must load through the shared AssetManager FbxModel path'
+Assert-True ($appSourceText -match 'HasMesh\s*\(\s*\)') 'break: initialization must reject an imported model with no renderable mesh'
+
+# Break caught: a comparison or preset branch disappears, or capture defaults cease to be deterministic.
+Assert-True ($appHeaderText -match '(?s)enum\s+class\s+RenderMode[^\{]*\{\s*Pbr\s*,\s*ToonPbr\s*,\s*Split\s*\}') 'break: RenderMode must expose Pbr, ToonPbr, and Split'
+Assert-True ($appHeaderText -match '(?s)enum\s+class\s+LightingPreset[^\{]*\{\s*NeonContrast\s*,\s*IndustrialSoft\s*\}') 'break: LightingPreset must expose NeonContrast and IndustrialSoft'
+Assert-True ($appHeaderText -match 'm_renderMode\s*=\s*RenderMode::ToonPbr') 'break: Hybrid Toon-PBR must remain the default render mode'
+Assert-True ($appHeaderText -match 'm_lightingPreset\s*=\s*LightingPreset::NeonContrast') 'break: Neon Contrast must remain the default lighting preset'
+Assert-True ($appSourceText -match 'ReadmeCapture::IsEnabled\s*\(\s*\)') 'break: README capture mode must be detected explicitly'
+Assert-True ($appSourceText -match 'SetAnimationTimeSeconds\s*\(\s*kCapturePoseTimeSeconds\s*\)') 'break: README capture must use a fixed animation time'
+Assert-True ($appSourceText -match 'SetAnimationPlaying\s*\(\s*!\s*m_readmeCapture\s*\)') 'break: interactive animation must remain active outside capture mode'
+Assert-True ($appSourceText -match 'UpdateAnimation\s*\(') 'break: the selected embedded animation must update through FbxModel'
+Assert-True ($appSourceText -match 'm_poseAnimator->Initialize\s*\(') 'break: Project 38 must initialize its project-local embedded-clip evaluator'
+Assert-True ($appSourceText -match 'm_poseAnimator->UploadPalette\s*\(') 'break: the selected embedded pose must be uploaded every frame'
+Assert-True ($appSourceText -match 'CopyResource\s*\(\s*m_character->GetBoneConstantBuffer\s*\(\s*\)\s*,\s*m_poseAnimator->GetBoneCB\s*\(\s*\)\s*\)') 'break: the evaluated pose must populate the FbxModel-owned bone palette'
+
+# Break caught: the skinned vertex/bone interface diverges from Common::VertexSkinnedTBN.
+foreach ($layoutContract in @(
+    '"POSITION"[^\r\n]+DXGI_FORMAT_R32G32B32_FLOAT',
+    '"NORMAL"[^\r\n]+DXGI_FORMAT_R32G32B32_FLOAT',
+    '"TANGENT"[^\r\n]+DXGI_FORMAT_R32G32B32_FLOAT',
+    '"BINORMAL"[^\r\n]+DXGI_FORMAT_R32G32B32_FLOAT',
+    '"COLOR"[^\r\n]+DXGI_FORMAT_R32G32B32A32_FLOAT',
+    '"TEXCOORD"[^\r\n]+DXGI_FORMAT_R32G32_FLOAT',
+    '"BLENDINDICES"[^\r\n]+DXGI_FORMAT_R16G16B16A16_UINT',
+    '"BLENDWEIGHT"[^\r\n]+DXGI_FORMAT_R32G32B32A32_FLOAT'
+)) {
+    Assert-True ($appSourceText -match $layoutContract) "break: skinned TBN input-layout entry missing or wrong: $layoutContract"
+}
+Assert-True ($appSourceText -match 'sizeof\s*\(\s*VertexSkinnedTBN\s*\)') 'break: character vertex stride must agree with Common VertexSkinnedTBN'
+Assert-True ($appSourceText -match 'GetBoneConstantBuffer\s*\(\s*\)') 'break: the FbxModel bone palette must be bound to the skinned shader'
+
+# Break caught: resize/depth formats regress or a render target is rebound while still exposed as an SRV.
+foreach ($format in @(
+    'DXGI_FORMAT_R16G16B16A16_FLOAT',
+    'DXGI_FORMAT_R32_TYPELESS',
+    'DXGI_FORMAT_D32_FLOAT',
+    'DXGI_FORMAT_R32_FLOAT',
+    'DXGI_FORMAT_R8_UNORM'
+)) {
+    Assert-True ($appSourceText -match "\b$format\b") "break: required render-resource format missing: $format"
+}
+Assert-True ([regex]::Matches($appSourceText, '\bDXGI_FORMAT_R32_TYPELESS\b').Count -ge 2) 'break: both main depth and shadow map must use typeless R32 textures'
+Assert-True ($appSourceText -match 'PSSetShaderResources\s*\([^;]+nullShaderResources') 'break: shader resources must be unbound before RTV/DSV reuse'
+Assert-True ($appSourceText -match 'ReleaseWindowSizeResources\s*\(\s*\)') 'break: resize must release and recreate window-sized HDR/normal/depth/outline resources'
+
+# Break caught: deterministic SampleModel material profiles or name-based fallback classification disappear.
+Assert-True ($appSourceText -match '\bkSampleModelMaterialOverrides\b') 'break: SampleModel must keep an explicit per-material profile override table'
+Assert-True ([regex]::Matches($appSourceText, '\{\s*\d+\s*,\s*MaterialProfile::(?:Skin|Hair|Cloth)\s*\}').Count -eq 13) 'break: every SampleModel material index must have one deterministic profile override'
+foreach ($classificationTerm in @('hair', 'face', 'skin', 'cloth', 'body')) {
+    Assert-True ($appSourceText -match $classificationTerm) "break: case-insensitive material-name classifier lost term: $classificationTerm"
+}
+
+# Break caught: split comparison changes scene inputs or leaks half-screen viewport/scissor state into post passes.
+$characterPassBody = Get-CppFunctionBody $appSourceText 'void\s+App::RenderCharacterPass\s*\([^)]*\)'
+Assert-True ($characterPassBody -match 'RenderMode::Split') 'break: the character pass must implement same-frame split comparison'
+Assert-True ($characterPassBody -match 'RenderMode::Pbr') 'break: split left half must use baseline PBR'
+Assert-True ($characterPassBody -match 'RenderMode::ToonPbr') 'break: split right half must use Hybrid Toon-PBR'
+Assert-True ($characterPassBody -match 'RSSetScissorRects') 'break: split comparison must confine both half-width draws with scissors'
+Assert-True ($characterPassBody -match 'SetFullScreenViewportAndScissor\s*\(\s*\)') 'break: split comparison must restore full-screen viewport/scissor state'
+
+# Break caught: measured pass labels cease to bracket the real pass calls.
+$onRenderBody = Get-CppFunctionBody $appSourceText 'void\s+App::OnRender\s*\(\s*\)'
+foreach ($pass in @('Shadow', 'Character', 'Outline', 'ToneMap')) {
+    $passCall = if ($pass -eq 'ToneMap') { 'RenderToneMapPass' } else { "Render${pass}Pass" }
+    Assert-True ($onRenderBody -match ("(?s)BeginPass\s*\([^;]+GpuPass::{0}\s*\).*?{1}\s*\(.*?EndPass\s*\([^;]+GpuPass::{0}\s*\)" -f $pass, $passCall)) "break: GpuProfiler must bracket the real $pass pass"
+}
+Assert-True ($onRenderBody -match 'BeginFrame\s*\(') 'break: measured render work must begin one GPU query frame'
+Assert-True ($onRenderBody -match 'EndFrame\s*\(') 'break: measured render work must end the matching GPU query frame'
+Assert-True ($onRenderBody -match 'Resolve\s*\(') 'break: completed query slots must be resolved without blocking the current frame'
+
+# Break caught: shader outputs/features are simplified until the showcase contract is no longer observable.
+Assert-True ($characterVertexShaderText -match '#include\s+"38_Shared\.fxh"') 'break: character VS must share the C++/HLSL buffer contract'
+Assert-True ($characterVertexShaderText -match '\bcbBones\b') 'break: character VS must skin from the FbxModel bone palette'
+Assert-True ($characterVertexShaderText -match '\bVSShadow\b') 'break: the shadow pass must use the same skinned pose'
+Assert-True ($fullscreenVertexShaderText -match 'SV_VertexID') 'break: fullscreen post passes must use a cached vertex-free triangle'
+
+Assert-True ($characterPixelShaderText -match 'SV_TARGET0') 'break: character PS must emit HDR color to MRT0'
+Assert-True ($characterPixelShaderText -match 'SV_TARGET1') 'break: character PS must emit encoded world normal/profile to MRT1'
+foreach ($feature in @(
+    'diffuseBandThresholds',
+    'bandSoftness',
+    'coolShadowTint',
+    'warmKeyTint',
+    'materialProfile',
+    'hairBand',
+    'rimTerm',
+    'alphaCutoff'
+)) {
+    Assert-True ($characterPixelShaderText -match "\b$feature\b") "break: Hybrid Toon-PBR shader feature missing: $feature"
+}
+Assert-True ($characterPixelShaderText -match 'clip\s*\([^;]*alphaCutoff') 'break: masked character materials must retain alpha clipping'
+Assert-True ($characterPixelShaderText -match '\bshadowMap\b') 'break: character shading must consume the measured shadow map'
+
+Assert-True ($outlinePixelShaderText -match '\bnormalProfileTexture\b') 'break: outline detection must sample encoded world normals/profiles'
+Assert-True ($outlinePixelShaderText -match '\bdepthTexture\b') 'break: outline detection must sample main depth'
+Assert-True ($outlinePixelShaderText -match '\boutlineQuality\b') 'break: outline shader must expose two measurable quality levels'
+Assert-True ($outlinePixelShaderText -match '\binverseResolution\b') 'break: outline width must scale in pixels with resolution'
+Assert-True ($outlinePixelShaderText -match 'depth[^;\r\n]*normal|normal[^;\r\n]*depth') 'break: outline mask must combine normal and depth discontinuities'
+
+Assert-True ($toneMapPixelShaderText -match '\blightingPreset\b') 'break: tone mapping must select the active original lighting preset'
+Assert-True ($toneMapPixelShaderText -match '\bexposure\b') 'break: tone mapping must apply the shared exposure contract'
+Assert-True ($toneMapPixelShaderText -match '\boutlineMaskTexture\b') 'break: tone mapping must composite the outline mask'
+Assert-True ($toneMapPixelShaderText -match '\bmaterialAwareOutlineColor\b') 'break: outline composite must use material profile rather than unconditional black'
+Assert-True ($toneMapPixelShaderText -match '\bNeonContrast\b') 'break: Neon Contrast tone response must remain present'
+Assert-True ($toneMapPixelShaderText -match '\bIndustrialSoft\b') 'break: Industrial Soft tone response must remain present'
+Assert-True ($sharedShaderText -match '\bMaterialProfile') 'break: material profile values must be shared across character and post shaders'
+
+# Break caught: approved HUD prose expands/changes, or timings become placeholders instead of real samples/states.
+Assert-True ($appSourceText -match 'ImGui::TextUnformatted\s*\(\s*"Hybrid Toon-PBR Character Showcase"\s*\)') 'break: approved compact HUD title line changed'
+Assert-True ($appSourceText -match 'ImGui::TextUnformatted\s*\(\s*"Material-aware toon shading, hair highlights, rim lighting, stable outlines, and GPU cost comparison\."\s*\)') 'break: approved compact HUD description line changed'
+Assert-True ($appSourceText -match 'std::chrono::') 'break: HUD CPU milliseconds must come from a real measured frame interval'
+Assert-True ($appSourceText -match 'Latest\s*\(\s*\)') 'break: HUD GPU total/pass values must consume GpuProfiler results'
+Assert-True ($appSourceText -match 'GPU: warming up') 'break: HUD must label profiler warm-up honestly'
+Assert-True ($appSourceText -match 'GPU: unavailable') 'break: HUD must continue with an honest unavailable state if profiler initialization fails'
+foreach ($passLabel in @('Shadow', 'Character', 'Outline', 'ToneMap')) {
+    Assert-True ($appSourceText -match ("{0}.*?ms" -f $passLabel)) "break: HUD must expose measured $passLabel milliseconds"
+}
+foreach ($control in @('Mode', 'Preset', 'Band thresholds', 'Band softness', 'Shadow tint', 'Key tint', 'Hair highlight', 'Rim strength', 'Outline width', 'Outline quality', 'Exposure')) {
+    Assert-True ($appSourceText -match [regex]::Escape($control)) "break: runtime control missing from compact HUD: $control"
+}
+
 $readmeText = Get-Content -Raw -LiteralPath $readmePath
 Assert-True ($readmeText -match '(?m)^#\s+Project 38') 'Project 38 skeletal README heading missing'
 Assert-True ($readmeText -notmatch 'README-BRAND:(?:START|END)') 'Project 38 README brand markers must be absent'
 Assert-True ($readmeText -notmatch 'alice-tutorial-logo\.png') 'Project 38 README logo reference must be absent'
 
-'Project 38 structure, registration, and GPU-profiler contract tests passed'
+'Project 38 structure, renderer, shader, HUD, and GPU-profiler contract tests passed'

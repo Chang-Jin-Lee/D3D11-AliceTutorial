@@ -19,6 +19,32 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <CopyFileToFolders Include="38_Shared.fxh">
+      <FileType>Document</FileType>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="38_CharacterVS.hlsl">
+      <FileType>Document</FileType>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="38_CharacterPS.hlsl">
+      <FileType>Document</FileType>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="38_FullscreenVS.hlsl">
+      <FileType>Document</FileType>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="38_OutlinePS.hlsl">
+      <FileType>Document</FileType>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="38_ToneMapPS.hlsl">
+      <FileType>Document</FileType>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </CopyFileToFolders>
+  </ItemGroup>
+  <ItemGroup>
     <ClCompile Include="App.cpp" />
     <ClCompile Include="GpuProfiler.cpp" />
     <ClCompile Include="WinMain.cpp" />
