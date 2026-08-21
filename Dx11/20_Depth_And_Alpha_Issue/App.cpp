@@ -315,8 +315,8 @@ bool App::OnInitialize()
 		if (ReadmeCapture::IsEnabled())
 		{
 			model.scale = XMFLOAT3(80.0f, 80.0f, 80.0f);
-			model.rotDeg = XMFLOAT3(0.0f, -35.0f, 0.0f);
-			model.autoRotate = true;
+			model.rotDeg = XMFLOAT3(0.0f, -25.0f, 0.0f);
+			model.autoRotate = false;
 			m_Camera.SetPosition(XMFLOAT3(20.0f, 70.0f, -150.0f));
 			m_Camera.SetRotation(XMFLOAT3(10.0f, -6.0f, 0.0f));
 		}

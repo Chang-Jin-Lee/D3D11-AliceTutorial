@@ -662,7 +662,8 @@ bool App::OnInitialize()
 		{
 			auto& player = *m_->m_Models[0];
 			player.pos = XMFLOAT3(0.0f, 0.0f, 0.0f);
-			player.rotDeg = XMFLOAT3(0.0f, -35.0f, 0.0f);
+			player.rotDeg = XMFLOAT3(0.0f, -25.0f, 0.0f);
+			player.autoRotate = false;
 		}
 		if (m_->m_Models.size() > 1)
 		{

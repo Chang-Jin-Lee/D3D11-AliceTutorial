@@ -102,8 +102,8 @@ foreach ($project in $projects) {
         Assert-True ($initializeBody -notmatch 'm_->m_modelPos\s*=') "$project startup must not override the loader-provided origin"
 
         Assert-CaptureOnlySetting $initializeBody $captureBlock 'm_->m_modelScale\s*=\s*XMFLOAT3\(\s*80\.0f\s*,\s*80\.0f\s*,\s*80\.0f\s*\)' $project 'capture model scale'
-        Assert-CaptureOnlySetting $initializeBody $captureBlock 'm_->m_modelRotation\s*=\s*XMFLOAT3\(\s*0\.0f\s*,\s*-35\.0f\s*,\s*0\.0f\s*\)' $project 'capture model rotation'
-        Assert-CaptureOnlySetting $initializeBody $captureBlock 'm_->m_RotateModel\s*=\s*true' $project 'capture automatic rotation'
+        Assert-CaptureOnlySetting $initializeBody $captureBlock 'm_->m_modelRotation\s*=\s*XMFLOAT3\(\s*0\.0f\s*,\s*-25\.0f\s*,\s*0\.0f\s*\)' $project 'front-facing capture model rotation'
+        Assert-CaptureOnlySetting $initializeBody $captureBlock 'm_->m_RotateModel\s*=\s*false' $project 'disabled capture automatic rotation'
     }
     else {
         $originPattern = 'model\.pos\s*=\s*XMFLOAT3\(\s*0\.0f\s*,\s*0\.0f\s*,\s*0\.0f\s*\)'
@@ -112,8 +112,8 @@ foreach ($project in $projects) {
         Assert-True ($originAssignment.Index -lt $nestedCaptureCondition.Index) "$project origin assignment must run outside the README capture gate"
 
         Assert-CaptureOnlySetting $initializeBody $captureBlock 'model\.scale\s*=\s*XMFLOAT3\(\s*80\.0f\s*,\s*80\.0f\s*,\s*80\.0f\s*\)' $project 'capture model scale'
-        Assert-CaptureOnlySetting $initializeBody $captureBlock 'model\.rotDeg\s*=\s*XMFLOAT3\(\s*0\.0f\s*,\s*-35\.0f\s*,\s*0\.0f\s*\)' $project 'capture model rotation'
-        Assert-CaptureOnlySetting $initializeBody $captureBlock 'model\.autoRotate\s*=\s*true' $project 'capture automatic rotation'
+        Assert-CaptureOnlySetting $initializeBody $captureBlock 'model\.rotDeg\s*=\s*XMFLOAT3\(\s*0\.0f\s*,\s*-25\.0f\s*,\s*0\.0f\s*\)' $project 'front-facing capture model rotation'
+        Assert-CaptureOnlySetting $initializeBody $captureBlock 'model\.autoRotate\s*=\s*false' $project 'disabled capture automatic rotation'
     }
 
     Assert-CaptureOnlySetting $initializeBody $captureBlock $cameraPositionPattern $project 'capture camera position'

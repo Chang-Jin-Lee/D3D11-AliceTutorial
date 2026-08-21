@@ -703,13 +703,15 @@ bool App::OnInitialize()
 		{
 			auto& player = *m_->m_Models[0];
 			player.pos = XMFLOAT3(-55.0f, 0.0f, 0.0f);
-			player.rotDeg = XMFLOAT3(0.0f, -20.0f, 0.0f);
+			player.rotDeg = XMFLOAT3(0.0f, -25.0f, 0.0f);
+			player.autoRotate = false;
 		}
 		if (m_->m_Models.size() > 1)
 		{
 			auto& enemy = *m_->m_Models[1];
 			enemy.pos = XMFLOAT3(65.0f, 0.0f, 60.0f);
-			enemy.rotDeg = XMFLOAT3(0.0f, -145.0f, 0.0f);
+			enemy.rotDeg = XMFLOAT3(0.0f, 20.0f, 0.0f);
+			enemy.autoRotate = false;
 		}
 		if (m_->m_Models.size() > 2)
 		{

@@ -628,12 +628,13 @@ bool App::OnInitialize()
 			XMFLOAT3(135.0f, 0.0f, 170.0f),
 			XMFLOAT3(0.0f, 0.0f, 245.0f),
 		};
-		const float characterYaw[8] = { -35.0f, 145.0f, -145.0f, 150.0f, -150.0f, 130.0f, -130.0f, 180.0f };
+		const float characterYaw[8] = { -25.0f, -20.0f, 20.0f, -15.0f, 15.0f, -10.0f, 10.0f, 0.0f };
 		for (int i = 0; i < 8 && i < (int)m_->m_Models.size(); ++i)
 		{
 			auto& model = *m_->m_Models[(size_t)i];
 			model.pos = characterPositions[i];
 			model.rotDeg = XMFLOAT3(0.0f, characterYaw[i], 0.0f);
+			model.autoRotate = false;
 		}
 		if (m_->m_Models.size() > 8)
 		{
