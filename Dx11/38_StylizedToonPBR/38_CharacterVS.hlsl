@@ -29,9 +29,13 @@ CharacterVertexOutput VSMain(CharacterVertexInput input)
     return output;
 }
 
-float4 VSShadow(CharacterVertexInput input) : SV_POSITION
+ShadowVertexOutput VSShadow(CharacterVertexInput input)
 {
+    ShadowVertexOutput output;
     float4x4 skin = BuildSkinMatrix(input);
     float4 positionWorld = mul(mul(float4(input.position, 1.0f), skin), world);
-    return mul(positionWorld, lightViewProjection);
+    output.position = mul(positionWorld, lightViewProjection);
+    output.uv = input.uv;
+    output.vertexColor = input.color;
+    return output;
 }

@@ -30,6 +30,7 @@ cbuffer cbPost : register(b0)
 {
     float4 inverseResolution;
     float4 outlineParameters;
+    float4 depthReconstructionParameters;
     float4 toneMapParameters;
     float4 backgroundColor;
 };
@@ -56,6 +57,13 @@ struct CharacterVertexOutput
     float2 uv : TEXCOORD4;
     float4 vertexColor : COLOR0;
     float4 shadowPosition : TEXCOORD5;
+};
+
+struct ShadowVertexOutput
+{
+    float4 position : SV_POSITION;
+    float2 uv : TEXCOORD0;
+    float4 vertexColor : COLOR0;
 };
 
 #endif

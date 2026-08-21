@@ -53,6 +53,13 @@ float SampleCharacterShadow(float4 shadowPosition)
     return visibility / 9.0f;
 }
 
+void PSShadow(ShadowVertexOutput input)
+{
+    float4 sampledBase = baseColorTexture.Sample(linearSampler, input.uv) * input.vertexColor;
+    float alphaCutoff = materialParameters.w;
+    clip(sampledBase.a - alphaCutoff);
+}
+
 CharacterPixelOutput PSMain(CharacterVertexOutput input)
 {
     CharacterPixelOutput output;
@@ -106,6 +113,6 @@ CharacterPixelOutput PSMain(CharacterVertexOutput input)
                      + keyTintColor * (hairBand * 0.65f + rimTerm * 0.34f);
     float useToon = step(0.5f, toonParameters.w);
     output.hdrColor = float4(lerp(pbrColor, toonColor, useToon), sampledBase.a);
-    output.encodedNormalProfile = float4(normal * 0.5f + 0.5f, (materialProfile + 0.5f) / 3.0f);
+    output.encodedNormalProfile = float4(geometricNormal * 0.5f + 0.5f, (materialProfile + 0.5f) / 3.0f);
     return output;
 }

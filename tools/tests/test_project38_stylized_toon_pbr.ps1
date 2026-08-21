@@ -211,6 +211,63 @@ $fullscreenVertexShaderText = Get-Content -Raw -LiteralPath (Join-Path $projectD
 $outlinePixelShaderText = Get-Content -Raw -LiteralPath (Join-Path $projectDirectory '38_OutlinePS.hlsl')
 $toneMapPixelShaderText = Get-Content -Raw -LiteralPath (Join-Path $projectDirectory '38_ToneMapPS.hlsl')
 
+# Review-fix contracts are collected so one RED run proves every reported semantic gap.
+$reviewContractFailures = [Collections.Generic.List[string]]::new()
+function Assert-ReviewContract([bool]$Condition, [string]$Message) {
+    if (-not $Condition) { $script:reviewContractFailures.Add($Message) }
+}
+
+$createWindowResourcesBody = Get-CppFunctionBody $appSourceText 'bool\s+App::CreateWindowSizeResources\s*\([^)]*\)'
+$renderCharacterPassBody = Get-CppFunctionBody $appSourceText 'void\s+App::RenderCharacterPass\s*\([^)]*\)'
+$renderToneMapPassBody = Get-CppFunctionBody $appSourceText 'void\s+App::RenderToneMapPass\s*\([^)]*\)'
+
+$linearDepthOutlineContract =
+    ($sharedShaderText -match '\bdepthReconstructionParameters\b') -and
+    ($outlinePixelShaderText -match 'float\s+ReconstructViewDepth\s*\(') -and
+    ($outlinePixelShaderText -match '(?s)nearPlane\s*\*\s*farPlane\s*/\s*max\s*\(\s*farPlane\s*-\s*deviceDepth\s*\*\s*\(\s*farPlane\s*-\s*nearPlane') -and
+    ($outlinePixelShaderText -match '\brelativeDepthDifference\b') -and
+    ($outlinePixelShaderText -match 'centerHasGeometry\s*!=\s*sampleHasGeometry') -and
+    ($outlinePixelShaderText -notmatch 'abs\s*\(\s*centerDepth\s*-\s*sampleDepth\s*\)\s*\*\s*45')
+Assert-ReviewContract $linearDepthOutlineContract 'review: outline depth edges must reconstruct view depth, preserve silhouette transitions, and avoid raw nonlinear-depth scaling'
+
+$alphaAwareShadowContract =
+    ($characterPixelShaderText -match 'void\s+PSShadow\s*\(') -and
+    ($characterPixelShaderText -match '(?s)PSShadow[^\{]*\{.*?baseColorTexture\.Sample.*?clip\s*\([^;]*alphaCutoff') -and
+    ($appSourceText -match 'CompileShader\s*\(\s*L"38_CharacterPS\.hlsl"\s*,\s*"PSShadow"\s*,\s*"ps_5_0"') -and
+    ($appSourceText -match '\bm_shadowPixelShader\b') -and
+    ($appSourceText -match '\bAI_MATKEY_GLTF_ALPHAMODE\b') -and
+    ($appSourceText -match '\bAI_MATKEY_GLTF_ALPHACUTOFF\b') -and
+    ($appSourceText -match '\bAI_MATKEY_TWOSIDED\b') -and
+    ($appSourceText -match '(?s)shadowOnly.*?PSSetShaderResources\s*\(\s*0\s*,\s*1[^;]*baseColor') -and
+    ($appSourceText -match '\bm_shadowDoubleSidedRasterizerState\b') -and
+    ($appSourceText -match '\bm_characterDoubleSidedRasterizerState\b')
+Assert-ReviewContract $alphaAwareShadowContract 'review: shadow silhouettes must use bound base alpha/cutoff and the same per-material double-sided semantics as the visible pass'
+
+$outputTransferContract =
+    ($toneMapPixelShaderText -match 'float3\s+LinearToSrgb\s*\(') -and
+    ($toneMapPixelShaderText -match '\b0\.0031308f?\b') -and
+    ($toneMapPixelShaderText -match '\b12\.92f?\b') -and
+    ($toneMapPixelShaderText -match '(?s)pow\s*\([^;]*1\.0f\s*/\s*2\.4f') -and
+    ($toneMapPixelShaderText -match 'return\s+float4\s*\(\s*LinearToSrgb\s*\(')
+Assert-ReviewContract $outputTransferContract 'review: UNORM backbuffer output must apply an explicit linear-to-sRGB transfer after tone mapping and outline compositing'
+
+$optionalNormalContract =
+    ($createWindowResourcesBody -match 'const\s+bool\s+normalProfileAvailable\s*=\s*createColorTarget') -and
+    ($createWindowResourcesBody -match '(?s)if\s*\(\s*!\s*createColorTarget\s*\([^;]*m_hdrTexture[^;]*\)\s*\)\s*return\s+false') -and
+    ($createWindowResourcesBody -match '(?s)if\s*\(\s*normalProfileAvailable\s*\).*?m_outlineTexture') -and
+    ($renderCharacterPassBody -match '\brenderTargetCount\b') -and
+    ($renderCharacterPassBody -match 'if\s*\(\s*m_normalProfileRenderTargetView\s*\)') -and
+    ($renderToneMapPassBody -match 'm_outlineShaderResourceView\s*\?') -and
+    ($renderToneMapPassBody -match 'm_normalProfileShaderResourceView\s*\?')
+Assert-ReviewContract $optionalNormalContract 'review: normal/profile allocation must be optional, reduce MRT count safely, disable outlines, and bind valid tone-map fallbacks'
+
+$shadowSoftnessHudContract = $appSourceText -match 'ImGui::SliderFloat\s*\(\s*"Shadow softness"\s*,\s*&m_shadowSoftness'
+Assert-ReviewContract $shadowSoftnessHudContract 'review: compact HUD must expose shadow softness'
+
+if ($reviewContractFailures.Count -gt 0) {
+    throw ("Review fix contracts failed:`n - " + ($reviewContractFailures -join "`n - "))
+}
+
 # Break caught: another model path silently replaces or supplements the approved public Alice asset.
 $modelPathMatches = [regex]::Matches($appSourceText, '(?i)\.\.[\\/]Resource[\\/]fbx[\\/][^"\r\n]+')
 Assert-True ($modelPathMatches.Count -eq 1) 'break: Project 38 must reference exactly one runtime FBX/GLB model path'
@@ -333,7 +390,7 @@ Assert-True ($appSourceText -match 'GPU: unavailable') 'break: HUD must continue
 foreach ($passLabel in @('Shadow', 'Character', 'Outline', 'ToneMap')) {
     Assert-True ($appSourceText -match ("{0}.*?ms" -f $passLabel)) "break: HUD must expose measured $passLabel milliseconds"
 }
-foreach ($control in @('Mode', 'Preset', 'Band thresholds', 'Band softness', 'Shadow tint', 'Key tint', 'Hair highlight', 'Rim strength', 'Outline width', 'Outline quality', 'Exposure')) {
+foreach ($control in @('Mode', 'Preset', 'Band thresholds', 'Band softness', 'Shadow tint', 'Key tint', 'Hair highlight', 'Rim strength', 'Shadow softness', 'Outline width', 'Outline quality', 'Exposure')) {
     Assert-True ($appSourceText -match [regex]::Escape($control)) "break: runtime control missing from compact HUD: $control"
 }
 

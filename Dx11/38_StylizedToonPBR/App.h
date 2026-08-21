@@ -66,8 +66,16 @@ private:
     {
         DirectX::XMFLOAT4 inverseResolution;
         DirectX::XMFLOAT4 outlineParameters;
+        DirectX::XMFLOAT4 depthReconstructionParameters;
         DirectX::XMFLOAT4 toneMapParameters;
         DirectX::XMFLOAT4 backgroundColor;
+    };
+
+    struct MaterialRenderInfo
+    {
+        MaterialProfile profile = MaterialProfile::Cloth;
+        float alphaCutoff = 0.0f;
+        bool doubleSided = false;
     };
 
     bool CreateDeviceResources();
@@ -96,6 +104,7 @@ private:
     void UpdateCharacterConstants(
         RenderMode mode,
         MaterialProfile profile,
+        float alphaCutoff,
         float projectionAspect,
         bool hasBaseColor,
         bool hasMetallic,
@@ -112,7 +121,7 @@ private:
     LightingPreset m_lightingPreset = LightingPreset::NeonContrast;
     std::shared_ptr<FbxModel> m_character;
     std::unique_ptr<CharacterAnimator> m_poseAnimator;
-    std::vector<MaterialProfile> m_materialProfiles;
+    std::vector<MaterialRenderInfo> m_materialRenderInfo;
 
     float m_lowBandThreshold = 0.34f;
     float m_highBandThreshold = 0.69f;
@@ -164,6 +173,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D11VertexShader> m_shadowVertexShader;
     Microsoft::WRL::ComPtr<ID3D11VertexShader> m_fullscreenVertexShader;
     Microsoft::WRL::ComPtr<ID3D11PixelShader> m_characterPixelShader;
+    Microsoft::WRL::ComPtr<ID3D11PixelShader> m_shadowPixelShader;
     Microsoft::WRL::ComPtr<ID3D11PixelShader> m_outlinePixelShader;
     Microsoft::WRL::ComPtr<ID3D11PixelShader> m_toneMapPixelShader;
     Microsoft::WRL::ComPtr<ID3D11InputLayout> m_skinnedInputLayout;
@@ -171,7 +181,9 @@ private:
     Microsoft::WRL::ComPtr<ID3D11Buffer> m_characterConstantBuffer;
     Microsoft::WRL::ComPtr<ID3D11Buffer> m_postConstantBuffer;
     Microsoft::WRL::ComPtr<ID3D11RasterizerState> m_characterRasterizerState;
+    Microsoft::WRL::ComPtr<ID3D11RasterizerState> m_characterDoubleSidedRasterizerState;
     Microsoft::WRL::ComPtr<ID3D11RasterizerState> m_shadowRasterizerState;
+    Microsoft::WRL::ComPtr<ID3D11RasterizerState> m_shadowDoubleSidedRasterizerState;
     Microsoft::WRL::ComPtr<ID3D11DepthStencilState> m_depthStencilState;
     Microsoft::WRL::ComPtr<ID3D11SamplerState> m_linearSampler;
     Microsoft::WRL::ComPtr<ID3D11SamplerState> m_shadowSampler;

@@ -13,6 +13,7 @@
 #include <imgui_impl_dx11.h>
 #include <imgui_impl_win32.h>
 
+#include <assimp/GltfMaterial.h>
 #include <assimp/material.h>
 #include <assimp/scene.h>
 #include <d3dcompiler.h>
@@ -37,6 +38,7 @@ namespace
     constexpr UINT kShadowMapSize = 2048;
     constexpr float kHeroScale = 80.0f;
     constexpr float kHeroYawRadians = -0.31415927f;
+    constexpr float kBlendCoverageCutoff = 0.02f;
 
     struct MaterialOverride
     {
@@ -164,11 +166,14 @@ void App::OnUninitialize()
     m_shadowSampler.Reset();
     m_linearSampler.Reset();
     m_depthStencilState.Reset();
+    m_shadowDoubleSidedRasterizerState.Reset();
     m_shadowRasterizerState.Reset();
+    m_characterDoubleSidedRasterizerState.Reset();
     m_characterRasterizerState.Reset();
     m_skinnedInputLayout.Reset();
     m_toneMapPixelShader.Reset();
     m_outlinePixelShader.Reset();
+    m_shadowPixelShader.Reset();
     m_characterPixelShader.Reset();
     m_fullscreenVertexShader.Reset();
     m_shadowVertexShader.Reset();
@@ -386,6 +391,11 @@ bool App::CompileShaders()
         return false;
 
     shaderBlob.Reset();
+    if (!CompileShader(L"38_CharacterPS.hlsl", "PSShadow", "ps_5_0", shaderBlob)
+        || FAILED(m_device->CreatePixelShader(shaderBlob->GetBufferPointer(), shaderBlob->GetBufferSize(), nullptr, m_shadowPixelShader.GetAddressOf())))
+        return false;
+
+    shaderBlob.Reset();
     if (!CompileShader(L"38_CharacterPS.hlsl", "PSMain", "ps_5_0", shaderBlob)
         || FAILED(m_device->CreatePixelShader(shaderBlob->GetBufferPointer(), shaderBlob->GetBufferSize(), nullptr, m_characterPixelShader.GetAddressOf())))
         return false;
@@ -417,10 +427,19 @@ bool App::CreatePipelineStates()
     if (FAILED(m_device->CreateRasterizerState(&rasterizerDescription, m_characterRasterizerState.GetAddressOf())))
         return false;
 
+    rasterizerDescription.CullMode = D3D11_CULL_NONE;
+    if (FAILED(m_device->CreateRasterizerState(&rasterizerDescription, m_characterDoubleSidedRasterizerState.GetAddressOf())))
+        return false;
+
+    rasterizerDescription.CullMode = D3D11_CULL_BACK;
     rasterizerDescription.DepthBias = 1200;
     rasterizerDescription.SlopeScaledDepthBias = 2.0f;
     rasterizerDescription.DepthBiasClamp = 0.0f;
     if (FAILED(m_device->CreateRasterizerState(&rasterizerDescription, m_shadowRasterizerState.GetAddressOf())))
+        return false;
+
+    rasterizerDescription.CullMode = D3D11_CULL_NONE;
+    if (FAILED(m_device->CreateRasterizerState(&rasterizerDescription, m_shadowDoubleSidedRasterizerState.GetAddressOf())))
         return false;
 
     D3D11_DEPTH_STENCIL_DESC depthStencilDescription{};
@@ -527,7 +546,7 @@ bool App::CreateFallbackTextures()
 bool App::CreateWindowSizeResources()
 {
     if (m_resourceWidth == m_ClientWidth && m_resourceHeight == m_ClientHeight
-        && m_renderTargetView && m_hdrRenderTargetView && m_normalProfileRenderTargetView && m_depthStencilView)
+        && m_renderTargetView && m_hdrRenderTargetView && m_depthStencilView)
         return true;
 
     ReleaseWindowSizeResources();
@@ -561,13 +580,20 @@ bool App::CreateWindowSizeResources()
             DXGI_FORMAT_R16G16B16A16_FLOAT,
             m_hdrTexture,
             m_hdrRenderTargetView,
-            m_hdrShaderResourceView)
-        || !createColorTarget(
-            DXGI_FORMAT_R16G16B16A16_FLOAT,
-            m_normalProfileTexture,
-            m_normalProfileRenderTargetView,
-            m_normalProfileShaderResourceView))
+            m_hdrShaderResourceView))
         return false;
+
+    const bool normalProfileAvailable = createColorTarget(
+        DXGI_FORMAT_R16G16B16A16_FLOAT,
+        m_normalProfileTexture,
+        m_normalProfileRenderTargetView,
+        m_normalProfileShaderResourceView);
+    if (!normalProfileAvailable)
+    {
+        m_normalProfileShaderResourceView.Reset();
+        m_normalProfileRenderTargetView.Reset();
+        m_normalProfileTexture.Reset();
+    }
 
     D3D11_TEXTURE2D_DESC depthDescription{};
     depthDescription.Width = m_ClientWidth;
@@ -595,11 +621,20 @@ bool App::CreateWindowSizeResources()
             m_depthTexture.Get(), &depthShaderViewDescription, m_depthShaderResourceView.GetAddressOf())))
         return false;
 
-    if (!createColorTarget(
-            DXGI_FORMAT_R8_UNORM,
-            m_outlineTexture,
-            m_outlineRenderTargetView,
-            m_outlineShaderResourceView))
+    if (normalProfileAvailable)
+    {
+        if (!createColorTarget(
+                DXGI_FORMAT_R8_UNORM,
+                m_outlineTexture,
+                m_outlineRenderTargetView,
+                m_outlineShaderResourceView))
+        {
+            m_outlineShaderResourceView.Reset();
+            m_outlineRenderTargetView.Reset();
+            m_outlineTexture.Reset();
+        }
+    }
+    else
     {
         m_outlineShaderResourceView.Reset();
         m_outlineRenderTargetView.Reset();
@@ -608,7 +643,11 @@ bool App::CreateWindowSizeResources()
 
     m_resourceWidth = m_ClientWidth;
     m_resourceHeight = m_ClientHeight;
-    m_outlineAvailable = m_outlineShaderAvailable && m_outlineRenderTargetView != nullptr;
+    m_outlineAvailable = m_outlineShaderAvailable
+        && m_normalProfileShaderResourceView
+        && m_outlineRenderTargetView
+        && m_outlineShaderResourceView
+        && m_depthShaderResourceView;
     return true;
 }
 
@@ -655,23 +694,49 @@ bool App::LoadCharacter()
 
 void App::BuildMaterialProfiles()
 {
-    m_materialProfiles.clear();
+    m_materialRenderInfo.clear();
     const aiScene* scene = m_character ? m_character->GetScenePtr() : nullptr;
     if (!scene)
         return;
 
-    m_materialProfiles.resize(scene->mNumMaterials, MaterialProfile::Cloth);
+    m_materialRenderInfo.resize(scene->mNumMaterials);
     for (uint32_t materialIndex = 0; materialIndex < scene->mNumMaterials; ++materialIndex)
     {
+        aiMaterial* material = scene->mMaterials[materialIndex];
+        MaterialRenderInfo& renderInfo = m_materialRenderInfo[materialIndex];
         aiString materialName;
-        if (scene->mMaterials[materialIndex]->Get(AI_MATKEY_NAME, materialName) == AI_SUCCESS)
-            m_materialProfiles[materialIndex] = ClassifyMaterialName(materialName.C_Str());
+        if (material->Get(AI_MATKEY_NAME, materialName) == AI_SUCCESS)
+            renderInfo.profile = ClassifyMaterialName(materialName.C_Str());
+
+        aiString alphaModeValue;
+        std::string alphaMode = "OPAQUE";
+        if (material->Get(AI_MATKEY_GLTF_ALPHAMODE, alphaModeValue) == AI_SUCCESS)
+            alphaMode = alphaModeValue.C_Str();
+        std::transform(alphaMode.begin(), alphaMode.end(), alphaMode.begin(), [](unsigned char character)
+        {
+            return static_cast<char>(std::toupper(character));
+        });
+
+        if (alphaMode == "MASK")
+        {
+            renderInfo.alphaCutoff = 0.5f;
+            material->Get(AI_MATKEY_GLTF_ALPHACUTOFF, renderInfo.alphaCutoff);
+        }
+        else if (alphaMode == "BLEND")
+        {
+            // A depth-only shadow map needs binary coverage; use the same low-alpha coverage cutoff in both passes.
+            renderInfo.alphaCutoff = kBlendCoverageCutoff;
+        }
+
+        int doubleSided = 0;
+        if (material->Get(AI_MATKEY_TWOSIDED, doubleSided) == AI_SUCCESS)
+            renderInfo.doubleSided = doubleSided != 0;
     }
 
     for (const auto& overrideEntry : kSampleModelMaterialOverrides)
     {
-        if (overrideEntry.materialIndex < m_materialProfiles.size())
-            m_materialProfiles[overrideEntry.materialIndex] = overrideEntry.profile;
+        if (overrideEntry.materialIndex < m_materialRenderInfo.size())
+            m_materialRenderInfo[overrideEntry.materialIndex].profile = overrideEntry.profile;
     }
 }
 
@@ -821,14 +886,18 @@ void App::RenderCharacterPass()
     UnbindShaderResources();
     ID3D11RenderTargetView* renderTargets[] = {
         m_hdrRenderTargetView.Get(),
-        m_normalProfileRenderTargetView.Get(),
+        nullptr,
     };
-    m_context->OMSetRenderTargets(static_cast<UINT>(std::size(renderTargets)), renderTargets, m_depthStencilView.Get());
+    UINT renderTargetCount = 1;
+    if (m_normalProfileRenderTargetView)
+        renderTargets[renderTargetCount++] = m_normalProfileRenderTargetView.Get();
+    m_context->OMSetRenderTargets(renderTargetCount, renderTargets, m_depthStencilView.Get());
 
     constexpr float hdrClear[] = { 0.018f, 0.026f, 0.052f, 1.0f };
     constexpr float normalClear[] = { 0.5f, 0.5f, 1.0f, 0.0f };
     m_context->ClearRenderTargetView(m_hdrRenderTargetView.Get(), hdrClear);
-    m_context->ClearRenderTargetView(m_normalProfileRenderTargetView.Get(), normalClear);
+    if (m_normalProfileRenderTargetView)
+        m_context->ClearRenderTargetView(m_normalProfileRenderTargetView.Get(), normalClear);
     m_context->ClearDepthStencilView(m_depthStencilView.Get(), D3D11_CLEAR_DEPTH, 1.0f, 0);
     m_context->RSSetState(m_characterRasterizerState.Get());
     m_context->OMSetDepthStencilState(m_depthStencilState.Get(), 0);
@@ -882,17 +951,19 @@ void App::DrawCharacter(RenderMode mode, float projectionAspect, bool shadowOnly
     m_context->IASetIndexBuffer(indexBuffer, DXGI_FORMAT_R32_UINT, 0);
     m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     m_context->VSSetShader(shadowOnly ? m_shadowVertexShader.Get() : m_characterVertexShader.Get(), nullptr, 0);
-    m_context->PSSetShader(shadowOnly ? nullptr : m_characterPixelShader.Get(), nullptr, 0);
+    m_context->PSSetShader(shadowOnly ? m_shadowPixelShader.Get() : m_characterPixelShader.Get(), nullptr, 0);
 
     ID3D11Buffer* boneConstantBuffer = m_character->GetBoneConstantBuffer();
     ID3D11Buffer* characterConstantBuffer = m_characterConstantBuffer.Get();
     m_context->VSSetConstantBuffers(0, 1, &characterConstantBuffer);
     m_context->VSSetConstantBuffers(1, 1, &boneConstantBuffer);
+    m_context->PSSetConstantBuffers(0, 1, &characterConstantBuffer);
+    ID3D11SamplerState* linearSampler = m_linearSampler.Get();
+    m_context->PSSetSamplers(0, 1, &linearSampler);
     if (!shadowOnly)
     {
-        m_context->PSSetConstantBuffers(0, 1, &characterConstantBuffer);
-        ID3D11SamplerState* samplers[] = { m_linearSampler.Get(), m_shadowSampler.Get() };
-        m_context->PSSetSamplers(0, static_cast<UINT>(std::size(samplers)), samplers);
+        ID3D11SamplerState* shadowSampler = m_shadowSampler.Get();
+        m_context->PSSetSamplers(1, 1, &shadowSampler);
     }
 
     const auto& baseColorTextures = m_character->GetMaterialSRVs();
@@ -902,9 +973,9 @@ void App::DrawCharacter(RenderMode mode, float projectionAspect, bool shadowOnly
     for (const auto& subset : m_character->GetSubsets())
     {
         const uint32_t materialIndex = subset.materialIndex;
-        const MaterialProfile profile = materialIndex < m_materialProfiles.size()
-            ? m_materialProfiles[materialIndex]
-            : MaterialProfile::Cloth;
+        const MaterialRenderInfo renderInfo = materialIndex < m_materialRenderInfo.size()
+            ? m_materialRenderInfo[materialIndex]
+            : MaterialRenderInfo{};
 
         ID3D11ShaderResourceView* baseColor = materialIndex < baseColorTextures.size()
             ? baseColorTextures[materialIndex]
@@ -921,14 +992,25 @@ void App::DrawCharacter(RenderMode mode, float projectionAspect, bool shadowOnly
 
         UpdateCharacterConstants(
             mode,
-            profile,
+            renderInfo.profile,
+            renderInfo.alphaCutoff,
             projectionAspect,
             baseColor != nullptr,
             metallic != nullptr,
             roughness != nullptr,
             normal != nullptr);
 
-        if (!shadowOnly)
+        ID3D11RasterizerState* materialRasterizerState = shadowOnly
+            ? (renderInfo.doubleSided ? m_shadowDoubleSidedRasterizerState.Get() : m_shadowRasterizerState.Get())
+            : (renderInfo.doubleSided ? m_characterDoubleSidedRasterizerState.Get() : m_characterRasterizerState.Get());
+        m_context->RSSetState(materialRasterizerState);
+
+        if (shadowOnly)
+        {
+            ID3D11ShaderResourceView* baseColorForShadow = baseColor ? baseColor : m_whiteTexture.Get();
+            m_context->PSSetShaderResources(0, 1, &baseColorForShadow);
+        }
+        else
         {
             ID3D11ShaderResourceView* textures[] = {
                 baseColor ? baseColor : m_whiteTexture.Get(),
@@ -946,6 +1028,7 @@ void App::DrawCharacter(RenderMode mode, float projectionAspect, bool shadowOnly
 void App::UpdateCharacterConstants(
     RenderMode mode,
     MaterialProfile profile,
+    float alphaCutoff,
     float projectionAspect,
     bool hasBaseColor,
     bool hasMetallic,
@@ -1003,7 +1086,7 @@ void App::UpdateCharacterConstants(
         m_rimStrength,
         mode == RenderMode::ToonPbr ? 1.0f : 0.0f,
     };
-    constants.materialParameters = { static_cast<float>(profile), roughness, metallic, 0.33f };
+    constants.materialParameters = { static_cast<float>(profile), roughness, metallic, alphaCutoff };
     constants.shadowParameters = { 1.0f / static_cast<float>(kShadowMapSize), m_shadowSoftness, 0.0012f, 0.0f };
     constants.textureParameters = {
         hasBaseColor ? 1.0f : 0.0f,
@@ -1024,6 +1107,7 @@ void App::UpdatePostConstants()
         static_cast<float>(m_resourceHeight),
     };
     constants.outlineParameters = { m_outlineWidth, static_cast<float>(m_outlineQuality), 0.10f, 0.16f };
+    constants.depthReconstructionParameters = { 0.5f, 700.0f, 0.008f, 900.0f };
     constants.toneMapParameters = {
         m_exposure,
         static_cast<float>(m_lightingPreset),
@@ -1086,8 +1170,8 @@ void App::RenderToneMapPass()
     m_context->PSSetConstantBuffers(0, 1, &postConstantBuffer);
     ID3D11ShaderResourceView* inputs[] = {
         m_hdrShaderResourceView.Get(),
-        m_outlineShaderResourceView.Get(),
-        m_normalProfileShaderResourceView.Get(),
+        m_outlineShaderResourceView ? m_outlineShaderResourceView.Get() : m_blackTexture.Get(),
+        m_normalProfileShaderResourceView ? m_normalProfileShaderResourceView.Get() : m_flatNormalTexture.Get(),
     };
     m_context->PSSetShaderResources(0, static_cast<UINT>(std::size(inputs)), inputs);
     ID3D11SamplerState* sampler = m_linearSampler.Get();
@@ -1153,6 +1237,7 @@ void App::RenderHud()
         ImGui::ColorEdit3("Key tint", &m_keyTint.x);
         ImGui::SliderFloat("Hair highlight", &m_hairHighlightStrength, 0.0f, 1.5f, "%.2f");
         ImGui::SliderFloat("Rim strength", &m_rimStrength, 0.0f, 1.0f, "%.2f");
+        ImGui::SliderFloat("Shadow softness", &m_shadowSoftness, 0.5f, 3.0f, "%.2f texels");
         ImGui::SliderFloat("Outline width", &m_outlineWidth, 0.5f, 3.0f, "%.2f px");
         ImGui::SliderInt("Outline quality", &m_outlineQuality, 1, 2);
         ImGui::SliderFloat("Exposure", &m_exposure, 0.4f, 2.0f, "%.2f");
