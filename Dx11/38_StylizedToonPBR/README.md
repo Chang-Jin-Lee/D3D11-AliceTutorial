@@ -77,7 +77,7 @@
 
 - 셰이더, 샘플러, 래스터라이저/블렌드/깊이 상태는 초기화 때 만들고 재사용합니다. HDR, Normal/Depth, 외곽선, Shadow Map 렌더 타깃도 창 크기가 바뀌기 전까지 재사용합니다.
 - 자주 읽는 캐릭터/포스트 파라미터는 `alignas(16)` 상수 버퍼로 묶습니다. 재질 이름 분류는 로딩 시 수행하고, 픽셀 셰이더에는 숫자형 Skin/Hair/Cloth 프로필을 전달합니다.
-- GPU 측정은 `Shadow`, `Character`, `Outline`, `ToneMap`의 시작/끝 타임스탬프와 disjoint 쿼리를 묶은 **4-slot ring**을 사용합니다. 현재 쓰기 슬롯보다 2프레임 오래된 슬롯만 해석해 CPU와 GPU 사이의 지연을 흡수합니다.
+- GPU 측정은 `Shadow`, `Character`, `Outline`, `ToneMap`의 시작/끝 타임스탬프와 disjoint 쿼리를 묶은 **4-slot ring**을 사용합니다. `EndFrame`이 쓰기 헤드를 다음 슬롯으로 전진시킨 뒤 `Resolve`가 실행되므로, `kResolveDelay = 2`는 다가올 쓰기 헤드에서 두 슬롯 뒤이면서 방금 완료한 프레임 기준 한 프레임 전인 완성 샘플을 선택합니다. 슬롯 거리와 완료 프레임 나이는 서로 다릅니다.
 - 결과 조회는 `D3D11_ASYNC_GETDATA_DONOTFLUSH`로 한 번씩만 시도합니다. 준비되지 않은 쿼리는 반복 대기하지 않고 직전의 완전한 결과를 유지합니다.
 - HUD의 GPU 합계는 위 네 패스의 측정값 합이며, 각 패스 값도 따로 표시합니다. `Outline quality` 두 단계는 같은 장면에서 외곽선 비용 차이를 직접 비교할 수 있게 합니다.
 

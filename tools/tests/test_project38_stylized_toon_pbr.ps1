@@ -344,6 +344,9 @@ foreach ($pass in @('Shadow', 'Character', 'Outline', 'ToneMap')) {
 Assert-True ($onRenderBody -match 'BeginFrame\s*\(') 'break: measured render work must begin one GPU query frame'
 Assert-True ($onRenderBody -match 'EndFrame\s*\(') 'break: measured render work must end the matching GPU query frame'
 Assert-True ($onRenderBody -match 'Resolve\s*\(') 'break: completed query slots must be resolved without blocking the current frame'
+$endFrameCallIndex = $onRenderBody.LastIndexOf('m_gpuProfiler.EndFrame')
+$resolveCallIndex = $onRenderBody.LastIndexOf('m_gpuProfiler.Resolve')
+Assert-True ($endFrameCallIndex -ge 0 -and $resolveCallIndex -gt $endFrameCallIndex) 'break: EndFrame must advance the write slot before Resolve selects the delayed completed sample'
 
 # Break caught: shader outputs/features are simplified until the showcase contract is no longer observable.
 Assert-True ($characterVertexShaderText -match '#include\s+"38_Shared\.fxh"') 'break: character VS must share the C++/HLSL buffer contract'
@@ -407,6 +410,55 @@ function Assert-DocumentationContract([bool]$Condition, [string]$Message) {
     if (-not $Condition) { $script:documentationContractFailures.Add($Message) }
 }
 
+function Test-CenteredMascotImageBlock([string]$Text) {
+    $centeredMascotPattern = @'
+(?isx)
+(?:
+    <(?<wrapper>center)\b[^>]*>
+  |
+    <(?<wrapper>p|div)\b
+        (?=
+            [^>]*
+            (?:
+                \balign\s*=\s*(?:"\s*center\s*"|'\s*center\s*'|center\b)
+              |
+                \bstyle\s*=\s*(?:
+                    "[^"]*\btext-align\s*:\s*center\b[^"]*"
+                  |
+                    '[^']*\btext-align\s*:\s*center\b[^']*'
+                )
+            )
+        )
+        [^>]*>
+)
+.*?
+<img\b
+    (?=[^>]*(?:alice-tutorial-logo\.png|\bmascot(?:\s+logo)?\b|D3D11\s+Alice\s+Tutorial))
+    [^>]*>
+.*?
+</\k<wrapper>\s*>
+'@
+    return [regex]::IsMatch($Text, $centeredMascotPattern)
+}
+
+$centeredMascotBypassFixtures = @(
+    '<p align = "center"><img src="alice-tutorial-logo.png" alt="mascot logo" /></p>',
+    "<div align='center'><img src='alice-tutorial-logo.png' alt='mascot logo' /></div>",
+    '<p align=center><img src="alice-tutorial-logo.png" alt="mascot logo" /></p>',
+    '<center><img src="alice-tutorial-logo.png" alt="mascot logo" /></center>',
+    '<div style="display: block; text-align: center"><a href="./"><img src="mascot.png" alt="D3D11 Alice Tutorial mascot logo" /></a></div>'
+)
+foreach ($fixture in $centeredMascotBypassFixtures) {
+    Assert-DocumentationContract (Test-CenteredMascotImageBlock $fixture) "docs: centered mascot detector accepted an HTML alignment bypass: $fixture"
+}
+foreach ($fixture in @(
+    '[![Project preview](docs/media/readme/38-StylizedToonPBR.png)](Dx11/38_StylizedToonPBR)',
+    '<div align="center">[<img src="docs/media/readme/38-StylizedToonPBR.png" width="200"/>](Dx11/38_StylizedToonPBR)</div>',
+    '<p align="center"><img src="../../docs/media/readme/info/38-StylizedToonPBR-info.png" width="100%" /></p>'
+)) {
+    Assert-DocumentationContract (-not (Test-CenteredMascotImageBlock $fixture)) "docs: centered mascot detector rejected ordinary project gallery/info markup: $fixture"
+}
+
 Assert-DocumentationContract ([regex]::Matches($project37ReadmeText, '\[다음\]\(\.\./38_StylizedToonPBR/README\.md\)').Count -eq 2) 'docs: Project 37 top and bottom next links must point to Project 38'
 Assert-DocumentationContract ([regex]::Matches($readmeText, '\[이전\]\(\.\./37_Blueprint/README\.md\)').Count -eq 2) 'docs: Project 38 top and bottom previous links must point to Project 37'
 Assert-DocumentationContract ([regex]::Matches($readmeText, '(?m)^\[이전\]\(\.\./37_Blueprint/README\.md\) \| \[메인\]\(\.\./\.\./README\.md\) \| \[상위\]\(\.\./\) \| 다음$').Count -eq 2) 'docs: Project 38 must use the plain terminal next label in both navigation blocks'
@@ -452,7 +504,10 @@ foreach ($control in @('Band thresholds', 'Band softness', 'Shadow tint', 'Key t
 }
 Assert-DocumentationContract ($readmeText -match '(?i)4[- ]slot') 'docs: Project 38 must explain the four-slot GPU query ring'
 Assert-DocumentationContract ($readmeText -match 'D3D11_ASYNC_GETDATA_DONOTFLUSH') 'docs: Project 38 must explain the non-flushing GPU result read'
-Assert-DocumentationContract ($readmeText -match '2\s*프레임') 'docs: Project 38 must explain the two-frame delayed query resolve latency'
+Assert-DocumentationContract ($readmeText -match 'EndFrame[^\r\n]*Resolve') 'docs: Project 38 must explain that Resolve runs after EndFrame advances the write head'
+Assert-DocumentationContract ($readmeText -match '(?:두|2)\s*슬롯\s*뒤') 'docs: Project 38 must describe the resolved slot as two ring positions behind the upcoming write head'
+Assert-DocumentationContract ($readmeText -match '(?:한|1)\s*프레임\s*전') 'docs: Project 38 must describe the sample as one completed-frame old'
+Assert-DocumentationContract ($readmeText -notmatch '(?:두|2)\s*프레임\s*오래') 'docs: Project 38 must not mislabel the resolved sample as two completed frames old'
 Assert-DocumentationContract ($readmeText -match 'warming up') 'docs: Project 38 must document the profiler warm-up state'
 Assert-DocumentationContract ($readmeText -match 'unavailable') 'docs: Project 38 must document the unavailable profiler state'
 Assert-DocumentationContract ($readmeText -match '(?i)Outlines disabled') 'docs: Project 38 must document graceful outline disablement'
@@ -478,8 +533,7 @@ foreach ($projectReadmePath in $projectReadmePaths) {
     $projectReadmeText = Get-Content -Raw -LiteralPath $projectReadmePath
     Assert-DocumentationContract ($projectReadmeText -notmatch 'README-BRAND:(?:START|END)') "docs: README-BRAND marker returned: $projectReadmePath"
     Assert-DocumentationContract ($projectReadmeText -notmatch 'alice-tutorial-logo\.png') "docs: detailed README mascot logo returned: $projectReadmePath"
-    $centeredMascotPattern = '(?is)<(?:p|div)\s+align="center"[^>]*>\s*(?:<a[^>]*>\s*)?<img[^>]*(?:alice-tutorial-logo\.png|mascot\s+logo)[^>]*>(?:\s*</a>)?\s*</(?:p|div)>'
-    Assert-DocumentationContract ($projectReadmeText -notmatch $centeredMascotPattern) "docs: centered mascot image block returned: $projectReadmePath"
+    Assert-DocumentationContract (-not (Test-CenteredMascotImageBlock $projectReadmeText)) "docs: centered mascot image block returned: $projectReadmePath"
 }
 
 if ($documentationContractFailures.Count -gt 0) {
