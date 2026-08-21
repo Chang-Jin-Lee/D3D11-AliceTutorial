@@ -1,7 +1,7 @@
 <!-- README-NAV-TOP:START -->
 <div align="center">
 
-[이전](../36_AdvancedAnim_Sound_Click/README.md) | [메인](../../README.md) | [상위](../) | 다음
+[이전](../36_AdvancedAnim_Sound_Click/README.md) | [메인](../../README.md) | [상위](../) | [다음](../38_StylizedToonPBR/README.md)
 
 </div>
 <!-- README-NAV-TOP:END -->
@@ -33,7 +33,7 @@
 <!-- README-NAV-BOTTOM:START -->
 <div align="center">
 
-[이전](../36_AdvancedAnim_Sound_Click/README.md) | [메인](../../README.md) | [상위](../) | 다음
+[이전](../36_AdvancedAnim_Sound_Click/README.md) | [메인](../../README.md) | [상위](../) | [다음](../38_StylizedToonPBR/README.md)
 
 </div>
 <!-- README-NAV-BOTTOM:END -->

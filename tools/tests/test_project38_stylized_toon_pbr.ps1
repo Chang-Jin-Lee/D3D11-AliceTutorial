@@ -36,6 +36,8 @@ $appHeaderPath = Join-Path $projectDirectory 'App.h'
 $appSourcePath = Join-Path $projectDirectory 'App.cpp'
 $profilerHeaderPath = Join-Path $projectDirectory 'GpuProfiler.h'
 $profilerSourcePath = Join-Path $projectDirectory 'GpuProfiler.cpp'
+$rootReadmePath = Join-Path $repoRoot 'README.md'
+$project37ReadmePath = Join-Path $repoRoot 'Dx11\37_Blueprint\README.md'
 $shaderFiles = @(
     '38_Shared.fxh',
     '38_CharacterVS.hlsl',
@@ -394,9 +396,94 @@ foreach ($control in @('Mode', 'Preset', 'Band thresholds', 'Band softness', 'Sh
     Assert-True ($appSourceText -match [regex]::Escape($control)) "break: runtime control missing from compact HUD: $control"
 }
 
+$rootReadmeText = Get-Content -Raw -LiteralPath $rootReadmePath
+$project37ReadmeText = Get-Content -Raw -LiteralPath $project37ReadmePath
 $readmeText = Get-Content -Raw -LiteralPath $readmePath
-Assert-True ($readmeText -match '(?m)^#\s+Project 38') 'Project 38 skeletal README heading missing'
-Assert-True ($readmeText -notmatch 'README-BRAND:(?:START|END)') 'Project 38 README brand markers must be absent'
-Assert-True ($readmeText -notmatch 'alice-tutorial-logo\.png') 'Project 38 README logo reference must be absent'
+
+# Break caught: the Project 37 -> 38 chain, terminal Project 38 navigation, or
+# the standard generated README marker/media structure regresses.
+$documentationContractFailures = [Collections.Generic.List[string]]::new()
+function Assert-DocumentationContract([bool]$Condition, [string]$Message) {
+    if (-not $Condition) { $script:documentationContractFailures.Add($Message) }
+}
+
+Assert-DocumentationContract ([regex]::Matches($project37ReadmeText, '\[다음\]\(\.\./38_StylizedToonPBR/README\.md\)').Count -eq 2) 'docs: Project 37 top and bottom next links must point to Project 38'
+Assert-DocumentationContract ([regex]::Matches($readmeText, '\[이전\]\(\.\./37_Blueprint/README\.md\)').Count -eq 2) 'docs: Project 38 top and bottom previous links must point to Project 37'
+Assert-DocumentationContract ([regex]::Matches($readmeText, '(?m)^\[이전\]\(\.\./37_Blueprint/README\.md\) \| \[메인\]\(\.\./\.\./README\.md\) \| \[상위\]\(\.\./\) \| 다음$').Count -eq 2) 'docs: Project 38 must use the plain terminal next label in both navigation blocks'
+
+$standardMarkers = @(
+    '<!-- README-NAV-TOP:START -->',
+    '<!-- README-NAV-TOP:END -->',
+    '<!-- README-INFO:START -->',
+    '<!-- README-INFO:END -->',
+    '<!-- README-RUNTIME:START -->',
+    '<!-- README-RUNTIME:END -->',
+    '<!-- README-NAV-BOTTOM:START -->',
+    '<!-- README-NAV-BOTTOM:END -->'
+)
+foreach ($marker in $standardMarkers) {
+    Assert-DocumentationContract ([regex]::Matches($readmeText, [regex]::Escape($marker)).Count -eq 1) "docs: Project 38 standard marker missing or duplicated: $marker"
+}
+for ($markerIndex = 1; $markerIndex -lt $standardMarkers.Count; ++$markerIndex) {
+    Assert-DocumentationContract ($readmeText.IndexOf($standardMarkers[$markerIndex - 1]) -lt $readmeText.IndexOf($standardMarkers[$markerIndex])) "docs: Project 38 standard markers are out of order near $($standardMarkers[$markerIndex])"
+}
+Assert-DocumentationContract ($readmeText -match '(?m)^#\s+38\.\s+Stylized Toon PBR\s*$') 'docs: Project 38 polished detail heading missing'
+Assert-DocumentationContract ($readmeText -match '\.\./\.\./docs/media/readme/info/38-StylizedToonPBR-info\.png') 'docs: Project 38 information-image marker must use the manifest path'
+Assert-DocumentationContract ($readmeText -match '\.\./\.\./docs/media/readme/38-StylizedToonPBR\.png') 'docs: Project 38 runtime PNG must use the manifest path'
+Assert-DocumentationContract ($readmeText -match '\.\./\.\./docs/media/readme/38-StylizedToonPBR\.gif') 'docs: Project 38 runtime GIF must use the manifest path'
+
+# Break caught: the guide no longer explains the implemented comparison,
+# material-aware passes, exact HUD controls, degraded states, or measurement
+# evidence needed to reproduce and interpret the showcase.
+foreach ($mode in @('PBR', 'Hybrid Toon-PBR', 'Split')) {
+    Assert-DocumentationContract ($readmeText -match [regex]::Escape($mode)) "docs: Project 38 comparison mode missing: $mode"
+}
+foreach ($preset in @('Neon Contrast', 'Industrial Soft')) {
+    Assert-DocumentationContract ($readmeText -match [regex]::Escape($preset)) "docs: Project 38 lighting preset missing: $preset"
+}
+foreach ($profile in @('Skin', 'Hair', 'Cloth')) {
+    Assert-DocumentationContract ($readmeText -match "(?i)\b$profile\b") "docs: Project 38 material profile missing: $profile"
+}
+foreach ($technique in @('Shadow Map', 'Normal/Depth', 'Tone Mapping')) {
+    Assert-DocumentationContract ($readmeText -match [regex]::Escape($technique)) "docs: Project 38 measured render-pass explanation missing: $technique"
+}
+foreach ($control in @('Band thresholds', 'Band softness', 'Shadow tint', 'Key tint', 'Hair highlight', 'Rim strength', 'Shadow softness', 'Outline width', 'Outline quality', 'Exposure')) {
+    Assert-DocumentationContract ($readmeText -match [regex]::Escape($control)) "docs: Project 38 exact HUD control missing: $control"
+}
+Assert-DocumentationContract ($readmeText -match '(?i)4[- ]slot') 'docs: Project 38 must explain the four-slot GPU query ring'
+Assert-DocumentationContract ($readmeText -match 'D3D11_ASYNC_GETDATA_DONOTFLUSH') 'docs: Project 38 must explain the non-flushing GPU result read'
+Assert-DocumentationContract ($readmeText -match '2\s*프레임') 'docs: Project 38 must explain the two-frame delayed query resolve latency'
+Assert-DocumentationContract ($readmeText -match 'warming up') 'docs: Project 38 must document the profiler warm-up state'
+Assert-DocumentationContract ($readmeText -match 'unavailable') 'docs: Project 38 must document the unavailable profiler state'
+Assert-DocumentationContract ($readmeText -match '(?i)Outlines disabled') 'docs: Project 38 must document graceful outline disablement'
+Assert-DocumentationContract ($readmeText -match '(?m)^###\s+실행 코드에서 확인되는 측정 근거\s*$') 'docs: Project 38 must separate implemented measurement evidence'
+Assert-DocumentationContract ($readmeText -match '(?m)^###\s+측정값 해석과 일반 조언\s*$') 'docs: Project 38 must separate general optimization advice from evidence'
+Assert-DocumentationContract ($readmeText -notmatch '\b\d+(?:\.\d+)?\s*ms\b') 'docs: Project 38 must not invent fixed benchmark millisecond results'
+
+# Break caught: Project 38 disappears from the root directory/gallery or its
+# focused stylized-rendering showcase is misplaced before the Project 36 demo.
+$project36DemoIndex = $rootReadmeText.IndexOf('## 대표 데모')
+$stylizedShowcaseIndex = $rootReadmeText.IndexOf('## 스타일라이즈드 렌더링 쇼케이스')
+$projectShortcutsIndex = $rootReadmeText.IndexOf('### 프로젝트 바로가기')
+Assert-DocumentationContract ($rootReadmeText -match 'Dx11/38_StylizedToonPBR') 'docs: root README must link the Project 38 directory'
+Assert-DocumentationContract ($rootReadmeText -match 'docs/media/readme/38-StylizedToonPBR\.png') 'docs: root README must include the Project 38 PNG gallery image'
+Assert-DocumentationContract ($project36DemoIndex -ge 0 -and $stylizedShowcaseIndex -gt $project36DemoIndex -and $stylizedShowcaseIndex -lt $projectShortcutsIndex) 'docs: stylized-rendering showcase must follow the Project 36 representative demo and precede project shortcuts'
+
+# Break caught: branding prevention silently covers fewer than the exact 38
+# manifest-selected detail READMEs, or a centered mascot block returns under
+# a renamed marker.
+$projectReadmePaths = @($manifest.projects | ForEach-Object { Join-Path $repoRoot "Dx11/$($_.directory)/README.md" })
+Assert-DocumentationContract ($projectReadmePaths.Count -eq 38) 'docs: branding scope must contain exactly 38 project READMEs'
+foreach ($projectReadmePath in $projectReadmePaths) {
+    $projectReadmeText = Get-Content -Raw -LiteralPath $projectReadmePath
+    Assert-DocumentationContract ($projectReadmeText -notmatch 'README-BRAND:(?:START|END)') "docs: README-BRAND marker returned: $projectReadmePath"
+    Assert-DocumentationContract ($projectReadmeText -notmatch 'alice-tutorial-logo\.png') "docs: detailed README mascot logo returned: $projectReadmePath"
+    $centeredMascotPattern = '(?is)<(?:p|div)\s+align="center"[^>]*>\s*(?:<a[^>]*>\s*)?<img[^>]*(?:alice-tutorial-logo\.png|mascot\s+logo)[^>]*>(?:\s*</a>)?\s*</(?:p|div)>'
+    Assert-DocumentationContract ($projectReadmeText -notmatch $centeredMascotPattern) "docs: centered mascot image block returned: $projectReadmePath"
+}
+
+if ($documentationContractFailures.Count -gt 0) {
+    throw ("Documentation contracts failed:`n - " + ($documentationContractFailures -join "`n - "))
+}
 
 'Project 38 structure, renderer, shader, HUD, and GPU-profiler contract tests passed'

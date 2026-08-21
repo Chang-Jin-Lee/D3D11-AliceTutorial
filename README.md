@@ -39,6 +39,14 @@ Dx11/36_AdvancedAnim_Sound_Click/    대표 통합 데모
   App_*.inl                          수명주기, 입력/업데이트, 렌더 패스, 모델 로딩, UI, 유틸리티
 ```
 
+## 스타일라이즈드 렌더링 쇼케이스
+
+[`38_StylizedToonPBR`](Dx11/38_StylizedToonPBR)는 공개 캐릭터 하나를 같은 카메라와 조명에서 `PBR`, `Hybrid Toon-PBR`, `Split`으로 비교하는 집중형 샘플입니다. 재질별 Skin/Hair/Cloth 응답, 화면 공간 Normal/Depth 외곽선, 두 개의 독자적 조명 프리셋, 비동기 GPU 패스 측정을 한 프로젝트에서 확인할 수 있습니다.
+
+| Screenshot | 핵심 비교 |
+|---|---|
+| <img src="docs/media/readme/38-StylizedToonPBR.png" width="420"/> | `Neon Contrast` / `Industrial Soft`<br/>Shadow, Character, Outline, ToneMap GPU timing<br/>픽셀 폭 외곽선 품질 비교 |
+
 ### 프로젝트 바로가기
 
 각 프로젝트 README에서 새 실행 스크린샷과 짧은 GIF를 함께 확인할 수 있습니다.
@@ -81,9 +89,9 @@ Dx11/36_AdvancedAnim_Sound_Click/    대표 통합 데모
 |---|---|---|---|
 | <div align="center">[<img src="docs/media/readme/33-Sound-Animation-Camera-Motion.png" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/Dx11/33_Sound_Animation_Camera_Motion)</div> | <div align="center">[<img src="docs/media/readme/34-ToneMapping.png" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/Dx11/34_ToneMapping)</div> | <div align="center">[<img src="docs/media/readme/35-DeferredRendering.png" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/Dx11/35_DeferredRendering)</div> | <div align="center">[<img src="docs/media/readme/36-AdvancedAnim-Sound-Click.png" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/Dx11/36_AdvancedAnim_Sound_Click)</div> |
 
-| [37. imgui-node-editor demo](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/Dx11/37_Blueprint) |
-|---|
-| <div align="center">[<img src="docs/media/readme/37-Blueprint.png" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/Dx11/37_Blueprint)</div> |
+| [37. imgui-node-editor demo](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/Dx11/37_Blueprint) | [38. Stylized Toon PBR](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/Dx11/38_StylizedToonPBR) |
+|---|---|
+| <div align="center">[<img src="docs/media/readme/37-Blueprint.png" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/Dx11/37_Blueprint)</div> | <div align="center">[<img src="docs/media/readme/38-StylizedToonPBR.png" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/Dx11/38_StylizedToonPBR)</div> |
 
 ---
 
