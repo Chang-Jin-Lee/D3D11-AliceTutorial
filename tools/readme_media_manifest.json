@@ -4,7 +4,7 @@
   "defaultDelayMs": 2500,
   "defaultWidth": 1280,
   "defaultHeight": 720,
-  "expectedProjectCount": 37,
+  "expectedProjectCount": 38,
   "captureWidth": 1600,
   "captureHeight": 900,
   "gifWidth": 800,
@@ -52,6 +52,7 @@
     {"number":"34","name":"Tone Mapping","directory":"34_ToneMapping","exe":"34_ToneMapping.exe","image":"34-ToneMapping.png","gif":"34-ToneMapping.gif","infoImage":"info/34-ToneMapping-info.png","delayMs":2500,"readmeCaptureMode":true,"title":"Tone Mapping","summary":"HDR 장면을 화면 출력 범위로 톤매핑합니다.","tags":["HDR","Tone Mapping","Post Process"],"gifPhase":"runtime","gifActions":[{"atMs":400,"type":"keyDown","key":"D"},{"atMs":1100,"type":"keyUp","key":"D"},{"atMs":2200,"type":"keyDown","key":"A"},{"atMs":2900,"type":"keyUp","key":"A"}]},
     {"number":"35","name":"Deferred Rendering","directory":"35_DeferredRendering","exe":"35_DeferredRendering.exe","image":"35-DeferredRendering.png","gif":"35-DeferredRendering.gif","infoImage":"info/35-DeferredRendering-info.png","delayMs":2500,"readmeCaptureMode":true,"title":"Deferred Rendering","summary":"G-Buffer와 디퍼드 라이팅 패스를 구현합니다.","tags":["Deferred","G-Buffer","Lighting"],"gifPhase":"runtime","gifActions":[{"atMs":400,"type":"keyDown","key":"D"},{"atMs":1100,"type":"keyUp","key":"D"},{"atMs":2200,"type":"keyDown","key":"A"},{"atMs":2900,"type":"keyUp","key":"A"}]},
     {"number":"36","name":"Animation+","directory":"36_AdvancedAnim_Sound_Click","exe":"36_AdvancedAnim_Sound_Click.exe","image":"36-AdvancedAnim-Sound-Click.png","gif":"36-advanced-anim-sound-click.gif","infoImage":"info/36-AdvancedAnim-Sound-Click-info.png","delayMs":7000,"readmeCaptureMode":true,"readmeBackbufferCapture":true,"title":"Advanced Animation And Sound","summary":"블렌드·레이어·IK·소켓과 3D 사운드를 통합합니다.","tags":["Animation","IK","FMOD","ImGui"],"gifPhase":"runtime","gifSeconds":13,"gifActions":[{"atMs":0,"type":"click","x":0.5,"y":0.5}],"preCaptureActions":[{"type":"click","x":0.5,"y":0.5},{"type":"wait","durationMs":1500}],"rootFeaturedGif":true},
-    {"number":"37","name":"imgui-node-editor demo","directory":"37_Blueprint","exe":"37_Blueprint.exe","image":"37-Blueprint.png","gif":"37-Blueprint.gif","infoImage":"info/37-Blueprint-info.png","delayMs":2000,"gifPresentationPan":true,"title":"Blueprint Node Editor","summary":"imgui-node-editor로 노드 기반 도구 UI를 구성합니다.","tags":["Node Editor","ImGui","Tooling"],"gifPhase":"startup"}
+    {"number":"37","name":"imgui-node-editor demo","directory":"37_Blueprint","exe":"37_Blueprint.exe","image":"37-Blueprint.png","gif":"37-Blueprint.gif","infoImage":"info/37-Blueprint-info.png","delayMs":2000,"gifPresentationPan":true,"title":"Blueprint Node Editor","summary":"imgui-node-editor로 노드 기반 도구 UI를 구성합니다.","tags":["Node Editor","ImGui","Tooling"],"gifPhase":"startup"},
+    {"number":"38","name":"Stylized Toon PBR","directory":"38_StylizedToonPBR","exe":"38_StylizedToonPBR.exe","image":"38-StylizedToonPBR.png","gif":"38-StylizedToonPBR.gif","infoImage":"info/38-StylizedToonPBR-info.png","delayMs":3000,"readmeCaptureMode":true,"title":"Stylized Toon PBR","summary":"재질별 Hybrid Toon-PBR와 외곽선 비용을 비교합니다.","tags":["Toon PBR","Outline","GPU Profiling","Character"],"gifPhase":"runtime"}
   ]
 }

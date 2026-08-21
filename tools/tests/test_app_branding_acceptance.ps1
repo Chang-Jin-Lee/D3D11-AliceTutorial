@@ -36,7 +36,7 @@ function New-BaseFixture([string]$Path, [string]$AcceptanceScript, [string]$Repo
     $solutionLines = @('Project("{TYPE}") = "Common", "Common\Common.vcxproj", "{COMMON}"')
     $solutionLines += @($Directories | ForEach-Object { "Project(`"{TYPE}`") = `"$_`", `"$_\$_.vcxproj`", `"{PROJECT}`"" })
     [IO.File]::WriteAllText((Join-Path $Path 'Dx11\TutorialApp.sln'), ($solutionLines -join "`r`n") + "`r`n", [Text.UTF8Encoding]::new($false))
-    @{ expectedProjectCount = 37; projects = @($Directories | ForEach-Object { @{ directory = $_ } }) } |
+    @{ expectedProjectCount = 38; projects = @($Directories | ForEach-Object { @{ directory = $_ } }) } |
         ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $Path 'tools\readme_media_manifest.json') -Encoding utf8NoBOM
     [IO.File]::WriteAllText((Join-Path $Path 'README.md'), "# Fixture`n`nBody`n", [Text.UTF8Encoding]::new($false))
     foreach ($directory in $Directories | Sort-Object -Unique) {
@@ -67,7 +67,7 @@ function Set-PngPixel([string]$Path, [int]$X, [int]$Y, [Drawing.Color]$Color) {
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $acceptanceScript = Join-Path $repoRoot 'tools\tests\test_app_branding.ps1'
 $fixtureRoot = Join-Path ([IO.Path]::GetTempPath()) ('app-brand-acceptance-' + [guid]::NewGuid().ToString('N'))
-$canonicalDirectories = @(1..37 | ForEach-Object { '{0:D2}_Test' -f $_ })
+$canonicalDirectories = @(1..38 | ForEach-Object { '{0:D2}_Test' -f $_ })
 $failures = [Collections.Generic.List[string]]::new()
 
 try {
@@ -77,8 +77,8 @@ try {
             Pattern = 'manifest project directories must be unique'
             Mutate = {
                 param($path)
-                $directories = @($canonicalDirectories[0..35]) + @($canonicalDirectories[0])
-                @{ expectedProjectCount = 37; projects = @($directories | ForEach-Object { @{ directory = $_ } }) } |
+                $directories = @($canonicalDirectories[0..36]) + @($canonicalDirectories[0])
+                @{ expectedProjectCount = 38; projects = @($directories | ForEach-Object { @{ directory = $_ } }) } |
                     ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $path 'tools\readme_media_manifest.json') -Encoding utf8NoBOM
             }
         },
@@ -87,8 +87,8 @@ try {
             Pattern = 'manifest project directories must exactly match TutorialApp.sln application projects'
             Mutate = {
                 param($path)
-                $directories = @($canonicalDirectories[0..35]) + @('99_External')
-                @{ expectedProjectCount = 37; projects = @($directories | ForEach-Object { @{ directory = $_ } }) } |
+                $directories = @($canonicalDirectories[0..36]) + @('99_External')
+                @{ expectedProjectCount = 38; projects = @($directories | ForEach-Object { @{ directory = $_ } }) } |
                     ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $path 'tools\readme_media_manifest.json') -Encoding utf8NoBOM
                 New-Item -ItemType Directory -Force -Path (Join-Path $path 'Dx11\99_External') | Out-Null
                 Write-CanonicalReadme (Join-Path $path 'Dx11\99_External\README.md')

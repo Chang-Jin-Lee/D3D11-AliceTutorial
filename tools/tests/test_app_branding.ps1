@@ -55,10 +55,10 @@ $solutionProjectNames = @(
         Where-Object { $_ -ne 'Common' }
 )
 
-Assert-True ([int]$manifest.expectedProjectCount -eq 37) 'expectedProjectCount must be 37'
-Assert-True (@($manifest.projects).Count -eq 37) 'manifest must contain 37 projects'
-Assert-True ($solutionProjectNames.Count -eq 37) "solution must contain exactly 37 application projects, got $($solutionProjectNames.Count)"
-Assert-True (@($solutionProjectNames | Sort-Object -Unique).Count -eq 37) 'solution application projects must be unique'
+Assert-True ([int]$manifest.expectedProjectCount -eq 38) 'expectedProjectCount must be 38'
+Assert-True (@($manifest.projects).Count -eq 38) 'manifest must contain 38 projects'
+Assert-True ($solutionProjectNames.Count -eq 38) "solution must contain exactly 38 application projects, got $($solutionProjectNames.Count)"
+Assert-True (@($solutionProjectNames | Sort-Object -Unique).Count -eq 38) 'solution application projects must be unique'
 foreach ($solutionProjectName in $solutionProjectNames) {
     Assert-True ($solutionProjectName -match '^\d{2}_[A-Za-z0-9_]+$') "invalid solution application project name: $solutionProjectName"
 }
@@ -66,7 +66,7 @@ $manifestDirectories = @($manifest.projects | ForEach-Object { [string]$_.direct
 foreach ($directory in $manifestDirectories) {
     Assert-True ($directory -match '^\d{2}_[A-Za-z0-9_]+$') "unsafe project directory: $directory"
 }
-Assert-True (@($manifestDirectories | Sort-Object -Unique).Count -eq 37) 'manifest project directories must be unique'
+Assert-True (@($manifestDirectories | Sort-Object -Unique).Count -eq 38) 'manifest project directories must be unique'
 $sortedManifestDirectories = @($manifestDirectories | Sort-Object -CaseSensitive)
 $sortedSolutionProjectNames = @($solutionProjectNames | Sort-Object -CaseSensitive)
 Assert-True (($sortedManifestDirectories -join "`n") -ceq ($sortedSolutionProjectNames -join "`n")) 'manifest project directories must exactly match TutorialApp.sln application projects'
@@ -109,7 +109,7 @@ Assert-True ($rootReadme -notmatch 'alice-tutorial-logo\.png') 'root README logo
 
 $readmes = @($manifest.projects | ForEach-Object { Join-Path $repoRoot "Dx11/$($_.directory)/README.md" })
 
-Assert-True ($readmes.Count -eq 37) 'expected 37 project READMEs'
+Assert-True ($readmes.Count -eq 38) 'expected 38 project READMEs'
 foreach ($path in $readmes) {
     $content = Get-Content -Raw -LiteralPath $path
     Assert-True ($content -notmatch 'README-BRAND:(?:START|END)') "project README brand markers must be absent: $path"

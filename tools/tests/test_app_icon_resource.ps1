@@ -8,7 +8,7 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $solutionText = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'Dx11\TutorialApp.sln')
 $solutionProjects = @([regex]::Matches($solutionText, '(?m)^Project\("[^"]+"\) = "([^"]+)", "([^"]+\.vcxproj)"') |
     ForEach-Object { $_.Groups[1].Value } | Where-Object { $_ -ne 'Common' })
-Assert-True ($solutionProjects.Count -eq 37) "expected 37 solution apps, got $($solutionProjects.Count)"
+Assert-True ($solutionProjects.Count -eq 38) "expected 38 solution apps, got $($solutionProjects.Count)"
 
 $targetsPath = Join-Path $repoRoot 'Dx11\Directory.Build.targets'
 $headerPath = Join-Path $repoRoot 'Dx11\Resource\Icon\AppIconResource.h'
@@ -21,7 +21,7 @@ Assert-True (Test-Path -LiteralPath $rcPath) 'AppIcon.rc missing'
 $allowlistNode = $targetsXml.SelectSingleNode("//*[local-name()='AliceTutorialBrandingProjects']")
 Assert-True ($null -ne $allowlistNode) 'branding allowlist missing'
 $allowlist = @($allowlistNode.InnerText.Split(';', [System.StringSplitOptions]::RemoveEmptyEntries))
-Assert-True ($allowlist.Count -eq 37) "allowlist expected 37 apps, got $($allowlist.Count)"
+Assert-True ($allowlist.Count -eq 38) "allowlist expected 38 apps, got $($allowlist.Count)"
 Assert-True (@(Compare-Object ($solutionProjects | Sort-Object) ($allowlist | Sort-Object)).Count -eq 0) 'allowlist differs from TutorialApp.sln'
 
 $targetsText = Get-Content -Raw -LiteralPath $targetsPath

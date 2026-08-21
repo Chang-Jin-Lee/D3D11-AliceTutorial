@@ -16,19 +16,19 @@ $solutionProjectNames = @(
         ForEach-Object { $_.Groups[1].Value } |
         Where-Object { $_ -ne 'Common' }
 )
-if ($solutionProjectNames.Count -ne 37) { throw "solution must contain exactly 37 application projects, got $($solutionProjectNames.Count)" }
-if (@($solutionProjectNames | Sort-Object -Unique).Count -ne 37) { throw 'solution application projects must be unique' }
+if ($solutionProjectNames.Count -ne 38) { throw "solution must contain exactly 38 application projects, got $($solutionProjectNames.Count)" }
+if (@($solutionProjectNames | Sort-Object -Unique).Count -ne 38) { throw 'solution application projects must be unique' }
 foreach ($solutionProjectName in $solutionProjectNames) {
     if ($solutionProjectName -notmatch '^\d{2}_[A-Za-z0-9_]+$') { throw "invalid solution application project name: $solutionProjectName" }
 }
 
 $manifestProjects = @($data.projects)
-if ([int]$data.expectedProjectCount -ne 37 -or $manifestProjects.Count -ne 37) { throw 'manifest project count mismatch' }
+if ([int]$data.expectedProjectCount -ne 38 -or $manifestProjects.Count -ne 38) { throw 'manifest project count mismatch' }
 $manifestDirectories = @($manifestProjects | ForEach-Object { [string]$_.directory })
 foreach ($directory in $manifestDirectories) {
     if ($directory -notmatch '^\d{2}_[A-Za-z0-9_]+$') { throw "unsafe project directory: $directory" }
 }
-if (@($manifestDirectories | Sort-Object -Unique).Count -ne 37) { throw 'manifest project directories must be unique' }
+if (@($manifestDirectories | Sort-Object -Unique).Count -ne 38) { throw 'manifest project directories must be unique' }
 $sortedManifestDirectories = @($manifestDirectories | Sort-Object -CaseSensitive)
 $sortedSolutionProjectNames = @($solutionProjectNames | Sort-Object -CaseSensitive)
 if (($sortedManifestDirectories -join "`n") -cne ($sortedSolutionProjectNames -join "`n")) {
@@ -49,7 +49,7 @@ function Read-ReadmeContent([string]$Path) {
 # / <!-- README-BRAND:END --> block inserted right after the first Markdown
 # heading of every project README. The author asked for the logo to be
 # removed from those READMEs because it is unnecessary, so this script no
-# longer builds or inserts that block. The 37 checked-in READMEs no longer
+# longer builds or inserts that block. The 38 checked-in READMEs no longer
 # carry the (now-empty) marker comments either -- there is nothing left for
 # them to bound, and no other tool keys off them.
 #

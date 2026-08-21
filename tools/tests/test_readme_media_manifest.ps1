@@ -10,8 +10,8 @@ $manifest = Get-ReadmeMediaManifest -ManifestPath 'tools/readme_media_manifest.j
 $errors = @(Test-ReadmeMediaManifest -Manifest $manifest -RepoRoot $repoRoot)
 
 Assert-True ($errors.Count -eq 0) ($errors -join "`n")
-Assert-True ($manifest.expectedProjectCount -eq 37) 'production manifest expectedProjectCount must be 37'
-Assert-True (@($manifest.projects).Count -eq 37) 'manifest must contain 37 projects'
+Assert-True ($manifest.expectedProjectCount -eq 38) 'production manifest expectedProjectCount must be 38'
+Assert-True (@($manifest.projects).Count -eq 38) 'manifest must contain 38 projects'
 Assert-True (-not (@($manifest.projects.directory) -contains '16_pmxWithMotion')) 'duplicate project must stay excluded'
 Assert-True ($manifest.captureWidth -eq 1600 -and $manifest.captureHeight -eq 900) 'PNG size contract mismatch'
 Assert-True ($manifest.gifWidth -eq 800 -and $manifest.gifHeight -eq 450) 'GIF size contract mismatch'

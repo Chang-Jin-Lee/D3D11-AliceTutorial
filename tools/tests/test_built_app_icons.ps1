@@ -47,8 +47,8 @@ $solutionProjectNames = @(
         ForEach-Object { $_.Groups[1].Value } |
         Where-Object { $_ -ne 'Common' }
 )
-Assert-True ($solutionProjectNames.Count -eq 37) "solution must contain exactly 37 application projects, got $($solutionProjectNames.Count)"
-Assert-True (@($solutionProjectNames | Sort-Object -Unique).Count -eq 37) 'solution application projects must be unique'
+Assert-True ($solutionProjectNames.Count -eq 38) "solution must contain exactly 38 application projects, got $($solutionProjectNames.Count)"
+Assert-True (@($solutionProjectNames | Sort-Object -Unique).Count -eq 38) 'solution application projects must be unique'
 foreach ($solutionProjectName in $solutionProjectNames) {
     Assert-True ($solutionProjectName -match '^[A-Za-z0-9_]+$') "invalid solution project name: $solutionProjectName"
 }

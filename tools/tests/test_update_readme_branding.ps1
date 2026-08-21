@@ -8,7 +8,7 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $updater = Join-Path $repoRoot 'tools\update_readme_branding.ps1'
 $fixture = Join-Path ([IO.Path]::GetTempPath()) ('readme-brand-' + [guid]::NewGuid().ToString('N'))
 try {
-    $projectDirectories = @(1..37 | ForEach-Object { '{0:D2}_Test' -f $_ })
+    $projectDirectories = @(1..38 | ForEach-Object { '{0:D2}_Test' -f $_ })
     New-Item -ItemType Directory -Force -Path (Join-Path $fixture 'tools'), (Join-Path $fixture 'Dx11'), (Join-Path $fixture 'Dx11\99_Unselected') | Out-Null
     foreach ($directory in $projectDirectories) {
         New-Item -ItemType Directory -Force -Path (Join-Path $fixture "Dx11\$directory") | Out-Null
@@ -16,7 +16,7 @@ try {
     $solutionLines = @('Project("{TYPE}") = "Common", "Common\Common.vcxproj", "{COMMON}"')
     $solutionLines += @($projectDirectories | ForEach-Object { "Project(`"{TYPE}`") = `"$_`", `"$_\$_.vcxproj`", `"{PROJECT}`"" })
     [IO.File]::WriteAllText((Join-Path $fixture 'Dx11\TutorialApp.sln'), ($solutionLines -join "`r`n") + "`r`n", [Text.UTF8Encoding]::new($false))
-    @{ expectedProjectCount = 37; projects = @($projectDirectories | ForEach-Object { @{ directory = $_ } }) } |
+    @{ expectedProjectCount = 38; projects = @($projectDirectories | ForEach-Object { @{ directory = $_ } }) } |
         ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $fixture 'tools\manifest.json') -Encoding utf8NoBOM
 
     [IO.File]::WriteAllText((Join-Path $fixture 'README.md'), "# Root`r`n`r`n> Root quote`r`n", [Text.UTF8Encoding]::new($false))
@@ -99,18 +99,18 @@ try {
         [pscustomobject]@{
             Name = 'duplicate'
             Message = 'manifest project directories must be unique'
-            Directories = @($projectDirectories[0..35]) + @($projectDirectories[0])
+            Directories = @($projectDirectories[0..36]) + @($projectDirectories[0])
         },
         [pscustomobject]@{
             Name = 'solution-external substitution'
             Message = 'manifest project directories must exactly match TutorialApp.sln application projects'
-            Directories = @($projectDirectories[0..35]) + @('99_External')
+            Directories = @($projectDirectories[0..36]) + @('99_External')
         }
     )
     New-Item -ItemType Directory -Force -Path (Join-Path $fixture 'Dx11\99_External') | Out-Null
     [IO.File]::WriteAllText((Join-Path $fixture 'Dx11\99_External\README.md'), "# External`n", [Text.UTF8Encoding]::new($false))
     foreach ($case in $negativeCases) {
-        @{ expectedProjectCount = 37; projects = @($case.Directories | ForEach-Object { @{ directory = $_ } }) } |
+        @{ expectedProjectCount = 38; projects = @($case.Directories | ForEach-Object { @{ directory = $_ } }) } |
             ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $fixture 'tools\manifest.json') -Encoding utf8NoBOM
         [IO.File]::WriteAllText((Join-Path $fixture 'README.md'), "# Root`n`nRoot body`n", [Text.UTF8Encoding]::new($false))
         $beforeInvalidManifest = [IO.File]::ReadAllBytes((Join-Path $fixture 'README.md'))

@@ -78,6 +78,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "36_AdvancedAnim_Sound_Click
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "37_Blueprint", "37_Blueprint\37_Blueprint.vcxproj", "{1FEA6ACC-B4E2-4D88-943C-A0FC986B127C}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "38_StylizedToonPBR", "38_StylizedToonPBR\38_StylizedToonPBR.vcxproj", "{4B6A5522-0C57-41E0-A222-6AA813BBCE5C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -390,6 +392,14 @@ Global
 		{1FEA6ACC-B4E2-4D88-943C-A0FC986B127C}.Release|x64.Build.0 = Release|x64
 		{1FEA6ACC-B4E2-4D88-943C-A0FC986B127C}.Release|x86.ActiveCfg = Release|Win32
 		{1FEA6ACC-B4E2-4D88-943C-A0FC986B127C}.Release|x86.Build.0 = Release|Win32
+		{4B6A5522-0C57-41E0-A222-6AA813BBCE5C}.Debug|x64.ActiveCfg = Debug|x64
+		{4B6A5522-0C57-41E0-A222-6AA813BBCE5C}.Debug|x64.Build.0 = Debug|x64
+		{4B6A5522-0C57-41E0-A222-6AA813BBCE5C}.Debug|x86.ActiveCfg = Debug|Win32
+		{4B6A5522-0C57-41E0-A222-6AA813BBCE5C}.Debug|x86.Build.0 = Debug|Win32
+		{4B6A5522-0C57-41E0-A222-6AA813BBCE5C}.Release|x64.ActiveCfg = Release|x64
+		{4B6A5522-0C57-41E0-A222-6AA813BBCE5C}.Release|x64.Build.0 = Release|x64
+		{4B6A5522-0C57-41E0-A222-6AA813BBCE5C}.Release|x86.ActiveCfg = Release|Win32
+		{4B6A5522-0C57-41E0-A222-6AA813BBCE5C}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
