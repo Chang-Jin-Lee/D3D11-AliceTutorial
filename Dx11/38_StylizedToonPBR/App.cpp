@@ -46,6 +46,23 @@ namespace
         App::MaterialProfile profile;
     };
 
+    // SampleModel.glb was exported from an MToon authoring tool, and that exporter writes glTF
+    // alphaMode "MASK" with no alphaCutoff for every cut-out material - including the lace overlay
+    // that layers the skirt, whose base-colour alpha is a continuous lace weave rather than a
+    // binary stencil (56% of its visible texels are partially transparent). glTF MASK coverage at
+    // the spec default of 0.5 keeps only the dense floral motifs and punches out the netting, so
+    // the fabric shreds into blotches. The name is verified before the override applies, so a
+    // reordered or replaced material table falls back to the authored alpha mode.
+    struct BlendModeOverride
+    {
+        uint32_t materialIndex;
+        const char* materialName;
+    };
+
+    constexpr std::array<BlendModeOverride, 1> kSampleModelBlendModeOverrides = {{
+        { 4, "N00_002_01_Tops_01_CLOTH_02" },
+    }};
+
     constexpr std::array<MaterialOverride, 13> kSampleModelMaterialOverrides = {{
         { 0, MaterialProfile::Skin },
         { 1, MaterialProfile::Cloth },
@@ -90,6 +107,40 @@ namespace
             return false;
         }
         return true;
+    }
+
+    XMMATRIX BuildHeroWorldMatrix()
+    {
+        return XMMatrixScaling(kHeroScale, kHeroScale, kHeroScale)
+            * XMMatrixRotationY(kHeroYawRadians)
+            * XMMatrixTranslation(22.0f, 32.0f, 0.0f);
+    }
+
+    XMVECTOR BuildCameraEye()
+    {
+        return XMVectorSet(12.0f, 67.0f, -470.0f, 1.0f);
+    }
+
+    XMVECTOR BuildCameraTarget()
+    {
+        return XMVectorSet(18.0f, 63.0f, 0.0f, 1.0f);
+    }
+
+    float MeasureCameraDistance(const XMFLOAT3& modelCentroid, const XMMATRIX& worldMatrix, const XMVECTOR& cameraEye)
+    {
+        const XMVECTOR worldCentroid = XMVector3TransformCoord(XMLoadFloat3(&modelCentroid), worldMatrix);
+        return XMVectorGetX(XMVector3Length(XMVectorSubtract(worldCentroid, cameraEye)));
+    }
+
+    // ImGui::ColorEdit3 shows and edits colours in the displayable 0-255 range, so a tint stored
+    // above 1.0 reads back as an impossible channel value such as 268.
+    XMFLOAT3 ClampTintColor(const XMFLOAT3& tint)
+    {
+        return {
+            std::clamp(tint.x, 0.0f, 1.0f),
+            std::clamp(tint.y, 0.0f, 1.0f),
+            std::clamp(tint.z, 0.0f, 1.0f),
+        };
     }
 
     template <typename T>
@@ -165,6 +216,9 @@ void App::OnUninitialize()
     m_characterConstantBuffer.Reset();
     m_shadowSampler.Reset();
     m_linearSampler.Reset();
+    m_alphaBlendSilhouetteState.Reset();
+    m_alphaBlendState.Reset();
+    m_blendDepthStencilState.Reset();
     m_depthStencilState.Reset();
     m_shadowDoubleSidedRasterizerState.Reset();
     m_shadowRasterizerState.Reset();
@@ -449,6 +503,51 @@ bool App::CreatePipelineStates()
     if (FAILED(m_device->CreateDepthStencilState(&depthStencilDescription, m_depthStencilState.GetAddressOf())))
         return false;
 
+    // Transparent subsets still test depth against the opaque body, but they must not write it:
+    // the eye, eyelash, and brow planes layered over the face have to blend onto it instead of
+    // occluding one another, and a translucent garment must not hide what shows through it.
+    depthStencilDescription.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+    if (FAILED(m_device->CreateDepthStencilState(&depthStencilDescription, m_blendDepthStencilState.GetAddressOf())))
+        return false;
+
+    // Source-over blending on the HDR target only. Independent blending is required because the
+    // encoded normal/profile target must not be blended, so every slot needs a valid description.
+    D3D11_RENDER_TARGET_BLEND_DESC opaqueTargetBlend{};
+    opaqueTargetBlend.BlendEnable = FALSE;
+    opaqueTargetBlend.SrcBlend = D3D11_BLEND_ONE;
+    opaqueTargetBlend.DestBlend = D3D11_BLEND_ZERO;
+    opaqueTargetBlend.BlendOp = D3D11_BLEND_OP_ADD;
+    opaqueTargetBlend.SrcBlendAlpha = D3D11_BLEND_ONE;
+    opaqueTargetBlend.DestBlendAlpha = D3D11_BLEND_ZERO;
+    opaqueTargetBlend.BlendOpAlpha = D3D11_BLEND_OP_ADD;
+    opaqueTargetBlend.RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+
+    D3D11_RENDER_TARGET_BLEND_DESC hdrTargetBlend = opaqueTargetBlend;
+    hdrTargetBlend.BlendEnable = TRUE;
+    hdrTargetBlend.SrcBlend = D3D11_BLEND_SRC_ALPHA;
+    hdrTargetBlend.DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+    hdrTargetBlend.SrcBlendAlpha = D3D11_BLEND_ONE;
+    hdrTargetBlend.DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
+
+    D3D11_BLEND_DESC blendDescription{};
+    blendDescription.AlphaToCoverageEnable = FALSE;
+    blendDescription.IndependentBlendEnable = TRUE;
+    for (D3D11_RENDER_TARGET_BLEND_DESC& targetBlend : blendDescription.RenderTarget)
+        targetBlend = opaqueTargetBlend;
+    blendDescription.RenderTarget[0] = hdrTargetBlend;
+    // MRT1 feeds the outline pass. A blended plane covers far more of its quad than its visible
+    // coverage, so letting it overwrite the encoded normal/profile would stamp outline edges around
+    // every transparent quad; leaving the target untouched keeps edges on the opaque silhouette.
+    blendDescription.RenderTarget[1].RenderTargetWriteMask = 0;
+    if (FAILED(m_device->CreateBlendState(&blendDescription, m_alphaBlendState.GetAddressOf())))
+        return false;
+
+    // A translucent garment is the outermost surface of the character rather than a decal on top of
+    // one, so it does publish its encoded normal/profile and keeps its outline.
+    blendDescription.RenderTarget[1].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+    if (FAILED(m_device->CreateBlendState(&blendDescription, m_alphaBlendSilhouetteState.GetAddressOf())))
+        return false;
+
     D3D11_SAMPLER_DESC samplerDescription{};
     samplerDescription.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
     samplerDescription.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
@@ -676,6 +775,7 @@ bool App::LoadCharacter()
         return false;
 
     BuildMaterialProfiles();
+    BuildSubsetCentroids();
     SelectIdleAnimation();
     m_poseAnimator = std::make_unique<CharacterAnimator>();
     m_poseAnimator->Initialize(
@@ -719,13 +819,21 @@ void App::BuildMaterialProfiles()
 
         if (alphaMode == "MASK")
         {
-            renderInfo.alphaCutoff = 0.5f;
-            material->Get(AI_MATKEY_GLTF_ALPHACUTOFF, renderInfo.alphaCutoff);
+            // MASK is binary coverage by definition, so the same authored cutoff is right in both
+            // the colour pass and the depth-only shadow pass.
+            renderInfo.transparency = MaterialTransparency::Mask;
+            renderInfo.colorAlphaCutoff = 0.5f;
+            material->Get(AI_MATKEY_GLTF_ALPHACUTOFF, renderInfo.colorAlphaCutoff);
+            renderInfo.shadowAlphaCutoff = renderInfo.colorAlphaCutoff;
         }
         else if (alphaMode == "BLEND")
         {
-            // A depth-only shadow map needs binary coverage; use the same low-alpha coverage cutoff in both passes.
-            renderInfo.alphaCutoff = kBlendCoverageCutoff;
+            // The colour pass composites partial coverage, so it must not clip at all. Only the
+            // depth-only shadow map needs the low-alpha coverage cutoff.
+            renderInfo.transparency = MaterialTransparency::Blend;
+            renderInfo.colorAlphaCutoff = 0.0f;
+            renderInfo.shadowAlphaCutoff = kBlendCoverageCutoff;
+            renderInfo.writesSilhouette = false;
         }
 
         int doubleSided = 0;
@@ -738,6 +846,82 @@ void App::BuildMaterialProfiles()
         if (overrideEntry.materialIndex < m_materialRenderInfo.size())
             m_materialRenderInfo[overrideEntry.materialIndex].profile = overrideEntry.profile;
     }
+
+    for (const auto& overrideEntry : kSampleModelBlendModeOverrides)
+    {
+        if (overrideEntry.materialIndex >= m_materialRenderInfo.size())
+            continue;
+
+        MaterialRenderInfo& renderInfo = m_materialRenderInfo[overrideEntry.materialIndex];
+        if (renderInfo.transparency != MaterialTransparency::Mask)
+            continue;
+
+        aiString materialName;
+        aiMaterial* material = scene->mMaterials[overrideEntry.materialIndex];
+        if (material->Get(AI_MATKEY_NAME, materialName) != AI_SUCCESS
+            || std::string(materialName.C_Str()).find(overrideEntry.materialName) == std::string::npos)
+            continue;
+
+        // Only how the colour pass composites changes. The depth-only shadow keeps the authored MASK
+        // coverage so a lace garment still casts a half-dense shadow rather than a solid one, and
+        // writesSilhouette stays set because the garment is still the character's outer surface.
+        renderInfo.transparency = MaterialTransparency::Blend;
+        renderInfo.colorAlphaCutoff = 0.0f;
+    }
+}
+
+void App::BuildSubsetCentroids()
+{
+    m_subsetCentroids.clear();
+    const aiScene* scene = m_character ? m_character->GetScenePtr() : nullptr;
+    if (!scene)
+        return;
+
+    // FbxGeometryBuilder emits one subset per (node, mesh) pair in breadth-first node order, so the
+    // same walk recovers a model-space centroid for every subset and transparent draws can be depth
+    // sorted. The recovered material indices are verified against the real subsets below; on any
+    // mismatch the table stays empty and the transparent draws keep declaration order instead of
+    // being reordered against the wrong geometry.
+    std::vector<XMFLOAT3> centroids;
+    std::vector<uint32_t> materialIndices;
+    std::vector<const aiNode*> traversal{ scene->mRootNode };
+    for (size_t nodeIndex = 0; nodeIndex < traversal.size(); ++nodeIndex)
+    {
+        const aiNode* node = traversal[nodeIndex];
+        if (!node)
+            continue;
+
+        for (unsigned int meshSlot = 0; meshSlot < node->mNumMeshes; ++meshSlot)
+        {
+            const aiMesh* mesh = scene->mMeshes[node->mMeshes[meshSlot]];
+            XMVECTOR positionSum = XMVectorZero();
+            for (unsigned int vertexIndex = 0; vertexIndex < mesh->mNumVertices; ++vertexIndex)
+            {
+                const aiVector3D& position = mesh->mVertices[vertexIndex];
+                positionSum = XMVectorAdd(positionSum, XMVectorSet(position.x, position.y, position.z, 0.0f));
+            }
+
+            XMFLOAT3 centroid{};
+            const float vertexCount = std::max(1.0f, static_cast<float>(mesh->mNumVertices));
+            XMStoreFloat3(&centroid, XMVectorScale(positionSum, 1.0f / vertexCount));
+            centroids.push_back(centroid);
+            materialIndices.push_back(mesh->mMaterialIndex);
+        }
+
+        for (unsigned int childIndex = 0; childIndex < node->mNumChildren; ++childIndex)
+            traversal.push_back(node->mChildren[childIndex]);
+    }
+
+    const auto& subsets = m_character->GetSubsets();
+    if (centroids.size() != subsets.size())
+        return;
+    for (size_t subsetIndex = 0; subsetIndex < subsets.size(); ++subsetIndex)
+    {
+        if (materialIndices[subsetIndex] != subsets[subsetIndex].materialIndex)
+            return;
+    }
+
+    m_subsetCentroids = std::move(centroids);
 }
 
 App::MaterialProfile App::ClassifyMaterialName(const char* materialName) const
@@ -819,7 +1003,7 @@ void App::ApplyPreset(LightingPreset preset)
         m_hairHighlightStrength = 0.82f;
         m_rimStrength = 0.38f;
         m_shadowTint = { 0.24f, 0.34f, 0.58f };
-        m_keyTint = { 1.05f, 0.72f, 0.48f };
+        m_keyTint = { 1.0f, 0.72f, 0.48f };
         m_exposure = 1.08f;
     }
     else
@@ -834,6 +1018,10 @@ void App::ApplyPreset(LightingPreset preset)
         m_keyTint = { 1.0f, 0.84f, 0.70f };
         m_exposure = 0.98f;
     }
+
+    // Both tints are displayable colours, not HDR gains, so every preset lands inside 0-1.
+    m_shadowTint = ClampTintColor(m_shadowTint);
+    m_keyTint = ClampTintColor(m_keyTint);
 }
 
 void App::UnbindShaderResources()
@@ -970,7 +1158,9 @@ void App::DrawCharacter(RenderMode mode, float projectionAspect, bool shadowOnly
     const auto& metallicTextures = m_character->GetMetallicSRVs();
     const auto& roughnessTextures = m_character->GetRoughnessSRVs();
     const auto& normalTextures = m_character->GetNormalSRVs();
-    for (const auto& subset : m_character->GetSubsets())
+    const auto& subsets = m_character->GetSubsets();
+
+    auto drawSubset = [&](const FbxSubset& subset)
     {
         const uint32_t materialIndex = subset.materialIndex;
         const MaterialRenderInfo renderInfo = materialIndex < m_materialRenderInfo.size()
@@ -992,8 +1182,7 @@ void App::DrawCharacter(RenderMode mode, float projectionAspect, bool shadowOnly
 
         UpdateCharacterConstants(
             mode,
-            renderInfo.profile,
-            renderInfo.alphaCutoff,
+            renderInfo,
             projectionAspect,
             baseColor != nullptr,
             metallic != nullptr,
@@ -1022,24 +1211,89 @@ void App::DrawCharacter(RenderMode mode, float projectionAspect, bool shadowOnly
             m_context->PSSetShaderResources(0, static_cast<UINT>(std::size(textures)), textures);
         }
         m_context->DrawIndexed(subset.indexCount, subset.startIndex, 0);
+    };
+
+    if (shadowOnly)
+    {
+        // The shadow map records one binary silhouette, so every material belongs to the same pass
+        // and neither blending nor ordering can change a depth-only result.
+        for (const auto& subset : subsets)
+            drawSubset(subset);
+        return;
     }
+
+    // Opaque and MASK geometry resolves itself through depth writes, so it goes down first and
+    // establishes the depth buffer the transparent layers test against.
+    m_context->OMSetBlendState(nullptr, nullptr, 0xffffffffu);
+    m_context->OMSetDepthStencilState(m_depthStencilState.Get(), 0);
+    m_blendSubsetOrder.clear();
+    for (size_t subsetIndex = 0; subsetIndex < subsets.size(); ++subsetIndex)
+    {
+        const uint32_t materialIndex = subsets[subsetIndex].materialIndex;
+        const MaterialTransparency transparency = materialIndex < m_materialRenderInfo.size()
+            ? m_materialRenderInfo[materialIndex].transparency
+            : MaterialTransparency::Opaque;
+        if (transparency == MaterialTransparency::Blend)
+        {
+            m_blendSubsetOrder.push_back(static_cast<uint32_t>(subsetIndex));
+            continue;
+        }
+        drawSubset(subsets[subsetIndex]);
+    }
+
+    if (m_blendSubsetOrder.empty())
+        return;
+
+    // Source-over blending is order dependent, so the transparent subsets have to composite back to
+    // front. Without it the iris, eyelash, and brow planes stacked over the face blend in load order
+    // and the layers nearest the camera end up underneath the ones behind them.
+    if (m_subsetCentroids.size() == subsets.size())
+    {
+        const XMMATRIX worldMatrix = BuildHeroWorldMatrix();
+        const XMVECTOR cameraEye = BuildCameraEye();
+        std::stable_sort(
+            m_blendSubsetOrder.begin(),
+            m_blendSubsetOrder.end(),
+            [&](uint32_t leftSubset, uint32_t rightSubset)
+            {
+                return MeasureCameraDistance(m_subsetCentroids[leftSubset], worldMatrix, cameraEye)
+                     > MeasureCameraDistance(m_subsetCentroids[rightSubset], worldMatrix, cameraEye);
+            });
+    }
+
+    for (const uint32_t subsetIndex : m_blendSubsetOrder)
+    {
+        const uint32_t materialIndex = subsets[subsetIndex].materialIndex;
+        const bool writesSilhouette = materialIndex < m_materialRenderInfo.size()
+            && m_materialRenderInfo[materialIndex].writesSilhouette;
+        m_context->OMSetBlendState(
+            writesSilhouette ? m_alphaBlendSilhouetteState.Get() : m_alphaBlendState.Get(),
+            nullptr,
+            0xffffffffu);
+        m_context->OMSetDepthStencilState(
+            writesSilhouette ? m_depthStencilState.Get() : m_blendDepthStencilState.Get(),
+            0);
+        drawSubset(subsets[subsetIndex]);
+    }
+
+    // The outline and tone-map passes share this context, so hand it back opaque.
+    m_context->OMSetBlendState(nullptr, nullptr, 0xffffffffu);
+    m_context->OMSetDepthStencilState(m_depthStencilState.Get(), 0);
 }
 
 void App::UpdateCharacterConstants(
     RenderMode mode,
-    MaterialProfile profile,
-    float alphaCutoff,
+    const MaterialRenderInfo& renderInfo,
     float projectionAspect,
     bool hasBaseColor,
     bool hasMetallic,
     bool hasRoughness,
     bool hasNormal)
 {
-    const XMMATRIX worldMatrix = XMMatrixScaling(kHeroScale, kHeroScale, kHeroScale)
-        * XMMatrixRotationY(kHeroYawRadians)
-        * XMMatrixTranslation(22.0f, 32.0f, 0.0f);
-    const XMVECTOR cameraEye = XMVectorSet(12.0f, 67.0f, -470.0f, 1.0f);
-    const XMVECTOR cameraTarget = XMVectorSet(18.0f, 63.0f, 0.0f, 1.0f);
+    const MaterialProfile profile = renderInfo.profile;
+    const XMMATRIX worldMatrix = BuildHeroWorldMatrix();
+    const XMVECTOR cameraEye = BuildCameraEye();
+    const XMVECTOR cameraTarget = BuildCameraTarget();
     const XMMATRIX viewMatrix = XMMatrixLookAtLH(cameraEye, cameraTarget, XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f));
     const XMMATRIX projectionMatrix = XMMatrixPerspectiveFovLH(
         XMConvertToRadians(35.0f),
@@ -1086,7 +1340,7 @@ void App::UpdateCharacterConstants(
         m_rimStrength,
         mode == RenderMode::ToonPbr ? 1.0f : 0.0f,
     };
-    constants.materialParameters = { static_cast<float>(profile), roughness, metallic, alphaCutoff };
+    constants.materialParameters = { static_cast<float>(profile), roughness, metallic, renderInfo.shadowAlphaCutoff };
     constants.shadowParameters = { 1.0f / static_cast<float>(kShadowMapSize), m_shadowSoftness, 0.0012f, 0.0f };
     constants.textureParameters = {
         hasBaseColor ? 1.0f : 0.0f,
@@ -1094,6 +1348,7 @@ void App::UpdateCharacterConstants(
         hasRoughness ? 1.0f : 0.0f,
         hasNormal ? 1.0f : 0.0f,
     };
+    constants.alphaParameters = { renderInfo.colorAlphaCutoff, 0.0f, 0.0f, 0.0f };
     UpdateDynamicBuffer(m_context.Get(), m_characterConstantBuffer.Get(), constants);
 }
 
@@ -1233,8 +1488,10 @@ void App::RenderHud()
             m_highBandThreshold = std::max(thresholds[1], m_lowBandThreshold + 0.02f);
         }
         ImGui::DragFloat("Band softness", &m_bandSoftness, 0.002f, 0.005f, 0.20f, "%.3f");
-        ImGui::ColorEdit3("Shadow tint", &m_shadowTint.x);
-        ImGui::ColorEdit3("Key tint", &m_keyTint.x);
+        if (ImGui::ColorEdit3("Shadow tint", &m_shadowTint.x))
+            m_shadowTint = ClampTintColor(m_shadowTint);
+        if (ImGui::ColorEdit3("Key tint", &m_keyTint.x))
+            m_keyTint = ClampTintColor(m_keyTint);
         ImGui::SliderFloat("Hair highlight", &m_hairHighlightStrength, 0.0f, 1.5f, "%.2f");
         ImGui::SliderFloat("Rim strength", &m_rimStrength, 0.0f, 1.0f, "%.2f");
         ImGui::SliderFloat("Shadow softness", &m_shadowSoftness, 0.5f, 3.0f, "%.2f texels");

@@ -31,6 +31,7 @@ public:
     enum class RenderMode : uint32_t { Pbr, ToonPbr, Split };
     enum class LightingPreset : uint32_t { NeonContrast, IndustrialSoft };
     enum class MaterialProfile : uint32_t { Skin, Hair, Cloth };
+    enum class MaterialTransparency : uint32_t { Opaque, Mask, Blend };
 
     App();
 
@@ -60,6 +61,7 @@ private:
         DirectX::XMFLOAT4 materialParameters;
         DirectX::XMFLOAT4 shadowParameters;
         DirectX::XMFLOAT4 textureParameters;
+        DirectX::XMFLOAT4 alphaParameters;
     };
 
     struct alignas(16) PostConstants
@@ -74,7 +76,18 @@ private:
     struct MaterialRenderInfo
     {
         MaterialProfile profile = MaterialProfile::Cloth;
-        float alphaCutoff = 0.0f;
+        MaterialTransparency transparency = MaterialTransparency::Opaque;
+        // The colour pass must keep partial coverage so BLEND materials can composite, so only
+        // glTF MASK clips there and it clips at the authored cutoff. The depth-only shadow pass
+        // needs binary coverage instead, so it carries its own cutoff.
+        float colorAlphaCutoff = 0.0f;
+        float shadowAlphaCutoff = 0.0f;
+        // A glTF BLEND material in this asset is a coplanar decal stacked onto another surface -
+        // iris, highlight, eyelash, brow - so it must leave the depth and normal/profile targets the
+        // outline pass reads to the surface underneath it. A translucent garment promoted out of an
+        // exporter's MASK fallback is the outermost surface of the character instead, so it keeps
+        // writing both and keeps its own outline.
+        bool writesSilhouette = true;
         bool doubleSided = false;
     };
 
@@ -103,8 +116,7 @@ private:
     void DrawCharacter(RenderMode mode, float projectionAspect, bool shadowOnly);
     void UpdateCharacterConstants(
         RenderMode mode,
-        MaterialProfile profile,
-        float alphaCutoff,
+        const MaterialRenderInfo& renderInfo,
         float projectionAspect,
         bool hasBaseColor,
         bool hasMetallic,
@@ -112,6 +124,7 @@ private:
         bool hasNormal);
     void UpdatePostConstants();
     void BuildMaterialProfiles();
+    void BuildSubsetCentroids();
     MaterialProfile ClassifyMaterialName(const char* materialName) const;
     void SelectIdleAnimation();
     void UpdateAnimationPalette();
@@ -122,6 +135,8 @@ private:
     std::shared_ptr<FbxModel> m_character;
     std::unique_ptr<CharacterAnimator> m_poseAnimator;
     std::vector<MaterialRenderInfo> m_materialRenderInfo;
+    std::vector<DirectX::XMFLOAT3> m_subsetCentroids;
+    std::vector<uint32_t> m_blendSubsetOrder;
 
     float m_lowBandThreshold = 0.34f;
     float m_highBandThreshold = 0.69f;
@@ -133,7 +148,7 @@ private:
     int m_outlineQuality = 2;
     float m_exposure = 1.08f;
     DirectX::XMFLOAT3 m_shadowTint{ 0.24f, 0.34f, 0.58f };
-    DirectX::XMFLOAT3 m_keyTint{ 1.05f, 0.72f, 0.48f };
+    DirectX::XMFLOAT3 m_keyTint{ 1.0f, 0.72f, 0.48f };
     bool m_readmeCapture = false;
     bool m_assetManagerCreated = false;
     bool m_imguiInitialized = false;
@@ -185,6 +200,9 @@ private:
     Microsoft::WRL::ComPtr<ID3D11RasterizerState> m_shadowRasterizerState;
     Microsoft::WRL::ComPtr<ID3D11RasterizerState> m_shadowDoubleSidedRasterizerState;
     Microsoft::WRL::ComPtr<ID3D11DepthStencilState> m_depthStencilState;
+    Microsoft::WRL::ComPtr<ID3D11DepthStencilState> m_blendDepthStencilState;
+    Microsoft::WRL::ComPtr<ID3D11BlendState> m_alphaBlendState;
+    Microsoft::WRL::ComPtr<ID3D11BlendState> m_alphaBlendSilhouetteState;
     Microsoft::WRL::ComPtr<ID3D11SamplerState> m_linearSampler;
     Microsoft::WRL::ComPtr<ID3D11SamplerState> m_shadowSampler;
 

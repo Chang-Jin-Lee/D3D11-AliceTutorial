@@ -19,6 +19,9 @@ cbuffer cbCharacter : register(b0)
     float4 materialParameters;
     float4 shadowParameters;
     float4 textureParameters;
+    // x: colour-pass coverage cutoff. It is deliberately separate from materialParameters.w, which
+    // carries the binary coverage cutoff the depth-only shadow pass needs.
+    float4 alphaParameters;
 };
 
 cbuffer cbBones : register(b1)

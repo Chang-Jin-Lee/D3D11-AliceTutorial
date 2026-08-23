@@ -56,6 +56,8 @@ float SampleCharacterShadow(float4 shadowPosition)
 void PSShadow(ShadowVertexOutput input)
 {
     float4 sampledBase = baseColorTexture.Sample(linearSampler, input.uv) * input.vertexColor;
+    // A depth-only shadow map can only record binary coverage, so this pass keeps the low-alpha
+    // cutoff that turns a transparent material into a silhouette.
     float alphaCutoff = materialParameters.w;
     clip(sampledBase.a - alphaCutoff);
 }
@@ -64,8 +66,11 @@ CharacterPixelOutput PSMain(CharacterVertexOutput input)
 {
     CharacterPixelOutput output;
     float4 sampledBase = baseColorTexture.Sample(linearSampler, input.uv) * input.vertexColor;
-    float alphaCutoff = materialParameters.w;
-    clip(sampledBase.a - alphaCutoff);
+    // The colour pass must preserve partial coverage: only glTF MASK materials clip here, and they
+    // clip at their authored cutoff. OPAQUE and BLEND materials arrive with a zero cutoff so the
+    // alpha blend state composites their coverage instead of punching it out.
+    float coverageCutoff = alphaParameters.x;
+    clip(sampledBase.a - coverageCutoff);
 
     float3 geometricNormal = normalize(input.worldNormal);
     float3 sampledNormal = normalTexture.Sample(linearSampler, input.uv).xyz * 2.0f - 1.0f;
