@@ -78,3 +78,5 @@ Generated: 2026-08-19 21:38:10
 | 36 | 1 | 36_AdvancedAnim_Sound_Click.exe | docs/media/readme/36-advanced-anim-sound-click.gif | Success | 800x450 | 4136168 | GIF captured; source frames collected in 12983 ms |
 | 37 | 1 | 37_Blueprint.exe | docs/media/readme/37-Blueprint.png | Success | 1600x900 | 75980 | PNG captured |
 | 37 | 1 | 37_Blueprint.exe | docs/media/readme/37-Blueprint.gif | Success | 800x450 | 1397691 | GIF generated from the captured PNG with the reproducible presentation-pan stage |
+| 38 | 1 | 38_StylizedToonPBR.exe | docs/media/readme/38-StylizedToonPBR.png | Success | 1600x900 | 213536 | PNG captured |
+| 38 | 1 | 38_StylizedToonPBR.exe | docs/media/readme/38-StylizedToonPBR.gif | Success | 800x450 | 78568 | GIF captured; source frames collected in 3939 ms |
