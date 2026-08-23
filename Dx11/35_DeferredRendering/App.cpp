@@ -2018,12 +2018,16 @@ void App::PassUI() {
 	ImGui_ImplWin32_NewFrame();
 	ImGui::NewFrame();
 
-	RenderControlPannel();
-	RenderSceneCollection();
-	RenderModelPannel();
-	RenderConsolPannel();
-	m_->m_SystemInfo.RenderUI();
-	RenderSceneImageWindow();
+	if (!ReadmeCapture::IsEnabled()) {
+		RenderControlPannel();
+	}
+	if (!ReadmeCapture::IsEnabled()) {
+		RenderSceneCollection();
+		RenderModelPannel();
+		RenderConsolPannel();
+		m_->m_SystemInfo.RenderUI();
+		RenderSceneImageWindow();
+	}
 	RenderDeferredUI();
 	const unsigned int skyboxGeneration = SkyboxAssetManager::GetCompletedGeneration();
 	if (skyboxGeneration != m_->m_SkyboxAssetGeneration) {
@@ -4007,8 +4011,10 @@ void App::RenderDeferredUI() {
 
 	// G-Buffer Debug View 윈도우
 	ImVec2 gbufferPos(io.DisplaySize.x - 350.0f, 20.0f);
-	ImGui::SetNextWindowPos(gbufferPos, ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(330.0f, 600.0f), ImGuiCond_FirstUseEver);
+	const ImGuiCond readmeWindowCondition = ReadmeCapture::IsEnabled() ? ImGuiCond_Always : ImGuiCond_FirstUseEver;
+	const ImVec2 readmeWindowPos = ReadmeCapture::IsEnabled() ? ImVec2(10.0f, 20.0f) : gbufferPos;
+	ImGui::SetNextWindowPos(readmeWindowPos, readmeWindowCondition);
+	ImGui::SetNextWindowSize(ImVec2(330.0f, 600.0f), readmeWindowCondition);
 
 	if (ImGui::Begin("G-Buffer Debug View")) {
 		ImGui::Text("G-Buffer Contents");

@@ -62,6 +62,7 @@
 
 #include "App.h"
 #include "../Common/Helper.h"
+#include "../Common/ReadmeCapture.h"
 #include <d3dcompiler.h>
 #include <directxtk/WICTextureLoader.h>
 #include <thread>
@@ -188,9 +189,16 @@ void App::OnUninitialize()
 void App::OnUpdate(const float& dt)
 {
 	static float t0 = 0.0f, t1 = 0.0f, t2 = 0.0f;
-	t0 += 0.6f * dt;   // 부모(루트) Yaw 속도
+	if (!ReadmeCapture::IsEnabled())
+	{
+		t0 += 0.6f * dt;   // 부모(루트) Yaw 속도
+	}
 	t1 += 1.0f * dt;   // 두번째 메쉬(자식1) Yaw 속도 (루트와 다르게)
 	t2 += 1.2f * dt;   // 세번째 메쉬(자식2) 공전 속도
+	if (ReadmeCapture::IsEnabled())
+	{
+		t0 = XMConvertToRadians(-25.0f);
+	}
 
 	// 로컬 변환 정의 (간단 Scene Graph)
 	XMMATRIX local0 = XMMatrixRotationY(t0) * XMMatrixTranslation(m_RootPos.x, m_RootPos.y, m_RootPos.z); // 루트
@@ -287,6 +295,8 @@ void App::OnRender()
 	ImGui_ImplWin32_NewFrame();
 	ImGui::NewFrame();
 
+	if (!ReadmeCapture::IsEnabled())
+	{
 	if (ImGui::Begin("Controls"))
 	{
 		ImGui::Text("Mesh Transforms");
@@ -331,6 +341,7 @@ void App::OnRender()
 			}
 		}
 		ImGui::End();
+	}
 	}
 
 	ImGui::Render();

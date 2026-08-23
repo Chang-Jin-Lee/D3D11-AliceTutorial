@@ -691,6 +691,7 @@ bool App::OnInitialize()
 			player.pos = XMFLOAT3(0.0f, 0.0f, 0.0f);
 			player.rotDeg = XMFLOAT3(0.0f, -25.0f, 0.0f);
 			player.autoRotate = false;
+			player.scale = XMFLOAT3(100.0f, 100.0f, 100.0f);
 		}
 		if (m_->m_Models.size() > 1)
 		{
@@ -1345,11 +1346,14 @@ void App::OnRender()
 	ImGui::NewFrame();
 
 	RenderControlPannel();
-	RenderSceneCollection();
-	RenderModelPannel();
-	RenderConsolPannel();
-	m_->m_SystemInfo.RenderUI();
-	RenderSceneImageWindow();
+	if (!ReadmeCapture::IsEnabled())
+	{
+		RenderSceneCollection();
+		RenderModelPannel();
+		RenderConsolPannel();
+		m_->m_SystemInfo.RenderUI();
+		RenderSceneImageWindow();
+	}
 	const unsigned int skyboxGeneration = SkyboxAssetManager::GetCompletedGeneration();
 	if (skyboxGeneration != m_->m_SkyboxAssetGeneration)
 	{

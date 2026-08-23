@@ -1563,11 +1563,14 @@ void App::OnRender()
 	ImGui::NewFrame();
 
 	RenderControlPannel();
-	RenderSceneCollection();
-	RenderModelPannel();
-	RenderConsolPannel();
-	m_->m_SystemInfo.RenderUI();
-	RenderSceneImageWindow();
+	if (!ReadmeCapture::IsEnabled())
+	{
+		RenderSceneCollection();
+		RenderModelPannel();
+		RenderConsolPannel();
+		m_->m_SystemInfo.RenderUI();
+		RenderSceneImageWindow();
+	}
 	const unsigned int skyboxGeneration = SkyboxAssetManager::GetCompletedGeneration();
 	if (skyboxGeneration != m_->m_SkyboxAssetGeneration)
 	{

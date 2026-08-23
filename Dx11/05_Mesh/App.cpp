@@ -61,6 +61,7 @@
 
 #include "App.h"
 #include "../Common/Helper.h"
+#include "../Common/ReadmeCapture.h"
 #include <d3dcompiler.h>
 #include <directxtk/WICTextureLoader.h>
 #include <thread>
@@ -83,6 +84,14 @@ bool App::OnInitialize()
 	if(!InitD3D()) return false;
 	if (!InitEffect()) return false;
 	if(!InitScene()) return false;
+
+	if (ReadmeCapture::IsEnabled())
+	{
+		t0 = XMConvertToRadians(-25.0f);
+		m_RootPos = XMFLOAT3(0.0f, 0.0f, 0.0f);
+		m_CameraPos = XMFLOAT3(0.0f, 1.0f, -4.0f);
+		m_CameraFovDeg = 90.0f;
+	}
 
 	// ImGui 초기화
 	IMGUI_CHECKVERSION();
@@ -183,7 +192,10 @@ void App::OnUninitialize()
 */
 void App::OnUpdate(const float& dt)
 {
-	t0 += dt;
+	if (!ReadmeCapture::IsEnabled())
+	{
+		t0 += dt;
+	}
 	// 단일 모델 월드 변환
 	XMMATRIX world0 = XMMatrixRotationY(t0) * XMMatrixTranslation(m_RootPos.x, m_RootPos.y, m_RootPos.z);
 
@@ -290,6 +302,8 @@ void App::OnRender()
 	ImGui_ImplWin32_NewFrame();
 	ImGui::NewFrame();
 
+	if (!ReadmeCapture::IsEnabled())
+	{
 	if (ImGui::Begin("Controls"))
 	{
 		ImGui::Text("Mesh Transforms");
@@ -334,6 +348,7 @@ void App::OnRender()
 			}
 		}
 		ImGui::End();
+	}
 	}
 
 	ImGui::Render();

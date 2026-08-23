@@ -1812,11 +1812,14 @@ void App::OnRender()
 	ImGui::NewFrame();
 
 	RenderControlPannel();
-	RenderSceneCollection();
-	RenderModelPannel();
-	RenderConsolPannel();
-	m_->m_SystemInfo.RenderUI();
-	RenderSceneImageWindow();
+	if (!ReadmeCapture::IsEnabled())
+	{
+		RenderSceneCollection();
+		RenderModelPannel();
+		RenderConsolPannel();
+		m_->m_SystemInfo.RenderUI();
+		RenderSceneImageWindow();
+	}
 	//RenderWidgetUI();
 
 	ImGui::Render();

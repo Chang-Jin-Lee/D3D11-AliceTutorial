@@ -73,7 +73,57 @@ function Assert-YawThenRotationDisabled(
     Assert-True ($Block -match $orderedPattern) "$Project $Regression regression: fixed capture yaw must be followed by automatic-rotation disable"
 }
 
+function Assert-CaptureOnlyUiComposition(
+    [string]$Source,
+    [string]$Project,
+    [string[]]$HiddenCalls,
+    [string[]]$VisibleCalls
+) {
+    $guards = [regex]::Matches($Source, 'if\s*\(\s*!\s*ReadmeCapture::IsEnabled\(\)\s*\)')
+    Assert-True ($guards.Count -gt 0) "$Project capture-only UI guard missing"
+    $normalUi = ($guards | ForEach-Object {
+        Get-BracedBlock $Source $_.Index "$Project normal-mode UI composition"
+    }) -join "`n"
+
+    foreach ($call in $HiddenCalls) {
+        Assert-True ($normalUi -match ([regex]::Escape($call) + '\s*;')) `
+            "$Project capture UI regression: $call must be hidden during README capture"
+    }
+    foreach ($call in $VisibleCalls) {
+        Assert-True ($normalUi -notmatch ([regex]::Escape($call) + '\s*;')) `
+            "$Project tutorial evidence regression: $call must remain visible during README capture"
+        Assert-True ($Source -match ([regex]::Escape($call) + '\s*;')) `
+            "$Project tutorial evidence regression: $call missing"
+    }
+}
+
+function Assert-LegacyCaptureUiHidden([string]$Source, [string]$Project, [string[]]$WindowTitles) {
+    $guards = [regex]::Matches($Source, 'if\s*\(\s*!\s*ReadmeCapture::IsEnabled\(\)\s*\)')
+    $uiBlock = $null
+    foreach ($guard in $guards) {
+        $candidate = Get-BracedBlock $Source $guard.Index "$Project capture-only UI guard"
+        if ($candidate -match 'ImGui::Begin\(\s*"Controls"') {
+            $uiBlock = $candidate
+            break
+        }
+    }
+    Assert-True ($null -ne $uiBlock) "$Project capture-only legacy UI guard missing"
+    foreach ($title in $WindowTitles) {
+        Assert-True ($uiBlock -match ('ImGui::Begin\(\s*"' + [regex]::Escape($title) + '"')) `
+            "$Project capture UI regression: $title must stay hidden from the primary subject"
+    }
+}
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+$manifestPath = Join-Path $repoRoot 'tools\readme_media_manifest.json'
+$manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+$legacyProjects = @(
+    '05_Mesh',
+    '06_pmx',
+    '07_pmxTexture',
+    '15_pmxWithPhong',
+    '16_NormalMapping'
+)
 $singleProjects = @(
     '17_fbx_pmx_obj_WithPhong',
     '18_fbx_Animation'
@@ -103,6 +153,88 @@ $projects = @($singleProjects) + @($perModelProjects) + @($crowdProjects) + @($h
 
 Assert-True ($projects.Count -eq 15) 'front-facing capture contract must contain exactly 15 projects'
 Assert-True (($projects | Select-Object -Unique).Count -eq 15) 'front-facing capture contract project list contains duplicates'
+
+foreach ($project in $legacyProjects) {
+    $projectNumber = [int]$project.Substring(0, 2)
+    $manifestEntry = @($manifest.projects | Where-Object { [int]$_.number -eq $projectNumber })
+    Assert-True ($manifestEntry.Count -eq 1) "$project manifest entry missing or duplicated"
+    Assert-True ($manifestEntry[0].readmeCaptureMode -eq $true) `
+        "$project manifest must enable readmeCaptureMode"
+
+    $sourcePath = Join-Path $repoRoot "Dx11\$project\App.cpp"
+    Assert-True (Test-Path -LiteralPath $sourcePath -PathType Leaf) "$project App.cpp missing"
+    $source = [IO.File]::ReadAllText($sourcePath)
+    $contract = Get-CaptureContract $source $project
+}
+
+foreach ($project in @('06_pmx', '07_pmxTexture')) {
+    $source = [IO.File]::ReadAllText((Join-Path $repoRoot "Dx11\$project\App.cpp"))
+    $contract = Get-CaptureContract $source $project
+    Assert-True ($contract.Block -match 't0\s*=\s*XMConvertToRadians\(\s*-25\.0f\s*\)\s*;') `
+        "$project capture branch must set a deterministic front three-quarter yaw"
+    Assert-True ($source -match '(?s)if\s*\(\s*!\s*ReadmeCapture::IsEnabled\(\)\s*\).*?t0\s*\+=') `
+        "$project capture mode must freeze automatic model rotation"
+    Assert-True ($contract.NormalSource -match 't0\s*\+=\s*0\.6f\s*\*\s*dt\s*;') `
+        "$project normal-mode automatic rotation changed"
+    Assert-True ($contract.Block -notmatch 'm_CameraPos|m_CameraFovDeg') `
+        "$project capture yaw fix must preserve the existing model auto-fit camera"
+    Assert-True ($contract.NormalSource -match 'm_CameraPos\s*=\s*XMFLOAT3\(\s*0\.0f\s*,\s*targetRadius\s*\*\s*0\.5f\s*,\s*-targetRadius\s*\*\s*2\.0f\s*\)') `
+        "$project model auto-fit camera contract changed"
+}
+
+$project05 = [IO.File]::ReadAllText((Join-Path $repoRoot 'Dx11\05_Mesh\App.cpp'))
+$project05Capture = Get-CaptureContract $project05 '05_Mesh'
+Assert-True ($project05Capture.Block -match 'm_CameraPos\s*=\s*XMFLOAT3\(\s*0\.0f\s*,\s*1\.0f\s*,\s*-4\.0f\s*\)') `
+    '05_Mesh capture must frame the haniwa readably'
+
+foreach ($project in @('15_pmxWithPhong', '16_NormalMapping')) {
+    $source = [IO.File]::ReadAllText((Join-Path $repoRoot "Dx11\$project\App.cpp"))
+    $capture = (Get-CaptureContract $source $project).Block
+    Assert-True ($capture -match 'SetPosition\s*\(') `
+        "$project capture must set full head-and-torso camera position"
+    Assert-True ($capture -match 'm_cubeRotation\s*=\s*XMFLOAT3') `
+        "$project capture must set a deterministic front three-quarter model yaw"
+}
+
+$project15 = [IO.File]::ReadAllText((Join-Path $repoRoot 'Dx11\15_pmxWithPhong\App.cpp'))
+$project15Capture = Get-CaptureContract $project15 '15_pmxWithPhong'
+Assert-True ($project15Capture.Block -match 'SetPosition\s*\(\s*XMFLOAT3\(\s*0\.0f\s*,\s*0\.0f\s*,\s*-7\.0f\s*\)\s*\)') `
+    '15_pmxWithPhong capture must use intermediate full-character framing'
+
+foreach ($project in @('05_Mesh', '06_pmx')) {
+    $source = [IO.File]::ReadAllText((Join-Path $repoRoot "Dx11\$project\App.cpp"))
+    Assert-LegacyCaptureUiHidden $source $project @('Controls', 'System Info')
+}
+$project07 = [IO.File]::ReadAllText((Join-Path $repoRoot 'Dx11\07_pmxTexture\App.cpp'))
+Assert-LegacyCaptureUiHidden $project07 '07_pmxTexture' @('Controls', 'System Info', 'Model Info')
+
+$uiContracts = @(
+    [pscustomobject]@{ Project = '26_ShadowMap_PCF'; Hidden = @('RenderSceneCollection()', 'RenderModelPannel()', 'RenderConsolPannel()', 'm_->m_SystemInfo.RenderUI()', 'RenderWidgetUI()'); Visible = @('RenderControlPannel()') },
+    [pscustomobject]@{ Project = '27_DebugDraw'; Hidden = @('RenderSceneCollection()', 'RenderModelPannel()', 'RenderConsolPannel()', 'm_->m_SystemInfo.RenderUI()', 'RenderWidgetUI()'); Visible = @('RenderControlPannel()') },
+    [pscustomobject]@{ Project = '29_MousePicking'; Hidden = @('RenderControlPannel()', 'RenderModelPannel()', 'RenderConsolPannel()', 'm_->m_SystemInfo.RenderUI()', 'RenderSceneImageWindow()'); Visible = @('RenderSceneCollection()') },
+    [pscustomobject]@{ Project = '30_PBR_BRDF'; Hidden = @('RenderSceneCollection()', 'RenderModelPannel()', 'RenderConsolPannel()', 'm_->m_SystemInfo.RenderUI()', 'RenderSceneImageWindow()'); Visible = @('RenderControlPannel()') },
+    [pscustomobject]@{ Project = '31_IBL'; Hidden = @('RenderSceneCollection()', 'RenderModelPannel()', 'RenderConsolPannel()', 'm_->m_SystemInfo.RenderUI()', 'RenderSceneImageWindow()'); Visible = @('RenderControlPannel()') },
+    [pscustomobject]@{ Project = '32_Sound_FMOD'; Hidden = @('RenderSceneCollection()', 'RenderModelPannel()', 'RenderConsolPannel()', 'm_->m_SystemInfo.RenderUI()', 'RenderSceneImageWindow()'); Visible = @('RenderControlPannel()') },
+    [pscustomobject]@{ Project = '34_ToneMapping'; Hidden = @('RenderSceneCollection()', 'RenderModelPannel()', 'RenderConsolPannel()', 'm_->m_SystemInfo.RenderUI()', 'RenderSceneImageWindow()'); Visible = @('RenderControlPannel()') },
+    [pscustomobject]@{ Project = '35_DeferredRendering'; Hidden = @('RenderControlPannel()', 'RenderSceneCollection()', 'RenderModelPannel()', 'RenderConsolPannel()', 'm_->m_SystemInfo.RenderUI()', 'RenderSceneImageWindow()'); Visible = @('RenderDeferredUI()') }
+)
+foreach ($uiContract in $uiContracts) {
+    $source = [IO.File]::ReadAllText((Join-Path $repoRoot "Dx11\$($uiContract.Project)\App.cpp"))
+    Assert-CaptureOnlyUiComposition $source $uiContract.Project $uiContract.Hidden $uiContract.Visible
+}
+
+foreach ($project in @('29_MousePicking', '35_DeferredRendering')) {
+    $source = [IO.File]::ReadAllText((Join-Path $repoRoot "Dx11\$project\App.cpp"))
+    Assert-True ($source -match 'ReadmeCapture::IsEnabled\(\)\s*\?\s*ImGuiCond_Always\s*:\s*ImGuiCond_FirstUseEver') `
+        "$project retained evidence window must use deterministic capture-only placement"
+    Assert-True ($source -match 'ReadmeCapture::IsEnabled\(\)\s*\?\s*ImVec2\(\s*10\.0f\s*,\s*20\.0f\s*\)') `
+        "$project retained evidence window must stay visible at the capture left edge"
+}
+
+$project31Source = [IO.File]::ReadAllText((Join-Path $repoRoot 'Dx11\31_IBL\App.cpp'))
+$project31Capture = Get-CaptureContract $project31Source '31_IBL'
+Assert-True ($project31Capture.Block -match 'player\.scale\s*=\s*XMFLOAT3\(\s*100\.0f\s*,\s*100\.0f\s*,\s*100\.0f\s*\)') `
+    '31_IBL capture must restore a readable player scale alongside the PBR spheres'
 
 foreach ($project in $projects) {
     $sourcePath = Join-Path $repoRoot "Dx11\$project\App.cpp"

@@ -18,6 +18,7 @@
 #include "../Common/StaticMesh.h"
 #include "../Common/LineRenderer.h"
 #include "../Common/Skybox.h"
+#include "../Common/ReadmeCapture.h"
 
 #pragma comment (lib, "d3d11.lib")
 #pragma comment(lib,"d3dcompiler.lib")
@@ -105,6 +106,13 @@ bool App::OnInitialize()
 	if(!InitSkyBoxEffect()) return false;
 
 	if(!InitScene()) return false;
+	if (ReadmeCapture::IsEnabled())
+	{
+		m_cubeRotation = XMFLOAT3(0.0f, -25.0f, 0.0f);
+		m_RotateCube = false;
+		m_Camera.SetPosition(XMFLOAT3(0.0f, 0.0f, -7.0f));
+		m_Camera.SetRotation(XMFLOAT3(0.0f, 0.0f, 0.0f));
+	}
 	if(!InitImGui()) return false;
 
 	if (!InitTexture()) return false;

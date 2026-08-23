@@ -1740,12 +1740,18 @@ void App::OnRender()
 	ImGui_ImplWin32_NewFrame();
 	ImGui::NewFrame();
 
-	RenderControlPannel();
+	if (!ReadmeCapture::IsEnabled())
+	{
+		RenderControlPannel();
+	}
 	RenderSceneCollection();
-	RenderModelPannel();
-	RenderConsolPannel();
-	m_->m_SystemInfo.RenderUI();
-	RenderSceneImageWindow();
+	if (!ReadmeCapture::IsEnabled())
+	{
+		RenderModelPannel();
+		RenderConsolPannel();
+		m_->m_SystemInfo.RenderUI();
+		RenderSceneImageWindow();
+	}
 	//RenderWidgetUI();
 
 	ImGui::Render();
@@ -2861,8 +2867,10 @@ void App::RenderSceneCollection()
 {
 	auto& io = ImGui::GetIO();
 	// Scene Collection 블렌더의 Hierarchy창
-	ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - 330, 20), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(320, 360), ImGuiCond_FirstUseEver);
+	const ImGuiCond readmeWindowCondition = ReadmeCapture::IsEnabled() ? ImGuiCond_Always : ImGuiCond_FirstUseEver;
+	const ImVec2 readmeWindowPos = ReadmeCapture::IsEnabled() ? ImVec2(10.0f, 20.0f) : ImVec2(io.DisplaySize.x - 330, 20);
+	ImGui::SetNextWindowPos(readmeWindowPos, readmeWindowCondition);
+	ImGui::SetNextWindowSize(ImVec2(320, 360), readmeWindowCondition);
 	if (ImGui::Begin("Scene Collection"))
 	{
 		if (ImGui::Button("Browse Model..."))

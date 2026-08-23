@@ -1379,12 +1379,14 @@ void App::OnRender()
 	ImGui::NewFrame();
 
 	RenderControlPannel();
-	RenderSceneCollection();
-	RenderModelPannel();
-	RenderConsolPannel();
-	m_->m_SystemInfo.RenderUI();
-
-	RenderWidgetUI();
+	if (!ReadmeCapture::IsEnabled())
+	{
+		RenderSceneCollection();
+		RenderModelPannel();
+		RenderConsolPannel();
+		m_->m_SystemInfo.RenderUI();
+		RenderWidgetUI();
+	}
 
 	ImGui::Render();
 
