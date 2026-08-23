@@ -116,14 +116,22 @@ namespace
             * XMMatrixTranslation(22.0f, 32.0f, 0.0f);
     }
 
+    // Framing derived by inverting the frustum, not tuned by eye. Measured on the previous capture
+    // the character stood 390 of 900 rows, so at 35 degrees vertical and 470 units it is 128 units
+    // tall. Placing it at 65 percent of frame height needs a 197-unit visible height, so the camera
+    // sits 313 units out. The HUD owns the left 49 percent of the capture, and the old target put
+    // the subject behind it; looking at x -43 instead moves the subject to 69 percent of frame
+    // width, clear of the panel, at the cost of a 13-degree off-axis view that reads as a natural
+    // three-quarter framing. The eye keeps its original 6-unit lateral and 4-unit vertical offset
+    // from the target so the slight yaw and downward tilt are unchanged.
     XMVECTOR BuildCameraEye()
     {
-        return XMVectorSet(12.0f, 67.0f, -470.0f, 1.0f);
+        return XMVectorSet(-49.0f, 100.0f, -313.0f, 1.0f);
     }
 
     XMVECTOR BuildCameraTarget()
     {
-        return XMVectorSet(18.0f, 63.0f, 0.0f, 1.0f);
+        return XMVectorSet(-43.0f, 96.0f, 0.0f, 1.0f);
     }
 
     float MeasureCameraDistance(const XMFLOAT3& modelCentroid, const XMMATRIX& worldMatrix, const XMVECTOR& cameraEye)
