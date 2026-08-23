@@ -102,7 +102,10 @@ CharacterPixelOutput PSMain(CharacterVertexOutput input)
     float bandSoftness = diffuseBandThresholds.z;
     float lowerBand = smoothstep(diffuseBandThresholds.x - bandSoftness, diffuseBandThresholds.x + bandSoftness, nDotL * visibility);
     float upperBand = smoothstep(diffuseBandThresholds.y - bandSoftness, diffuseBandThresholds.y + bandSoftness, nDotL * visibility);
-    float toonDiffuse = 0.22f + lowerBand * 0.34f + upperBand * 0.44f;
+    // Floor 0.10 rather than 0.22: the old floor kept the darkest band at 64 percent of the
+    // lit band, which ACES then compressed into a 1.3:1 display ratio and read as flat and washed
+    // out. The three weights still sum to 1.0 so a fully lit surface is unchanged.
+    float toonDiffuse = 0.14f + lowerBand * 0.375f + upperBand * 0.485f;
     float3 shadowTintColor = coolShadowTint.rgb;
     float3 keyTintColor = warmKeyTint.rgb;
     float3 bandTint = lerp(shadowTintColor, keyTintColor, toonDiffuse);
@@ -113,7 +116,7 @@ CharacterPixelOutput PSMain(CharacterVertexOutput input)
     float profileSpecularScale = materialProfile < 0.5f ? 0.55f : (materialProfile < 1.5f ? 1.35f : 0.35f);
 
     float3 pbrColor = (diffuse + specular * profileSpecularScale) * keyTintColor * nDotL * visibility + sampledBase.rgb * 0.08f;
-    float3 toonColor = sampledBase.rgb * bandTint * (0.48f + toonDiffuse * 0.72f)
+    float3 toonColor = sampledBase.rgb * bandTint * (0.22f + toonDiffuse * 0.98f)
                      + specular * profileSpecularScale * (0.3f + upperBand)
                      + keyTintColor * (hairBand * 0.65f + rimTerm * 0.34f);
     float useToon = step(0.5f, toonParameters.w);

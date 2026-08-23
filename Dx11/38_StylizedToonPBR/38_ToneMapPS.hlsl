@@ -40,7 +40,10 @@ float4 PSMain(float4 position : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET
     if (lightingPreset == NeonContrast)
     {
         float luminance = dot(mapped, float3(0.2126f, 0.7152f, 0.0722f));
-        mapped = lerp(luminance.xxx, mapped, 1.12f);
+        // The white key and neutral shadow leave the albedo as the only source of colour, and this
+        // model is a white dress on pale skin, so measured saturation sat at 0.13 and read grey.
+        // Widening the boost lets the character own colours - iris, skin, shoe trim - carry.
+        mapped = lerp(luminance.xxx, mapped, 1.28f);
         mapped = pow(saturate(mapped), 0.94f.xxx);
     }
     else if (lightingPreset == IndustrialSoft)

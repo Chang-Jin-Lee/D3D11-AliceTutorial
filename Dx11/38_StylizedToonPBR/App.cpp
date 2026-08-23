@@ -1002,14 +1002,14 @@ void App::ApplyPreset(LightingPreset preset)
         m_shadowSoftness = 1.4f;
         m_hairHighlightStrength = 0.82f;
         m_rimStrength = 0.38f;
-        // The band tint cross-fades shadow to key and then multiplies the albedo, so a saturated
-        // cool shadow paints every under-lit texel blue, and against a saturated warm key it
-        // starves green into a magenta cast. The warm key is what cancels the blue, so the shadow
-        // tint carries the desaturation instead: measured on a rendered frame this takes
-        // blue-dominant pixels from 40 percent to about 12 and removes the magenta signature.
-        m_shadowTint = { 0.46f, 0.53f, 0.58f };
-        m_keyTint = { 1.0f, 0.84f, 0.56f };
-        m_exposure = 1.08f;
+        // The band tint cross-fades shadow to key and then multiplies the albedo, so any saturated
+        // tint here stains the whole character rather than just its lighting. Earlier values paired
+        // a cool shadow with a warm key, which painted under-lit texels blue and starved green into
+        // a magenta cast. A white key with a neutral shadow makes this a pure value ramp, so the
+        // albedo is what carries the colour and the shading only carries brightness.
+        m_shadowTint = { 0.46f, 0.46f, 0.46f };
+        m_keyTint = { 1.0f, 1.0f, 1.0f };
+        m_exposure = 0.92f;
     }
     else
     {
@@ -1086,7 +1086,7 @@ void App::RenderCharacterPass()
         renderTargets[renderTargetCount++] = m_normalProfileRenderTargetView.Get();
     m_context->OMSetRenderTargets(renderTargetCount, renderTargets, m_depthStencilView.Get());
 
-    constexpr float hdrClear[] = { 0.018f, 0.026f, 0.052f, 1.0f };
+    constexpr float hdrClear[] = { 0.0f, 0.0f, 0.0f, 1.0f };
     constexpr float normalClear[] = { 0.5f, 0.5f, 1.0f, 0.0f };
     m_context->ClearRenderTargetView(m_hdrRenderTargetView.Get(), hdrClear);
     if (m_normalProfileRenderTargetView)
@@ -1306,7 +1306,11 @@ void App::UpdateCharacterConstants(
         0.5f,
         700.0f);
 
-    const XMVECTOR lightVector = XMVector3Normalize(XMVectorSet(-0.42f, 0.78f, -0.46f, 0.0f));
+    // Aimed from above-front-left rather than 78 percent straight down. The old vector put camera-
+    // facing surfaces at nDotL 0.46, barely over the 0.34 low-band edge, so arms and hands fell into
+    // the darkest band and read almost black. At 0.77 the front sits in the top band and the cel
+    // break lands on the curvature instead of across the whole limb.
+    const XMVECTOR lightVector = XMVector3Normalize(XMVectorSet(-0.40f, 0.50f, -0.78f, 0.0f));
     const XMVECTOR shadowTarget = XMVectorSet(18.0f, 62.0f, 0.0f, 1.0f);
     const XMVECTOR lightPosition = shadowTarget + lightVector * 260.0f;
     const XMMATRIX lightView = XMMatrixLookAtLH(lightPosition, shadowTarget, XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f));
@@ -1374,7 +1378,7 @@ void App::UpdatePostConstants()
         m_outlineAvailable ? 0.9f : 0.0f,
         0.0f,
     };
-    constants.backgroundColor = { 0.018f, 0.026f, 0.052f, 1.0f };
+    constants.backgroundColor = { 0.0f, 0.0f, 0.0f, 1.0f };
     UpdateDynamicBuffer(m_context.Get(), m_postConstantBuffer.Get(), constants);
 }
 
@@ -1414,7 +1418,7 @@ void App::RenderToneMapPass()
     UnbindShaderResources();
     ID3D11RenderTargetView* backBufferTarget = m_renderTargetView.Get();
     m_context->OMSetRenderTargets(1, &backBufferTarget, nullptr);
-    constexpr float clearColor[] = { 0.012f, 0.018f, 0.035f, 1.0f };
+    constexpr float clearColor[] = { 0.0f, 0.0f, 0.0f, 1.0f };
     m_context->ClearRenderTargetView(m_renderTargetView.Get(), clearColor);
     SetFullScreenViewportAndScissor();
     UpdatePostConstants();
