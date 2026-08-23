@@ -114,6 +114,22 @@ function Assert-LegacyCaptureUiHidden([string]$Source, [string]$Project, [string
     }
 }
 
+function Assert-LegacyCaptureEvidenceUi([string]$Source, [string]$Project) {
+    $guards = [regex]::Matches($Source, 'if\s*\(\s*!\s*ReadmeCapture::IsEnabled\(\)')
+    Assert-True ($guards.Count -ge 2) "$Project capture-only UI guards missing"
+    $hiddenUi = ($guards | ForEach-Object {
+        Get-BracedBlock $Source $_.Index "$Project capture-only UI guard"
+    }) -join "`n"
+
+    Assert-True ($hiddenUi -match 'm_SystemInfo\.RenderUI\(\)\s*;') `
+        "$Project capture UI regression: System Info must stay hidden from the primary subject"
+    Assert-True ($hiddenUi -match 'ImGui::Begin\(\s*"Skybox Face"') `
+        "$Project capture UI regression: Skybox Face must stay hidden from the primary subject"
+    Assert-True ($hiddenUi -notmatch 'ImGui::Begin\(\s*"Controls"') `
+        "$Project tutorial evidence regression: Controls must remain visible during README capture"
+    Assert-True ($Source -match 'ImGui::Begin\(\s*"Controls"') `
+        "$Project tutorial evidence regression: Controls window missing"
+}
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $manifestPath = Join-Path $repoRoot 'tools\readme_media_manifest.json'
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
@@ -196,10 +212,35 @@ foreach ($project in @('15_pmxWithPhong', '16_NormalMapping')) {
         "$project capture must set a deterministic front three-quarter model yaw"
 }
 
-$project15 = [IO.File]::ReadAllText((Join-Path $repoRoot 'Dx11\15_pmxWithPhong\App.cpp'))
-$project15Capture = Get-CaptureContract $project15 '15_pmxWithPhong'
-Assert-True ($project15Capture.Block -match 'SetPosition\s*\(\s*XMFLOAT3\(\s*0\.0f\s*,\s*0\.0f\s*,\s*-7\.0f\s*\)\s*\)') `
-    '15_pmxWithPhong capture must use intermediate full-character framing'
+# Projects 15 and 16 share a scene whose reflective mirror cube sits 2.5 units to the
+# right of the subject and resolves to a large amorphous dark shape. The approved
+# stills push it out of frame with a capture-only camera/subject offset plus a narrower
+# field of view, so lock those exact values in.
+$legacySubjectFraming = @(
+    [pscustomobject]@{
+        Project = '15_pmxWithPhong'
+        CameraPosition = '-3\.35f\s*,\s*1\.55f\s*,\s*-4\.5f'
+        SubjectPosition = '-2\.1f\s*,\s*0\.0f\s*,\s*0\.0f'
+        Framing = 'full-character framing that keeps the face, hands and feet in frame'
+    },
+    [pscustomobject]@{
+        Project = '16_NormalMapping'
+        CameraPosition = '-5\.5f\s*,\s*0\.0f\s*,\s*-11\.5f'
+        SubjectPosition = '-2\.8f\s*,\s*0\.0f\s*,\s*0\.0f'
+        Framing = 'framing that keeps the whole normal-mapped cube in frame'
+    }
+)
+foreach ($framing in $legacySubjectFraming) {
+    $source = [IO.File]::ReadAllText((Join-Path $repoRoot "Dx11\$($framing.Project)\App.cpp"))
+    $capture = (Get-CaptureContract $source $framing.Project).Block
+    Assert-True ($capture -match ('m_Camera\.SetPosition\s*\(\s*XMFLOAT3\(\s*' + $framing.CameraPosition + '\s*\)\s*\)')) `
+        "$($framing.Project) capture must keep the approved $($framing.Framing)"
+    Assert-True ($capture -match 'm_Camera\.SetFrustum\s*\(\s*XMConvertToRadians\(\s*45\.0f\s*\)') `
+        "$($framing.Project) capture must narrow the field of view so the subject fills the still"
+    Assert-True ($capture -match ('m_cubePos\s*=\s*XMFLOAT3\(\s*' + $framing.SubjectPosition + '\s*\)')) `
+        "$($framing.Project) capture must offset the subject so the reflective mirror cube stays out of the still"
+    Assert-LegacyCaptureEvidenceUi $source $framing.Project
+}
 
 foreach ($project in @('05_Mesh', '06_pmx')) {
     $source = [IO.File]::ReadAllText((Join-Path $repoRoot "Dx11\$project\App.cpp"))

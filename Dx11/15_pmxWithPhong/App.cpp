@@ -110,8 +110,10 @@ bool App::OnInitialize()
 	{
 		m_cubeRotation = XMFLOAT3(0.0f, -25.0f, 0.0f);
 		m_RotateCube = false;
-		m_Camera.SetPosition(XMFLOAT3(0.0f, 0.0f, -7.0f));
+		m_cubePos = XMFLOAT3(-2.1f, 0.0f, 0.0f);
+		m_Camera.SetPosition(XMFLOAT3(-3.35f, 1.55f, -4.5f));
 		m_Camera.SetRotation(XMFLOAT3(0.0f, 0.0f, 0.0f));
+		m_Camera.SetFrustum(XMConvertToRadians(45.0f), AspectRatio(), m_Camera.GetNearZ(), m_Camera.GetFarZ());
 	}
 	if(!InitImGui()) return false;
 
@@ -497,6 +499,7 @@ void App::OnRender()
 	ImGui::End();
 
 	// 현재 카메라 포워드 기준 스카이박스 면 이미지를 표시
+	if (!ReadmeCapture::IsEnabled())
 	{
 		int face = 0;
 		using namespace DirectX;
@@ -541,7 +544,10 @@ void App::OnRender()
 	}
 
 
-	m_SystemInfo.RenderUI();
+	if (!ReadmeCapture::IsEnabled())
+	{
+		m_SystemInfo.RenderUI();
+	}
 
 	ImGui::Render();
 	ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
