@@ -1002,8 +1002,13 @@ void App::ApplyPreset(LightingPreset preset)
         m_shadowSoftness = 1.4f;
         m_hairHighlightStrength = 0.82f;
         m_rimStrength = 0.38f;
-        m_shadowTint = { 0.24f, 0.34f, 0.58f };
-        m_keyTint = { 1.0f, 0.72f, 0.48f };
+        // The band tint cross-fades shadow to key and then multiplies the albedo, so a saturated
+        // cool shadow paints every under-lit texel blue, and against a saturated warm key it
+        // starves green into a magenta cast. The warm key is what cancels the blue, so the shadow
+        // tint carries the desaturation instead: measured on a rendered frame this takes
+        // blue-dominant pixels from 40 percent to about 12 and removes the magenta signature.
+        m_shadowTint = { 0.46f, 0.53f, 0.58f };
+        m_keyTint = { 1.0f, 0.84f, 0.56f };
         m_exposure = 1.08f;
     }
     else

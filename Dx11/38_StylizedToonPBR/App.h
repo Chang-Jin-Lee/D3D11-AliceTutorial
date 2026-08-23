@@ -147,8 +147,8 @@ private:
     float m_outlineWidth = 1.35f;
     int m_outlineQuality = 2;
     float m_exposure = 1.08f;
-    DirectX::XMFLOAT3 m_shadowTint{ 0.24f, 0.34f, 0.58f };
-    DirectX::XMFLOAT3 m_keyTint{ 1.0f, 0.72f, 0.48f };
+    DirectX::XMFLOAT3 m_shadowTint{ 0.46f, 0.53f, 0.58f };
+    DirectX::XMFLOAT3 m_keyTint{ 1.0f, 0.84f, 0.56f };
     bool m_readmeCapture = false;
     bool m_assetManagerCreated = false;
     bool m_imguiInitialized = false;
