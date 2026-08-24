@@ -139,22 +139,24 @@ void App::LoadDataAsync(std::stop_token stoken)
 	// rig must not also drive the player, and the composition below was framed and
 	// lit for the forward path.
 	//
-	// Both assignments switch code off PERMANENTLY - nothing toggles either flag back
-	// at runtime any more, because the editor panels that used to are no longer drawn.
-	// Named explicitly so a later reader can tell parked code from abandoned code:
+	// Both assignments keep these two pipelines parked while the portfolio timeline is
+	// active. The ordinary-launch editor panels remain available, but the Advanced Rig
+	// window explains why its controls are disabled instead of offering a second palette
+	// owner, and the Deferred controls reflect the forward-only composition.
 	//
 	//   m_UseAdvancedRig = false
 	//     - the `if (m_->m_UseAdvancedRig)` block at the bottom of this function never
 	//       runs, so CharacterAnimController::InitializeRig() is never called and
 	//       m_CharRigInited stays false;
-	//     - and with that flag off, the AdvancedRig branch in UpdateInput and
-	//       RenderAdvancedRigUI() are unreachable too.
-	//     NOT expected back: the showcase drives the player itself.
+	//     - and with that flag off, the AdvancedRig branch in UpdateInput is
+	//       unreachable. RenderAdvancedRigUI() remains visible as an explanation.
+	//     NOT enabled here: the showcase drives the player itself.
 	//
 	//   m_UseDeferredRendering = false
 	//     - PassMainScene() always takes the forward branch, so PassGBuffer(),
-	//       PassDeferredLight() and RenderDeferredUI() are all unreachable.
-	//     NOT expected back: the composition above is lit for the forward path.
+	//       and PassDeferredLight() are unreachable. RenderDeferredUI() remains
+	//       visible as an explanation instead of binding G-buffer previews.
+	//     NOT enabled here: the composition above is lit for the forward path.
 	//
 	// The showcase draws no debug geometry of its own any more. The line pass it used
 	// to own, RenderPortfolioShowcaseDebug(), existed only to evidence the CCD IK
@@ -162,9 +164,8 @@ void App::LoadDataAsync(std::stop_token stoken)
 	// App_PortfolioShowcase.inl for why the IK went). LineRenderer is still used
 	// here, but only by the axis overlay in App_RenderPasses.inl.
 	//
-	// NOT expected back: the ten panel functions in App_ImGuiPanels.inl and
-	// PassDebugDraw(), which now have no call sites at all. They are left in place
-	// deliberately - deleting them is a branch-level decision, not this task's.
+	// PassDebugDraw() remains parked because the showcase no longer has an IK debug
+	// window to evidence. The editor panels are still drawn outside README capture.
 	m_->m_UseAdvancedRig = false;
 	m_->m_UseDeferredRendering = false;
 	m_->m_Exposure = -0.25f; // Preserve highlight detail in the bright HDR courtyard.
@@ -262,7 +263,11 @@ void App::LoadDataAsync(std::stop_token stoken)
 	// visible height is 0.72794 * depth, so 0.60 fill solves to depth 289.6 for the
 	// nearest slot at z = 5 - hence z = -285. A 2 degree pitch drops the view axis
 	// 10.1 units over that distance, putting eye height 73 on the cast's mid-height.
-	m_Camera.SetSpeed(15.0f);
+	// The camera moved from the earlier projects' roughly 108-unit framing distance
+	// to 285 units for the four-character composition. Scale its default translation
+	// speed by the same order so WASD retains a comparable screen-space response;
+	// the Controls panel still lets the reader tune it at runtime.
+	m_Camera.SetSpeed(40.0f);
 	m_Camera.SetPosition(XMFLOAT3(0.0f, 73.0f, -285.0f));
 	m_Camera.SetRotation(XMFLOAT3(2.0f, 0.0f, 0.0f));
 

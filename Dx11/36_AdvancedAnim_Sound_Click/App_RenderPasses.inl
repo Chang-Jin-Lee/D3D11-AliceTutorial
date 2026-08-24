@@ -1003,16 +1003,54 @@ void App::PassUI() {
 	ImGui_ImplWin32_NewFrame();
 	ImGui::NewFrame();
 
-	// The showcase HUD is the only ImGui surface Project 36 draws: the editor
-	// panels and the sniper overlay described a scene this project no longer
-	// opens on.
-	RenderPortfolioShowcaseHud();
+	const bool readmeCaptureMode = IsReadmeCaptureMode();
+	if (readmeCaptureMode) {
+		// Published media stays focused on the animation techniques and their timing.
+		RenderPortfolioShowcaseHud();
+	}
+	else {
+		// Ordinary launches retain the tutorial's interactive editor and diagnostics.
+		RenderControlPannel();
+		RenderSceneCollection();
+		RenderModelPannel();
+		RenderQuickGuideUI();
+		RenderConsolPannel();
+		m_->m_SystemInfo.RenderUI();
+		RenderSceneImageWindow();
+		RenderDeferredUI();
+		RenderSoundDebugUI();
+		// Drawn last so the showcase palette-ownership explanation is not hidden by
+		// the restored System Info and Sound Debug windows on high-DPI desktops.
+		RenderAdvancedRigUI();
+	}
 
 	const unsigned int skyboxGeneration = SkyboxAssetManager::GetCompletedGeneration();
 	if (skyboxGeneration != m_->m_SkyboxAssetGeneration) {
 		m_->m_SkyboxAssetGeneration = skyboxGeneration;
 		if (!m_->m_CurrentIBLPath.empty())
 			ChangeIBLSkyBox(m_->m_CurrentIBLPath);
+	}
+	if (!readmeCaptureMode) {
+		SkyboxAssetManager::RenderStatusUI();
+	}
+
+	// Sniper UI Overlay
+	if (!readmeCaptureMode && m_->m_SniperEnabled && m_->m_SniperCharging)
+	{
+		ImDrawList* dl = ImGui::GetForegroundDrawList();
+		ImVec2 p = m_->m_SniperAimPos;
+
+		const float r = m_->m_SniperAimRadius;
+		dl->AddCircle(p, r, IM_COL32(255, 255, 255, 220), 32, 2.0f);
+
+		ImVec2 barSize(80.0f, 7.0f);
+		ImVec2 barPos(p.x - barSize.x * 0.5f, p.y + r + 10.0f);
+		dl->AddRectFilled(barPos, ImVec2(barPos.x + barSize.x, barPos.y + barSize.y),
+			IM_COL32(0, 0, 0, 160), 2.0f);
+		dl->AddRectFilled(barPos, ImVec2(barPos.x + barSize.x * m_->m_SniperCharge01, barPos.y + barSize.y),
+			IM_COL32(255, 255, 255, 220), 2.0f);
+		dl->AddRect(barPos, ImVec2(barPos.x + barSize.x, barPos.y + barSize.y),
+			IM_COL32(255, 255, 255, 220), 2.0f);
 	}
 
 	ImGui::Render();

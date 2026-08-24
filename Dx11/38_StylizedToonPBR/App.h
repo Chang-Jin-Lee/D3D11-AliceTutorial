@@ -62,6 +62,7 @@ private:
         DirectX::XMFLOAT4 shadowParameters;
         DirectX::XMFLOAT4 textureParameters;
         DirectX::XMFLOAT4 alphaParameters;
+        DirectX::XMFLOAT4 styleParameters;
     };
 
     struct alignas(16) PostConstants
@@ -82,6 +83,10 @@ private:
         // needs binary coverage instead, so it carries its own cutoff.
         float colorAlphaCutoff = 0.0f;
         float shadowAlphaCutoff = 0.0f;
+        // Only the authored body and face surfaces receive the showcase skin response. Eye,
+        // mouth, brow, and highlight overlays share the Skin material profile for BRDF purposes,
+        // but must retain their authored colours.
+        float skinToneWeight = 0.0f;
         // A glTF BLEND material in this asset is a coplanar decal stacked onto another surface -
         // iris, highlight, eyelash, brow - so it must leave the depth and normal/profile targets the
         // outline pass reads to the surface underneath it. A translucent garment promoted out of an

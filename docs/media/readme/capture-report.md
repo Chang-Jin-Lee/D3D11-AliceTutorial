@@ -1,6 +1,6 @@
 # README media capture report
 
-Generated: 2026-08-24 12:26:42
+Generated: 2026-08-25 00:11:52
 
 | Project | Attempt | Exe | Output | Status | Dimensions | Bytes | Notes |
 |---|---:|---|---|---|---|---:|---|
@@ -78,5 +78,5 @@ Generated: 2026-08-24 12:26:42
 | 36 | 1 | 36_AdvancedAnim_Sound_Click.exe | docs/media/readme/36-advanced-anim-sound-click.gif | Success | 800x450 | 4136168 | GIF captured; source frames collected in 12983 ms |
 | 37 | 1 | 37_Blueprint.exe | docs/media/readme/37-Blueprint.png | Success | 1600x900 | 75980 | PNG captured |
 | 37 | 1 | 37_Blueprint.exe | docs/media/readme/37-Blueprint.gif | Success | 800x450 | 1397691 | GIF generated from the captured PNG with the reproducible presentation-pan stage |
-| 38 | 1 | 38_StylizedToonPBR.exe | docs/media/readme/38-StylizedToonPBR.png | Success | 1600x900 | 212398 | PNG captured |
-| 38 | 1 | 38_StylizedToonPBR.exe | docs/media/readme/38-StylizedToonPBR.gif | Success | 800x450 | 627999 | GIF captured; source frames collected in 3971 ms |
+| 38 | 1 | 38_StylizedToonPBR.exe | docs/media/readme/38-StylizedToonPBR.png | Success | 1600x900 | 219860 | PNG captured |
+| 38 | 1 | 38_StylizedToonPBR.exe | docs/media/readme/38-StylizedToonPBR.gif | Success | 800x450 | 599395 | GIF captured; source frames collected in 3944 ms |

@@ -2,9 +2,8 @@
 #
 # This test launches the built executable and inspects the frames it actually
 # renders. User-visible requirements are verified through rendered pixels,
-# process liveness, or file content. One narrow source-level wiring guard remains:
-# the anime palette lives exclusively in the PBR shader branch, so the showcase
-# characters must opt into that branch rather than merely compiling dead HLSL.
+# process liveness, or file content. Narrow source-level guards complement those
+# frame tests where exact call wiring/default scene units cannot be read from pixels.
 [CmdletBinding()]
 param(
     [switch]$KeepFrames
@@ -844,10 +843,34 @@ if ($staleSources.Count -gt 0) {
 Write-Host "  ok   built binary is present and newer than its sources"
 
 $lifecycleSource = Get-Content -Raw -LiteralPath (Join-Path $projectDir 'App_Lifecycle.inl')
+$renderPassSource = Get-Content -Raw -LiteralPath (Join-Path $projectDir 'App_RenderPasses.inl')
+$panelSource = Get-Content -Raw -LiteralPath (Join-Path $projectDir 'App_ImGuiPanels.inl')
 $toonPbrIsWired = ($lifecycleSource -match 'model->modelShading\s*=\s*ShadingMode::PBR\s*;') -and
     ($lifecycleSource -match 'model->useToonShading\s*=\s*true\s*;') -and
     ($lifecycleSource -notmatch 'model->modelShading\s*=\s*ShadingMode::BlinnPhong\s*;')
 Assert-True $toonPbrIsWired 'the showcase models select PBR plus the per-model toon flag, making anime ToonPBR reachable'
+Assert-True (($lifecycleSource -match 'const\s+XMFLOAT3\s+characterScale\s*\(\s*80\.0f\s*,\s*80\.0f\s*,\s*80\.0f\s*\)') -and
+    ($lifecycleSource -match 'm_Camera\.SetSpeed\s*\(\s*40\.0f\s*\)')) `
+    'the four-character composition keeps its intentional scale 80 and responsive camera speed 40'
+foreach ($panelCall in @(
+        'RenderControlPannel', 'RenderSceneCollection', 'RenderModelPannel', 'RenderQuickGuideUI',
+        'RenderAdvancedRigUI', 'RenderConsolPannel', 'RenderSceneImageWindow', 'RenderDeferredUI',
+        'RenderSoundDebugUI')) {
+    Assert-True ($renderPassSource -match "\b$panelCall\s*\(\s*\)") "ordinary UI wiring retains $panelCall"
+}
+Assert-True ($renderPassSource -match 'm_->m_SystemInfo\.RenderUI\s*\(\s*\)') `
+    'ordinary UI wiring retains System Info'
+Assert-True ($renderPassSource -match 'SkyboxAssetManager::RenderStatusUI\s*\(\s*\)') `
+    'ordinary UI wiring retains Skybox status'
+Assert-True ($renderPassSource -match 'm_->m_SniperEnabled\s*&&\s*m_->m_SniperCharging') `
+    'ordinary UI wiring retains the sniper charge overlay'
+Assert-True (($renderPassSource -match 'if\s*\(\s*readmeCaptureMode\s*\)') -and
+    ($renderPassSource -match 'RenderPortfolioShowcaseHud\s*\(\s*\)')) `
+    'README capture mode keeps the compact portfolio HUD path'
+Assert-True (($panelSource -match 'Advanced Rig is unavailable in showcase mode') -and
+    ($panelSource -match 'Unavailable in portfolio mode') -and
+    ($panelSource -match 'Portfolio composition is locked to Forward')) `
+    'ordinary UI explains the Advanced Rig and Deferred portfolio locks'
 Assert-True (-not [ShowcaseFrame]::IsToonPaletteCandidateRgb(65, 75, 115)) `
     'the toon costume mask rejects a dark navy shoe pixel that otherwise satisfies its colour range'
 
@@ -1235,9 +1258,11 @@ $plainBackbufferPath = Join-Path $plainBackbufferDir 'project36-plain.png'
 $previousCaptureEnv = $env:DX11_README_CAPTURE
 $previousBackbufferEnv = $env:DX11_README_BACKBUFFER_PNG
 $showcaseProcess = $null
+$interactiveProcess = $null
 $captureProcess = $null
 $gateProcess = $null
 $showcaseHandle = [IntPtr]::Zero
+$interactiveHandle = [IntPtr]::Zero
 $captureHandle = [IntPtr]::Zero
 $gateHandle = [IntPtr]::Zero
 
@@ -1261,18 +1286,13 @@ else {
 
 try {
     # -----------------------------------------------------------------------
-    # 3. Plain launch: no DX11_README_CAPTURE, no capture tooling of any kind.
-    #    This is what a reader who double-clicks the executable sees, and it must
-    #    be the showcase: the HUD, and four characters each running their own
-    #    clip.
-    #
-    #    DX11_README_BACKBUFFER_PNG is deliberately set here to a valid, writable
-    #    path. The backbuffer writer is gated on README capture mode AND the
-    #    variable, so with capture mode off it must stay silent even though the
-    #    variable names somewhere it could publish.
+    # 3. README capture launch: the published media gets the compact showcase HUD
+    #    and four characters, without the interactive editor windows covering the
+    #    composition. Backbuffer publication remains disabled because no output
+    #    path is supplied in this run.
     # -----------------------------------------------------------------------
-    Remove-Item Env:\DX11_README_CAPTURE -ErrorAction SilentlyContinue
-    $env:DX11_README_BACKBUFFER_PNG = $plainBackbufferPath
+    $env:DX11_README_CAPTURE = '1'
+    Remove-Item Env:\DX11_README_BACKBUFFER_PNG -ErrorAction SilentlyContinue
     $showcaseProcess = Start-Process -FilePath $exePath -WorkingDirectory $runtimeDir -PassThru
     if ($null -eq $previousCaptureEnv) { Remove-Item Env:\DX11_README_CAPTURE -ErrorAction SilentlyContinue }
     else { $env:DX11_README_CAPTURE = $previousCaptureEnv }
@@ -1284,10 +1304,8 @@ try {
     Set-ShowcaseClientSize -Handle $showcaseHandle -Width $clientWidth -Height $clientHeight
     Set-ShowcaseTopmost -Handle $showcaseHandle
     Start-Sleep -Milliseconds 400
-    # Outside capture mode the loading screen waits for a click before the scene
-    # starts, exactly as it always has; that gate is not the showcase's.
     Wait-ShowcaseScene -Process $showcaseProcess -Handle $showcaseHandle -Width $clientWidth -Height $clientHeight `
-        -ProbePath (Join-Path $frameDir 'showcase-probe.png') -ClickToStart
+        -ProbePath (Join-Path $frameDir 'showcase-probe.png')
 
     # Put the show back to t = 0 and start the sampling clock on the same instant.
     #
@@ -1422,9 +1440,9 @@ try {
     $showcaseClock.Stop()
 
     $showcaseProcess.Refresh()
-    Assert-True (-not $showcaseProcess.HasExited) 'a plain launch is still running after the sampled showcase seconds'
-    Assert-True ($showcaseProcess.Responding) 'a plain launch stays responsive while the showcase drives four palettes'
-    Assert-True ($showcaseProcess.MainWindowHandle -ne [IntPtr]::Zero) 'a plain launch owns a visible main window'
+    Assert-True (-not $showcaseProcess.HasExited) 'the README showcase launch is still running after the sampled seconds'
+    Assert-True ($showcaseProcess.Responding) 'the README showcase launch stays responsive while driving four palettes'
+    Assert-True ($showcaseProcess.MainWindowHandle -ne [IntPtr]::Zero) 'the README showcase launch owns a visible main window'
 
     $slotA = $samples['slot-a']
     $slotB = $samples['slot-b']
@@ -1454,7 +1472,7 @@ try {
     $hudDark = [ShowcaseFrame]::DarkRatio($slotA, $hudX, $hudY, $hudW, $hudH, $hudPanelLuminance)
     $hudBright = [ShowcaseFrame]::BrightRatio($slotA, $hudX, $hudY, $hudW, $hudH, 200)
     Assert-True (($hudDark -ge $hudPanelDarkFloor) -and ($hudBright -ge $hudTextBrightFloor)) `
-        ("a plain launch renders the showcase HUD panel and its text at client (24,24) " +
+        ("README capture mode renders the showcase HUD panel and its text at client (24,24) " +
          "(dark ratio $([Math]::Round($hudDark,4)) need >= $hudPanelDarkFloor; " +
          "bright ratio $([Math]::Round($hudBright,4)) need >= $hudTextBrightFloor)")
 
@@ -1865,14 +1883,59 @@ try {
     # are read by the HUD line-up assertions, which walk every sampled frame, and
     # cycle0-06/cycle0-08 is one of the pairs the frame-edge guard measures.
 
-    Assert-True (@(Get-ChildItem -LiteralPath $plainBackbufferDir -File -ErrorAction SilentlyContinue).Count -eq 0) `
-        'with README capture mode off the backbuffer writer stays silent even though DX11_README_BACKBUFFER_PNG names a writable path'
-
     Reset-ShowcaseTopmost -Handle $showcaseHandle
     Stop-ShowcaseProcess -Process $showcaseProcess
 
     # -----------------------------------------------------------------------
-    # 4. Opt-in backbuffer publication, which needs README capture mode AND
+    # 4. Interactive launch: a reader who double-clicks Project 36 gets the
+    #    original editor surfaces. This run also supplies a writable backbuffer
+    #    path while capture mode is off, proving publication remains opt-in.
+    # -----------------------------------------------------------------------
+    Remove-Item Env:\DX11_README_CAPTURE -ErrorAction SilentlyContinue
+    $env:DX11_README_BACKBUFFER_PNG = $plainBackbufferPath
+    $interactiveProcess = Start-Process -FilePath $exePath -WorkingDirectory $runtimeDir -PassThru
+    if ($null -eq $previousCaptureEnv) { Remove-Item Env:\DX11_README_CAPTURE -ErrorAction SilentlyContinue }
+    else { $env:DX11_README_CAPTURE = $previousCaptureEnv }
+    if ($null -eq $previousBackbufferEnv) { Remove-Item Env:\DX11_README_BACKBUFFER_PNG -ErrorAction SilentlyContinue }
+    else { $env:DX11_README_BACKBUFFER_PNG = $previousBackbufferEnv }
+
+    $interactiveWindow = Wait-ShowcaseWindow -Process $interactiveProcess
+    $interactiveHandle = $interactiveWindow.Handle
+    Set-ShowcaseClientSize -Handle $interactiveHandle -Width $clientWidth -Height $clientHeight
+    Set-ShowcaseTopmost -Handle $interactiveHandle
+    Start-Sleep -Milliseconds 400
+    Wait-ShowcaseScene -Process $interactiveProcess -Handle $interactiveHandle -Width $clientWidth -Height $clientHeight `
+        -ProbePath (Join-Path $frameDir 'interactive-probe.png') -ClickToStart
+    Start-Sleep -Milliseconds 500
+    $interactiveFrame = Save-ShowcaseFrame -Handle $interactiveHandle -Width $clientWidth -Height $clientHeight `
+        -Path (Join-Path $frameDir 'interactive-panels.png')
+
+    # ImGui receives logical 1066x600 coordinates on the 150%-scaled test desktop while the
+    # Direct3D client is captured at 1600x900. These rectangles follow the actual ImGui display
+    # coordinates; they intentionally do not multiply by the OS scale factor.
+    $shadowPanelDark = [ShowcaseFrame]::DarkRatio($interactiveFrame, 10, 390, 370, 210, 45)
+    $consolePanelDark = [ShowcaseFrame]::DarkRatio($interactiveFrame, 120, 390, 830, 200, 45)
+    $scenePanelDark = [ShowcaseFrame]::DarkRatio($interactiveFrame, 736, 20, 320, 360, 45)
+    $advancedPanelDark = [ShowcaseFrame]::DarkRatio($interactiveFrame, 400, 20, 390, 150, 45)
+    $deferredPanelDark = [ShowcaseFrame]::DarkRatio($interactiveFrame, 400, 180, 260, 105, 45)
+    Assert-True ($shadowPanelDark -ge 0.35) `
+        ("ordinary launch restores the ShadowMap settings panel (dark coverage $([Math]::Round($shadowPanelDark,3)), need >= 0.35)")
+    Assert-True ($consolePanelDark -ge 0.45) `
+        ("ordinary launch restores the Console panel (dark coverage $([Math]::Round($consolePanelDark,3)), need >= 0.45)")
+    Assert-True ($scenePanelDark -ge 0.45) `
+        ("ordinary launch restores the Scene Collection / Details panels (dark coverage $([Math]::Round($scenePanelDark,3)), need >= 0.45)")
+    Assert-True ($advancedPanelDark -ge 0.45) `
+        ("ordinary launch shows the Advanced Rig showcase-mode explanation (dark coverage $([Math]::Round($advancedPanelDark,3)), need >= 0.45)")
+    Assert-True ($deferredPanelDark -ge 0.45) `
+        ("ordinary launch shows the Deferred forward-only explanation (dark coverage $([Math]::Round($deferredPanelDark,3)), need >= 0.45)")
+    Assert-True (@(Get-ChildItem -LiteralPath $plainBackbufferDir -File -ErrorAction SilentlyContinue).Count -eq 0) `
+        'with README capture mode off the backbuffer writer stays silent even though DX11_README_BACKBUFFER_PNG names a writable path'
+
+    Reset-ShowcaseTopmost -Handle $interactiveHandle
+    Stop-ShowcaseProcess -Process $interactiveProcess
+
+    # -----------------------------------------------------------------------
+    # 5. Opt-in backbuffer publication, which needs README capture mode AND
     #    DX11_README_BACKBUFFER_PNG, so it gets its own run with both set. The
     #    capture tool must be able to take the true rendered frame out of the swap
     #    chain instead of screen-scraping the window, so the running application
@@ -1967,7 +2030,7 @@ try {
         ("the atomic publication temporary leaves nothing behind after the process exits (clean shutdown: $captureClosedCleanly)")
 
     # -----------------------------------------------------------------------
-    # 5. The other half of the opt-in gate: capture mode on, no
+    # 6. The other half of the opt-in gate: capture mode on, no
     #    DX11_README_BACKBUFFER_PNG. This is how the other 36 projects run, and
     #    the writer must publish nothing at all. With no path named, the only
     #    place a publication could land is beside the executable under some
@@ -2008,9 +2071,11 @@ try {
 }
 finally {
     Reset-ShowcaseTopmost -Handle $showcaseHandle
+    Reset-ShowcaseTopmost -Handle $interactiveHandle
     Reset-ShowcaseTopmost -Handle $captureHandle
     Reset-ShowcaseTopmost -Handle $gateHandle
     Stop-ShowcaseProcess -Process $showcaseProcess
+    Stop-ShowcaseProcess -Process $interactiveProcess
     Stop-ShowcaseProcess -Process $captureProcess
     Stop-ShowcaseProcess -Process $gateProcess
     if ($null -eq $previousCaptureEnv) { Remove-Item Env:\DX11_README_CAPTURE -ErrorAction SilentlyContinue }

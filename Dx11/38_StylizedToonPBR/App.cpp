@@ -90,6 +90,19 @@ namespace
         { 12, MaterialProfile::Hair },
     }};
 
+    struct SkinToneOverride
+    {
+        uint32_t materialIndex;
+        const char* materialName;
+    };
+
+    // The face model uses separate iris, eye-white, mouth, highlight, and brow overlays which all
+    // need the Skin BRDF profile but must not inherit the body's warm albedo response.
+    constexpr std::array<SkinToneOverride, 2> kSampleModelSkinToneOverrides = {{
+        { 0, "Body_00_SKIN" },
+        { 8, "Face_00_SKIN" },
+    }};
+
     bool CompileShader(
         const wchar_t* fileName,
         const char* entryPoint,
@@ -878,6 +891,20 @@ void App::BuildMaterialProfiles()
             m_materialRenderInfo[overrideEntry.materialIndex].profile = overrideEntry.profile;
     }
 
+    for (const auto& overrideEntry : kSampleModelSkinToneOverrides)
+    {
+        if (overrideEntry.materialIndex >= m_materialRenderInfo.size())
+            continue;
+
+        aiString materialName;
+        aiMaterial* material = scene->mMaterials[overrideEntry.materialIndex];
+        if (material->Get(AI_MATKEY_NAME, materialName) == AI_SUCCESS
+            && std::string(materialName.C_Str()).find(overrideEntry.materialName) != std::string::npos)
+        {
+            m_materialRenderInfo[overrideEntry.materialIndex].skinToneWeight = 1.0f;
+        }
+    }
+
     for (const auto& overrideEntry : kSampleModelBlendModeOverrides)
     {
         if (overrideEntry.materialIndex >= m_materialRenderInfo.size())
@@ -1389,6 +1416,7 @@ void App::UpdateCharacterConstants(
         hasNormal ? 1.0f : 0.0f,
     };
     constants.alphaParameters = { renderInfo.colorAlphaCutoff, 0.0f, 0.0f, 0.0f };
+    constants.styleParameters = { renderInfo.skinToneWeight, 0.0f, 0.0f, 0.0f };
     UpdateDynamicBuffer(m_context.Get(), m_characterConstantBuffer.Get(), constants);
 }
 

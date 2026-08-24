@@ -22,6 +22,9 @@ cbuffer cbCharacter : register(b0)
     // x: colour-pass coverage cutoff. It is deliberately separate from materialParameters.w, which
     // carries the binary coverage cutoff the depth-only shadow pass needs.
     float4 alphaParameters;
+    // x: true-skin warmth weight. Kept separate from material profile because facial overlays use
+    // the Skin BRDF profile without being skin-coloured surfaces.
+    float4 styleParameters;
 };
 
 cbuffer cbBones : register(b1)

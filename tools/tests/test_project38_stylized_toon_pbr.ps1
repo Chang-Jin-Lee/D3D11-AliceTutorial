@@ -353,6 +353,22 @@ Assert-True ($appSourceText -match 'ReleaseWindowSizeResources\s*\(\s*\)') 'brea
 # Break caught: deterministic SampleModel material profiles or name-based fallback classification disappear.
 Assert-True ($appSourceText -match '\bkSampleModelMaterialOverrides\b') 'break: SampleModel must keep an explicit per-material profile override table'
 Assert-True ([regex]::Matches($appSourceText, '\{\s*\d+\s*,\s*MaterialProfile::(?:Skin|Hair|Cloth)\s*\}').Count -eq 13) 'break: every SampleModel material index must have one deterministic profile override'
+$skinToneTable = [regex]::Match(
+    $appSourceText,
+    '(?s)constexpr\s+std::array<SkinToneOverride,\s*2>\s+kSampleModelSkinToneOverrides\s*=\s*\{\{(.*?)\}\};'
+)
+Assert-True $skinToneTable.Success 'break: SampleModel must keep the exact two-entry skin-tone override table'
+$skinToneEntries = [regex]::Matches($skinToneTable.Groups[1].Value, '\{\s*(\d+)\s*,\s*"([^"]+)"\s*\}')
+Assert-True ($skinToneEntries.Count -eq 2) 'break: skin-tone weighting must remain limited to the verified body and face surfaces'
+$skinToneMappings = @($skinToneEntries | ForEach-Object { '{0}:{1}' -f $_.Groups[1].Value, $_.Groups[2].Value })
+$skinToneMappingText = (($skinToneMappings | Sort-Object) -join ',')
+Assert-True ($skinToneMappingText -eq '0:Body_00_SKIN,8:Face_00_SKIN') `
+    'break: eye, mouth, highlight, eye-white, and brow overlays must never receive the skin-tone weight'
+$skinToneAssignmentIsNameVerified = $appSourceText -match `
+    '(?s)for\s*\(\s*const auto& overrideEntry\s*:\s*kSampleModelSkinToneOverrides\s*\).*?Get\s*\(\s*AI_MATKEY_NAME\s*,\s*materialName\s*\).*?find\s*\(\s*overrideEntry\.materialName\s*\).*?skinToneWeight\s*=\s*1\.0f'
+Assert-True ($skinToneAssignmentIsNameVerified -and
+    ([regex]::Matches($appSourceText, 'skinToneWeight\s*=\s*1\.0f').Count -eq 1)) `
+    'break: true-skin weighting must have one name-verified assignment path'
 foreach ($classificationTerm in @('hair', 'face', 'skin', 'cloth', 'body')) {
     Assert-True ($appSourceText -match $classificationTerm) "break: case-insensitive material-name classifier lost term: $classificationTerm"
 }

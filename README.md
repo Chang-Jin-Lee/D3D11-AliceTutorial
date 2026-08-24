@@ -24,7 +24,7 @@ D3D 그래픽스를 학습하면서 정리한 튜토리얼 프로젝트입니다
 | 항목 | 내용 |
 |---|---|
 | 실행 | `Dx11/TutorialApp.sln` 열기 -> `36_AdvancedAnim_Sound_Click` 시작 프로젝트 -> `x64` 빌드 |
-| 렌더링 | Forward/Deferred 전환, Shadow, PBR, IBL, Tone Mapping |
+| 렌더링 | 포트폴리오 Forward 경로, Shadow, PBR, IBL, Tone Mapping (`35_DeferredRendering`에 Deferred 단계) |
 | 애니메이션 | Blend, Additive, Layer, IK, Socket |
 | 사운드/UI | FMOD 3D Sound, SoundBox, ImGui Debug Panels |
 | 구조 | `Dx11/Common` 공통 코드 + `35_DeferredRendering` 렌더링 단계 + `36_AdvancedAnim_Sound_Click` 통합 데모 |
@@ -41,7 +41,7 @@ Dx11/36_AdvancedAnim_Sound_Click/    대표 통합 데모
 
 ## 스타일라이즈드 렌더링 쇼케이스
 
-[`38_StylizedToonPBR`](Dx11/38_StylizedToonPBR)는 공개 캐릭터 하나를 같은 카메라와 조명에서 `PBR`, `Hybrid Toon-PBR`, `Split`으로 비교하는 집중형 샘플입니다. 재질별 Skin/Hair/Cloth 응답, 화면 공간 Normal/Depth 외곽선, 두 개의 독자적 조명 프리셋, 비동기 GPU 패스 측정을 한 프로젝트에서 확인할 수 있습니다.
+[`38_StylizedToonPBR`](Dx11/38_StylizedToonPBR)는 공개 캐릭터 하나를 같은 카메라와 조명에서 `PBR`, `Hybrid Toon-PBR`, `Split`으로 비교하는 집중형 샘플입니다. 실제 몸·얼굴 피부만 따뜻하게 분리하고 흰 의상과 얼굴 오버레이는 중립으로 유지하는 재질별 응답, 화면 공간 Normal/Depth 외곽선, 두 개의 독자적 조명 프리셋, 비동기 GPU 패스 측정을 한 프로젝트에서 확인할 수 있습니다.
 
 | Screenshot | 핵심 비교 |
 |---|---|

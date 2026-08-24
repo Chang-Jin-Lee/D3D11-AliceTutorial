@@ -13,7 +13,11 @@
 			50000.0f, "%.2f");
 
 		ImGui::SeparatorText("Rendering Mode");
-		ImGui::Checkbox("Use Deferred Rendering", &m_->m_UseDeferredRendering);
+		bool deferredSelected = m_->m_UseDeferredRendering;
+		ImGui::BeginDisabled();
+		ImGui::Checkbox("Use Deferred Rendering", &deferredSelected);
+		ImGui::EndDisabled();
+		ImGui::TextDisabled("Portfolio composition is locked to Forward.");
 
 		ImGui::SeparatorText("PBR Parameter");
 		// 텍스처 색 사용 여부 (PBR 전용)
@@ -1010,7 +1014,20 @@ void App::RenderQuickGuideUI()
 
 void App::RenderAdvancedRigUI()
 {
-	if (!m_->m_CharRigInited) return;
+	ImGui::SetNextWindowPos(ImVec2(400.0f, 20.0f), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(390.0f, 150.0f), ImGuiCond_FirstUseEver);
+
+	if (!m_->m_CharRigInited) {
+		if (ImGui::Begin("AnimGraph / Blend Debug##AdvancedRig")) {
+			ImGui::TextDisabled("Advanced Rig is unavailable in showcase mode.");
+			ImGui::Separator();
+			ImGui::TextWrapped(
+				"The Project 36 portfolio timeline owns all four character palettes so "
+				"upper-body layers and cross-fades stay deterministic.");
+		}
+		ImGui::End();
+		return;
+	}
 
 	auto& ctrl = m_->m_CharCtrl;
 
@@ -1553,9 +1570,18 @@ void App::RenderGBufferDebug() {
 
 // Deferred Rendering UI - 설정 및 G-Buffer 디버그 뷰
 void App::RenderDeferredUI() {
-	// Deferred Rendering이 활성화되지 않았으면 표시하지 않음
-	if (!m_->m_UseDeferredRendering)
+	if (!m_->m_UseDeferredRendering) {
+		ImGui::SetNextWindowPos(ImVec2(400.0f, 180.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(260.0f, 105.0f), ImGuiCond_FirstUseEver);
+		if (ImGui::Begin("Deferred Rendering##PortfolioForwardOnly")) {
+			ImGui::TextDisabled("Unavailable in portfolio mode.");
+			ImGui::Separator();
+			ImGui::TextWrapped(
+				"The four-character showcase is framed and lit for the Forward path.");
+		}
+		ImGui::End();
 		return;
+	}
 
 	// Deferred Rendering Settings 윈도우
 	ImGuiIO& io = ImGui::GetIO();

@@ -115,8 +115,13 @@ CharacterPixelOutput PSMain(CharacterVertexOutput input)
     float rimTerm = pow(saturate(1.0f - nDotV), 3.0f) * saturate(nDotL + 0.18f) * toonParameters.z;
     float profileSpecularScale = materialProfile < 0.5f ? 0.55f : (materialProfile < 1.5f ? 1.35f : 0.35f);
 
+    // The asset's skin texture is intentionally very pale. Preserve its authored PBR comparison,
+    // while giving only the true body/face surfaces a readable peach response in the stylized
+    // path. White garments and facial overlays retain their authored neutral colours.
+    float3 skinToneScale = float3(0.95f, 0.68f, 0.56f);
+    float3 toonBaseColor = sampledBase.rgb * lerp(1.0f.xxx, skinToneScale, saturate(styleParameters.x));
     float3 pbrColor = (diffuse + specular * profileSpecularScale) * keyTintColor * nDotL * visibility + sampledBase.rgb * 0.08f;
-    float3 toonColor = sampledBase.rgb * bandTint * (0.22f + toonDiffuse * 0.98f)
+    float3 toonColor = toonBaseColor * bandTint * (0.22f + toonDiffuse * 0.98f)
                      + specular * profileSpecularScale * (0.3f + upperBand)
                      + keyTintColor * (hairBand * 0.65f + rimTerm * 0.34f);
     float useToon = step(0.5f, toonParameters.w);
