@@ -19,13 +19,13 @@ Assert-True ($manifest.infoWidth -eq 1600 -and $manifest.infoHeight -eq 640) 'in
 
 $captureModeProjects = @($manifest.projects | Where-Object { $_.readmeCaptureMode } | ForEach-Object { $_.number })
 $expectedCaptureModeProjects = @(
-    '07','11','12','13','15','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','38'
+    '06','07','11','12','13','15','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','38'
 )
 Assert-True (($captureModeProjects -join ',') -ceq ($expectedCaptureModeProjects -join ',')) `
     "README capture-mode project selection changed: $($captureModeProjects -join ',')"
 
 $presentationPanProjects = @($manifest.projects | Where-Object { $_.gifPresentationPan } | ForEach-Object { $_.number })
-Assert-True (($presentationPanProjects -join ',') -ceq '01,28,33,37') `
+Assert-True (($presentationPanProjects -join ',') -ceq '01,06,28,33,37') `
     "presentation-pan project selection changed: $($presentationPanProjects -join ',')"
 
 $shortSymmetricMotionProjects = @()
@@ -42,6 +42,14 @@ Assert-True (($shortSymmetricMotionProjects -join ',') -ceq '07,18,21,22,24') `
 $project36 = @($manifest.projects | Where-Object number -eq '36')[0]
 Assert-True ((Get-ReadmeMediaEffectivePositiveNumber $manifest $project36 'gifSeconds') -eq 13) 'project 36 must capture thirteen seconds'
 Assert-True ([bool]$project36.readmeBackbufferCapture) 'project 36 must opt into backbuffer capture'
+
+$project06 = @($manifest.projects | Where-Object number -eq '06')[0]
+Assert-True ([bool]$project06.readmeCaptureMode) 'project 06 must opt into deterministic README capture mode'
+Assert-True ($null -ne $project06.PSObject.Properties['minSampledPngColors']) 'project 06 must declare its low-colour PNG floor'
+Assert-True ([int]$project06.minSampledPngColors -eq 2) `
+    'project 06 low-colour PNG floor must match the fresh foreground/background evidence'
+Assert-True (@($manifest.projects | Where-Object { $null -ne $_.PSObject.Properties['minSampledPngColors'] }).Count -eq 1) `
+    'only project 06 may declare a low-colour PNG floor'
 
 foreach ($project in @($manifest.projects | Where-Object number -ne '36')) {
     Assert-True ((Get-ReadmeMediaEffectivePositiveNumber $manifest $project 'gifSeconds') -eq 4) "project $($project.number) changed from four seconds"
@@ -64,6 +72,26 @@ function Copy-ReadmeMediaManifest([object]$SourceManifest) {
 $invalid = Copy-ReadmeMediaManifest $manifest
 $invalid.projects[35].gifSeconds = 0
 Assert-True ((Test-ReadmeMediaManifest $invalid $repoRoot) -contains 'invalid gifSeconds override: 36') 'zero override was accepted'
+
+$malformedPngFloor = Copy-ReadmeMediaManifest $manifest
+$malformedPngFloor.projects[5].minSampledPngColors = 'four'
+Assert-True ((Test-ReadmeMediaManifest $malformedPngFloor $repoRoot) -contains 'invalid minSampledPngColors override: 06') `
+    'malformed project 06 PNG floor was accepted'
+
+$weakPngFloor = Copy-ReadmeMediaManifest $manifest
+$weakPngFloor.projects[5].minSampledPngColors = 1
+Assert-True ((Test-ReadmeMediaManifest $weakPngFloor $repoRoot) -contains 'minSampledPngColors override is too weak: 06') `
+    'overly weak project 06 PNG floor was accepted'
+
+$redundantPngFloor = Copy-ReadmeMediaManifest $manifest
+$redundantPngFloor.projects[5].minSampledPngColors = 8
+Assert-True ((Test-ReadmeMediaManifest $redundantPngFloor $repoRoot) -contains 'minSampledPngColors override must stay below the global floor: 06') `
+    'project 06 PNG floor did not remain a narrow exception'
+
+$unrelatedPngFloor = Copy-ReadmeMediaManifest $manifest
+$unrelatedPngFloor.projects[6] | Add-Member -NotePropertyName minSampledPngColors -NotePropertyValue 2
+Assert-True ((Test-ReadmeMediaManifest $unrelatedPngFloor $repoRoot) -contains 'minSampledPngColors override is restricted to project 06: 07') `
+    'an unrelated project was allowed to weaken the PNG floor'
 
 $regressionFailures = [System.Collections.Generic.List[string]]::new()
 foreach ($invalidAtMs in @('NaN', 'Infinity', '-Infinity')) {

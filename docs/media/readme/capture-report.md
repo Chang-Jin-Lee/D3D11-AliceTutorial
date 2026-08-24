@@ -14,8 +14,8 @@ Generated: 2026-08-24 12:26:42
 | 04 | 1 | 04_RenderingMeshWithTexture.exe | docs/media/readme/04-RenderingMeshWithTexture.gif | Success | 800x450 | 383171 | GIF captured; source frames collected in 3943 ms |
 | 05 | 1 | 05_Mesh.exe | docs/media/readme/05-Mesh.png | Success | 1600x900 | 97901 | PNG captured |
 | 05 | 1 | 05_Mesh.exe | docs/media/readme/05-Mesh.gif | Success | 800x450 | 169924 | GIF captured; source frames collected in 3951 ms |
-| 06 | 1 | 06_pmx.exe | docs/media/readme/06-pmx.png | Success | 1600x900 | 99327 | PNG captured |
-| 06 | 1 | 06_pmx.exe | docs/media/readme/06-pmx.gif | Success | 800x450 | 204577 | GIF captured; source frames collected in 3940 ms |
+| 06 | 1 | 06_pmx.exe | docs/media/readme/06-pmx.png | Success | 1600x900 | 19340 | PNG captured |
+| 06 | 1 | 06_pmx.exe | docs/media/readme/06-pmx.gif | Success | 800x450 | 294967 | GIF generated from the captured PNG with the reproducible presentation-pan stage |
 | 07 | 1 | 07_pmxTexture.exe | docs/media/readme/07-pmxTexture.png | Success | 1600x900 | 100180 | PNG captured |
 | 07 | 1 | 07_pmxTexture.exe | docs/media/readme/07-pmxTexture.gif | Success | 800x450 | 133047 | GIF captured; source frames collected in 3974 ms |
 | 08 | 1 | 08_ImguiSystemInfo.exe | docs/media/readme/08-ImguiSystemInfo.png | Success | 1600x900 | 169830 | PNG captured |

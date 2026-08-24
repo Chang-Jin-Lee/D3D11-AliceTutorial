@@ -174,6 +174,7 @@ function Test-PngMedia {
         [int]$ExpectedWidth,
         [int]$ExpectedHeight,
         [string]$Label,
+        [int]$MinimumSampledColors = 8,
         [System.Collections.Generic.List[string]]$Errors
     )
 
@@ -202,8 +203,8 @@ function Test-PngMedia {
         $samples = @(Get-SampledRgb -Bitmap $bitmap)
         $uniqueColors = [System.Collections.Generic.HashSet[int]]::new()
         foreach ($sample in $samples) { $null = $uniqueColors.Add($sample) }
-        if ($uniqueColors.Count -lt 8) {
-            Add-VerificationError $Errors "$Label sampled color count is $($uniqueColors.Count); expected at least 8: $Path"
+        if ($uniqueColors.Count -lt $MinimumSampledColors) {
+            Add-VerificationError $Errors "$Label sampled color count is $($uniqueColors.Count); expected at least ${MinimumSampledColors}: $Path"
         }
 
         $variance = Get-LuminanceVariance -RgbSamples $samples
@@ -839,7 +840,12 @@ if ($null -ne $manifestData) {
         $resolved = $resolvedProjects[$index]
 
         if ($null -ne $resolved.Image) {
-            try { Test-PngMedia -Path $resolved.Image -ExpectedWidth 1600 -ExpectedHeight 900 -Label "Project $number PNG" -Errors $errors }
+            $minimumSampledPngColors = 8
+            if ($null -ne $project.PSObject.Properties['minSampledPngColors'] -and
+                (Test-ReadmeMediaPositiveInteger -Value $project.minSampledPngColors)) {
+                $minimumSampledPngColors = [int]$project.minSampledPngColors
+            }
+            try { Test-PngMedia -Path $resolved.Image -ExpectedWidth 1600 -ExpectedHeight 900 -Label "Project $number PNG" -MinimumSampledColors $minimumSampledPngColors -Errors $errors }
             catch { Add-VerificationError $errors "Project $number PNG validation failed: $($resolved.Image) ($($_.Exception.Message))" }
         }
         if ($null -ne $resolved.Info) {

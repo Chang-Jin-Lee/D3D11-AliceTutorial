@@ -119,7 +119,7 @@ Assert-True ($project38.summary -ceq '재질별 Hybrid Toon-PBR와 외곽선 비
 Assert-True (($project38.tags -join ',') -ceq 'Toon PBR,Outline,GPU Profiling,Character') 'Project 38 manifest tags mismatch'
 Assert-True ($project38.gifPhase -ceq 'runtime') 'Project 38 GIF phase mismatch'
 $presentationPanProjects = @($manifest.projects | Where-Object { $_.gifPresentationPan } | ForEach-Object { $_.number })
-Assert-True (($presentationPanProjects -join ',') -ceq '01,28,33,37') 'Project 38 must preserve the exact presentation-pan allowlist 01,28,33,37'
+Assert-True (($presentationPanProjects -join ',') -ceq '01,06,28,33,37') 'Project 38 must preserve the exact presentation-pan allowlist 01,06,28,33,37'
 
 $targetsText = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'Dx11\Directory.Build.targets')
 Assert-True ($targetsText -match ';38_StylizedToonPBR;') 'Project 38 app icon allowlist entry missing'

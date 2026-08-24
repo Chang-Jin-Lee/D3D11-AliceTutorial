@@ -103,7 +103,7 @@ try {
 
     $mediaManifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
     $panProjects = @($mediaManifest.projects | Where-Object { $_.gifPresentationPan } | ForEach-Object { $_.number })
-    Assert-True (($panProjects -join ',') -eq '01,28,33,37') 'presentation-pan project selection mismatch'
+    Assert-True (($panProjects -join ',') -eq '01,06,28,33,37') 'presentation-pan project selection mismatch'
 }
 finally {
     Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue

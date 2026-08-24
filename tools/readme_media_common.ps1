@@ -284,6 +284,20 @@ function Test-ReadmeMediaManifest {
                 $null = $errors.Add("invalid $overrideProperty override: $number")
             }
         }
+        if (Test-ReadmeMediaManifestProperty -Object $project -Name 'minSampledPngColors') {
+            if (-not (Test-ReadmeMediaPositiveInteger -Value $project.minSampledPngColors)) {
+                $null = $errors.Add("invalid minSampledPngColors override: $number")
+            }
+            elseif ($number -cne '06') {
+                $null = $errors.Add("minSampledPngColors override is restricted to project 06: $number")
+            }
+            elseif ([int]$project.minSampledPngColors -lt 2) {
+                $null = $errors.Add("minSampledPngColors override is too weak: $number")
+            }
+            elseif ([int]$project.minSampledPngColors -ge 8) {
+                $null = $errors.Add("minSampledPngColors override must stay below the global floor: $number")
+            }
+        }
 
         if (Test-ReadmeMediaManifestProperty -Object $project -Name 'directory') {
             $projectDirectory = Resolve-ReadmeMediaPath -RepoRoot $projectRoot -Path $project.directory

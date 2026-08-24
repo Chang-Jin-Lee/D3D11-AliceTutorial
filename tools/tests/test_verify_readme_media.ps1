@@ -77,6 +77,31 @@ function New-PatternPng([string]$Path, [int]$Width, [int]$Height, [int]$FrameInd
     }
 }
 
+function New-LimitedColorPng([string]$Path, [int]$Width, [int]$Height) {
+    $palette = @(
+        [System.Drawing.Color]::FromArgb(18, 18, 24),
+        [System.Drawing.Color]::FromArgb(244, 238, 220)
+    )
+    $bitmap = $null
+    $graphics = $null
+    $brushes = [System.Collections.Generic.List[System.Drawing.Brush]]::new()
+    try {
+        $bitmap = [System.Drawing.Bitmap]::new($Width, $Height)
+        $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+        foreach ($color in $palette) { $brushes.Add([System.Drawing.SolidBrush]::new($color)) }
+        $bandWidth = [int][math]::Ceiling($Width / $palette.Count)
+        for ($index = 0; $index -lt $palette.Count; $index++) {
+            $graphics.FillRectangle($brushes[$index], $index * $bandWidth, 0, $bandWidth, $Height)
+        }
+        $bitmap.Save($Path, [System.Drawing.Imaging.ImageFormat]::Png)
+    }
+    finally {
+        foreach ($brush in $brushes) { $brush.Dispose() }
+        if ($null -ne $graphics) { $graphics.Dispose() }
+        if ($null -ne $bitmap) { $bitmap.Dispose() }
+    }
+}
+
 function New-TransparentHiddenColorPng([string]$Path, [int]$Width, [int]$Height, [int]$FrameIndex = 0) {
     $bitmap = $null
     try {
@@ -331,6 +356,38 @@ try {
     Write-FixtureManifest -Path $manifestPath -Manifest $manifest
     $baseline = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
     Assert-True ($baseline.ExitCode -eq 0) "odd/even escaped-pipe report with a later successful attempt failed: $($baseline.Output)"
+
+    $project.number = '06'
+    $project['minSampledPngColors'] = 2
+    Write-Utf8File -Path $reportPath -Content ($validReport -replace '\| 01 \|', '| 06 |')
+    Write-FixtureManifest -Path $manifestPath -Manifest $manifest
+    New-LimitedColorPng -Path $imagePath -Width 1600 -Height 900
+    $project06LowColour = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
+    Assert-True ($project06LowColour.ExitCode -eq 0) "project 06 validated low-colour PNG floor was ignored: $($project06LowColour.Output)"
+
+    $project.Remove('minSampledPngColors')
+    Write-FixtureManifest -Path $manifestPath -Manifest $manifest
+    $project06WithoutFloor = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
+    Assert-FailedWith -Result $project06WithoutFloor -Patterns @('Project 06 PNG sampled color count is 2; expected at least 8') `
+        -Message 'project 06 low-colour PNG passed without its explicit floor'
+
+    $project['minSampledPngColors'] = 1
+    Write-FixtureManifest -Path $manifestPath -Manifest $manifest
+    $weakProject06Floor = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
+    Assert-FailedWith -Result $weakProject06Floor -Patterns @('minSampledPngColors override is too weak: 06') `
+        -Message 'overly weak project 06 PNG floor passed verification'
+
+    $project.number = '01'
+    $project['minSampledPngColors'] = 2
+    Write-Utf8File -Path $reportPath -Content $validReport
+    Write-FixtureManifest -Path $manifestPath -Manifest $manifest
+    $unrelatedProjectFloor = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
+    Assert-FailedWith -Result $unrelatedProjectFloor -Patterns @('minSampledPngColors override is restricted to project 06: 01') `
+        -Message 'unrelated project was allowed to weaken the PNG floor'
+
+    $project.Remove('minSampledPngColors')
+    Write-FixtureManifest -Path $manifestPath -Manifest $manifest
+    New-PatternPng -Path $imagePath -Width 1600 -Height 900
 
     New-MovingGif -Path $gifPath -FramesDir (Join-Path $fixtureRoot 'above-window-gif-frames') -FrameRate 8 -FrameCount 40
     $aboveWindowDuration = Invoke-Verifier -Script $verifier -RepoRoot $fixtureRoot -Manifest $manifestPath
