@@ -166,6 +166,157 @@ try {
     Assert-True (-not (Test-Path -LiteralPath $imguiIniPath)) `
         'capture without a pre-existing imgui.ini leaked generated layout state'
 
+    # A successful retained capture must keep the user's layout quarantined until
+    # that exact child exits. Exercise the real Invoke-ProjectCapture lifecycle
+    # and a real child process; only the GUI-specific capture mechanics are
+    # replaced because this suite does not own a tutorial window.
+    $retainedRoot = Join-Path $tempRoot 'retained child paths'
+    $retainedRuntime = Join-Path $retainedRoot 'runtime with spaces'
+    $retainedMedia = Join-Path $retainedRoot 'media with spaces'
+    New-Item -ItemType Directory -Path $retainedRuntime, $retainedMedia -Force | Out-Null
+    $retainedIniPath = Join-Path $retainedRuntime 'imgui.ini'
+    $retainedReleasePath = Join-Path $retainedRoot 'release child'
+    $retainedShutdownWrittenPath = Join-Path $retainedRoot 'shutdown ini written'
+    $retainedChildScript = Join-Path $retainedRoot 'retained child.ps1'
+    $retainedOriginalBytes = [byte[]](0x00, 0x11, 0x22, 0x7F, 0x80, 0xFE, 0xFF)
+    $retainedCaptureBytes = [byte[]](0x63, 0x61, 0x70, 0x74, 0x75, 0x72, 0x65)
+    [IO.File]::WriteAllBytes($retainedIniPath, $retainedOriginalBytes)
+    [IO.File]::WriteAllText((Join-Path $retainedRuntime 'fixture.exe'), 'fixture')
+    @'
+param([string]$ReleasePath, [string]$IniPath, [string]$ShutdownWrittenPath)
+$ErrorActionPreference = 'Stop'
+while (-not (Test-Path -LiteralPath $ReleasePath)) {
+    Start-Sleep -Milliseconds 25
+}
+[IO.File]::WriteAllBytes($IniPath, [byte[]](0x63, 0x61, 0x70, 0x74, 0x75, 0x72, 0x65))
+[IO.File]::WriteAllText($ShutdownWrittenPath, 'written')
+Start-Sleep -Milliseconds 250
+'@ | Set-Content -LiteralPath $retainedChildScript -Encoding UTF8
+
+    $savedStartReadmeCaptureProcess = (Get-Item Function:\Start-ReadmeCaptureProcess).ScriptBlock
+    $savedWaitMainWindow = (Get-Item Function:\Wait-MainWindow).ScriptBlock
+    $savedPrepareCaptureWindow = (Get-Item Function:\Prepare-CaptureWindow).ScriptBlock
+    $savedCapturePreparedWindowPng = (Get-Item Function:\Capture-PreparedWindowPng).ScriptBlock
+    $savedRestoreCaptureWindow = (Get-Item Function:\Restore-CaptureWindow).ScriptBlock
+    $retainedChildId = $null
+    $retainedChildStartTimeUtcTicks = $null
+    try {
+        function Start-ReadmeCaptureProcess {
+            param(
+                [string]$FilePath,
+                [string]$WorkingDirectory,
+                [switch]$EnableReadmeCapture,
+                [string]$BackbufferPath,
+                [int]$StillDelayMs,
+                [scriptblock]$ProcessLauncher
+            )
+
+            $startInfo = [Diagnostics.ProcessStartInfo]::new()
+            $startInfo.FileName = (Get-Process -Id $PID).Path
+            $startInfo.UseShellExecute = $false
+            $startInfo.CreateNoWindow = $true
+            [void]$startInfo.ArgumentList.Add('-NoProfile')
+            [void]$startInfo.ArgumentList.Add('-File')
+            [void]$startInfo.ArgumentList.Add($script:retainedChildScript)
+            [void]$startInfo.ArgumentList.Add('-ReleasePath')
+            [void]$startInfo.ArgumentList.Add($script:retainedReleasePath)
+            [void]$startInfo.ArgumentList.Add('-IniPath')
+            [void]$startInfo.ArgumentList.Add($script:retainedIniPath)
+            [void]$startInfo.ArgumentList.Add('-ShutdownWrittenPath')
+            [void]$startInfo.ArgumentList.Add($script:retainedShutdownWrittenPath)
+            $child = [Diagnostics.Process]::Start($startInfo)
+            $script:retainedChildId = $child.Id
+            $script:retainedChildStartTimeUtcTicks = $child.StartTime.ToUniversalTime().Ticks
+            return $child
+        }
+        function Wait-MainWindow { param([Diagnostics.Process]$Process, [int]$TimeoutMs = 15000) }
+        function Prepare-CaptureWindow {
+            param([Diagnostics.Process]$Process, [int]$ClientWidth, [int]$ClientHeight, [string]$BackbufferPath)
+            return [pscustomobject]@{ Handle = [IntPtr]::Zero }
+        }
+        function Capture-PreparedWindowPng {
+            param([Diagnostics.Process]$Process, [object]$CaptureSession, [string]$OutputPath)
+            New-TestPng -Path $OutputPath -Width 64 -Height 64
+        }
+        function Restore-CaptureWindow { param([object]$CaptureSession) }
+
+        $retainedProject = [pscustomobject]@{
+            number = '99'
+            exe = 'fixture.exe'
+            image = 'retained.png'
+            gif = 'retained.gif'
+            delayMs = 0
+            gifPhase = 'runtime'
+            gifPresentationPan = $false
+            readmeBackbufferCapture = $false
+            readmeCaptureMode = $false
+            preCaptureActions = @()
+        }
+        $retainedManifest = [pscustomobject]@{ captureWidth = 64; captureHeight = 64 }
+        $null = Invoke-ProjectCapture -Project $retainedProject -ManifestData $retainedManifest `
+            -RuntimeDir $retainedRuntime -MediaDir $retainedMedia -RepoRoot $retainedRoot `
+            -Attempt 1 -SkipGif -KeepWindows
+
+        $retainedChildAfterCapture = Get-Process -Id $retainedChildId -ErrorAction SilentlyContinue
+        $retainedChildIsExact = $null -ne $retainedChildAfterCapture -and
+            $retainedChildAfterCapture.StartTime.ToUniversalTime().Ticks -eq $retainedChildStartTimeUtcTicks
+        Assert-True $retainedChildIsExact `
+            'successful KeepWindows capture did not retain its child process'
+        if ($null -ne $retainedChildAfterCapture) { $retainedChildAfterCapture.Dispose() }
+        $originalExposedEarly = (Test-Path -LiteralPath $retainedIniPath -PathType Leaf) -and
+            [Linq.Enumerable]::SequenceEqual[byte]([IO.File]::ReadAllBytes($retainedIniPath), $retainedOriginalBytes)
+        Assert-True (-not $originalExposedEarly) `
+            'successful KeepWindows capture exposed the user imgui.ini before the retained child exited'
+
+        Set-Content -LiteralPath $retainedReleasePath -Value 'exit' -NoNewline
+        $shutdownWriteDeadline = [DateTime]::UtcNow.AddSeconds(10)
+        while (-not (Test-Path -LiteralPath $retainedShutdownWrittenPath -PathType Leaf) -and
+            [DateTime]::UtcNow -lt $shutdownWriteDeadline) {
+            Start-Sleep -Milliseconds 25
+        }
+        $captureIniWrittenOnShutdown = (Test-Path -LiteralPath $retainedIniPath -PathType Leaf) -and
+            [Linq.Enumerable]::SequenceEqual[byte]([IO.File]::ReadAllBytes($retainedIniPath), $retainedCaptureBytes)
+        Assert-True $captureIniWrittenOnShutdown `
+            'retained child did not write its capture imgui.ini during shutdown'
+        $childExitDeadline = [DateTime]::UtcNow.AddSeconds(10)
+        do {
+            $childAfterRelease = Get-Process -Id $retainedChildId -ErrorAction SilentlyContinue
+            $retainedChildExited = $null -eq $childAfterRelease -or
+                $childAfterRelease.StartTime.ToUniversalTime().Ticks -ne $retainedChildStartTimeUtcTicks
+            if ($null -ne $childAfterRelease) { $childAfterRelease.Dispose() }
+            if ($retainedChildExited) { break }
+            Start-Sleep -Milliseconds 25
+        } while ([DateTime]::UtcNow -lt $childExitDeadline)
+        Assert-True $retainedChildExited 'retained capture child did not exit after release'
+        $restoreDeadline = [DateTime]::UtcNow.AddSeconds(10)
+        do {
+            $backupPaths = @(Get-ChildItem -LiteralPath $retainedRuntime -Filter '.imgui.ini.readme-capture-*.bak' -File)
+            $originalRestored = (Test-Path -LiteralPath $retainedIniPath -PathType Leaf) -and
+                [Linq.Enumerable]::SequenceEqual[byte]([IO.File]::ReadAllBytes($retainedIniPath), $retainedOriginalBytes)
+            if ($originalRestored -and $backupPaths.Count -eq 0) { break }
+            Start-Sleep -Milliseconds 25
+        } while ([DateTime]::UtcNow -lt $restoreDeadline)
+        Assert-True $originalRestored 'retained child shutdown did not restore the user imgui.ini byte-for-byte'
+        Assert-True ($backupPaths.Count -eq 0) 'retained child shutdown left the recoverable imgui.ini backup behind'
+    }
+    finally {
+        Set-Item Function:\Start-ReadmeCaptureProcess -Value $savedStartReadmeCaptureProcess
+        Set-Item Function:\Wait-MainWindow -Value $savedWaitMainWindow
+        Set-Item Function:\Prepare-CaptureWindow -Value $savedPrepareCaptureWindow
+        Set-Item Function:\Capture-PreparedWindowPng -Value $savedCapturePreparedWindowPng
+        Set-Item Function:\Restore-CaptureWindow -Value $savedRestoreCaptureWindow
+        if ($null -ne $retainedChildId) {
+            $cleanupChild = Get-Process -Id $retainedChildId -ErrorAction SilentlyContinue
+            $cleanupChildIsExact = $null -ne $cleanupChild -and
+                $cleanupChild.StartTime.ToUniversalTime().Ticks -eq $retainedChildStartTimeUtcTicks
+            if ($cleanupChildIsExact) {
+                Set-Content -LiteralPath $retainedReleasePath -Value 'exit' -NoNewline
+                [void]$cleanupChild.WaitForExit(10000)
+            }
+            if ($null -ne $cleanupChild) { $cleanupChild.Dispose() }
+        }
+    }
+
     $previousCapture = $env:DX11_README_CAPTURE
     $previousBackbuffer = $env:DX11_README_BACKBUFFER_PNG
     $previousStillDelay = $env:DX11_README_STILL_DELAY_MS

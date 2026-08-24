@@ -66,8 +66,9 @@ CharacterPixelOutput PSMain(CharacterVertexOutput input)
 {
     CharacterPixelOutput output;
     float4 sampledBase = baseColorTexture.Sample(linearSampler, input.uv) * input.vertexColor;
-    // The colour pass preserves partial coverage. MASK uses its authored cutoff, while BLEND uses
-    // only a tiny coverage cutoff so alpha-zero texels cannot write depth or normal/profile data.
+    // The colour pass uses caller-selected coverage: MASK supplies its authored cutoff, ordinary
+    // BLEND may remain zero, and the verified lace override supplies a small positive cutoff so
+    // alpha-zero texels cannot write depth or normal/profile data.
     float coverageCutoff = alphaParameters.x;
     clip(sampledBase.a - coverageCutoff);
 

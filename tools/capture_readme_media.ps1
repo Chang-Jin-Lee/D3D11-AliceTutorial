@@ -744,6 +744,103 @@ function Restore-ReadmeCaptureImGuiIni {
     }
 }
 
+function Start-DeferredReadmeCaptureImGuiIniRestore {
+    param(
+        [Parameter(Mandatory)][object]$State,
+        [Parameter(Mandatory)][System.Diagnostics.Process]$Process,
+        [int]$HandoffTimeoutMs = 5000
+    )
+
+    $Process.Refresh()
+    if ($Process.HasExited) {
+        Restore-ReadmeCaptureImGuiIni -State $State
+        return
+    }
+
+    try {
+        $processStartTimeUtcTicks = $Process.StartTime.ToUniversalTime().Ticks
+    }
+    catch {
+        $Process.Refresh()
+        if ($Process.HasExited) {
+            Restore-ReadmeCaptureImGuiIni -State $State
+            return
+        }
+        throw
+    }
+
+    $watcherScript = Join-Path $PSScriptRoot 'restore_readme_capture_imgui_ini.ps1'
+    if (-not (Test-Path -LiteralPath $watcherScript -PathType Leaf)) {
+        throw "README capture ImGui restore watcher was not found: $watcherScript"
+    }
+
+    $readyPath = $State.BackupPath + '.watcher-ready'
+    Remove-Item -LiteralPath $readyPath -Force -ErrorAction SilentlyContinue
+    $watcher = $null
+    try {
+        $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+        $startInfo.FileName = (Get-Process -Id $PID).Path
+        $startInfo.UseShellExecute = $false
+        $startInfo.CreateNoWindow = $true
+        $startInfo.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+        [void]$startInfo.ArgumentList.Add('-NoLogo')
+        [void]$startInfo.ArgumentList.Add('-NoProfile')
+        [void]$startInfo.ArgumentList.Add('-NonInteractive')
+        [void]$startInfo.ArgumentList.Add('-File')
+        [void]$startInfo.ArgumentList.Add($watcherScript)
+        [void]$startInfo.ArgumentList.Add('-ProcessId')
+        [void]$startInfo.ArgumentList.Add($Process.Id.ToString([Globalization.CultureInfo]::InvariantCulture))
+        [void]$startInfo.ArgumentList.Add('-ProcessStartTimeUtcTicks')
+        [void]$startInfo.ArgumentList.Add($processStartTimeUtcTicks.ToString([Globalization.CultureInfo]::InvariantCulture))
+        [void]$startInfo.ArgumentList.Add('-IniPath')
+        [void]$startInfo.ArgumentList.Add([string]$State.IniPath)
+        [void]$startInfo.ArgumentList.Add('-BackupPath')
+        [void]$startInfo.ArgumentList.Add([string]$State.BackupPath)
+        [void]$startInfo.ArgumentList.Add('-ReadyPath')
+        [void]$startInfo.ArgumentList.Add($readyPath)
+        if ([bool]$State.OriginalExisted) {
+            [void]$startInfo.ArgumentList.Add('-OriginalExisted')
+        }
+
+        $watcher = [System.Diagnostics.Process]::Start($startInfo)
+        if ($null -eq $watcher) {
+            throw 'README capture ImGui restore watcher did not start.'
+        }
+
+        $deadline = [DateTime]::UtcNow.AddMilliseconds($HandoffTimeoutMs)
+        while (-not (Test-Path -LiteralPath $readyPath -PathType Leaf)) {
+            $watcher.Refresh()
+            if ($watcher.HasExited) {
+                throw "README capture ImGui restore watcher exited before accepting the handoff (exit $($watcher.ExitCode))."
+            }
+            if ([DateTime]::UtcNow -ge $deadline) {
+                throw "README capture ImGui restore watcher did not accept the handoff within $HandoffTimeoutMs ms."
+            }
+            Start-Sleep -Milliseconds 25
+        }
+    }
+    catch {
+        if ($null -ne $watcher) {
+            try {
+                $watcher.Refresh()
+                if (-not $watcher.HasExited) {
+                    $watcher.Kill()
+                    [void]$watcher.WaitForExit(5000)
+                }
+            }
+            catch {
+            }
+        }
+        throw
+    }
+    finally {
+        Remove-Item -LiteralPath $readyPath -Force -ErrorAction SilentlyContinue
+        if ($null -ne $watcher) {
+            $watcher.Dispose()
+        }
+    }
+}
+
 function Write-ReadmeCaptureImGuiSeed {
     param(
         [Parameter(Mandatory)][string]$RuntimeDir,
@@ -1147,6 +1244,7 @@ function Invoke-ProjectCapture {
     $pressedKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $imguiIniState = $null
     $backbufferPath = $null
+    $deferredRestoreError = $null
     $usePresentationPan = [bool]$Project.gifPresentationPan
     $imagePath = Resolve-ReadmeMediaContainedPath -BasePath $MediaDir -Path $Project.image -Description "project $($Project.number) image output"
     $gifPath = Resolve-ReadmeMediaContainedPath -BasePath $MediaDir -Path $Project.gif -Description "project $($Project.number) GIF output"
@@ -1224,8 +1322,22 @@ function Invoke-ProjectCapture {
     }
     finally {
         Release-CaptureKeys -CaptureSession $lastCaptureSession -PressedKeys $pressedKeys
-        if ($null -ne $process -and (-not $KeepWindows -or -not $captureCompleted)) {
+        if ($null -ne $process -and $KeepWindows -and $captureCompleted) {
+            try {
+                Start-DeferredReadmeCaptureImGuiIniRestore -State $imguiIniState -Process $process
+                $imguiIniState = $null
+                $process.Dispose()
+                $process = $null
+            }
+            catch {
+                $deferredRestoreError = $_
+                Stop-CaptureProcess -Process $process
+                $process = $null
+            }
+        }
+        elseif ($null -ne $process) {
             Stop-CaptureProcess -Process $process
+            $process = $null
         }
         if ($null -ne $imguiIniState) {
             Restore-ReadmeCaptureImGuiIni -State $imguiIniState
@@ -1237,6 +1349,9 @@ function Invoke-ProjectCapture {
         if (-not [string]::IsNullOrWhiteSpace($backbufferPath)) {
             Remove-ReadmeBackbufferFile -Path $backbufferPath -MediaDir $MediaDir
             Remove-ReadmeBackbufferFile -Path ($backbufferPath + '.tmp.png') -MediaDir $MediaDir
+        }
+        if ($null -ne $deferredRestoreError) {
+            throw $deferredRestoreError
         }
     }
 }
