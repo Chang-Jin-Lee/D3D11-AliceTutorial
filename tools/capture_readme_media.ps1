@@ -746,6 +746,7 @@ function Enter-ReadmeCaptureRuntimeLock {
         Token = $token
         HandedOff = $false
         Released = $false
+        RestorationPending = $false
     }
 }
 
@@ -754,6 +755,9 @@ function Exit-ReadmeCaptureRuntimeLock {
 
     if ([bool]$State.HandedOff -or [bool]$State.Released) {
         return
+    }
+    if ([bool]$State.RestorationPending) {
+        throw "README capture runtime lock cannot be released while imgui.ini restoration is unresolved: $($State.LockPath)"
     }
     if (-not (Test-Path -LiteralPath $State.LockPath -PathType Leaf)) {
         throw "README capture runtime lock disappeared before its owner released it: $($State.LockPath)"
@@ -797,7 +801,17 @@ function Get-RetainedBackbufferCleanupPaths {
 }
 
 function Suspend-ReadmeCaptureImGuiIni {
-    param([Parameter(Mandatory)][string]$RuntimeDir)
+    param(
+        [Parameter(Mandatory)][string]$RuntimeDir,
+        [object]$RuntimeLockState
+    )
+
+    if ($null -ne $RuntimeLockState) {
+        if ([bool]$RuntimeLockState.HandedOff -or [bool]$RuntimeLockState.Released) {
+            throw 'README capture runtime lock is not available for imgui.ini suspension.'
+        }
+        $RuntimeLockState.RestorationPending = $true
+    }
 
     $iniPath = Join-Path $RuntimeDir 'imgui.ini'
     $backupPath = Join-Path $RuntimeDir ('.imgui.ini.readme-capture-{0}.bak' -f [Guid]::NewGuid().ToString('N'))
@@ -814,7 +828,10 @@ function Suspend-ReadmeCaptureImGuiIni {
 }
 
 function Restore-ReadmeCaptureImGuiIni {
-    param([Parameter(Mandatory)][object]$State)
+    param(
+        [Parameter(Mandatory)][object]$State,
+        [object]$RuntimeLockState
+    )
 
     if (Test-Path -LiteralPath $State.IniPath) {
         Remove-Item -LiteralPath $State.IniPath -Force
@@ -824,6 +841,9 @@ function Restore-ReadmeCaptureImGuiIni {
             throw "README capture cannot restore the user's imgui.ini because its backup is missing: $($State.BackupPath)"
         }
         [System.IO.File]::Move($State.BackupPath, $State.IniPath)
+    }
+    if ($null -ne $RuntimeLockState) {
+        $RuntimeLockState.RestorationPending = $false
     }
 }
 
@@ -848,7 +868,7 @@ function Start-DeferredReadmeCaptureImGuiIniRestore {
 
     $Process.Refresh()
     if ($Process.HasExited) {
-        Restore-ReadmeCaptureImGuiIni -State $State
+        Restore-ReadmeCaptureImGuiIni -State $State -RuntimeLockState $RuntimeLockState
         foreach ($cleanupPath in $retainedCleanupPaths) {
             Remove-ReadmeBackbufferFile -Path $cleanupPath -MediaDir $MediaDir
         }
@@ -861,7 +881,7 @@ function Start-DeferredReadmeCaptureImGuiIniRestore {
     catch {
         $Process.Refresh()
         if ($Process.HasExited) {
-            Restore-ReadmeCaptureImGuiIni -State $State
+            Restore-ReadmeCaptureImGuiIni -State $State -RuntimeLockState $RuntimeLockState
             foreach ($cleanupPath in $retainedCleanupPaths) {
                 Remove-ReadmeBackbufferFile -Path $cleanupPath -MediaDir $MediaDir
             }
@@ -1381,7 +1401,8 @@ function Invoke-ProjectCapture {
                 -Description "project $($Project.number) backbuffer output"
         }
 
-        $imguiIniState = Suspend-ReadmeCaptureImGuiIni -RuntimeDir $RuntimeDir
+        $imguiIniState = Suspend-ReadmeCaptureImGuiIni -RuntimeDir $RuntimeDir `
+            -RuntimeLockState $RuntimeLockState
         Write-ReadmeCaptureImGuiSeed -RuntimeDir $RuntimeDir -ProjectNumber ([string]$Project.number)
         $process = Start-ReadmeCaptureProcess -FilePath $exePath -WorkingDirectory $RuntimeDir `
             -EnableReadmeCapture:([bool]$Project.readmeCaptureMode) -BackbufferPath $backbufferPath `
@@ -1460,7 +1481,7 @@ function Invoke-ProjectCapture {
             $process = $null
         }
         if ($null -ne $imguiIniState) {
-            Restore-ReadmeCaptureImGuiIni -State $imguiIniState
+            Restore-ReadmeCaptureImGuiIni -State $imguiIniState -RuntimeLockState $RuntimeLockState
         }
         # After the publisher is down, so it cannot recreate what is removed here.
         # The application clears its own temporary sibling when it shuts down, but
@@ -1496,6 +1517,7 @@ else {
 }
 $selectedProjects = @(Get-CaptureProjectSelection -Manifest $manifestData -ProjectNumber $ProjectNumber -All:$All)
 $runtimeLockState = Enter-ReadmeCaptureRuntimeLock -RuntimeDir $runtimeDir
+$runtimeFailure = $null
 try {
 New-Item -ItemType Directory -Path $mediaDir -Force | Out-Null
 
@@ -1523,6 +1545,9 @@ foreach ($project in $selectedProjects) {
             $projectSucceeded = $true
         }
         catch {
+            if ([bool]$runtimeLockState.RestorationPending) {
+                throw
+            }
             Add-ReportRow -Rows $reportRows -Project $project -Attempt $attempt -Output $project.exe -Status 'Failure' -Dimensions '' -Bytes '' -Notes $_.Exception.Message
         }
     }
@@ -1544,6 +1569,17 @@ if ($failedProjects.Count -gt 0) {
     throw "README media capture failed for project(s): $($failedProjects.number -join ', ')"
 }
 }
+catch {
+    $runtimeFailure = $_
+    throw
+}
 finally {
-    Exit-ReadmeCaptureRuntimeLock -State $runtimeLockState
+    try {
+        Exit-ReadmeCaptureRuntimeLock -State $runtimeLockState
+    }
+    catch {
+        if ($null -eq $runtimeFailure) {
+            throw
+        }
+    }
 }

@@ -236,6 +236,102 @@ try {
     Assert-True (-not (Test-Path -LiteralPath $imguiIniPath)) `
         'capture without a pre-existing imgui.ini leaked generated layout state'
 
+    # A synchronous restore can fail after the user's original layout has
+    # already moved to its recoverable backup. Keep real bytes and a real
+    # FileShare.None handle here: releasing ownership in this state would let
+    # another invocation treat the generated layout as the user's original.
+    $restoreFailureRoot = Join-Path $tempRoot 'synchronous restore failure'
+    $restoreFailureRuntime = Join-Path $restoreFailureRoot 'runtime with spaces'
+    New-Item -ItemType Directory -Path $restoreFailureRuntime -Force | Out-Null
+    $restoreFailureIniPath = Join-Path $restoreFailureRuntime 'imgui.ini'
+    $restoreFailureOriginalBytes = [byte[]](0x00, 0x52, 0x65, 0x73, 0x74, 0x6F, 0x72, 0x65, 0xFF)
+    $restoreFailureGeneratedBytes = [byte[]](0x63, 0x61, 0x70, 0x74, 0x75, 0x72, 0x65)
+    [IO.File]::WriteAllBytes($restoreFailureIniPath, $restoreFailureOriginalBytes)
+    $restoreFailureLock = Enter-ReadmeCaptureRuntimeLock -RuntimeDir $restoreFailureRuntime
+    if ($null -eq $restoreFailureLock.PSObject.Properties['RestorationPending']) {
+        $restoreFailureLock | Add-Member -NotePropertyName RestorationPending -NotePropertyValue $true
+    }
+    else {
+        $restoreFailureLock.RestorationPending = $true
+    }
+    $restoreFailureState = $null
+    $exclusiveIniHandle = $null
+    try {
+        $restoreFailureState = Suspend-ReadmeCaptureImGuiIni -RuntimeDir $restoreFailureRuntime
+        [IO.File]::WriteAllBytes($restoreFailureIniPath, $restoreFailureGeneratedBytes)
+        $exclusiveIniHandle = [IO.File]::Open($restoreFailureIniPath, [IO.FileMode]::Open,
+            [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+
+        $restoreFailure = $null
+        try { Restore-ReadmeCaptureImGuiIni -State $restoreFailureState }
+        catch { $restoreFailure = $_ }
+        Assert-True ($null -ne $restoreFailure) 'FileShare.None did not force synchronous imgui.ini restoration failure'
+        Assert-True ($restoreFailure.Exception.Message -match 'imgui\.ini|used by another process|access') `
+            "synchronous restore failure lost its actionable original diagnostic: $($restoreFailure.Exception.Message)"
+        Assert-True (Test-Path -LiteralPath $restoreFailureState.BackupPath -PathType Leaf) `
+            'failed synchronous restore lost the recoverable original backup'
+        Assert-True ([Linq.Enumerable]::SequenceEqual[byte](
+                [IO.File]::ReadAllBytes($restoreFailureState.BackupPath), $restoreFailureOriginalBytes)) `
+            'failed synchronous restore changed the recoverable original bytes'
+
+        $unlockFailure = $null
+        try { Exit-ReadmeCaptureRuntimeLock -State $restoreFailureLock }
+        catch { $unlockFailure = $_ }
+        Assert-True (Test-Path -LiteralPath $restoreFailureLock.LockPath -PathType Leaf) `
+            'synchronous restore failure released the runtime lock while original state remained unresolved'
+        Assert-True ($null -ne $unlockFailure -and $unlockFailure.Exception.Message -match 'restoration is unresolved') `
+            'unresolved restoration did not fail closed with an actionable lock diagnostic'
+        Assert-True (-not [bool]$restoreFailureLock.Released) `
+            'unresolved restoration marked its runtime lock released'
+        Assert-True (([IO.File]::ReadAllText($restoreFailureLock.LockPath)) -ceq [string]$restoreFailureLock.Token) `
+            'unresolved restoration changed the owned runtime-lock token'
+
+        $exclusiveIniHandle.Dispose()
+        $exclusiveIniHandle = $null
+        Restore-ReadmeCaptureImGuiIni -State $restoreFailureState -RuntimeLockState $restoreFailureLock
+        Assert-True (-not [bool]$restoreFailureLock.RestorationPending) `
+            'successful explicit recovery did not resolve the restoration-pending state'
+        Exit-ReadmeCaptureRuntimeLock -State $restoreFailureLock
+        Assert-True ([Linq.Enumerable]::SequenceEqual[byte](
+                [IO.File]::ReadAllBytes($restoreFailureIniPath), $restoreFailureOriginalBytes)) `
+            'explicit recovery did not restore the original imgui.ini bytes'
+        Assert-True (-not (Test-Path -LiteralPath $restoreFailureState.BackupPath)) `
+            'explicit recovery left the original imgui.ini backup behind'
+        Assert-True (-not (Test-Path -LiteralPath $restoreFailureLock.LockPath)) `
+            'explicit recovery left the runtime lock behind'
+
+        $successfulStateLock = Enter-ReadmeCaptureRuntimeLock -RuntimeDir $restoreFailureRuntime
+        try {
+            Assert-True ($null -ne $successfulStateLock.PSObject.Properties['RestorationPending'] -and
+                -not [bool]$successfulStateLock.RestorationPending) `
+                'new runtime ownership did not initialize explicit restoration state'
+            $successfulIniState = Suspend-ReadmeCaptureImGuiIni -RuntimeDir $restoreFailureRuntime `
+                -RuntimeLockState $successfulStateLock
+            Assert-True ([bool]$successfulStateLock.RestorationPending) `
+                'suspension did not mark imgui.ini restoration pending before state changed'
+            [IO.File]::WriteAllBytes($restoreFailureIniPath, $restoreFailureGeneratedBytes)
+            Restore-ReadmeCaptureImGuiIni -State $successfulIniState -RuntimeLockState $successfulStateLock
+            Assert-True (-not [bool]$successfulStateLock.RestorationPending) `
+                'successful synchronous restoration did not clear its pending state'
+        }
+        finally {
+            Exit-ReadmeCaptureRuntimeLock -State $successfulStateLock
+        }
+    }
+    finally {
+        if ($null -ne $exclusiveIniHandle) { $exclusiveIniHandle.Dispose() }
+        if (Test-Path -LiteralPath $restoreFailureLock.LockPath -PathType Leaf) {
+            [IO.File]::Delete([string]$restoreFailureLock.LockPath)
+        }
+        if ($null -ne $restoreFailureState -and
+            (Test-Path -LiteralPath $restoreFailureState.BackupPath -PathType Leaf)) {
+            if (Test-Path -LiteralPath $restoreFailureIniPath) {
+                [IO.File]::Delete($restoreFailureIniPath)
+            }
+            [IO.File]::Move($restoreFailureState.BackupPath, $restoreFailureIniPath)
+        }
+    }
+
     # Cross-invocation ownership has to survive the first pwsh owner exiting
     # while its retained child and detached restorer remain alive. The second
     # independent owner must fail before changing any bytes or artifacts.
@@ -279,7 +375,7 @@ $child = $null
 $handedOff = $false
 try {
     $runtimeLock = Enter-ReadmeCaptureRuntimeLock -RuntimeDir $RuntimeDir
-    $iniState = Suspend-ReadmeCaptureImGuiIni -RuntimeDir $RuntimeDir
+    $iniState = Suspend-ReadmeCaptureImGuiIni -RuntimeDir $RuntimeDir -RuntimeLockState $runtimeLock
     [IO.File]::WriteAllBytes($iniState.IniPath, [byte[]](0x63, 0x61, 0x70, 0x74, 0x75, 0x72, 0x65))
     [IO.File]::WriteAllBytes($BackbufferPath, [byte[]](0x69, 0x6E, 0x69, 0x74, 0x69, 0x61, 0x6C))
     [IO.File]::WriteAllBytes(($BackbufferPath + '.tmp.png'), [byte[]](0x74, 0x65, 0x6D, 0x70))
@@ -311,7 +407,9 @@ finally {
             }
             catch {}
         }
-        if ($null -ne $iniState) { Restore-ReadmeCaptureImGuiIni -State $iniState }
+        if ($null -ne $iniState) {
+            Restore-ReadmeCaptureImGuiIni -State $iniState -RuntimeLockState $runtimeLock
+        }
         if ($null -ne $runtimeLock) { Exit-ReadmeCaptureRuntimeLock -State $runtimeLock }
     }
     if ($null -ne $child) { $child.Dispose() }
