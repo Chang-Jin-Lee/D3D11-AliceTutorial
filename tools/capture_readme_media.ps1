@@ -11,6 +11,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+if ($All -and $KeepWindows) {
+    throw 'The -All and -KeepWindows options cannot be used together because retained captures share imgui.ini. Select a single project with -ProjectNumber when using -KeepWindows.'
+}
+
 . (Join-Path $PSScriptRoot 'readme_media_common.ps1')
 
 Add-Type -AssemblyName System.Drawing

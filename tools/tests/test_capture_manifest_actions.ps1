@@ -144,6 +144,35 @@ $tempManifest = Join-Path $tempRoot 'manifest.json'
 $tempOutput = Join-Path $tempRoot 'output'
 New-Item -ItemType Directory -Path $tempRoot, $tempRuntime -Force | Out-Null
 try {
+    # All retained applications share one runtime imgui.ini, so a retained batch
+    # cannot safely compose independent deferred restorers. The CLI must reject
+    # the combination before touching the user's bytes, creating a backup/output,
+    # or retaining any capture process. -ValidateOnly keeps this RED test safe
+    # even against the pre-fix entrypoint.
+    $unsafeBatchManifest = $mediaManifest | ConvertTo-Json -Depth 32 | ConvertFrom-Json
+    $unsafeBatchManifest.runtimeDir = [IO.Path]::GetRelativePath($repoRoot, $tempRuntime)
+    $unsafeBatchManifest | ConvertTo-Json -Depth 32 | Set-Content -LiteralPath $tempManifest -Encoding UTF8
+    $unsafeBatchIniPath = Join-Path $tempRuntime 'imgui.ini'
+    $unsafeBatchOriginalBytes = [byte[]](0x00, 0x4B, 0x65, 0x65, 0x70, 0xFF)
+    [IO.File]::WriteAllBytes($unsafeBatchIniPath, $unsafeBatchOriginalBytes)
+    $unsafeBatchOutputDir = Join-Path $tempRoot 'unsafe batch output'
+    $unsafeBatchOutput = & pwsh -NoProfile -File $captureScript -Manifest $tempManifest `
+        -All -KeepWindows -ValidateOnly -OutputDir $unsafeBatchOutputDir 2>&1
+    $unsafeBatchExitCode = $LASTEXITCODE
+    $unsafeBatchMessage = (($unsafeBatchOutput | Out-String) -replace '\x1b\[[0-9;]*m', '') -replace '\s+', ' '
+    Assert-True ($unsafeBatchExitCode -ne 0) 'capture CLI accepted unsafe -All -KeepWindows combination'
+    Assert-True ($unsafeBatchMessage -match 'Select a single project\s*\|?\s*with -ProjectNumber when using -KeepWindows') `
+        'unsafe retained batch rejection did not explain how to select one project'
+    Assert-True ([Linq.Enumerable]::SequenceEqual[byte](
+            [IO.File]::ReadAllBytes($unsafeBatchIniPath), $unsafeBatchOriginalBytes)) `
+        'unsafe retained batch rejection changed the user imgui.ini bytes'
+    Assert-True (@(Get-ChildItem -LiteralPath $tempRuntime -Filter '.imgui.ini.readme-capture-*' -File).Count -eq 0) `
+        'unsafe retained batch rejection created an imgui.ini backup or watcher file'
+    Assert-True (-not (Test-Path -LiteralPath $unsafeBatchOutputDir)) `
+        'unsafe retained batch rejection created capture output'
+    Assert-True ($unsafeBatchMessage -notmatch 'Capturing project') `
+        'unsafe retained batch rejection reached the capture process launch loop'
+
     # Capture isolation is observable through real filesystem and environment
     # side effects. A user's remembered ImGui layout must disappear while the
     # child starts, then return byte-for-byte even when launch/capture fails.
