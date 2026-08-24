@@ -2149,9 +2149,10 @@ void App::RenderControlPannel()
 	ImGuiIO& ioUI = ImGui::GetIO();
 	const float W = ioUI.DisplaySize.x;
 	const float H = ioUI.DisplaySize.y;
+	const ImGuiCond captureLayoutCondition = ReadmeCapture::IsEnabled() ? ImGuiCond_Always : ImGuiCond_FirstUseEver;
 
-	ImGui::SetNextWindowPos(ImVec2(10, 20), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(300, 360), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowPos(ImVec2(10, 20), captureLayoutCondition);
+	ImGui::SetNextWindowSize(ImVec2(300, 360), captureLayoutCondition);
 	if (ImGui::Begin("Controls"))
 	{
 		// SkyBox 선택
@@ -2263,8 +2264,8 @@ void App::RenderControlPannel()
 	ImGui::End();
 
 	auto& io = ImGui::GetIO();
-	ImGui::SetNextWindowPos(ImVec2(10, 390), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(370, 360), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowPos(ImVec2(10, 390), captureLayoutCondition);
+	ImGui::SetNextWindowSize(ImVec2(370, 360), captureLayoutCondition);
 	// Shadow controls and debug view
 	if (ImGui::Begin("ShadowMap (Directional)"))
 	{
@@ -2288,8 +2289,9 @@ void App::RenderModelPannel()
 {
 	// Models 독립 창
 	auto& io = ImGui::GetIO();
-	ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - 330, 380), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(320, 360), ImGuiCond_FirstUseEver);
+	const ImGuiCond detailsLayoutCondition = ReadmeCapture::IsEnabled() ? ImGuiCond_Always : ImGuiCond_FirstUseEver;
+	ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - 330, 380), detailsLayoutCondition);
+	ImGui::SetNextWindowSize(ImVec2(320, 360), detailsLayoutCondition);
 	if (ImGui::Begin("Details"))
 	{
 		// 렌더 모드 선택

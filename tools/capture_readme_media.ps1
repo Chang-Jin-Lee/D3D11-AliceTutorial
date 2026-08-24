@@ -713,6 +713,118 @@ function Invoke-PreCaptureActions {
     }
 }
 
+function Suspend-ReadmeCaptureImGuiIni {
+    param([Parameter(Mandatory)][string]$RuntimeDir)
+
+    $iniPath = Join-Path $RuntimeDir 'imgui.ini'
+    $backupPath = Join-Path $RuntimeDir ('.imgui.ini.readme-capture-{0}.bak' -f [Guid]::NewGuid().ToString('N'))
+    $originalExisted = Test-Path -LiteralPath $iniPath -PathType Leaf
+    if ($originalExisted) {
+        [System.IO.File]::Move($iniPath, $backupPath)
+    }
+
+    return [pscustomobject]@{
+        IniPath = $iniPath
+        BackupPath = $backupPath
+        OriginalExisted = $originalExisted
+    }
+}
+
+function Restore-ReadmeCaptureImGuiIni {
+    param([Parameter(Mandatory)][object]$State)
+
+    if (Test-Path -LiteralPath $State.IniPath) {
+        Remove-Item -LiteralPath $State.IniPath -Force
+    }
+    if ([bool]$State.OriginalExisted) {
+        if (-not (Test-Path -LiteralPath $State.BackupPath -PathType Leaf)) {
+            throw "README capture cannot restore the user's imgui.ini because its backup is missing: $($State.BackupPath)"
+        }
+        [System.IO.File]::Move($State.BackupPath, $State.IniPath)
+    }
+}
+
+function Write-ReadmeCaptureImGuiSeed {
+    param(
+        [Parameter(Mandatory)][string]$RuntimeDir,
+        [Parameter(Mandatory)][string]$ProjectNumber
+    )
+
+    if ($ProjectNumber -ne '24') {
+        return
+    }
+
+    # Project 24's bone card sits below its model controls, so a fresh default
+    # 500x600 window clips the evidence even after user state is quarantined.
+    # Keep the model panel tall at the far left and collapse auxiliary panels at
+    # the far right; the generated file is removed by Restore-* after capture.
+    $seed = @'
+[Window][Model Loader (FBX / OBJ / PMX)]
+Pos=20,20
+Size=340,860
+Collapsed=0
+
+[Window][Controls]
+Pos=1260,20
+Size=320,720
+Collapsed=1
+
+[Window][System Info]
+Pos=1260,70
+Size=320,220
+Collapsed=1
+
+[Window][Console]
+Pos=1260,120
+Size=320,200
+Collapsed=1
+'@
+    [System.IO.File]::WriteAllText((Join-Path $RuntimeDir 'imgui.ini'), $seed, [System.Text.UTF8Encoding]::new($false))
+}
+
+function Restore-ReadmeCaptureEnvironmentVariable {
+    param([Parameter(Mandatory)][string]$Name, [AllowNull()][string]$PreviousValue)
+
+    if ($null -eq $PreviousValue) {
+        Remove-Item -LiteralPath "Env:\$Name" -ErrorAction SilentlyContinue
+    }
+    else {
+        Set-Item -LiteralPath "Env:\$Name" -Value $PreviousValue
+    }
+}
+
+function Start-ReadmeCaptureProcess {
+    param(
+        [Parameter(Mandatory)][string]$FilePath,
+        [Parameter(Mandatory)][string]$WorkingDirectory,
+        [switch]$EnableReadmeCapture,
+        [string]$BackbufferPath,
+        [Parameter(Mandatory)][ValidateRange(0, [int]::MaxValue)][int]$StillDelayMs,
+        [scriptblock]$ProcessLauncher
+    )
+
+    $previousCapture = $env:DX11_README_CAPTURE
+    $previousBackbuffer = $env:DX11_README_BACKBUFFER_PNG
+    $previousStillDelay = $env:DX11_README_STILL_DELAY_MS
+    try {
+        if ($EnableReadmeCapture) { $env:DX11_README_CAPTURE = '1' }
+        else { Remove-Item Env:\DX11_README_CAPTURE -ErrorAction SilentlyContinue }
+        if ([string]::IsNullOrWhiteSpace($BackbufferPath)) { Remove-Item Env:\DX11_README_BACKBUFFER_PNG -ErrorAction SilentlyContinue }
+        else { $env:DX11_README_BACKBUFFER_PNG = $BackbufferPath }
+        $env:DX11_README_STILL_DELAY_MS = $StillDelayMs.ToString([Globalization.CultureInfo]::InvariantCulture)
+
+        if ($null -ne $ProcessLauncher) {
+            return & $ProcessLauncher $FilePath $WorkingDirectory
+        }
+        return Start-Process -FilePath $FilePath -WorkingDirectory $WorkingDirectory -PassThru
+    }
+    finally {
+        Restore-ReadmeCaptureEnvironmentVariable -Name 'DX11_README_CAPTURE' -PreviousValue $previousCapture
+        Restore-ReadmeCaptureEnvironmentVariable -Name 'DX11_README_BACKBUFFER_PNG' -PreviousValue $previousBackbuffer
+        Restore-ReadmeCaptureEnvironmentVariable -Name 'DX11_README_STILL_DELAY_MS' -PreviousValue $previousStillDelay
+    }
+}
+
 function Wait-MainWindow {
     param(
         [System.Diagnostics.Process]$Process,
@@ -1033,10 +1145,7 @@ function Invoke-ProjectCapture {
     $captureCompleted = $false
     $lastCaptureSession = $null
     $pressedKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-    $previousReadmeCaptureEnv = $env:DX11_README_CAPTURE
-    $previousReadmeBackbufferEnv = $env:DX11_README_BACKBUFFER_PNG
-    $readmeCaptureEnvChanged = $false
-    $readmeBackbufferEnvChanged = $false
+    $imguiIniState = $null
     $backbufferPath = $null
     $usePresentationPan = [bool]$Project.gifPresentationPan
     $imagePath = Resolve-ReadmeMediaContainedPath -BasePath $MediaDir -Path $Project.image -Description "project $($Project.number) image output"
@@ -1051,11 +1160,6 @@ function Invoke-ProjectCapture {
             throw "Executable not found: $(Convert-ToReportPath $exePath $RepoRoot)"
         }
 
-        if ([bool]$Project.readmeCaptureMode) {
-            $env:DX11_README_CAPTURE = '1'
-            $readmeCaptureEnvChanged = $true
-        }
-
         if ([bool]$Project.readmeBackbufferCapture) {
             # A unique name per attempt, contained inside the chosen media
             # directory so the cleanup below can prove it is removing a path this
@@ -1063,29 +1167,13 @@ function Invoke-ProjectCapture {
             $backbufferPath = Resolve-ReadmeMediaContainedPath -BasePath $MediaDir `
                 -Path ('backbuffer-{0}-{1}.png' -f $Project.number, [Guid]::NewGuid().ToString('N')) `
                 -Description "project $($Project.number) backbuffer output"
-            $env:DX11_README_BACKBUFFER_PNG = $backbufferPath
-            $readmeBackbufferEnvChanged = $true
         }
 
-        $process = Start-Process -FilePath $exePath -WorkingDirectory $RuntimeDir -PassThru
-        if ($readmeCaptureEnvChanged) {
-            if ($null -eq $previousReadmeCaptureEnv) {
-                Remove-Item Env:\DX11_README_CAPTURE -ErrorAction SilentlyContinue
-            }
-            else {
-                $env:DX11_README_CAPTURE = $previousReadmeCaptureEnv
-            }
-            $readmeCaptureEnvChanged = $false
-        }
-        if ($readmeBackbufferEnvChanged) {
-            if ($null -eq $previousReadmeBackbufferEnv) {
-                Remove-Item Env:\DX11_README_BACKBUFFER_PNG -ErrorAction SilentlyContinue
-            }
-            else {
-                $env:DX11_README_BACKBUFFER_PNG = $previousReadmeBackbufferEnv
-            }
-            $readmeBackbufferEnvChanged = $false
-        }
+        $imguiIniState = Suspend-ReadmeCaptureImGuiIni -RuntimeDir $RuntimeDir
+        Write-ReadmeCaptureImGuiSeed -RuntimeDir $RuntimeDir -ProjectNumber ([string]$Project.number)
+        $process = Start-ReadmeCaptureProcess -FilePath $exePath -WorkingDirectory $RuntimeDir `
+            -EnableReadmeCapture:([bool]$Project.readmeCaptureMode) -BackbufferPath $backbufferPath `
+            -StillDelayMs ([int]$Project.delayMs)
 
         Wait-MainWindow -Process $process
 
@@ -1136,24 +1224,11 @@ function Invoke-ProjectCapture {
     }
     finally {
         Release-CaptureKeys -CaptureSession $lastCaptureSession -PressedKeys $pressedKeys
-        if ($readmeCaptureEnvChanged) {
-            if ($null -eq $previousReadmeCaptureEnv) {
-                Remove-Item Env:\DX11_README_CAPTURE -ErrorAction SilentlyContinue
-            }
-            else {
-                $env:DX11_README_CAPTURE = $previousReadmeCaptureEnv
-            }
-        }
-        if ($readmeBackbufferEnvChanged) {
-            if ($null -eq $previousReadmeBackbufferEnv) {
-                Remove-Item Env:\DX11_README_BACKBUFFER_PNG -ErrorAction SilentlyContinue
-            }
-            else {
-                $env:DX11_README_BACKBUFFER_PNG = $previousReadmeBackbufferEnv
-            }
-        }
         if ($null -ne $process -and (-not $KeepWindows -or -not $captureCompleted)) {
             Stop-CaptureProcess -Process $process
+        }
+        if ($null -ne $imguiIniState) {
+            Restore-ReadmeCaptureImGuiIni -State $imguiIniState
         }
         # After the publisher is down, so it cannot recreate what is removed here.
         # The application clears its own temporary sibling when it shuts down, but

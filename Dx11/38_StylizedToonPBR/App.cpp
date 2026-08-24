@@ -40,6 +40,17 @@ namespace
     constexpr float kHeroYawRadians = -0.31415927f;
     constexpr float kBlendCoverageCutoff = 0.02f;
 
+    int64_t ReadCaptureStillDelayMs()
+    {
+        wchar_t value[32]{};
+        const DWORD length = GetEnvironmentVariableW(L"DX11_README_STILL_DELAY_MS", value, static_cast<DWORD>(std::size(value)));
+        if (length == 0 || length >= std::size(value))
+            return -1;
+        wchar_t* end = nullptr;
+        const long long parsed = std::wcstoll(value, &end, 10);
+        return end != value && *end == L'\0' && parsed >= 0 ? parsed : -1;
+    }
+
     struct MaterialOverride
     {
         uint32_t materialIndex;
@@ -172,6 +183,8 @@ bool App::OnInitialize()
 {
     m_readmeCapture = ReadmeCapture::IsEnabled();
     m_cpuFrameStart = std::chrono::steady_clock::now();
+    m_captureStartedAt = m_cpuFrameStart;
+    m_readmeStillDelayMs = ReadCaptureStillDelayMs();
 
     if (!CreateDeviceResources())
         return FailInitialization(L"Direct3D 11 device and swap-chain initialization failed.");
@@ -250,7 +263,11 @@ void App::OnUpdate(const float& dt)
     if (!m_character || !m_context)
         return;
 
-    if (m_readmeCapture)
+    const auto captureElapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - m_captureStartedAt).count();
+    const bool freezeCapturePose = m_readmeCapture
+        && (m_readmeStillDelayMs < 0 || captureElapsedMs < m_readmeStillDelayMs || !m_captureAnimationReleased);
+    if (freezeCapturePose)
     {
         m_character->SetAnimationTimeSeconds(kCapturePoseTimeSeconds);
         m_character->UpdateAnimation(m_context.Get(), 0.0);
@@ -329,6 +346,12 @@ void App::OnInputProcess(
         ApplyPreset(LightingPreset::NeonContrast);
     if (keyTracker.IsKeyPressed(Keyboard::Keys::I))
         ApplyPreset(LightingPreset::IndustrialSoft);
+    if (m_readmeCapture && keyTracker.IsKeyPressed(Keyboard::Keys::D))
+    {
+        m_captureAnimationReleased = true;
+        if (m_character)
+            m_character->SetAnimationPlaying(true);
+    }
 }
 
 LRESULT CALLBACK App::WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -870,11 +893,11 @@ void App::BuildMaterialProfiles()
             || std::string(materialName.C_Str()).find(overrideEntry.materialName) == std::string::npos)
             continue;
 
-        // Only how the colour pass composites changes. The depth-only shadow keeps the authored MASK
-        // coverage so a lace garment still casts a half-dense shadow rather than a solid one, and
+        // The colour pass preserves partial lace coverage but still rejects alpha-zero texels before
+        // they can write depth or MRT1. The shadow keeps the authored MASK cutoff, and
         // writesSilhouette stays set because the garment is still the character's outer surface.
         renderInfo.transparency = MaterialTransparency::Blend;
-        renderInfo.colorAlphaCutoff = 0.0f;
+        renderInfo.colorAlphaCutoff = kBlendCoverageCutoff;
     }
 }
 

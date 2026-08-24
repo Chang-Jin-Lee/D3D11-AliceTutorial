@@ -66,9 +66,8 @@ CharacterPixelOutput PSMain(CharacterVertexOutput input)
 {
     CharacterPixelOutput output;
     float4 sampledBase = baseColorTexture.Sample(linearSampler, input.uv) * input.vertexColor;
-    // The colour pass must preserve partial coverage: only glTF MASK materials clip here, and they
-    // clip at their authored cutoff. OPAQUE and BLEND materials arrive with a zero cutoff so the
-    // alpha blend state composites their coverage instead of punching it out.
+    // The colour pass preserves partial coverage. MASK uses its authored cutoff, while BLEND uses
+    // only a tiny coverage cutoff so alpha-zero texels cannot write depth or normal/profile data.
     float coverageCutoff = alphaParameters.x;
     clip(sampledBase.a - coverageCutoff);
 
@@ -102,7 +101,7 @@ CharacterPixelOutput PSMain(CharacterVertexOutput input)
     float bandSoftness = diffuseBandThresholds.z;
     float lowerBand = smoothstep(diffuseBandThresholds.x - bandSoftness, diffuseBandThresholds.x + bandSoftness, nDotL * visibility);
     float upperBand = smoothstep(diffuseBandThresholds.y - bandSoftness, diffuseBandThresholds.y + bandSoftness, nDotL * visibility);
-    // Floor 0.10 rather than 0.22: the old floor kept the darkest band at 64 percent of the
+    // Floor 0.14 rather than 0.22: the old floor kept the darkest band at 53 percent of the
     // lit band, which ACES then compressed into a 1.3:1 display ratio and read as flat and washed
     // out. The three weights still sum to 1.0 so a fully lit surface is unchanged.
     float toonDiffuse = 0.14f + lowerBand * 0.375f + upperBand * 0.485f;

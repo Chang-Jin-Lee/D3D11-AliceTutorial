@@ -2140,11 +2140,26 @@ void App::RenderControlPannel()
 	ImGuiIO& ioUI = ImGui::GetIO();
 	const float W = ioUI.DisplaySize.x;
 	const float H = ioUI.DisplaySize.y;
+	const ImGuiCond captureLayoutCondition = ReadmeCapture::IsEnabled() ? ImGuiCond_Always : ImGuiCond_FirstUseEver;
+	const bool captureAudioEvidence = ReadmeCapture::IsEnabled();
 
-	ImGui::SetNextWindowPos(ImVec2(10, 20), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(300, 360), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowPos(ImVec2(10, 20), captureLayoutCondition);
+	ImGui::SetNextWindowSize(ImVec2(300, 360), captureLayoutCondition);
 	if (ImGui::Begin("Controls"))
 	{
+		if (captureAudioEvidence)
+		{
+			ImGui::SeparatorText("FMOD Audio");
+			ImGui::TextUnformatted("Backend: FMOD");
+			ImGui::Text("Loaded: %s", m_->m_AudioLoaded ? "Yes" : "No");
+			ImGui::Button("Play Audio");
+			ImGui::SameLine();
+			ImGui::Button("Pause");
+			ImGui::SameLine();
+			ImGui::Button("Stop");
+			ImGui::ProgressBar(m_->m_AudioLoaded ? 1.0f : 0.0f, ImVec2(-FLT_MIN, 0.0f),
+				m_->m_AudioLoaded ? "Runtime audio ready" : "Audio controls ready");
+		}
 		ImGui::SeparatorText("PBR Parameter");
 		// PBR / 전체 화면 감마 값 (1.4~10.0 범위에서 조절, 눈의 오차를 감안해 여유 범위 확보)
 		ImGui::SliderFloat("Gamma", &m_->m_Gamma, 1.4f, 10.0f, "%.2f");
@@ -2295,8 +2310,8 @@ void App::RenderControlPannel()
 	ImGui::End();
 
 	auto& io = ImGui::GetIO();
-	ImGui::SetNextWindowPos(ImVec2(10, 390), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(370, 360), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowPos(ImVec2(10, 390), captureLayoutCondition);
+	ImGui::SetNextWindowSize(ImVec2(370, 360), captureLayoutCondition);
 	// Shadow controls and debug view
 	if (ImGui::Begin("ShadowMap (Directional)"))
 	{
@@ -2320,8 +2335,9 @@ void App::RenderModelPannel()
 {
 	// Models 독립 창
 	auto& io = ImGui::GetIO();
-	ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - 330, 380), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(320, 360), ImGuiCond_FirstUseEver);
+	const ImGuiCond detailsLayoutCondition = ReadmeCapture::IsEnabled() ? ImGuiCond_Always : ImGuiCond_FirstUseEver;
+	ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - 330, 380), detailsLayoutCondition);
+	ImGui::SetNextWindowSize(ImVec2(320, 360), detailsLayoutCondition);
     if (ImGui::Begin("Details"))
     {
         if (m_->m_SelectedItem >= 0 && m_->m_SelectedItem < (int)m_->m_Objects.size())

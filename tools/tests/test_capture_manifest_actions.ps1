@@ -144,6 +144,73 @@ $tempManifest = Join-Path $tempRoot 'manifest.json'
 $tempOutput = Join-Path $tempRoot 'output'
 New-Item -ItemType Directory -Path $tempRoot, $tempRuntime -Force | Out-Null
 try {
+    # Capture isolation is observable through real filesystem and environment
+    # side effects. A user's remembered ImGui layout must disappear while the
+    # child starts, then return byte-for-byte even when launch/capture fails.
+    $imguiIniPath = Join-Path $tempRuntime 'imgui.ini'
+    $originalIni = "[Window][Controls]`nPos=913,777`nCollapsed=1`n"
+    [IO.File]::WriteAllText($imguiIniPath, $originalIni)
+    $iniState = Suspend-ReadmeCaptureImGuiIni -RuntimeDir $tempRuntime
+    Assert-True (-not (Test-Path -LiteralPath $imguiIniPath)) 'capture did not isolate the existing imgui.ini'
+    [IO.File]::WriteAllText($imguiIniPath, "capture-generated layout`n")
+    Restore-ReadmeCaptureImGuiIni -State $iniState
+    Assert-True (([IO.File]::ReadAllText($imguiIniPath)) -ceq $originalIni) `
+        'capture did not restore the existing imgui.ini byte-for-byte'
+    Assert-True (-not (Test-Path -LiteralPath $iniState.BackupPath)) `
+        'capture left the recoverable imgui.ini backup behind after restoration'
+
+    Remove-Item -LiteralPath $imguiIniPath -Force
+    $emptyIniState = Suspend-ReadmeCaptureImGuiIni -RuntimeDir $tempRuntime
+    [IO.File]::WriteAllText($imguiIniPath, "capture-generated layout`n")
+    Restore-ReadmeCaptureImGuiIni -State $emptyIniState
+    Assert-True (-not (Test-Path -LiteralPath $imguiIniPath)) `
+        'capture without a pre-existing imgui.ini leaked generated layout state'
+
+    $previousCapture = $env:DX11_README_CAPTURE
+    $previousBackbuffer = $env:DX11_README_BACKBUFFER_PNG
+    $previousStillDelay = $env:DX11_README_STILL_DELAY_MS
+    try {
+        $env:DX11_README_CAPTURE = 'prior-capture'
+        $env:DX11_README_BACKBUFFER_PNG = 'prior-backbuffer'
+        $env:DX11_README_STILL_DELAY_MS = 'prior-delay'
+        $observedLaunchEnvironment = $null
+        $launcher = {
+            param([string]$FilePath, [string]$WorkingDirectory)
+            $script:observedLaunchEnvironment = [pscustomobject]@{
+                Capture = $env:DX11_README_CAPTURE
+                Backbuffer = $env:DX11_README_BACKBUFFER_PNG
+                StillDelay = $env:DX11_README_STILL_DELAY_MS
+            }
+            return [pscustomobject]@{ FilePath = $FilePath; WorkingDirectory = $WorkingDirectory }
+        }
+        $launched = Start-ReadmeCaptureProcess -FilePath 'fixture.exe' -WorkingDirectory $tempRuntime `
+            -EnableReadmeCapture -BackbufferPath 'fixture-backbuffer.png' -StillDelayMs 2500 -ProcessLauncher $launcher
+        Assert-True ($observedLaunchEnvironment.Capture -ceq '1') 'capture child did not inherit README capture mode'
+        Assert-True ($observedLaunchEnvironment.Backbuffer -ceq 'fixture-backbuffer.png') 'capture child did not inherit its backbuffer path'
+        Assert-True ($observedLaunchEnvironment.StillDelay -ceq '2500') 'capture child did not inherit the manifest-derived still delay'
+        Assert-True ($env:DX11_README_CAPTURE -ceq 'prior-capture' -and
+            $env:DX11_README_BACKBUFFER_PNG -ceq 'prior-backbuffer' -and
+            $env:DX11_README_STILL_DELAY_MS -ceq 'prior-delay') `
+            'successful child launch did not restore prior capture environment state'
+
+        $launchFailed = $false
+        try {
+            $null = Start-ReadmeCaptureProcess -FilePath 'fixture.exe' -WorkingDirectory $tempRuntime `
+                -EnableReadmeCapture -StillDelayMs 3000 -ProcessLauncher { throw 'expected launch failure' }
+        }
+        catch { $launchFailed = $_.Exception.Message -match 'expected launch failure' }
+        Assert-True $launchFailed 'failing child launcher did not surface its error'
+        Assert-True ($env:DX11_README_CAPTURE -ceq 'prior-capture' -and
+            $env:DX11_README_BACKBUFFER_PNG -ceq 'prior-backbuffer' -and
+            $env:DX11_README_STILL_DELAY_MS -ceq 'prior-delay') `
+            'failed child launch did not restore prior capture environment state'
+    }
+    finally {
+        if ($null -eq $previousCapture) { Remove-Item Env:\DX11_README_CAPTURE -ErrorAction SilentlyContinue } else { $env:DX11_README_CAPTURE = $previousCapture }
+        if ($null -eq $previousBackbuffer) { Remove-Item Env:\DX11_README_BACKBUFFER_PNG -ErrorAction SilentlyContinue } else { $env:DX11_README_BACKBUFFER_PNG = $previousBackbuffer }
+        if ($null -eq $previousStillDelay) { Remove-Item Env:\DX11_README_STILL_DELAY_MS -ErrorAction SilentlyContinue } else { $env:DX11_README_STILL_DELAY_MS = $previousStillDelay }
+    }
+
     # ---------------------------------------------------------------------------
     # Backbuffer PNG provider. Project 36 publishes its own swap-chain frames, so
     # the capture tool has to consume a file another process is rewriting rather

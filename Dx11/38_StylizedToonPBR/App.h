@@ -146,10 +146,13 @@ private:
     float m_rimStrength = 0.38f;
     float m_outlineWidth = 1.35f;
     int m_outlineQuality = 2;
-    float m_exposure = 1.08f;
+    float m_exposure = 0.92f;
     DirectX::XMFLOAT3 m_shadowTint{ 0.46f, 0.46f, 0.46f };
     DirectX::XMFLOAT3 m_keyTint{ 1.0f, 1.0f, 1.0f };
     bool m_readmeCapture = false;
+    int64_t m_readmeStillDelayMs = -1;
+    bool m_captureAnimationReleased = false;
+    std::chrono::steady_clock::time_point m_captureStartedAt{};
     bool m_assetManagerCreated = false;
     bool m_imguiInitialized = false;
     bool m_profilerAvailable = false;

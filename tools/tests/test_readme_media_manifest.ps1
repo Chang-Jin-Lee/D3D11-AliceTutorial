@@ -17,6 +17,28 @@ Assert-True ($manifest.captureWidth -eq 1600 -and $manifest.captureHeight -eq 90
 Assert-True ($manifest.gifWidth -eq 800 -and $manifest.gifHeight -eq 450) 'GIF size contract mismatch'
 Assert-True ($manifest.infoWidth -eq 1600 -and $manifest.infoHeight -eq 640) 'info image size contract mismatch'
 
+$captureModeProjects = @($manifest.projects | Where-Object { $_.readmeCaptureMode } | ForEach-Object { $_.number })
+$expectedCaptureModeProjects = @(
+    '07','11','12','13','15','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','38'
+)
+Assert-True (($captureModeProjects -join ',') -ceq ($expectedCaptureModeProjects -join ',')) `
+    "README capture-mode project selection changed: $($captureModeProjects -join ',')"
+
+$presentationPanProjects = @($manifest.projects | Where-Object { $_.gifPresentationPan } | ForEach-Object { $_.number })
+Assert-True (($presentationPanProjects -join ',') -ceq '01,28,33,37') `
+    "presentation-pan project selection changed: $($presentationPanProjects -join ',')"
+
+$shortSymmetricMotionProjects = @()
+$expectedShortMotionSignature = '400:keyDown:D,650:keyUp:D,2200:keyDown:A,2450:keyUp:A'
+foreach ($project in $manifest.projects) {
+    $signature = @($project.gifActions | ForEach-Object { "$($_.atMs):$($_.type):$($_.key)" }) -join ','
+    if ($signature -ceq $expectedShortMotionSignature) {
+        $shortSymmetricMotionProjects += $project.number
+    }
+}
+Assert-True (($shortSymmetricMotionProjects -join ',') -ceq '07,18,21,22,24') `
+    "short symmetric runtime-motion action selection changed: $($shortSymmetricMotionProjects -join ',')"
+
 $project36 = @($manifest.projects | Where-Object number -eq '36')[0]
 Assert-True ((Get-ReadmeMediaEffectivePositiveNumber $manifest $project36 'gifSeconds') -eq 13) 'project 36 must capture thirteen seconds'
 Assert-True ([bool]$project36.readmeBackbufferCapture) 'project 36 must opt into backbuffer capture'

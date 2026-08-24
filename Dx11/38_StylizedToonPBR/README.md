@@ -40,7 +40,7 @@
 - `Hair`는 좁은 밴드 하이라이트와 짙은 재질 인지 외곽선을 사용합니다.
 - `Cloth`는 넓고 조용한 스페큘러로 광택을 억제합니다.
 - `SampleModel`의 재질 인덱스에는 프로젝트 내부의 명시적 프로필 오버라이드를 적용하고, 다른 재질 이름에는 `hair`, `face`/`skin`, `cloth`/`body` 분류를 폴백으로 사용합니다.
-- 확산광은 `Band thresholds`와 `Band softness`로 제어하는 3영역 램프입니다. 차가운 `Shadow tint`와 따뜻한 `Key tint`는 베이스 텍스처를 덮어쓰지 않고 곱해집니다.
+- 확산광은 `Band thresholds`와 `Band softness`로 제어하는 3영역 램프입니다. 중립 `Shadow tint`와 순백색 `Key tint`는 베이스 텍스처를 덮어쓰지 않고 곱해집니다.
 - 림 항은 시선 의존 항에 광원 방향 항을 함께 제한해 실루엣 전체가 평평하게 빛나는 현상을 줄입니다.
 
 ## 조작

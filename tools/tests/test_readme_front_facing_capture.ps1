@@ -134,8 +134,6 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $manifestPath = Join-Path $repoRoot 'tools\readme_media_manifest.json'
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 $legacyProjects = @(
-    '05_Mesh',
-    '06_pmx',
     '07_pmxTexture',
     '15_pmxWithPhong',
     '16_NormalMapping'
@@ -179,8 +177,13 @@ foreach ($project in $legacyProjects) {
 
     $sourcePath = Join-Path $repoRoot "Dx11\$project\App.cpp"
     Assert-True (Test-Path -LiteralPath $sourcePath -PathType Leaf) "$project App.cpp missing"
-    $source = [IO.File]::ReadAllText($sourcePath)
-    $contract = Get-CaptureContract $source $project
+}
+
+foreach ($projectNumber in @('05', '06')) {
+    $manifestEntry = @($manifest.projects | Where-Object { $_.number -ceq $projectNumber })
+    Assert-True ($manifestEntry.Count -eq 1) "$projectNumber manifest entry missing or duplicated"
+    Assert-True ($manifestEntry[0].readmeCaptureMode -ne $true) `
+        "$projectNumber must not promise the reverted README capture path"
 }
 
 foreach ($project in @('06_pmx', '07_pmxTexture')) {
