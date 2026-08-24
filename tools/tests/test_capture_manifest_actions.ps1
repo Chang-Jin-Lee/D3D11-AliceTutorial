@@ -27,6 +27,47 @@ function New-TestPng {
     }
 }
 
+function Invoke-TestPwshProcess {
+    param(
+        [Parameter(Mandatory)][string]$ScriptPath,
+        [string[]]$Arguments = @(),
+        [switch]$InheritOutput
+    )
+
+    $startInfo = [Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = (Get-Process -Id $PID).Path
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = -not $InheritOutput
+    $startInfo.RedirectStandardError = -not $InheritOutput
+    foreach ($argument in @('-NoLogo', '-NoProfile', '-NonInteractive', '-File', $ScriptPath) + $Arguments) {
+        [void]$startInfo.ArgumentList.Add([string]$argument)
+    }
+
+    $process = [Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+    try {
+        [void]$process.Start()
+        if (-not $InheritOutput) {
+            $standardOutput = $process.StandardOutput.ReadToEndAsync()
+            $standardError = $process.StandardError.ReadToEndAsync()
+        }
+        $process.WaitForExit()
+        return [pscustomobject]@{
+            ExitCode = $process.ExitCode
+            Output = if ($InheritOutput) {
+                ''
+            }
+            else {
+                ($standardOutput.GetAwaiter().GetResult() + $standardError.GetAwaiter().GetResult()).Trim()
+            }
+        }
+    }
+    finally {
+        $process.Dispose()
+    }
+}
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $captureScript = Join-Path $repoRoot 'tools\capture_readme_media.ps1'
 
@@ -195,6 +236,187 @@ try {
     Assert-True (-not (Test-Path -LiteralPath $imguiIniPath)) `
         'capture without a pre-existing imgui.ini leaked generated layout state'
 
+    # Cross-invocation ownership has to survive the first pwsh owner exiting
+    # while its retained child and detached restorer remain alive. The second
+    # independent owner must fail before changing any bytes or artifacts.
+    $ownerRoot = Join-Path $tempRoot 'independent retained owners'
+    $ownerRuntime = Join-Path $ownerRoot 'runtime with spaces'
+    $ownerMedia = Join-Path $ownerRoot 'media with spaces'
+    $ownerChildScript = Join-Path $ownerRoot 'retained child.ps1'
+    $retainedOwnerScript = Join-Path $ownerRoot 'retained owner.ps1'
+    $probeOwnerScript = Join-Path $ownerRoot 'probe owner.ps1'
+    $ownerReleasePath = Join-Path $ownerRoot 'release child'
+    $ownerIdentityPath = Join-Path $ownerRoot 'retained identity.txt'
+    $ownerShutdownPath = Join-Path $ownerRoot 'child shutdown.txt'
+    $probeSuccessPath = Join-Path $ownerRoot 'probe acquired.txt'
+    $ownerIniPath = Join-Path $ownerRuntime 'imgui.ini'
+    $ownerBackbufferPath = Join-Path $ownerMedia 'backbuffer-99-0123456789abcdef0123456789abcdef.png'
+    $ownerOriginalBytes = [byte[]](0x00, 0x31, 0x52, 0x73, 0x94, 0xB5, 0xD6, 0xF7)
+    New-Item -ItemType Directory -Path $ownerRuntime, $ownerMedia -Force | Out-Null
+    [IO.File]::WriteAllBytes($ownerIniPath, $ownerOriginalBytes)
+    @'
+param([string]$ReleasePath, [string]$IniPath, [string]$BackbufferPath, [string]$ShutdownPath)
+$ErrorActionPreference = 'Stop'
+while (-not (Test-Path -LiteralPath $ReleasePath -PathType Leaf)) { Start-Sleep -Milliseconds 25 }
+[IO.File]::WriteAllBytes($IniPath, [byte[]](0x63, 0x61, 0x70, 0x74, 0x75, 0x72, 0x65))
+[IO.File]::WriteAllBytes($BackbufferPath, [byte[]](0x62, 0x61, 0x63, 0x6B, 0x62, 0x75, 0x66, 0x66, 0x65, 0x72))
+[IO.File]::WriteAllBytes(($BackbufferPath + '.tmp.png'), [byte[]](0x74, 0x65, 0x6D, 0x70))
+[IO.File]::WriteAllText($ShutdownPath, 'written', [Text.UTF8Encoding]::new($false))
+Start-Sleep -Milliseconds 250
+'@ | Set-Content -LiteralPath $ownerChildScript -Encoding UTF8
+    @'
+param(
+    [string]$CaptureScript, [string]$RepoRoot, [string]$RuntimeDir, [string]$MediaDir,
+    [string]$ChildScript, [string]$ReleasePath, [string]$IdentityPath,
+    [string]$ShutdownPath, [string]$BackbufferPath
+)
+$ErrorActionPreference = 'Stop'
+Set-Location -LiteralPath $RepoRoot
+. $CaptureScript -Manifest 'tools/readme_media_manifest.json' -ValidateOnly | Out-Null
+$runtimeLock = $null
+$iniState = $null
+$child = $null
+$handedOff = $false
+try {
+    $runtimeLock = Enter-ReadmeCaptureRuntimeLock -RuntimeDir $RuntimeDir
+    $iniState = Suspend-ReadmeCaptureImGuiIni -RuntimeDir $RuntimeDir
+    [IO.File]::WriteAllBytes($iniState.IniPath, [byte[]](0x63, 0x61, 0x70, 0x74, 0x75, 0x72, 0x65))
+    [IO.File]::WriteAllBytes($BackbufferPath, [byte[]](0x69, 0x6E, 0x69, 0x74, 0x69, 0x61, 0x6C))
+    [IO.File]::WriteAllBytes(($BackbufferPath + '.tmp.png'), [byte[]](0x74, 0x65, 0x6D, 0x70))
+
+    $startInfo = [Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = (Get-Process -Id $PID).Path
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    foreach ($argument in @(
+        '-NoLogo', '-NoProfile', '-NonInteractive', '-File', $ChildScript,
+        '-ReleasePath', $ReleasePath, '-IniPath', $iniState.IniPath,
+        '-BackbufferPath', $BackbufferPath, '-ShutdownPath', $ShutdownPath
+    )) { [void]$startInfo.ArgumentList.Add([string]$argument) }
+    $child = [Diagnostics.Process]::Start($startInfo)
+    $identity = '{0}|{1}' -f $child.Id, $child.StartTime.ToUniversalTime().Ticks
+    Start-DeferredReadmeCaptureImGuiIniRestore -State $iniState -Process $child `
+        -RuntimeLockState $runtimeLock -BackbufferPath $BackbufferPath -MediaDir $MediaDir
+    $handedOff = $true
+    [IO.File]::WriteAllText($IdentityPath, $identity, [Text.UTF8Encoding]::new($false))
+}
+finally {
+    if (-not $handedOff) {
+        if ($null -ne $child) {
+            try {
+                $child.Refresh()
+                if (-not $child.HasExited) { $child.Kill(); [void]$child.WaitForExit(5000) }
+            }
+            catch {}
+        }
+        if ($null -ne $iniState) { Restore-ReadmeCaptureImGuiIni -State $iniState }
+        if ($null -ne $runtimeLock) { Exit-ReadmeCaptureRuntimeLock -State $runtimeLock }
+    }
+    if ($null -ne $child) { $child.Dispose() }
+}
+'@ | Set-Content -LiteralPath $retainedOwnerScript -Encoding UTF8
+    @'
+param([string]$CaptureScript, [string]$RepoRoot, [string]$RuntimeDir, [string]$SuccessPath)
+$ErrorActionPreference = 'Stop'
+Set-Location -LiteralPath $RepoRoot
+. $CaptureScript -Manifest 'tools/readme_media_manifest.json' -ValidateOnly | Out-Null
+$runtimeLock = Enter-ReadmeCaptureRuntimeLock -RuntimeDir $RuntimeDir
+try { [IO.File]::WriteAllText($SuccessPath, 'acquired', [Text.UTF8Encoding]::new($false)) }
+finally { Exit-ReadmeCaptureRuntimeLock -State $runtimeLock }
+'@ | Set-Content -LiteralPath $probeOwnerScript -Encoding UTF8
+
+    $ownerChildId = $null
+    $ownerChildStartTimeUtcTicks = $null
+    try {
+        $retainedOwnerResult = Invoke-TestPwshProcess -ScriptPath $retainedOwnerScript -InheritOutput -Arguments @(
+            '-CaptureScript', $captureScript, '-RepoRoot', $repoRoot,
+            '-RuntimeDir', $ownerRuntime, '-MediaDir', $ownerMedia,
+            '-ChildScript', $ownerChildScript, '-ReleasePath', $ownerReleasePath,
+            '-IdentityPath', $ownerIdentityPath, '-ShutdownPath', $ownerShutdownPath,
+            '-BackbufferPath', $ownerBackbufferPath
+        )
+        Assert-True ($retainedOwnerResult.ExitCode -eq 0) `
+            "first independent owner did not hand off its retained capture: $($retainedOwnerResult.Output)"
+        $ownerIdentity = [IO.File]::ReadAllText($ownerIdentityPath).Split('|')
+        $ownerChildId = [int]$ownerIdentity[0]
+        $ownerChildStartTimeUtcTicks = [long]$ownerIdentity[1]
+        $ownerChild = Get-Process -Id $ownerChildId -ErrorAction SilentlyContinue
+        $ownerChildIsExact = $null -ne $ownerChild -and
+            $ownerChild.StartTime.ToUniversalTime().Ticks -eq $ownerChildStartTimeUtcTicks
+        Assert-True $ownerChildIsExact 'first independent owner did not leave its exact retained child alive'
+        if ($null -ne $ownerChild) { $ownerChild.Dispose() }
+
+        $beforeProbeIniBytes = [IO.File]::ReadAllBytes($ownerIniPath)
+        $beforeProbeBackupPaths = @(Get-ChildItem -LiteralPath $ownerRuntime -Filter '.imgui.ini.readme-capture-*.bak' -File | Select-Object -ExpandProperty FullName)
+        Assert-True ($beforeProbeBackupPaths.Count -eq 1) 'first owner did not leave exactly one recoverable imgui.ini backup'
+        $beforeProbeBackupBytes = [IO.File]::ReadAllBytes($beforeProbeBackupPaths[0])
+        $beforeProbeRuntimeNames = @(Get-ChildItem -LiteralPath $ownerRuntime -Force | Select-Object -ExpandProperty Name | Sort-Object)
+        $beforeProbeMediaNames = @(Get-ChildItem -LiteralPath $ownerMedia -Force | Select-Object -ExpandProperty Name | Sort-Object)
+        $beforeProbeBackbufferBytes = [IO.File]::ReadAllBytes($ownerBackbufferPath)
+        $beforeProbeTempBytes = [IO.File]::ReadAllBytes($ownerBackbufferPath + '.tmp.png')
+
+        $rejectedProbe = Invoke-TestPwshProcess -ScriptPath $probeOwnerScript -Arguments @(
+            '-CaptureScript', $captureScript, '-RepoRoot', $repoRoot,
+            '-RuntimeDir', $ownerRuntime, '-SuccessPath', $probeSuccessPath
+        )
+        Assert-True ($rejectedProbe.ExitCode -ne 0) 'second independent owner acquired an active retained-capture runtime lock'
+        Assert-True ($rejectedProbe.Output -match 'already owns this runtime.*Close the retained capture window or wait') `
+            "active runtime-lock rejection was not actionable: $($rejectedProbe.Output)"
+        Assert-True (-not (Test-Path -LiteralPath $probeSuccessPath)) 'rejected second owner created its success artifact'
+        Assert-True ([Linq.Enumerable]::SequenceEqual[byte]([IO.File]::ReadAllBytes($ownerIniPath), $beforeProbeIniBytes)) `
+            'rejected second owner changed capture imgui.ini bytes'
+        Assert-True ([Linq.Enumerable]::SequenceEqual[byte]([IO.File]::ReadAllBytes($beforeProbeBackupPaths[0]), $beforeProbeBackupBytes)) `
+            'rejected second owner changed the recoverable imgui.ini backup bytes'
+        Assert-True ((@(Get-ChildItem -LiteralPath $ownerRuntime -Force | Select-Object -ExpandProperty Name | Sort-Object) -join '|') -ceq ($beforeProbeRuntimeNames -join '|')) `
+            'rejected second owner changed runtime lock/backup/ready artifacts'
+        Assert-True ((@(Get-ChildItem -LiteralPath $ownerMedia -Force | Select-Object -ExpandProperty Name | Sort-Object) -join '|') -ceq ($beforeProbeMediaNames -join '|')) `
+            'rejected second owner changed capture output artifacts'
+        Assert-True ([Linq.Enumerable]::SequenceEqual[byte]([IO.File]::ReadAllBytes($ownerBackbufferPath), $beforeProbeBackbufferBytes) -and
+            [Linq.Enumerable]::SequenceEqual[byte]([IO.File]::ReadAllBytes($ownerBackbufferPath + '.tmp.png'), $beforeProbeTempBytes)) `
+            'rejected second owner changed retained backbuffer fixture bytes'
+
+        [IO.File]::WriteAllText($ownerReleasePath, 'exit', [Text.UTF8Encoding]::new($false))
+        $cleanupDeadline = [DateTime]::UtcNow.AddSeconds(15)
+        do {
+            $originalRestored = (Test-Path -LiteralPath $ownerIniPath -PathType Leaf) -and
+                [Linq.Enumerable]::SequenceEqual[byte]([IO.File]::ReadAllBytes($ownerIniPath), $ownerOriginalBytes)
+            $backupLeft = @(Get-ChildItem -LiteralPath $ownerRuntime -Filter '.imgui.ini.readme-capture-*' -File).Count -gt 0
+            $lockLeft = Test-Path -LiteralPath (Join-Path $ownerRuntime '.readme-capture.lock') -PathType Leaf
+            $backbufferLeft = (Test-Path -LiteralPath $ownerBackbufferPath) -or
+                (Test-Path -LiteralPath ($ownerBackbufferPath + '.tmp.png'))
+            if ($originalRestored -and -not $backupLeft -and -not $lockLeft -and -not $backbufferLeft) { break }
+            Start-Sleep -Milliseconds 25
+        } while ([DateTime]::UtcNow -lt $cleanupDeadline)
+        Assert-True (Test-Path -LiteralPath $ownerShutdownPath -PathType Leaf) 'retained child did not reach its shutdown write'
+        Assert-True $originalRestored 'detached owner did not restore original imgui.ini bytes after child exit'
+        Assert-True (-not $backupLeft) 'detached owner left an imgui backup or watcher-ready artifact'
+        Assert-True (-not $lockLeft) 'detached owner left the runtime capture lock after restoration'
+        Assert-True (-not $backbufferLeft) 'detached owner left the retained backbuffer or temporary sibling after child exit'
+
+        $laterProbe = Invoke-TestPwshProcess -ScriptPath $probeOwnerScript -Arguments @(
+            '-CaptureScript', $captureScript, '-RepoRoot', $repoRoot,
+            '-RuntimeDir', $ownerRuntime, '-SuccessPath', $probeSuccessPath
+        )
+        Assert-True ($laterProbe.ExitCode -eq 0 -and (Test-Path -LiteralPath $probeSuccessPath -PathType Leaf)) `
+            "later independent owner could not acquire the released runtime lock: $($laterProbe.Output)"
+        Assert-True (-not (Test-Path -LiteralPath (Join-Path $ownerRuntime '.readme-capture.lock'))) `
+            'later independent owner did not release its runtime lock'
+    }
+    finally {
+        if ($null -ne $ownerChildId) {
+            $cleanupOwnerChild = Get-Process -Id $ownerChildId -ErrorAction SilentlyContinue
+            $cleanupOwnerChildIsExact = $null -ne $cleanupOwnerChild -and
+                $cleanupOwnerChild.StartTime.ToUniversalTime().Ticks -eq $ownerChildStartTimeUtcTicks
+            if ($cleanupOwnerChildIsExact) {
+                [IO.File]::WriteAllText($ownerReleasePath, 'exit', [Text.UTF8Encoding]::new($false))
+                [void]$cleanupOwnerChild.WaitForExit(10000)
+            }
+            if ($null -ne $cleanupOwnerChild) { $cleanupOwnerChild.Dispose() }
+        }
+    }
+
     # A successful retained capture must keep the user's layout quarantined until
     # that exact child exits. Exercise the real Invoke-ProjectCapture lifecycle
     # and a real child process; only the GUI-specific capture mechanics are
@@ -282,9 +504,15 @@ Start-Sleep -Milliseconds 250
             preCaptureActions = @()
         }
         $retainedManifest = [pscustomobject]@{ captureWidth = 64; captureHeight = 64 }
-        $null = Invoke-ProjectCapture -Project $retainedProject -ManifestData $retainedManifest `
-            -RuntimeDir $retainedRuntime -MediaDir $retainedMedia -RepoRoot $retainedRoot `
-            -Attempt 1 -SkipGif -KeepWindows
+        $retainedRuntimeLock = Enter-ReadmeCaptureRuntimeLock -RuntimeDir $retainedRuntime
+        try {
+            $null = Invoke-ProjectCapture -Project $retainedProject -ManifestData $retainedManifest `
+                -RuntimeDir $retainedRuntime -MediaDir $retainedMedia -RepoRoot $retainedRoot `
+                -Attempt 1 -SkipGif -KeepWindows -RuntimeLockState $retainedRuntimeLock
+        }
+        finally {
+            Exit-ReadmeCaptureRuntimeLock -State $retainedRuntimeLock
+        }
 
         $retainedChildAfterCapture = Get-Process -Id $retainedChildId -ErrorAction SilentlyContinue
         $retainedChildIsExact = $null -ne $retainedChildAfterCapture -and

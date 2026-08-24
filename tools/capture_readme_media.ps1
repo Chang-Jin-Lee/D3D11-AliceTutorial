@@ -717,6 +717,85 @@ function Invoke-PreCaptureActions {
     }
 }
 
+function Enter-ReadmeCaptureRuntimeLock {
+    param([Parameter(Mandatory)][string]$RuntimeDir)
+
+    if (-not (Test-Path -LiteralPath $RuntimeDir -PathType Container)) {
+        throw "Runtime directory not found: $RuntimeDir"
+    }
+
+    $lockPath = Join-Path $RuntimeDir '.readme-capture.lock'
+    $token = [Guid]::NewGuid().ToString('N')
+    $stream = $null
+    try {
+        $stream = [IO.File]::Open($lockPath, [IO.FileMode]::CreateNew,
+            [IO.FileAccess]::Write, [IO.FileShare]::Read)
+        $bytes = [Text.UTF8Encoding]::new($false).GetBytes($token)
+        $stream.Write($bytes, 0, $bytes.Length)
+        $stream.Flush($true)
+    }
+    catch [IO.IOException] {
+        throw "Another README capture already owns this runtime. Close the retained capture window or wait for its restore watcher to finish, then retry. Lock: $lockPath"
+    }
+    finally {
+        if ($null -ne $stream) { $stream.Dispose() }
+    }
+
+    return [pscustomobject]@{
+        LockPath = $lockPath
+        Token = $token
+        HandedOff = $false
+        Released = $false
+    }
+}
+
+function Exit-ReadmeCaptureRuntimeLock {
+    param([Parameter(Mandatory)][object]$State)
+
+    if ([bool]$State.HandedOff -or [bool]$State.Released) {
+        return
+    }
+    if (-not (Test-Path -LiteralPath $State.LockPath -PathType Leaf)) {
+        throw "README capture runtime lock disappeared before its owner released it: $($State.LockPath)"
+    }
+
+    $observedToken = [IO.File]::ReadAllText([string]$State.LockPath, [Text.UTF8Encoding]::new($false))
+    if ($observedToken -cne [string]$State.Token) {
+        throw "Refusing to release a README capture runtime lock owned by another acquisition: $($State.LockPath)"
+    }
+
+    [IO.File]::Delete([string]$State.LockPath)
+    $State.Released = $true
+}
+
+function Get-RetainedBackbufferCleanupPaths {
+    param(
+        [string]$BackbufferPath,
+        [string]$MediaDir
+    )
+
+    if ([string]::IsNullOrWhiteSpace($BackbufferPath)) {
+        return @()
+    }
+    if ([string]::IsNullOrWhiteSpace($MediaDir) -or -not (Test-Path -LiteralPath $MediaDir -PathType Container)) {
+        throw 'Retained backbuffer cleanup requires an existing media directory.'
+    }
+
+    $mediaFullPath = [IO.Path]::GetFullPath($MediaDir).TrimEnd('\', '/')
+    $backbufferFullPath = [IO.Path]::GetFullPath($BackbufferPath)
+    $mediaPrefix = $mediaFullPath + [IO.Path]::DirectorySeparatorChar
+    if (-not $backbufferFullPath.StartsWith($mediaPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing retained backbuffer cleanup outside mediaDir: $backbufferFullPath"
+    }
+
+    $leaf = [IO.Path]::GetFileName($backbufferFullPath)
+    if ($leaf -notmatch '^backbuffer-\d{2}-[0-9a-f]{32}\.png$') {
+        throw "Refusing retained backbuffer cleanup for an unexpected filename: $backbufferFullPath"
+    }
+
+    return @($backbufferFullPath, ($backbufferFullPath + '.tmp.png'))
+}
+
 function Suspend-ReadmeCaptureImGuiIni {
     param([Parameter(Mandatory)][string]$RuntimeDir)
 
@@ -752,13 +831,28 @@ function Start-DeferredReadmeCaptureImGuiIniRestore {
     param(
         [Parameter(Mandatory)][object]$State,
         [Parameter(Mandatory)][System.Diagnostics.Process]$Process,
+        [Parameter(Mandatory)][object]$RuntimeLockState,
+        [string]$BackbufferPath,
+        [string]$MediaDir,
         [int]$HandoffTimeoutMs = 5000
     )
+
+    if ([bool]$RuntimeLockState.HandedOff -or [bool]$RuntimeLockState.Released) {
+        throw 'README capture runtime lock is not available for deferred watcher handoff.'
+    }
+    if (-not (Test-Path -LiteralPath $RuntimeLockState.LockPath -PathType Leaf) -or
+        [IO.File]::ReadAllText([string]$RuntimeLockState.LockPath, [Text.UTF8Encoding]::new($false)) -cne [string]$RuntimeLockState.Token) {
+        throw 'README capture runtime lock ownership changed before deferred watcher handoff.'
+    }
+    $retainedCleanupPaths = @(Get-RetainedBackbufferCleanupPaths -BackbufferPath $BackbufferPath -MediaDir $MediaDir)
 
     $Process.Refresh()
     if ($Process.HasExited) {
         Restore-ReadmeCaptureImGuiIni -State $State
-        return
+        foreach ($cleanupPath in $retainedCleanupPaths) {
+            Remove-ReadmeBackbufferFile -Path $cleanupPath -MediaDir $MediaDir
+        }
+        return $false
     }
 
     try {
@@ -768,7 +862,10 @@ function Start-DeferredReadmeCaptureImGuiIniRestore {
         $Process.Refresh()
         if ($Process.HasExited) {
             Restore-ReadmeCaptureImGuiIni -State $State
-            return
+            foreach ($cleanupPath in $retainedCleanupPaths) {
+                Remove-ReadmeBackbufferFile -Path $cleanupPath -MediaDir $MediaDir
+            }
+            return $false
         }
         throw
     }
@@ -802,8 +899,18 @@ function Start-DeferredReadmeCaptureImGuiIniRestore {
         [void]$startInfo.ArgumentList.Add([string]$State.BackupPath)
         [void]$startInfo.ArgumentList.Add('-ReadyPath')
         [void]$startInfo.ArgumentList.Add($readyPath)
+        [void]$startInfo.ArgumentList.Add('-LockPath')
+        [void]$startInfo.ArgumentList.Add([string]$RuntimeLockState.LockPath)
+        [void]$startInfo.ArgumentList.Add('-LockToken')
+        [void]$startInfo.ArgumentList.Add([string]$RuntimeLockState.Token)
         if ([bool]$State.OriginalExisted) {
             [void]$startInfo.ArgumentList.Add('-OriginalExisted')
+        }
+        if ($retainedCleanupPaths.Count -gt 0) {
+            [void]$startInfo.ArgumentList.Add('-BackbufferPath')
+            [void]$startInfo.ArgumentList.Add([string]$BackbufferPath)
+            [void]$startInfo.ArgumentList.Add('-MediaDir')
+            [void]$startInfo.ArgumentList.Add([string]$MediaDir)
         }
 
         $watcher = [System.Diagnostics.Process]::Start($startInfo)
@@ -822,6 +929,8 @@ function Start-DeferredReadmeCaptureImGuiIniRestore {
             }
             Start-Sleep -Milliseconds 25
         }
+        $RuntimeLockState.HandedOff = $true
+        return $true
     }
     catch {
         if ($null -ne $watcher) {
@@ -1239,7 +1348,8 @@ function Invoke-ProjectCapture {
         [string]$RepoRoot,
         [int]$Attempt,
         [switch]$SkipGif,
-        [switch]$KeepWindows
+        [switch]$KeepWindows,
+        [Parameter(Mandatory)][object]$RuntimeLockState
     )
 
     $process = $null
@@ -1328,8 +1438,14 @@ function Invoke-ProjectCapture {
         Release-CaptureKeys -CaptureSession $lastCaptureSession -PressedKeys $pressedKeys
         if ($null -ne $process -and $KeepWindows -and $captureCompleted) {
             try {
-                Start-DeferredReadmeCaptureImGuiIniRestore -State $imguiIniState -Process $process
+                $deferredRestoreHandedOff = Start-DeferredReadmeCaptureImGuiIniRestore -State $imguiIniState -Process $process `
+                    -RuntimeLockState $RuntimeLockState -BackbufferPath $backbufferPath -MediaDir $MediaDir
                 $imguiIniState = $null
+                if ($deferredRestoreHandedOff -or -not [string]::IsNullOrWhiteSpace($backbufferPath)) {
+                    # The watcher owns retained cleanup, or the already-exited
+                    # child was cleaned synchronously inside Start-Deferred-*.
+                    $backbufferPath = $null
+                }
                 $process.Dispose()
                 $process = $null
             }
@@ -1378,9 +1494,10 @@ $mediaDir = if ([string]::IsNullOrWhiteSpace($OutputDir)) {
 else {
     Resolve-ReadmeMediaPath -RepoRoot $repoRoot -Path $OutputDir
 }
-New-Item -ItemType Directory -Path $mediaDir -Force | Out-Null
-
 $selectedProjects = @(Get-CaptureProjectSelection -Manifest $manifestData -ProjectNumber $ProjectNumber -All:$All)
+$runtimeLockState = Enter-ReadmeCaptureRuntimeLock -RuntimeDir $runtimeDir
+try {
+New-Item -ItemType Directory -Path $mediaDir -Force | Out-Null
 
 $reportRows = New-Object System.Collections.Generic.List[object]
 foreach ($project in $selectedProjects) {
@@ -1389,7 +1506,7 @@ foreach ($project in $selectedProjects) {
     for ($attempt = 1; $attempt -le $attemptLimit -and -not $projectSucceeded; $attempt++) {
         Write-Host ("Capturing project {0}, attempt {1}/{2}: {3}" -f $project.number, $attempt, $attemptLimit, $project.exe)
         try {
-            $result = Invoke-ProjectCapture -Project $project -ManifestData $manifestData -RuntimeDir $runtimeDir -MediaDir $mediaDir -RepoRoot $repoRoot -Attempt $attempt -SkipGif:$SkipGif -KeepWindows:$KeepWindows
+            $result = Invoke-ProjectCapture -Project $project -ManifestData $manifestData -RuntimeDir $runtimeDir -MediaDir $mediaDir -RepoRoot $repoRoot -Attempt $attempt -SkipGif:$SkipGif -KeepWindows:$KeepWindows -RuntimeLockState $runtimeLockState
             Add-ReportRow -Rows $reportRows -Project $project -Attempt $attempt -Output (Convert-ToReportPath $result.ImagePath $repoRoot) -Status 'Success' -Dimensions $result.ImageDetails.Dimensions -Bytes $result.ImageDetails.Bytes -Notes 'PNG captured'
             if (-not $SkipGif) {
                 $gifNotes = if ([bool]$result.GifDetails.PresentationPan) {
@@ -1425,4 +1542,8 @@ $failedProjects = @(
 )
 if ($failedProjects.Count -gt 0) {
     throw "README media capture failed for project(s): $($failedProjects.number -join ', ')"
+}
+}
+finally {
+    Exit-ReadmeCaptureRuntimeLock -State $runtimeLockState
 }
