@@ -85,7 +85,7 @@ $solutionProjectNames = @(
 Assert-True ($solutionProjectNames.Count -eq 38) 'solution must contain 38 applications'
 Assert-True (@($solutionProjectNames | Sort-Object -Unique).Count -eq 38) 'solution application projects must be unique'
 Assert-True ($solutionText -match [regex]::Escape($projectName)) 'Project 38 missing from solution'
-Assert-True ($solutionText -match ('(?im)^Project\("[^"]+"\) = "{0}", "{0}\\{0}\.vcxproj", "{1}"$' -f [regex]::Escape($projectName), [regex]::Escape($projectGuid))) 'Project 38 solution registration must use the fixed project GUID and path'
+Assert-True ($solutionText -match ('(?im)^Project\("[^"]+"\) = "{0}", "{0}\\{0}\.vcxproj", "{1}"\r?$' -f [regex]::Escape($projectName), [regex]::Escape($projectGuid))) 'Project 38 solution registration must use the fixed project GUID and path'
 
 foreach ($mapping in @(
     'Debug\|x64\.ActiveCfg = Debug\|x64',
@@ -558,7 +558,7 @@ foreach ($fixture in @(
 
 Assert-DocumentationContract ([regex]::Matches($project37ReadmeText, '\[다음\]\(\.\./38_StylizedToonPBR/README\.md\)').Count -eq 2) 'docs: Project 37 top and bottom next links must point to Project 38'
 Assert-DocumentationContract ([regex]::Matches($readmeText, '\[이전\]\(\.\./37_Blueprint/README\.md\)').Count -eq 2) 'docs: Project 38 top and bottom previous links must point to Project 37'
-Assert-DocumentationContract ([regex]::Matches($readmeText, '(?m)^\[이전\]\(\.\./37_Blueprint/README\.md\) \| \[메인\]\(\.\./\.\./README\.md\) \| \[상위\]\(\.\./\) \| 다음$').Count -eq 2) 'docs: Project 38 must use the plain terminal next label in both navigation blocks'
+Assert-DocumentationContract ([regex]::Matches($readmeText, '(?m)^\[이전\]\(\.\./37_Blueprint/README\.md\) \| \[메인\]\(\.\./\.\./README\.md\) \| \[상위\]\(\.\./\) \| 다음\r?$').Count -eq 2) 'docs: Project 38 must use the plain terminal next label in both navigation blocks'
 
 $standardMarkers = @(
     '<!-- README-NAV-TOP:START -->',
