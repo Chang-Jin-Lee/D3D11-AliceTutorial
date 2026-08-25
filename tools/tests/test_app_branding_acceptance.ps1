@@ -145,8 +145,10 @@ try {
         & $case.Mutate $casePath
         $childOutput = & (Get-Command pwsh).Source -NoProfile -File (Join-Path $casePath 'tools\tests\test_app_branding.ps1') 2>&1 | Out-String
         $childExit = $LASTEXITCODE
+        $searchableChildOutput = ($childOutput -replace '\x1B\[[0-?]*[ -/]*[@-~]', '') `
+            -replace '(?m)^[^\S\r\n]*\|[^\S\r\n]*', '' -replace '\s+', ' '
         "acceptance-negative name=$($case.Name) exit=$childExit"
-        if ($childExit -eq 0 -or $childOutput -notmatch [regex]::Escape($case.Pattern)) {
+        if ($childExit -eq 0 -or $searchableChildOutput -notmatch [regex]::Escape($case.Pattern)) {
             $failures.Add("$($case.Name) was not rejected with '$($case.Pattern)' (exit=$childExit; output=$($childOutput.Trim()))")
         }
     }

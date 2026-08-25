@@ -200,7 +200,8 @@ try {
     $unsafeBatchOutput = & pwsh -NoProfile -File $captureScript -Manifest $tempManifest `
         -All -KeepWindows -ValidateOnly -OutputDir $unsafeBatchOutputDir 2>&1
     $unsafeBatchExitCode = $LASTEXITCODE
-    $unsafeBatchMessage = (($unsafeBatchOutput | Out-String) -replace '\x1b\[[0-9;]*m', '') -replace '\s+', ' '
+    $unsafeBatchMessage = (($unsafeBatchOutput | Out-String) -replace '\x1b\[[0-9;]*m', '') `
+        -replace '(?m)^[^\S\r\n]*\|[^\S\r\n]*', '' -replace '\s+', ' '
     Assert-True ($unsafeBatchExitCode -ne 0) 'capture CLI accepted unsafe -All -KeepWindows combination'
     Assert-True ($unsafeBatchMessage -match 'Select a single project\s*\|?\s*with -ProjectNumber when using -KeepWindows') `
         'unsafe retained batch rejection did not explain how to select one project'
