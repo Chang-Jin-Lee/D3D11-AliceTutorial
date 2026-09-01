@@ -13,41 +13,7 @@ D3D 그래픽스를 학습하면서 정리한 튜토리얼 프로젝트입니다
 | <div align="center">[<img src="https://github.com/user-attachments/assets/3aafc53e-d6ae-492d-8680-b240c19f1f92" width="450"/>](https://www.youtube.com/playlist?list=PLbPdrhrt0AJgCSKYyzjAjHwpQ_Yt4uBMx)<br/></div> | <div align="center">[<img src="https://github.com/user-attachments/assets/64a50e8e-5580-4e76-97d1-b500f9c5a8a2" width="230"/>](https://velog.io/@whoamicj/series/DirectX11)<br/></div> |
 
 
-## 대표 데모
-
-[`36_AdvancedAnim_Sound_Click`](Dx11/36_AdvancedAnim_Sound_Click)입니다. 모델 로딩, PBR/IBL, 톤매핑, 디퍼드 렌더링 위에 애니메이션 블렌딩, 레이어, IK, 소켓, FMOD 3D 사운드, ImGui 디버그 UI, 멀티스레드 로딩을 담은 최종 데모입니다.
-
-| Screenshot | GIF |
-|---|---|
-| <img src="docs/media/readme/36-AdvancedAnim-Sound-Click.png" width="420"/> | <img src="docs/media/readme/36-advanced-anim-sound-click.gif" width="420"/> |
-
-| 항목 | 내용 |
-|---|---|
-| 실행 | `Dx11/TutorialApp.sln` 열기 -> `36_AdvancedAnim_Sound_Click` 시작 프로젝트 -> `x64` 빌드 |
-| 렌더링 | 포트폴리오 Forward 경로, Shadow, PBR, IBL, Tone Mapping (`35_DeferredRendering`에 Deferred 단계) |
-| 애니메이션 | Blend, Additive, Layer, IK, Socket |
-| 사운드/UI | FMOD 3D Sound, SoundBox, ImGui Debug Panels |
-| 구조 | `Dx11/Common` 공통 코드 + `35_DeferredRendering` 렌더링 단계 + `36_AdvancedAnim_Sound_Click` 통합 데모 |
-
-### 코드 구조 요약
-
-```text
-Dx11/Common/                         공통 D3D 앱, 카메라, 메시, 애니메이션, 사운드, 로더
-Dx11/35_DeferredRendering/           G-Buffer, Deferred Lighting, Tone Mapping
-Dx11/36_AdvancedAnim_Sound_Click/    대표 통합 데모
-  App.cpp                            구현 파일 인덱스
-  App_*.inl                          수명주기, 입력/업데이트, 렌더 패스, 모델 로딩, UI, 유틸리티
-```
-
-## 스타일라이즈드 렌더링 쇼케이스
-
-[`38_StylizedToonPBR`](Dx11/38_StylizedToonPBR)는 공개 캐릭터 하나를 같은 카메라와 조명에서 `PBR`, `Hybrid Toon-PBR`, `Split`으로 비교하는 집중형 샘플입니다. 실제 몸·얼굴 피부만 따뜻하게 분리하고 흰 의상과 얼굴 오버레이는 중립으로 유지하는 재질별 응답, 화면 공간 Normal/Depth 외곽선, 두 개의 독자적 조명 프리셋, 비동기 GPU 패스 측정을 한 프로젝트에서 확인할 수 있습니다.
-
-| Screenshot | 핵심 비교 |
-|---|---|
-| <img src="docs/media/readme/38-StylizedToonPBR.png" width="420"/> | `Neon Contrast` / `Industrial Soft`<br/>Shadow, Character, Outline, ToneMap GPU timing<br/>픽셀 폭 외곽선 품질 비교 |
-
-### 프로젝트 바로가기
+## 프로젝트 바로가기
 
 각 프로젝트 README에서 새 실행 스크린샷과 짧은 GIF를 함께 확인할 수 있습니다.
 
@@ -95,29 +61,46 @@ Dx11/36_AdvancedAnim_Sound_Click/    대표 통합 데모
 
 ---
 
+## 대표 데모
+
+[`36_AdvancedAnim_Sound_Click`](Dx11/36_AdvancedAnim_Sound_Click)입니다. 모델 로딩, PBR/IBL, 톤매핑, 디퍼드 렌더링 위에 애니메이션 블렌딩, 레이어, IK, 소켓, FMOD 3D 사운드, ImGui 디버그 UI, 멀티스레드 로딩을 담은 최종 데모입니다.
+
+| Screenshot | GIF |
+|---|---|
+| <img src="docs/media/readme/36-AdvancedAnim-Sound-Click.png" width="420"/> | <img src="docs/media/readme/36-advanced-anim-sound-click.gif" width="420"/> |
+
+| 항목 | 내용 |
+|---|---|
+| 실행 | `Dx11/TutorialApp.sln` 열기 -> `36_AdvancedAnim_Sound_Click` 시작 프로젝트 -> `x64` 빌드 |
+| 렌더링 | 포트폴리오 Forward 경로, Shadow, PBR, IBL, Tone Mapping (`35_DeferredRendering`에 Deferred 단계) |
+| 애니메이션 | Blend, Additive, Layer, IK, Socket |
+| 사운드/UI | FMOD 3D Sound, SoundBox, ImGui Debug Panels |
+| 구조 | `Dx11/Common` 공통 코드 + `35_DeferredRendering` 렌더링 단계 + `36_AdvancedAnim_Sound_Click` 통합 데모 |
+
+### 코드 구조 요약
+
+```text
+Dx11/Common/                         공통 D3D 앱, 카메라, 메시, 애니메이션, 사운드, 로더
+Dx11/35_DeferredRendering/           G-Buffer, Deferred Lighting, Tone Mapping
+Dx11/36_AdvancedAnim_Sound_Click/    대표 통합 데모
+  App.cpp                            구현 파일 인덱스
+  App_*.inl                          수명주기, 입력/업데이트, 렌더 패스, 모델 로딩, UI, 유틸리티
+```
+
+---
+
 ## 빌드 방식
 
 - 권장 환경: Windows 11, Visual Studio 2022 이상, Windows SDK, MSVC C++ workload
 - 솔루션: `Dx11/TutorialApp.sln`
 - 기본 플랫폼: `x64`
 - vcpkg는 사용하지 않습니다. 필요한 외부 의존성은 `Dx11/third_party` 아래의 repo-local 파일을 참조합니다.
+- 각 의존성의 선택 이유와 검토한 대안은 [의존성 선택 기준](docs/dependencies.md)에 정리했습니다.
 - `37_Blueprint`는 `imgui-node-editor` submodule을 사용합니다. 해당 프로젝트까지 빌드하려면 다음 명령이 필요합니다.
 
 ```bash
 git submodule update --init --recursive
 ```
-
-## 의존성 선택 기준
-
-이 프로젝트는 Direct3D 11 렌더링 파이프라인 학습 레포지토리이므로, 패키지 매니저 자체를 학습/빌드의 전제 조건으로 두지 않고 필요한 라이브러리만 고정했습니다.
-
-| 의존성 | 사용 위치 | 선택 이유 | 검토한 대안 |
-|---|---|---|---|
-| DirectXTK 일부 소스 | `SimpleMath`, 입력, WIC/DDS 텍스처 로딩 | Microsoft가 관리하는 D3D11 보조 라이브러리이며, 기존 코드가 이미 해당 API를 사용합니다. 전체 라이브러리 기능이 아니라 현재 필요한 소스만 `Common`에서 빌드합니다. | 직접 수학/입력/텍스처 로더 작성은 학습 가치는 있지만 교체 범위가 큽니다. NuGet/vcpkg는 사용자는 편할 수 있어도 외부 restore가 필요합니다. |
-| Dear ImGui 소스 | 각 샘플의 디버그/툴 UI | 소스 포함 방식이 자연스럽고 외부 런타임 의존성이 없습니다. DX11/Win32 backend만 사용합니다. | 자체 UI 구현은 렌더링 학습보다 UI 구현 비중이 커집니다. 바이너리 패키지는 버전 추적과 재현성이 떨어집니다. |
-| Assimp 로컬 DLL/lib/header | FBX, OBJ, PMX, glTF/glb 로딩 | 여러 3D 포맷을 하나의 scene/mesh/material 구조로 읽을 수 있어 포맷별 로더를 직접 유지하지 않아도 됩니다. 이 레포에서는 `FBX`, `OBJ`, `MMD/PMX`, `glTF` importer만 켠 DLL을 사용합니다. | `cgltf`는 glTF 전용이라 가볍지만 FBX/PMX 학습 범위를 잃습니다. 포맷별 직접 구현은 포트폴리오 주제에서 벗어날 만큼 작업량이 큽니다. |
-| stb_image | TGA fallback | DirectXTex 전체를 런타임 의존성으로 두지 않고 TGA 한 포맷만 가볍게 처리합니다. | DirectXTex는 텍스처 변환, mipmap, 압축 등 오프라인/툴 파이프라인에 강하지만 이 레포의 런타임 TGA fallback에는 과합니다. |
-| FMOD / Live2D Cubism | 사운드/Live2D 예제 | 이미 repo-local SDK 형태로 들어 있어 vcpkg 제거 대상이 아닙니다. | 사운드/Live2D 예제를 제거하면 레포 범위가 줄지만 기존 학습 주제를 잃습니다. |
 
 ## 모델 포맷
 

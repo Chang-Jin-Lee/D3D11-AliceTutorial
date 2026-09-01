@@ -612,14 +612,23 @@ Assert-DocumentationContract ($readmeText -match '(?m)^###\s+실행 코드에서
 Assert-DocumentationContract ($readmeText -match '(?m)^###\s+측정값 해석과 일반 조언\s*$') 'docs: Project 38 must separate general optimization advice from evidence'
 Assert-DocumentationContract ($readmeText -notmatch '\b\d+(?:\.\d+)?\s*ms\b') 'docs: Project 38 must not invent fixed benchmark millisecond results'
 
-# Break caught: Project 38 disappears from the root directory/gallery or its
-# focused stylized-rendering showcase is misplaced before the Project 36 demo.
-$project36DemoIndex = $rootReadmeText.IndexOf('## 대표 데모')
-$stylizedShowcaseIndex = $rootReadmeText.IndexOf('## 스타일라이즈드 렌더링 쇼케이스')
-$projectShortcutsIndex = $rootReadmeText.IndexOf('### 프로젝트 바로가기')
+# Break caught: Project 38 disappears from the root directory/gallery, or its
+# gallery entry drifts out of the project shortcuts section.
+#
+# The dedicated stylized-rendering showcase section was removed from the root
+# README on 2026-09-02 at the author's request, so the old assertion that pinned
+# that section between the representative demo and the shortcuts no longer
+# describes a requirement. Project 38 now reaches readers through the shortcuts
+# gallery, and that is what is asserted here instead: both the directory link and
+# the PNG must live after the shortcuts heading rather than merely appear
+# somewhere in the file.
+$projectShortcutsIndex = $rootReadmeText.IndexOf('## 프로젝트 바로가기')
+$project38LinkIndex = $rootReadmeText.IndexOf('Dx11/38_StylizedToonPBR')
+$project38ImageIndex = $rootReadmeText.IndexOf('docs/media/readme/38-StylizedToonPBR.png')
 Assert-DocumentationContract ($rootReadmeText -match 'Dx11/38_StylizedToonPBR') 'docs: root README must link the Project 38 directory'
 Assert-DocumentationContract ($rootReadmeText -match 'docs/media/readme/38-StylizedToonPBR\.png') 'docs: root README must include the Project 38 PNG gallery image'
-Assert-DocumentationContract ($project36DemoIndex -ge 0 -and $stylizedShowcaseIndex -gt $project36DemoIndex -and $stylizedShowcaseIndex -lt $projectShortcutsIndex) 'docs: stylized-rendering showcase must follow the Project 36 representative demo and precede project shortcuts'
+Assert-DocumentationContract ($projectShortcutsIndex -ge 0) 'docs: root README must keep the project shortcuts gallery heading'
+Assert-DocumentationContract ($project38LinkIndex -gt $projectShortcutsIndex -and $project38ImageIndex -gt $projectShortcutsIndex) 'docs: the Project 38 gallery link and image must sit inside the project shortcuts gallery'
 
 # Break caught: branding prevention silently covers fewer than the exact 38
 # manifest-selected detail READMEs, or a centered mascot block returns under
