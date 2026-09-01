@@ -999,6 +999,14 @@ void App::PassPostProcess() {
 }
 
 void App::PassUI() {
+	// Refresh resource-owning skybox state before ImGui records raw SRV pointers.
+	const unsigned int skyboxGeneration = SkyboxAssetManager::GetCompletedGeneration();
+	if (skyboxGeneration != m_->m_SkyboxAssetGeneration) {
+		m_->m_SkyboxAssetGeneration = skyboxGeneration;
+		if (!m_->m_CurrentIBLPath.empty())
+			ChangeIBLSkyBox(m_->m_CurrentIBLPath);
+	}
+
 	ImGui_ImplDX11_NewFrame();
 	ImGui_ImplWin32_NewFrame();
 	ImGui::NewFrame();
@@ -1024,12 +1032,6 @@ void App::PassUI() {
 		RenderAdvancedRigUI();
 	}
 
-	const unsigned int skyboxGeneration = SkyboxAssetManager::GetCompletedGeneration();
-	if (skyboxGeneration != m_->m_SkyboxAssetGeneration) {
-		m_->m_SkyboxAssetGeneration = skyboxGeneration;
-		if (!m_->m_CurrentIBLPath.empty())
-			ChangeIBLSkyBox(m_->m_CurrentIBLPath);
-	}
 	if (!readmeCaptureMode) {
 		SkyboxAssetManager::RenderStatusUI();
 	}

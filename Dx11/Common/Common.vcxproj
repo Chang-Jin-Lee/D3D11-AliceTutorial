@@ -169,6 +169,7 @@
     <ClInclude Include="Singleton.h" />
     <ClInclude Include="Skybox.h" />
     <ClInclude Include="SkyboxAssetManager.h" />
+    <ClInclude Include="SkyboxAssetValidation.h" />
     <ClInclude Include="Sound\SoundManager.h" />
     <ClInclude Include="Sound\SoundSystem.h" />
     <ClInclude Include="Sound\SoundBox.h" />
@@ -209,6 +210,9 @@
     <ClCompile Include="Singleton.cpp" />
     <ClCompile Include="Skybox.cpp" />
     <ClCompile Include="SkyboxAssetManager.cpp" />
+    <ClCompile Include="SkyboxAssetValidation.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="Sound\SoundManager.cpp" />
     <ClCompile Include="Sound\SoundSystem.cpp" />
     <ClCompile Include="Sound\SoundBox.cpp" />

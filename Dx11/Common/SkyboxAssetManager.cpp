@@ -1,12 +1,15 @@
 #include "pch.h"
 #include "SkyboxAssetManager.h"
+#include "SkyboxAssetValidation.h"
 #include "ReadmeCapture.h"
 
 #include <atomic>
 #include <cstdlib>
+#include <cwctype>
 #include <fstream>
 #include <mutex>
 #include <thread>
+#include <unordered_set>
 
 namespace
 {
@@ -34,11 +37,41 @@ namespace
 		{ L"Indoor", L"indoorBrdf.dds" },
 		{ L"Indoor", L"indoorEnvHDR.dds" },
 	};
+	struct RequiredSkyboxSet
+	{
+		const wchar_t* folder;
+		const wchar_t* prefix;
+	};
+	const RequiredSkyboxSet kRequiredSets[] =
+	{
+		{ L"Sample", L"BakerSample" },
+		{ L"Bridge", L"bridge" },
+		{ L"Indoor", L"indoor" },
+	};
 
 	std::atomic<int> g_state{ static_cast<int>(SkyboxAssetDownloadState::Idle) };
 	std::atomic<std::uint32_t> g_completedGeneration{ 0 };
 	std::mutex g_statusMutex;
 	std::wstring g_statusMessage;
+	std::mutex g_validationMutex;
+	std::unordered_set<std::wstring> g_validatedSets;
+
+	struct DownloadWorkerLifetime
+	{
+		std::mutex threadMutex;
+		SkyboxAssets::CancelableProcess process;
+		std::thread worker;
+		std::atomic<bool> shutdownRequested{ false };
+
+		~DownloadWorkerLifetime();
+	};
+
+	DownloadWorkerLifetime g_workerLifetime;
+
+	bool ShutdownRequested()
+	{
+		return g_workerLifetime.shutdownRequested.load(std::memory_order_acquire);
+	}
 
 	std::filesystem::path SkyboxRoot()
 	{
@@ -75,6 +108,45 @@ namespace
 			}
 		}
 		return roots;
+	}
+
+	std::wstring ValidationKey(const std::filesystem::path& pathPrefix)
+	{
+		std::error_code ec;
+		std::wstring key = std::filesystem::absolute(pathPrefix, ec).lexically_normal().wstring();
+		if (ec)
+			key = pathPrefix.lexically_normal().wstring();
+		for (wchar_t& character : key)
+			character = static_cast<wchar_t>(std::towlower(character));
+		return key;
+	}
+
+	void ClearValidatedSets()
+	{
+		std::lock_guard<std::mutex> lock(g_validationMutex);
+		g_validatedSets.clear();
+	}
+
+	void MarkAllSetsValidated(const std::filesystem::path& skyboxRoot)
+	{
+		std::lock_guard<std::mutex> lock(g_validationMutex);
+		g_validatedSets.clear();
+		for (const RequiredSkyboxSet& set : kRequiredSets)
+			g_validatedSets.insert(ValidationKey(skyboxRoot / set.folder / set.prefix));
+	}
+
+	bool IsSetValidated(const std::wstring& pathPrefix)
+	{
+		const std::wstring key = ValidationKey(pathPrefix);
+		std::lock_guard<std::mutex> lock(g_validationMutex);
+		return g_validatedSets.find(key) != g_validatedSets.end();
+	}
+
+	void InvalidateSet(const std::wstring& pathPrefix)
+	{
+		const std::wstring key = ValidationKey(pathPrefix);
+		std::lock_guard<std::mutex> lock(g_validationMutex);
+		g_validatedSets.erase(key);
 	}
 
 	void SetStatus(SkyboxAssetDownloadState state, std::wstring message)
@@ -116,26 +188,49 @@ namespace
 	bool RunPowerShell(const std::wstring& body)
 	{
 		const std::wstring command =
-			L"powershell -NoProfile -ExecutionPolicy Bypass -Command \"& { "
+			L"powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"& { "
 			+ body + L" }\"";
-		return _wsystem(command.c_str()) == 0;
+		return g_workerLifetime.process.Run(command);
 	}
 
-	bool DownloadArchive(const std::filesystem::path& archivePath)
+	bool DownloadArchive(const std::filesystem::path& archivePath, std::wstring& failureReason)
 	{
-		SetStatus(SkyboxAssetDownloadState::Downloading,
-			L"Downloading skybox assets from GitHub release...");
+		failureReason.clear();
+		return SkyboxAssets::RunWithRetries(3, [&](unsigned int attempt)
+		{
+			if (ShutdownRequested())
+				return false;
 
-		const std::wstring body =
-			L"$ErrorActionPreference='Stop'; "
-			L"$ProgressPreference='SilentlyContinue'; "
-			L"Invoke-WebRequest -Uri " + QuotePowerShellLiteral(kSkyboxReleaseUrl) +
-			L" -OutFile " + QuotePowerShell(archivePath) + L";";
-		return RunPowerShell(body);
+			SetStatus(SkyboxAssetDownloadState::Downloading,
+				L"Downloading skybox assets (attempt " + std::to_wstring(attempt) + L" of 3)...");
+
+			std::error_code ec;
+			std::filesystem::remove(archivePath, ec);
+			const std::wstring body =
+				L"$ErrorActionPreference='Stop'; "
+				L"$ProgressPreference='SilentlyContinue'; "
+				L"Invoke-WebRequest -TimeoutSec 180 -Uri " + QuotePowerShellLiteral(kSkyboxReleaseUrl) +
+				L" -OutFile " + QuotePowerShell(archivePath) + L";";
+			if (!RunPowerShell(body))
+			{
+				failureReason = L"The network download command failed.";
+			}
+			else if (SkyboxAssets::VerifyOfficialArchive(archivePath, &failureReason))
+			{
+				return true;
+			}
+
+			if (attempt < 3 && !ShutdownRequested())
+				Sleep(750);
+			return false;
+		});
 	}
 
 	bool ExtractArchive(const std::filesystem::path& archivePath, const std::filesystem::path& extractDir)
 	{
+		if (ShutdownRequested())
+			return false;
+
 		SetStatus(SkyboxAssetDownloadState::Downloading,
 			L"Extracting skybox archive...");
 
@@ -166,6 +261,7 @@ namespace
 			std::filesystem::directory_options::skip_permission_denied, ec), end;
 			it != end && !ec; it.increment(ec))
 		{
+			if (ShutdownRequested()) return {};
 			if (!it->is_regular_file(ec)) continue;
 			if (_wcsicmp(it->path().filename().c_str(), fileName.c_str()) == 0)
 			{
@@ -186,19 +282,21 @@ namespace
 
 		for (const RequiredSkyboxAsset& asset : kRequiredAssets)
 		{
+			if (ShutdownRequested()) return false;
+
 			const std::filesystem::path targetDir = skyboxDir / asset.folder;
 			const std::filesystem::path targetFile = targetDir / asset.fileName;
-			if (std::filesystem::exists(targetFile)) continue;
+			if (SkyboxAssets::VerifyRequiredAsset(targetFile)) continue;
 
 			const std::filesystem::path found = FindExtractedFile(extractDir, asset.fileName);
-			if (found.empty()) return false;
+			if (found.empty() || !SkyboxAssets::VerifyRequiredAsset(found)) return false;
 
 			std::filesystem::create_directories(targetDir, ec);
 			if (ec) return false;
 
 			std::filesystem::copy_file(found, targetFile,
 				std::filesystem::copy_options::overwrite_existing, ec);
-			if (ec) return false;
+			if (ec || !SkyboxAssets::VerifyRequiredAsset(targetFile)) return false;
 		}
 
 		return true;
@@ -209,6 +307,8 @@ namespace
 		bool installedAny = false;
 		for (const std::filesystem::path& root : SkyboxInstallRoots())
 		{
+			if (ShutdownRequested()) return false;
+
 			if (!InstallExtractedAssets(extractDir, root))
 			{
 				return false;
@@ -218,113 +318,139 @@ namespace
 		return installedAny;
 	}
 
-	bool AllRequiredAssetsExist()
+	bool AllRequiredAssetsAreValid()
 	{
-		const std::filesystem::path skyboxDir = SkyboxRoot();
-		for (const RequiredSkyboxAsset& asset : kRequiredAssets)
-		{
-			if (!std::filesystem::exists(skyboxDir / asset.folder / asset.fileName))
-			{
-				return false;
-			}
-		}
-		return true;
+		return SkyboxAssets::VerifyInstallRoot(SkyboxRoot());
 	}
 
 	void DownloadWorker()
 	{
 		try
 		{
-			if (AllRequiredAssetsExist())
+			if (ShutdownRequested())
+				return;
+
+			ClearValidatedSets();
+			SetStatus(SkyboxAssetDownloadState::Downloading, L"Validating installed skybox assets...");
+			if (AllRequiredAssetsAreValid())
 			{
+				if (ShutdownRequested())
+					return;
+
+				MarkAllSetsValidated(SkyboxRoot());
+				g_completedGeneration.fetch_add(1, std::memory_order_acq_rel);
 				SetStatus(SkyboxAssetDownloadState::Ready, L"Skybox assets are ready.");
 				return;
 			}
 
 			const std::filesystem::path tempRoot =
 				std::filesystem::temp_directory_path() /
-				(L"D3D11-AliceTutorial-Skybox-" + std::to_wstring(GetCurrentProcessId()));
+				(L"D3D11-AliceTutorial-Skybox-" + std::to_wstring(GetCurrentProcessId()) +
+					L"-" + std::to_wstring(GetTickCount64()));
+			SkyboxAssets::ScopedTemporaryDirectory temporaryDirectory(tempRoot);
 			const std::filesystem::path archivePath = tempRoot / L"Skybox.7z";
 			const std::filesystem::path extractDir = tempRoot / L"extract";
 
-			std::error_code ec;
-			std::filesystem::create_directories(tempRoot, ec);
-			if (ec)
+			if (!temporaryDirectory.IsReady())
 			{
 				SetStatus(SkyboxAssetDownloadState::Failed, L"Failed to create temp directory for skybox download.");
 				return;
 			}
 
-			if (!DownloadArchive(archivePath))
+			std::wstring downloadFailure;
+			if (!DownloadArchive(archivePath, downloadFailure))
 			{
-				SetStatus(SkyboxAssetDownloadState::Failed, L"Failed to download Skybox.7z from GitHub release.");
+				if (ShutdownRequested())
+					return;
+
+				SetStatus(SkyboxAssetDownloadState::Failed,
+					L"Failed to download and verify Skybox.7z after 3 attempts. " + downloadFailure);
 				return;
 			}
 
 			if (!ExtractArchive(archivePath, extractDir))
 			{
+				if (ShutdownRequested())
+					return;
+
 				SetStatus(SkyboxAssetDownloadState::Failed, L"Failed to extract Skybox.7z. Install tar.exe/7z.exe or check the archive.");
 				return;
 			}
 
-			if (!InstallExtractedAssetsToAllRoots(extractDir) || !AllRequiredAssetsExist())
+			if (!InstallExtractedAssetsToAllRoots(extractDir) || !AllRequiredAssetsAreValid())
 			{
-				SetStatus(SkyboxAssetDownloadState::Failed, L"Skybox archive did not contain the expected IBL DDS files.");
+				if (ShutdownRequested())
+					return;
+
+				SetStatus(SkyboxAssetDownloadState::Failed, L"Skybox assets failed size or SHA-256 validation.");
 				return;
 			}
 
+			if (ShutdownRequested())
+				return;
+
+			MarkAllSetsValidated(SkyboxRoot());
 			g_completedGeneration.fetch_add(1, std::memory_order_acq_rel);
 			SetStatus(SkyboxAssetDownloadState::Succeeded, L"Skybox assets downloaded and installed.");
 		}
 		catch (...)
 		{
-			SetStatus(SkyboxAssetDownloadState::Failed, L"Unexpected error while downloading skybox assets.");
+			if (!ShutdownRequested())
+				SetStatus(SkyboxAssetDownloadState::Failed, L"Unexpected error while downloading skybox assets.");
 		}
 	}
 
 	void StartDownload(bool forceRetry)
 	{
-		if (AllRequiredAssetsExist())
+		std::lock_guard<std::mutex> lock(g_workerLifetime.threadMutex);
+		if (ShutdownRequested())
+			return;
+
+		const int current = g_state.load(std::memory_order_acquire);
+		if (current == static_cast<int>(SkyboxAssetDownloadState::Downloading) ||
+			(!forceRetry && current == static_cast<int>(SkyboxAssetDownloadState::Failed)))
 		{
-			SetStatus(SkyboxAssetDownloadState::Ready, L"Skybox assets are ready.");
 			return;
 		}
 
-		if (forceRetry)
-		{
-			if (g_state.exchange(static_cast<int>(SkyboxAssetDownloadState::Downloading),
-				std::memory_order_acq_rel) == static_cast<int>(SkyboxAssetDownloadState::Downloading))
-				return;
-		}
-		else
-		{
-			int current = g_state.load(std::memory_order_acquire);
-			while (true)
-			{
-				if (current == static_cast<int>(SkyboxAssetDownloadState::Downloading) ||
-					current == static_cast<int>(SkyboxAssetDownloadState::Failed))
-				{
-					return;
-				}
-				if (g_state.compare_exchange_weak(current,
-					static_cast<int>(SkyboxAssetDownloadState::Downloading),
-					std::memory_order_acq_rel))
-				{
-					break;
-				}
-			}
-		}
+		if (g_workerLifetime.worker.joinable())
+			g_workerLifetime.worker.join();
 
-		std::thread(DownloadWorker).detach();
+		g_state.store(static_cast<int>(SkyboxAssetDownloadState::Downloading), std::memory_order_release);
+		g_workerLifetime.worker = std::thread(DownloadWorker);
+	}
+
+	void ShutdownDownloadWorker()
+	{
+		g_workerLifetime.shutdownRequested.store(true, std::memory_order_release);
+		g_workerLifetime.process.Cancel();
+
+		std::thread worker;
+		{
+			std::lock_guard<std::mutex> lock(g_workerLifetime.threadMutex);
+			if (g_workerLifetime.worker.joinable())
+				worker = std::move(g_workerLifetime.worker);
+		}
+		if (worker.joinable())
+			worker.join();
+	}
+
+	DownloadWorkerLifetime::~DownloadWorkerLifetime()
+	{
+		ShutdownDownloadWorker();
 	}
 }
 
 bool SkyboxAssetManager::HasIBLAssetSet(const std::wstring& pathPrefix)
 {
-	return std::filesystem::exists(pathPrefix + L"DiffuseHDR.dds") &&
-		std::filesystem::exists(pathPrefix + L"SpecularHDR.dds") &&
-		std::filesystem::exists(pathPrefix + L"Brdf.dds") &&
-		std::filesystem::exists(pathPrefix + L"EnvHDR.dds");
+	if (ReadmeCapture::IsEnabled())
+		return SkyboxAssets::HasExpectedFileSizesForSetPrefix(pathPrefix);
+	if (!IsSetValidated(pathPrefix))
+		return false;
+	if (SkyboxAssets::HasExpectedFileSizesForSetPrefix(pathPrefix))
+		return true;
+	InvalidateSet(pathPrefix);
+	return false;
 }
 
 void SkyboxAssetManager::EnsureSkyboxAssetsAsync()
@@ -340,6 +466,11 @@ void SkyboxAssetManager::EnsureSkyboxAssetsAsync()
 void SkyboxAssetManager::RetrySkyboxAssetsAsync()
 {
 	StartDownload(true);
+}
+
+void SkyboxAssetManager::Shutdown()
+{
+	ShutdownDownloadWorker();
 }
 
 SkyboxAssetDownloadState SkyboxAssetManager::GetState()
@@ -402,7 +533,7 @@ void SkyboxAssetManager::RenderStatusUI()
 
 		if (state == SkyboxAssetDownloadState::Downloading)
 		{
-			ImGui::TextUnformatted("Skybox assets are downloading...");
+			ImGui::TextUnformatted("Skybox assets are being prepared...");
 			ImGui::TextUnformatted(message.c_str());
 			ImGui::ProgressBar(-1.0f, ImVec2(-1.0f, 0.0f));
 		}

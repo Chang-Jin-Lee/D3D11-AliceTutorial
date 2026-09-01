@@ -1387,6 +1387,9 @@ function Invoke-ProjectCapture {
             throw "Runtime directory not found: $(Convert-ToReportPath $RuntimeDir $RepoRoot)"
         }
 
+        Assert-ProjectSkyboxPreflight -Project $Project -RepoRoot $RepoRoot `
+            -SkyboxRoot ([IO.Path]::GetFullPath((Join-Path $RuntimeDir '..\Resource\Skybox')))
+
         $exePath = Resolve-ReadmeMediaContainedPath -BasePath $RuntimeDir -Path $Project.exe -Description "project $($Project.number) executable"
         if (-not (Test-Path -LiteralPath $exePath -PathType Leaf)) {
             throw "Executable not found: $(Convert-ToReportPath $exePath $RepoRoot)"

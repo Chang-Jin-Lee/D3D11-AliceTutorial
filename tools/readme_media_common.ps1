@@ -59,6 +59,43 @@ function Resolve-ReadmeMediaContainedPath {
     return $candidatePath
 }
 
+function Assert-ProjectSkyboxPreflight {
+    param(
+        [Parameter(Mandatory)] [object] $Project,
+        [Parameter(Mandatory)] [string] $RepoRoot,
+        [string] $SkyboxRoot = (Join-Path $RepoRoot 'Dx11\Resource\Skybox'),
+        [string] $ManifestPath = (Join-Path $RepoRoot 'tools\skybox_asset_manifest.json')
+    )
+
+    if (-not (Test-ReadmeMediaManifestProperty -Object $Project -Name 'skyboxIblSet') -or
+        [string]::IsNullOrWhiteSpace([string]$Project.skyboxIblSet)) {
+        return
+    }
+
+    $setName = [string]$Project.skyboxIblSet
+    $cacheKey = '{0}|{1}|{2}' -f `
+        [IO.Path]::GetFullPath($SkyboxRoot),
+        [IO.Path]::GetFullPath($ManifestPath),
+        $setName
+    if ($null -eq $script:ReadmeVerifiedSkyboxSets) {
+        $script:ReadmeVerifiedSkyboxSets = [System.Collections.Generic.HashSet[string]]::new(
+            [StringComparer]::OrdinalIgnoreCase)
+    }
+    if ($script:ReadmeVerifiedSkyboxSets.Contains($cacheKey)) {
+        return
+    }
+
+    $verifier = Join-Path $RepoRoot 'tools\verify_skybox_assets.ps1'
+    $output = & pwsh -NoProfile -File $verifier -SkyboxRoot $SkyboxRoot `
+        -SetName $setName -ManifestPath $ManifestPath 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        $details = ($output | ForEach-Object { [string]$_ }) -join [Environment]::NewLine
+        throw "Project $($Project.number) IBL preflight failed: $details"
+    }
+
+    $null = $script:ReadmeVerifiedSkyboxSets.Add($cacheKey)
+}
+
 function Get-ReadmeMediaManifest {
     param(
         [Parameter(Mandatory)] [string] $ManifestPath,
@@ -277,6 +314,10 @@ function Test-ReadmeMediaManifest {
         if ((Test-ReadmeMediaManifestProperty -Object $project -Name 'readmeBackbufferCapture') -and
             $project.readmeBackbufferCapture -isnot [bool]) {
             $null = $errors.Add("invalid readmeBackbufferCapture flag: $number")
+        }
+        if ((Test-ReadmeMediaManifestProperty -Object $project -Name 'skyboxIblSet') -and
+            $project.skyboxIblSet -notin @('Sample', 'Bridge', 'Indoor')) {
+            $null = $errors.Add("invalid skyboxIblSet: $number")
         }
         foreach ($overrideProperty in @('gifSeconds', 'gifFps', 'gifMaxBytes')) {
             if ((Test-ReadmeMediaManifestProperty -Object $project -Name $overrideProperty) -and

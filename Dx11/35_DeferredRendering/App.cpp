@@ -917,6 +917,8 @@ bool App::OnInitialize() {
 }
 
 void App::OnUninitialize() {
+	SkyboxAssetManager::Shutdown();
+
 	// FMOD 종료
 	Sound::Shutdown();
 
@@ -2014,6 +2016,14 @@ void App::PassPostProcess() {
 }
 
 void App::PassUI() {
+	// Refresh resource-owning skybox state before ImGui records raw SRV pointers.
+	const unsigned int skyboxGeneration = SkyboxAssetManager::GetCompletedGeneration();
+	if (skyboxGeneration != m_->m_SkyboxAssetGeneration) {
+		m_->m_SkyboxAssetGeneration = skyboxGeneration;
+		if (!m_->m_CurrentIBLPath.empty())
+			ChangeIBLSkyBox(m_->m_CurrentIBLPath);
+	}
+
 	ImGui_ImplDX11_NewFrame();
 	ImGui_ImplWin32_NewFrame();
 	ImGui::NewFrame();
@@ -2029,12 +2039,6 @@ void App::PassUI() {
 		RenderSceneImageWindow();
 	}
 	RenderDeferredUI();
-	const unsigned int skyboxGeneration = SkyboxAssetManager::GetCompletedGeneration();
-	if (skyboxGeneration != m_->m_SkyboxAssetGeneration) {
-		m_->m_SkyboxAssetGeneration = skyboxGeneration;
-		if (!m_->m_CurrentIBLPath.empty())
-			ChangeIBLSkyBox(m_->m_CurrentIBLPath);
-	}
 	SkyboxAssetManager::RenderStatusUI();
 
 	ImGui::Render();
@@ -4101,7 +4105,12 @@ void App::ChangeIBLSkyBox(const std::wstring& path) {
 	const std::wstring brdfPath = path + L"Brdf.dds";
 	if (!SkyboxAssetManager::HasIBLAssetSet(path)) {
 		SkyboxAssetManager::EnsureSkyboxAssetsAsync();
-		m_->PushLog("[INFO] Skybox IBL assets are missing; downloading from GitHub release.");
+		m_->PushLog("[INFO] Skybox IBL validation is pending; using the neutral fallback.");
+		releaseSRV(m_->m_pIblDiffuseSRV);
+		releaseSRV(m_->m_pIblSpecularSRV);
+		releaseSRV(m_->m_pIblBrdfLutSRV);
+		ChangeSkyboxDDS(L"..\\Resource\\Skybox\\cubemap.dds");
+		return;
 	}
 	const bool loaded = loadDDS(diffusePath, &diffuseSRV) &&
 		loadDDS(specularPath, &specularSRV) && loadDDS(brdfPath, &brdfSRV);

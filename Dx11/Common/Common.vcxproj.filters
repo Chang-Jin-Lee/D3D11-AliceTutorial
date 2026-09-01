@@ -72,6 +72,9 @@
     <ClInclude Include="SkyboxAssetManager.h">
       <Filter>Assets</Filter>
     </ClInclude>
+    <ClInclude Include="SkyboxAssetValidation.h">
+      <Filter>Assets</Filter>
+    </ClInclude>
     <ClInclude Include="SystemInfomation.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
@@ -180,6 +183,9 @@
       <Filter>소스 파일</Filter>
     </ClCompile>
     <ClCompile Include="SkyboxAssetManager.cpp">
+      <Filter>Assets</Filter>
+    </ClCompile>
+    <ClCompile Include="SkyboxAssetValidation.cpp">
       <Filter>Assets</Filter>
     </ClCompile>
     <ClCompile Include="SystemInfomation.cpp">

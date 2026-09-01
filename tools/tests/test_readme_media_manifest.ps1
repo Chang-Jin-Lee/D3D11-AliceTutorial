@@ -43,6 +43,12 @@ $project36 = @($manifest.projects | Where-Object number -eq '36')[0]
 Assert-True ((Get-ReadmeMediaEffectivePositiveNumber $manifest $project36 'gifSeconds') -eq 13) 'project 36 must capture thirteen seconds'
 Assert-True ([bool]$project36.readmeBackbufferCapture) 'project 36 must opt into backbuffer capture'
 
+$skyboxPreflightProjects = @($manifest.projects | Where-Object { $_.skyboxIblSet } | ForEach-Object { $_.number })
+Assert-True (($skyboxPreflightProjects -join ',') -ceq '31,32,33,34,35,36') `
+    "IBL capture preflight selection changed: $($skyboxPreflightProjects -join ',')"
+Assert-True (@($manifest.projects | Where-Object { $_.skyboxIblSet -and $_.skyboxIblSet -cne 'Sample' }).Count -eq 0) `
+    'the current IBL capture projects must preflight their Sample set'
+
 $project06 = @($manifest.projects | Where-Object number -eq '06')[0]
 Assert-True ([bool]$project06.readmeCaptureMode) 'project 06 must opt into deterministic README capture mode'
 Assert-True ($null -ne $project06.PSObject.Properties['minSampledPngColors']) 'project 06 must declare its low-colour PNG floor'
@@ -72,6 +78,11 @@ function Copy-ReadmeMediaManifest([object]$SourceManifest) {
 $invalid = Copy-ReadmeMediaManifest $manifest
 $invalid.projects[35].gifSeconds = 0
 Assert-True ((Test-ReadmeMediaManifest $invalid $repoRoot) -contains 'invalid gifSeconds override: 36') 'zero override was accepted'
+
+$invalidSkyboxSet = Copy-ReadmeMediaManifest $manifest
+$invalidSkyboxSet.projects[30].skyboxIblSet = 'Sample/../../outside'
+Assert-True ((Test-ReadmeMediaManifest $invalidSkyboxSet $repoRoot) -contains 'invalid skyboxIblSet: 31') `
+    'unsafe or unsupported skybox IBL set was accepted'
 
 $malformedPngFloor = Copy-ReadmeMediaManifest $manifest
 $malformedPngFloor.projects[5].minSampledPngColors = 'four'

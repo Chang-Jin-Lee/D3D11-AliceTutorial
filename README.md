@@ -135,8 +135,11 @@ git submodule update --init --recursive
 ---
 
 ## 리소스파일
-- IBL Sky박스
-  - https://drive.google.com/file/d/1OOaj8Zh-6DOiRWh2kgyWCEB9SRHP6ZtJ/view?usp=sharing
+- IBL Sky박스 (`31_IBL`~`36_AdvancedAnim_Sound_Click`)
+  - 필요한 파일이 없거나 손상되면 공식 `Skybox_2` GitHub Release를 최대 3회 자동 다운로드합니다.
+  - 압축 파일과 설치되는 12개 DDS를 크기와 SHA-256으로 검증하며, 실패한 임시 파일은 자동 정리합니다.
+  - 네트워크를 사용할 수 없으면 앱은 종료하지 않고 직접광 기반의 중립 배경으로 실행됩니다. README 캡처는 누락되거나 손상된 IBL로 잘못된 이미지를 발행하지 않도록 사전검사에서 중단됩니다.
+  - 수동 검사: `pwsh -NoProfile -File tools/verify_skybox_assets.ps1 -SkyboxRoot Dx11/Resource/Skybox -SetName All`
 - 캐릭터
   - https://drive.google.com/file/d/1A5OncTPxGswntuw-VTPKlqF8Gsq01n7K/view?usp=sharing
 

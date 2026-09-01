@@ -40,6 +40,7 @@ https://github.com/Chang-Jin-Lee/D3D11-AliceAnimation
 - Advanced Rig은 네 캐릭터 팔레트를 포트폴리오 타임라인이 소유하므로 비활성 상태와 그 이유를 패널에 명시합니다.
 - Deferred Rendering은 이 포트폴리오 구도의 조명·합성을 보존하기 위해 Forward로 고정하며, 일반 실행의 Controls와 Deferred 패널에 비활성 사유를 표시합니다.
 - 공개 glTF 캐릭터의 미터 단위를 이 장면의 월드 구성에 맞춰 명시적으로 `80` 스케일로 변환합니다. 네 캐릭터를 담기 위해 카메라가 약 285 월드 단위로 멀어진 만큼 기본 이동 속도는 `40`이며, `Controls`에서 다시 조절할 수 있습니다.
+- Sample IBL 파일은 시작할 때 크기와 SHA-256을 확인합니다. 누락·손상 시 공식 Release에서 다시 설치하고, 오프라인이면 직접광 기반의 중립 배경으로 계속 실행합니다.
 
 <!-- README-RUNTIME:START -->
 ## 실행 화면

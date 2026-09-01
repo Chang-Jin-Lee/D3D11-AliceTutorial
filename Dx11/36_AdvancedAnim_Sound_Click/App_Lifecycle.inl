@@ -375,6 +375,7 @@ void App::LoadDataAsync(std::stop_token stoken)
 }
 
 void App::OnUninitialize() {
+	SkyboxAssetManager::Shutdown();
 
 	// 1. 스레드에 멈춤 신호 보내기
 	m_loaderThread.request_stop();

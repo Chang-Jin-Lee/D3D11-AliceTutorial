@@ -1,0 +1,21 @@
+{
+  "release": {
+    "url": "https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/releases/download/Skybox_2/Skybox.7z",
+    "size": 364836665,
+    "sha256": "fb5df312b57fc85698fbbbf84bc934fdec32a7eced0c8aaf62a4adf8edfa6565"
+  },
+  "assets": [
+    { "set": "Sample", "relativePath": "Sample/BakerSampleDiffuseHDR.dds", "size": 983168, "sha256": "66cce54aed2d0a3b063d21f8ff8bbf5737f90abce569b8a2c4a5b64384788162" },
+    { "set": "Sample", "relativePath": "Sample/BakerSampleSpecularHDR.dds", "size": 16777376, "sha256": "cc5937755c2dce160448293f0ed2dbf04636571f6a9ad6d719521ad1a2027692" },
+    { "set": "Sample", "relativePath": "Sample/BakerSampleBrdf.dds", "size": 1310848, "sha256": "6570289a6d9aa4f1a52cebf7a30e434ec100c49e3b59c2f33ac41cb98099bf18" },
+    { "set": "Sample", "relativePath": "Sample/BakerSampleEnvHDR.dds", "size": 268435616, "sha256": "0a84a47a63768e4cf5c3e9b8bb494f920aad056b1b234328176f0a7d148d8bc0" },
+    { "set": "Bridge", "relativePath": "Bridge/bridgeDiffuseHDR.dds", "size": 1966208, "sha256": "2e744d15be1c7711de358e22efbec2ac7df8b8b03b69e59d84e47c7170acd1e7" },
+    { "set": "Bridge", "relativePath": "Bridge/bridgeSpecularHDR.dds", "size": 33554624, "sha256": "19758a65814d3b9888e63588b0b5388b78e508ba92e22d004ebd999e325c6a77" },
+    { "set": "Bridge", "relativePath": "Bridge/bridgeBrdf.dds", "size": 1310848, "sha256": "6570289a6d9aa4f1a52cebf7a30e434ec100c49e3b59c2f33ac41cb98099bf18" },
+    { "set": "Bridge", "relativePath": "Bridge/bridgeEnvHDR.dds", "size": 33554624, "sha256": "c2c7d3bf8330d5192d0f0af3c1ce4f89e8e93b382b6201f7dce36b322ccfe80d" },
+    { "set": "Indoor", "relativePath": "Indoor/indoorDiffuseHDR.dds", "size": 1966208, "sha256": "c2e5a436ae4c569ad6061199e127fc213f146b078a91a6eb47fb6579d65ba061" },
+    { "set": "Indoor", "relativePath": "Indoor/indoorSpecularHDR.dds", "size": 33554624, "sha256": "4330b45b79e367046a2550f2489d3ac5a5559d26f72bc3db583a0ce5e793e83f" },
+    { "set": "Indoor", "relativePath": "Indoor/indoorBrdf.dds", "size": 1310848, "sha256": "6570289a6d9aa4f1a52cebf7a30e434ec100c49e3b59c2f33ac41cb98099bf18" },
+    { "set": "Indoor", "relativePath": "Indoor/indoorEnvHDR.dds", "size": 33554624, "sha256": "1c9c48225b3a48190b168cf56de277ab13a09d70f2e8d4c96c18808f5f388a96" }
+  ]
+}

@@ -101,7 +101,12 @@ void App::ChangeIBLSkyBox(const std::wstring& path) {
 	const std::wstring brdfPath = path + L"Brdf.dds";
 	if (!SkyboxAssetManager::HasIBLAssetSet(path)) {
 		SkyboxAssetManager::EnsureSkyboxAssetsAsync();
-		m_->PushLog("[INFO] Skybox IBL assets are missing; downloading from GitHub release.");
+		m_->PushLog("[INFO] Skybox IBL validation is pending; using the neutral fallback.");
+		releaseSRV(m_->m_pIblDiffuseSRV);
+		releaseSRV(m_->m_pIblSpecularSRV);
+		releaseSRV(m_->m_pIblBrdfLutSRV);
+		ChangeSkyboxDDS(L"..\\Resource\\Skybox\\cubemap.dds");
+		return;
 	}
 	const bool loaded = loadDDS(diffusePath, &diffuseSRV) &&
 		loadDDS(specularPath, &specularSRV) && loadDDS(brdfPath, &brdfSRV);
