@@ -635,9 +635,30 @@ void App::PassMainScene() {
 			cb.pbrRoughness = activePbr.roughness;
 			cb.pbrAO = activePbr.ambientOcclusion;
 
-			UpdateCB(m_->m_pConstantBuffer, cb);
+			const auto& subsets = mdlPtr->shared->subsets;
+			const auto& passOrder = mdlPtr->shared->materialPassOrder;
+			const bool hasPassOrder = passOrder.size() == subsets.size();
+			const uint32_t firstBlendSubset = hasPassOrder
+				? mdlPtr->shared->firstBlendSubset
+				: static_cast<uint32_t>(subsets.size());
 
-			for (const auto& sub : mdlPtr->shared->subsets) {
+			m_->m_pDeviceContext->OMSetBlendState(nullptr, nullptr, 0xffffffffu);
+			m_->m_pDeviceContext->OMSetDepthStencilState(
+				m_->m_pDepthStencilState, 0);
+
+			for (uint32_t passIndex = 0;
+				passIndex < static_cast<uint32_t>(subsets.size());
+				++passIndex) {
+				if (passIndex == firstBlendSubset) {
+					m_->m_pDeviceContext->OMSetBlendState(
+						m_->m_pAlphaBlendState, nullptr, 0xffffffffu);
+					m_->m_pDeviceContext->OMSetDepthStencilState(
+						m_->m_pDepthStencilStateReadOnly, 0);
+				}
+
+				const uint32_t subsetIndex =
+					hasPassOrder ? passOrder[passIndex] : passIndex;
+				const auto& sub = subsets[subsetIndex];
 				ID3D11ShaderResourceView* srvDiffuse = nullptr;
 				if (mdlPtr->shared && sub.materialIndex < mdlPtr->shared->materialSRVs.size())
 					srvDiffuse = mdlPtr->shared->materialSRVs[sub.materialIndex];
@@ -651,12 +672,25 @@ void App::PassMainScene() {
 					srvNormal = m_->m_pFallbackNormal;
 				ID3D11ShaderResourceView* srvSpec = (m_->m_UseSpecularMapForCube != 0) ? m_->m_pFallbackWhite : nullptr;
 
+				const ModelMaterialProcessing::MaterialAlphaInfo alphaInfo =
+					sub.materialIndex < mdlPtr->shared->materialAlphaInfos.size()
+					? mdlPtr->shared->materialAlphaInfos[sub.materialIndex]
+					: ModelMaterialProcessing::MaterialAlphaInfo{};
+				cb.materialAlphaMode = static_cast<int>(alphaInfo.mode);
+				cb.materialAlphaCutoff = alphaInfo.cutoff;
+				UpdateCB(m_->m_pConstantBuffer, cb);
+
 				// 개별로 바인딩함
 				m_->m_pDeviceContext->PSSetShaderResources(0, 1, &srvDiffuse);
 				m_->m_pDeviceContext->PSSetShaderResources(2, 1, &srvNormal);
 				m_->m_pDeviceContext->PSSetShaderResources(3, 1, &srvSpec);
 				m_->m_pDeviceContext->DrawIndexed(sub.count, sub.start, 0);
 			}
+
+			// 뒤의 스카이박스/오버레이 패스에 불투명 상태를 돌려준다.
+			m_->m_pDeviceContext->OMSetBlendState(nullptr, nullptr, 0xffffffffu);
+			m_->m_pDeviceContext->OMSetDepthStencilState(
+				m_->m_pDepthStencilState, 0);
 		}
 	}
 

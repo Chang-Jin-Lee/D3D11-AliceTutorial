@@ -6,6 +6,7 @@
 #include <unordered_map>
 
 #include "FbxTypes.h"
+#include "ModelTransparency.h"
 
 struct ID3D11Device;
 struct ID3D11DeviceContext;
@@ -37,6 +38,7 @@ public:
 	const std::vector<ID3D11ShaderResourceView*>& GetMetallicSRVs() const;      // PBR Metallic
 	const std::vector<ID3D11ShaderResourceView*>& GetRoughnessSRVs() const;     // PBR Roughness
 	const std::vector<ID3D11ShaderResourceView*>& GetNormalSRVs() const;        // Normal maps
+	const std::vector<ModelMaterialProcessing::MaterialAlphaInfo>& GetMaterialAlphaInfos() const;
 
 	// Skeleton
 	bool HasSkeleton() const;

@@ -117,7 +117,20 @@ float4 main(VertexOut pIn) : SV_Target
 	}
 
 	float alphaTex = alphaBase * g_Material.diffuse.a;
-	clip(alphaTex - 0.1f);
+	if (g_MaterialAlphaMode == 1)
+	{
+		clip(alphaTex - g_MaterialAlphaCutoff);
+	}
+	else if (g_MaterialAlphaMode == 2)
+	{
+		// Preserve soft eye layers; discard only effectively invisible texels.
+		clip(alphaTex - (1.0f / 255.0f));
+	}
+	else
+	{
+		// glTF OPAQUE ignores the base-color texture alpha channel.
+		alphaTex = 1.0f;
+	}
 
 	// PBR을 사용하기 위한 베이스 알베도
 	// BaseColor 텍스처는 sRGB로 저장되어 있으므로 선형 공간으로 변환 필요

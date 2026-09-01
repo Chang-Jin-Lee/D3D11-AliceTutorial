@@ -153,6 +153,7 @@
     <ClInclude Include="Mesh/FbxGeometry.h" />
     <ClInclude Include="Mesh/FbxMaterial.h" />
     <ClInclude Include="Mesh/FbxModel.h" />
+    <ClInclude Include="Mesh/ModelTransparency.h" />
     <ClInclude Include="Mesh/FbxSkeleton.h" />
     <ClInclude Include="Mesh/FbxTypes.h" />
     <ClInclude Include="FbxManager.h" />
@@ -190,6 +191,9 @@
     <ClCompile Include="Mesh/FbxGeometry.cpp" />
     <ClCompile Include="Mesh/FbxMaterial.cpp" />
     <ClCompile Include="Mesh/FbxModel.cpp" />
+    <ClCompile Include="Mesh/ModelTransparency.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="Mesh/FbxSkeleton.cpp" />
     <ClCompile Include="FbxManager.cpp" />
     <ClCompile Include="GameApp.cpp" />

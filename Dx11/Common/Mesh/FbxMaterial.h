@@ -4,6 +4,8 @@
 #include <vector>
 #include <unordered_map>
 
+#include "ModelTransparency.h"
+
 struct ID3D11Device;
 struct ID3D11ShaderResourceView;
 struct aiScene;
@@ -24,6 +26,7 @@ public:
 	const std::vector<ID3D11ShaderResourceView*>& GetMetallicSRVs() const;
 	const std::vector<ID3D11ShaderResourceView*>& GetRoughnessSRVs() const;
 	const std::vector<ID3D11ShaderResourceView*>& GetNormalSRVs() const;
+	const std::vector<ModelMaterialProcessing::MaterialAlphaInfo>& GetMaterialAlphaInfos() const;
 private:
 	struct Impl; Impl* m_;
 };

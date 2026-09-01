@@ -214,6 +214,7 @@ const std::vector<ID3D11ShaderResourceView*>& FbxModel::GetMaterialSRVs() const 
 const std::vector<ID3D11ShaderResourceView*>& FbxModel::GetMetallicSRVs() const { return m_->materials.GetMetallicSRVs(); }
 const std::vector<ID3D11ShaderResourceView*>& FbxModel::GetRoughnessSRVs() const { return m_->materials.GetRoughnessSRVs(); }
 const std::vector<ID3D11ShaderResourceView*>& FbxModel::GetNormalSRVs() const { return m_->materials.GetNormalSRVs(); }
+const std::vector<ModelMaterialProcessing::MaterialAlphaInfo>& FbxModel::GetMaterialAlphaInfos() const { return m_->materials.GetMaterialAlphaInfos(); }
 
 // Skeleton/animation
 bool FbxModel::HasSkeleton() const { return m_->skeleton.HasBones(); }

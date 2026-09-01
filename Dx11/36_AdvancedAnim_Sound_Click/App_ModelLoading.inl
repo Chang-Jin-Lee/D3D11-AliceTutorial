@@ -81,6 +81,28 @@
 						{ s.startIndex, s.indexCount, s.materialIndex });
 				shared->materialSRVs = shared->fbx->GetMaterialSRVs();
 				shared->normalSRVs = shared->fbx->GetNormalSRVs();
+				shared->materialAlphaInfos = shared->fbx->GetMaterialAlphaInfos();
+
+				// SampleModel의 레이스 겉감은 기존 36번에서 0.1 cutout으로 보이도록
+				// 조정돼 있었다. 이름을 검증한 이 재질만 그 모습을 유지하고,
+				// 눈/눈썹/아이라인의 authored BLEND는 그대로 정상 합성한다.
+				if (const aiScene* scene = shared->fbx->GetScenePtr();
+					fileName == L"SampleModel" && scene) {
+					for (uint32_t materialIndex = 0;
+						materialIndex < scene->mNumMaterials
+						&& materialIndex < shared->materialAlphaInfos.size();
+						++materialIndex) {
+						aiString materialName;
+						if (scene->mMaterials[materialIndex]->Get(
+							AI_MATKEY_NAME, materialName) == AI_SUCCESS
+							&& std::string(materialName.C_Str()) ==
+								"N00_002_01_Tops_01_CLOTH_02 (Instance)") {
+							shared->materialAlphaInfos[materialIndex].mode =
+								ModelMaterialProcessing::MaterialAlphaMode::Mask;
+							shared->materialAlphaInfos[materialIndex].cutoff = 0.1f;
+						}
+					}
+				}
 			}
 			else {
 				m_->PushLog("[ERR] Failed FBX: " + Utf8FromWString(fileName));
@@ -128,6 +150,24 @@
 		}
 
 		if (ok) {
+			std::vector<uint32_t> subsetMaterialIndices;
+			subsetMaterialIndices.reserve(shared->subsets.size());
+			for (const auto& subset : shared->subsets)
+				subsetMaterialIndices.push_back(subset.materialIndex);
+
+			std::vector<uint32_t> materialAlphaModes;
+			materialAlphaModes.reserve(shared->materialAlphaInfos.size());
+			for (const auto& alphaInfo : shared->materialAlphaInfos)
+				materialAlphaModes.push_back(static_cast<uint32_t>(alphaInfo.mode));
+
+			shared->materialPassOrder.resize(shared->subsets.size());
+			ModelMaterialProcessing::BuildMaterialPassOrder(
+				subsetMaterialIndices.data(),
+				static_cast<uint32_t>(subsetMaterialIndices.size()),
+				materialAlphaModes.data(),
+				static_cast<uint32_t>(materialAlphaModes.size()),
+				shared->materialPassOrder.data(),
+				&shared->firstBlendSubset);
 			m_->m_ModelCache[pathW] = shared; // 캐시 등록
 		}
 	}

@@ -14,6 +14,8 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $script:Failures = [System.Collections.Generic.List[string]]::new()
 
+& (Join-Path $PSScriptRoot 'test_model_transparency.ps1')
+
 function Assert-True {
     param([bool]$Condition, [string]$Message)
 

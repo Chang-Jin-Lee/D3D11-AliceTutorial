@@ -102,6 +102,9 @@
     <ClInclude Include="Mesh/FbxMaterial.h">
       <Filter>Mesh</Filter>
     </ClInclude>
+    <ClInclude Include="Mesh/ModelTransparency.h">
+      <Filter>Mesh</Filter>
+    </ClInclude>
     <ClInclude Include="Mesh/FbxAnimation.h">
       <Filter>Mesh</Filter>
     </ClInclude>
@@ -207,6 +210,9 @@
       <Filter>소스 파일</Filter>
     </ClCompile>
     <ClCompile Include="Mesh/FbxMaterial.cpp">
+      <Filter>Mesh</Filter>
+    </ClCompile>
+    <ClCompile Include="Mesh/ModelTransparency.cpp">
       <Filter>Mesh</Filter>
     </ClCompile>
     <ClCompile Include="Mesh/FbxModel.cpp">

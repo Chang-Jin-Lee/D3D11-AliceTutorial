@@ -53,9 +53,12 @@ struct ConstantBuffer {
 	// Debug/Lines
 	int boundsBoneIndex = -1;
 	// 드로우콜 단위 툰 셰이딩 스위치 (36_Shared.fxh의 g_ToonEnabled).
-	// 기존 XMFLOAT3 패딩을 쪼갠 것이므로 상수 버퍼 크기와 정렬은 그대로다.
+	// 뒤의 알파 모드/컷오프와 함께 기존 XMFLOAT3 패딩을 재사용하므로
+	// 상수 버퍼 크기와 정렬은 그대로다.
 	int toonEnabled = 0;
-	XMFLOAT2 boundsPad = { 0, 0 };
+	int materialAlphaMode =
+		static_cast<int>(ModelMaterialProcessing::MaterialAlphaMode::Opaque);
+	float materialAlphaCutoff = 0.0f;
 };
 
 struct PostProcessConstantBuffer {
@@ -100,6 +103,10 @@ struct SharedModelData {
 	std::vector<ID3D11ShaderResourceView*>
 		materialSRVs;                                   // BaseColor/Albedo 텍스처
 	std::vector<ID3D11ShaderResourceView*> normalSRVs; // 노말맵 텍스처 (옵션)
+	std::vector<ModelMaterialProcessing::MaterialAlphaInfo> materialAlphaInfos;
+	// 불투명/MASK가 먼저, BLEND가 뒤에 오도록 안정적으로 분할한 subset 인덱스.
+	std::vector<uint32_t> materialPassOrder;
+	uint32_t firstBlendSubset = 0;
 };
 
 struct ModelEntry {

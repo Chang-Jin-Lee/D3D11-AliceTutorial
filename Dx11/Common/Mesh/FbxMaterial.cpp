@@ -11,6 +11,7 @@
 #include <stb_image.h>
 #include <wrl/client.h>
 #include <assimp/scene.h>
+#include <assimp/GltfMaterial.h>
 #include <assimp/Importer.hpp>
 #include <algorithm>
 #include <cwctype>
@@ -27,6 +28,7 @@ struct FbxMaterialLoader::Impl
 	std::vector<ID3D11ShaderResourceView*> metallicSRVs;
 	std::vector<ID3D11ShaderResourceView*> roughnessSRVs;
 	std::vector<ID3D11ShaderResourceView*> normalSRVs;
+	std::vector<ModelMaterialProcessing::MaterialAlphaInfo> alphaInfos;
 	std::unordered_map<std::wstring, ID3D11ShaderResourceView*> cache;
 	ID3D11ShaderResourceView* white = nullptr; // 기본 색상 / roughness 기본값(1)
 	ID3D11ShaderResourceView* black = nullptr; // metallic 기본값(0)
@@ -45,6 +47,7 @@ void FbxMaterialLoader::Clear()
 	m_->metallicSRVs.clear();
 	m_->roughnessSRVs.clear();
 	m_->normalSRVs.clear();
+	m_->alphaInfos.clear();
 
 	for (auto& kv : m_->cache) { SAFE_RELEASE(kv.second); }
 	m_->cache.clear();
@@ -74,6 +77,12 @@ const std::vector<ID3D11ShaderResourceView*>& FbxMaterialLoader::GetRoughnessSRV
 const std::vector<ID3D11ShaderResourceView*>& FbxMaterialLoader::GetNormalSRVs() const
 {
 	return m_->normalSRVs;
+}
+
+const std::vector<ModelMaterialProcessing::MaterialAlphaInfo>&
+FbxMaterialLoader::GetMaterialAlphaInfos() const
+{
+	return m_->alphaInfos;
 }
 
 static ID3D11ShaderResourceView* FindCached(std::unordered_map<std::wstring, ID3D11ShaderResourceView*>& cache, const std::wstring& key)
@@ -163,22 +172,11 @@ static HRESULT CreateSRVWithCpuMips(
 			const UINT ch = (ph > 1) ? (ph >> 1) : 1;
 			levels[level].resize(static_cast<size_t>(cw) * ch * 4);
 			uint8_t* dst = levels[level].data();
-			for (UINT y = 0; y < ch; ++y)
+			if (!ModelTextureProcessing::DownsampleAlphaWeightedRgba8(
+				prev, pw, ph, dst, cw, ch))
 			{
-				const UINT y0 = (ph > 1) ? (y * 2) : 0;
-				const UINT y1 = (ph > 1) ? (y0 + 1) : 0;
-				for (UINT x = 0; x < cw; ++x)
-				{
-					const UINT x0 = (pw > 1) ? (x * 2) : 0;
-					const UINT x1 = (pw > 1) ? (x0 + 1) : 0;
-					const uint8_t* p00 = prev + (static_cast<size_t>(y0) * pw + x0) * 4;
-					const uint8_t* p10 = prev + (static_cast<size_t>(y0) * pw + x1) * 4;
-					const uint8_t* p01 = prev + (static_cast<size_t>(y1) * pw + x0) * 4;
-					const uint8_t* p11 = prev + (static_cast<size_t>(y1) * pw + x1) * 4;
-					uint8_t* o = dst + (static_cast<size_t>(y) * cw + x) * 4;
-					for (int c = 0; c < 4; ++c)
-						o[c] = static_cast<uint8_t>((static_cast<UINT>(p00[c]) + p10[c] + p01[c] + p11[c] + 2) / 4);
-				}
+				mipCount = 1;
+				break;
 			}
 			prev = levels[level].data();
 			pw = cw; ph = ch;
@@ -532,10 +530,25 @@ bool FbxMaterialLoader::Load(ID3D11Device* device, const aiScene* scene, const s
 	m_->metallicSRVs.assign(matCount, nullptr);
 	m_->roughnessSRVs.assign(matCount, nullptr);
 	m_->normalSRVs.assign(matCount, nullptr);
+	m_->alphaInfos.assign(matCount, {});
 
 	for (unsigned m = 0; m < scene->mNumMaterials; ++m)
 	{
 		aiMaterial* mat = scene->mMaterials[m];
+
+		aiString alphaModeValue;
+		std::string alphaMode = "OPAQUE";
+		if (mat->Get(AI_MATKEY_GLTF_ALPHAMODE, alphaModeValue) == AI_SUCCESS)
+			alphaMode = alphaModeValue.C_Str();
+		const std::uint32_t parsedAlphaMode =
+			ModelMaterialProcessing::ParseAlphaMode(alphaMode);
+		float authoredCutoff = 0.0f;
+		const bool hasAuthoredCutoff =
+			mat->Get(AI_MATKEY_GLTF_ALPHACUTOFF, authoredCutoff) == AI_SUCCESS;
+		m_->alphaInfos[m].mode =
+			static_cast<ModelMaterialProcessing::MaterialAlphaMode>(parsedAlphaMode);
+		m_->alphaInfos[m].cutoff = ModelMaterialProcessing::ResolveAlphaCutoff(
+			parsedAlphaMode, hasAuthoredCutoff, authoredCutoff);
 
 		// glTF PBR base color first, then legacy diffuse for FBX/OBJ/PMX.
 		m_->baseColorSRVs[m] = LoadTextureFromMaterial(

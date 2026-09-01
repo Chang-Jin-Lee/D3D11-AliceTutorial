@@ -81,7 +81,8 @@ cbuffer ConstantBuffer              : register(b0)
     // (C++ 쪽은 ModelEntry::useToonShading - useInstancePbrMaterial과 같은 방식)
     // 기존 float3 패딩을 쪼갠 것이라 상수 버퍼 크기/정렬은 변하지 않는다.
     int    g_ToonEnabled;               // 0/1
-    float2 g_BoundsPad;
+    int    g_MaterialAlphaMode;          // 0: OPAQUE, 1: MASK, 2: BLEND
+    float  g_MaterialAlphaCutoff;        // authored cutoff for MASK
 }
 
 // GPU 스키닝을 위한 레지스터 (b1)
