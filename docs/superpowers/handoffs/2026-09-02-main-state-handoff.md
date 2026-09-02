@@ -147,8 +147,8 @@ What it held, recorded because none of it survives anywhere else:
 | Branch tip | `5a625c2c77572f2c913f9d2c5d5876ad01b081e1`, 2026-08-12 17:57 |
 | Position | 12 commits ahead of `main`, 56 behind |
 | Uncommitted | 4 modified files, +61/−2 |
-| Plan | `2026-08-12-project36-embedded-fbx-showcase.md`, 653 lines — never on `main` |
-| Design | `2026-08-12-project36-embedded-fbx-showcase-design.md`, 128 lines — never on `main` |
+| Plan | `2026-08-12-project36-embedded-fbx-showcase.md`, 653 lines — **recovered onto `main`** |
+| Design | `2026-08-12-project36-embedded-fbx-showcase-design.md`, 128 lines — **recovered onto `main`** |
 | Ledger state | Tasks 1–4 complete, review PASS/PASS, Task 5 pending |
 | Assets | added `Alice_Swimsuit_white.fbx` (13.9 MB); replaced `SampleModel.glb` with an 11.5 MB variant |
 
@@ -156,15 +156,23 @@ The branch was never pushed to `origin`, so there is no remote copy. Git keeps u
 objects for a grace period, so `git show 5a625c2` or `git reflog` can still reach the tip
 for roughly 90 days from 2026-09-02 if anything needs recovering. After that it is gone.
 
-Two consequences worth knowing rather than rediscovering:
+The plan and design documents were rescued from that tip before the window closed, at the
+author's instruction, and now live at their original paths under
+`docs/superpowers/plans/` and `docs/superpowers/specs/`. Both are byte-identical to the
+discarded originals apart from an added status notice: the plan carries an
+"ABANDONED — DO NOT EXECUTE" banner and the design's `Status:` line records the
+abandonment. That notice matters because the plan opens with an instruction to agentic
+workers to implement it task-by-task, and tells them to work in a worktree path that no
+longer exists.
 
-- The plan and design documents for the embedded FBX showcase were **only** on this branch.
-  `docs/superpowers/plans/` and `docs/superpowers/specs/` on `main` have no
-  `2026-08-12-project36-embedded-fbx-showcase` entry, so that design thinking is not
-  recoverable from `main`.
-- The branch introduced an `Alice_Swimsuit_white.fbx` asset. Discarding it removes that
-  asset from the working set, which sits on the right side of the standing constraint about
-  legacy Alice material.
+**The code those documents describe was not recovered and is not on `main`** — only the
+reasoning. Anything else from the branch (the 12 commits' source changes, the 4 uncommitted
+files, the assets) is reachable solely through `5a625c2` until the grace period expires.
+
+One further consequence worth knowing rather than rediscovering: the branch introduced an
+`Alice_Swimsuit_white.fbx` asset, and the recovered design still describes it as its source
+asset. Discarding the branch removed that asset from the working set, which sits on the
+right side of the standing constraint about legacy Alice material.
 
 ### Safe to remove
 
