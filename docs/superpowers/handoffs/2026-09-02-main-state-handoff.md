@@ -17,12 +17,11 @@ This one lives in `docs/` and is committed for that reason.
 
 > Work in `C:\Github\D3D11-AliceTutorial` on `main`. Read
 > `docs/superpowers/handoffs/2026-09-02-main-state-handoff.md` first. `main` is clean, in
-> sync with `origin/main`, and its full regression passes except for one suite that needs
-> an unlocked interactive desktop. There is no in-flight task on `main`. The only unmerged
-> work is the `codex/project36-fbx-showcase` worktree, stalled since 2026-08-12 and now 56
-> commits behind — read "Unmerged and stale" before touching it. Never copy, extract,
-> retarget, or derive data from NIKKE or legacy Alice models, motions, or audio. Never
-> create junctions, symlinks, or reparse points.
+> sync with `origin/main`, and its full regression passes on an unlocked interactive
+> desktop. There is no in-flight task and no unmerged branch: the one that existed,
+> `codex/project36-fbx-showcase`, was discarded on the author's instruction on 2026-09-02.
+> Never copy, extract, retarget, or derive data from NIKKE or legacy Alice models, motions,
+> or audio. Never create junctions, symlinks, or reparse points.
 
 ---
 
@@ -135,26 +134,37 @@ Binaries in `Dx11/bin` are current as of 2026-09-01 17:40, newer than the newest
 
 ## Unmerged and stale
 
-### `codex/project36-fbx-showcase` — real unmerged work, needs a decision
+### `codex/project36-fbx-showcase` — discarded on the author's instruction, 2026-09-02
+
+This section previously said the branch held real unmerged work and must not be deleted
+without a decision. The author made that decision on 2026-09-02: **discard.** The worktree
+was removed, the branch deleted, and the directory cleared.
+
+What it held, recorded because none of it survives anywhere else:
 
 | | |
 |---|---|
-| Path | `.worktrees/project36-fbx-showcase` |
-| HEAD | `5a625c2`, 2026-08-12 17:57 |
-| Position | **12 commits ahead of `main`, 56 behind** |
-| Uncommitted | **4 modified files**, +61/−2 |
-| Plan | `docs/superpowers/plans/2026-08-12-project36-embedded-fbx-showcase.md` |
-| Ledger | "Tasks 1–4 complete … independent review PASS/PASS. Task 5 pending." |
+| Branch tip | `5a625c2c77572f2c913f9d2c5d5876ad01b081e1`, 2026-08-12 17:57 |
+| Position | 12 commits ahead of `main`, 56 behind |
+| Uncommitted | 4 modified files, +61/−2 |
+| Plan | `2026-08-12-project36-embedded-fbx-showcase.md`, 653 lines — never on `main` |
+| Design | `2026-08-12-project36-embedded-fbx-showcase-design.md`, 128 lines — never on `main` |
+| Ledger state | Tasks 1–4 complete, review PASS/PASS, Task 5 pending |
+| Assets | added `Alice_Swimsuit_white.fbx` (13.9 MB); replaced `SampleModel.glb` with an 11.5 MB variant |
 
-Uncommitted files: `Dx11/36_AdvancedAnim_Sound_Click/App_Lifecycle.inl`,
-`App_Utilities.inl`, `tools/tests/test_project36_embedded_media.ps1`,
-`tools/tests/test_project36_embedded_showcase.ps1`.
+The branch was never pushed to `origin`, so there is no remote copy. Git keeps unreachable
+objects for a grace period, so `git show 5a625c2` or `git reflog` can still reach the tip
+for roughly 90 days from 2026-09-02 if anything needs recovering. After that it is gone.
 
-This is a genuine in-flight SDD run stalled for three weeks. It touches Project 36, which
-`main` has since changed substantially (skybox bootstrap, eye transparency, UI restoration),
-so **a rebase will not be trivial**. Someone has to decide whether to finish Task 5 and
-merge, rebase first, or abandon it. Do not delete this worktree without that decision — the
-12 commits and the 4 uncommitted files exist nowhere else.
+Two consequences worth knowing rather than rediscovering:
+
+- The plan and design documents for the embedded FBX showcase were **only** on this branch.
+  `docs/superpowers/plans/` and `docs/superpowers/specs/` on `main` have no
+  `2026-08-12-project36-embedded-fbx-showcase` entry, so that design thinking is not
+  recoverable from `main`.
+- The branch introduced an `Alice_Swimsuit_white.fbx` asset. Discarding it removes that
+  asset from the working set, which sits on the right side of the standing constraint about
+  legacy Alice material.
 
 ### Safe to remove
 
