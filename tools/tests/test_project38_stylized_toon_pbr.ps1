@@ -82,8 +82,15 @@ $solutionProjectNames = @(
         ForEach-Object { $_.Groups[1].Value } |
         Where-Object { $_ -ne 'Common' }
 )
-Assert-True ($solutionProjectNames.Count -eq 38) 'solution must contain 38 applications'
-Assert-True (@($solutionProjectNames | Sort-Object -Unique).Count -eq 38) 'solution application projects must be unique'
+# Read the manifest here rather than after the solution mappings: it carries the project count
+# this suite derives from, so it has to exist before the first count assertion.
+# tools/tests/test_readme_media_manifest.ps1 pins that field to the directories on disk and to
+# the solution, so deriving here does not let the number drift unnoticed.
+$manifest = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'tools\readme_media_manifest.json') | ConvertFrom-Json
+$expectedProjectCount = [int]$manifest.expectedProjectCount
+Assert-True ($expectedProjectCount -gt 0) 'manifest expectedProjectCount must be a positive number'
+Assert-True ($solutionProjectNames.Count -eq $expectedProjectCount) "solution must contain $expectedProjectCount applications, got $($solutionProjectNames.Count)"
+Assert-True (@($solutionProjectNames | Sort-Object -Unique).Count -eq $expectedProjectCount) 'solution application projects must be unique'
 Assert-True ($solutionText -match [regex]::Escape($projectName)) 'Project 38 missing from solution'
 Assert-True ($solutionText -match ('(?im)^Project\("[^"]+"\) = "{0}", "{0}\\{0}\.vcxproj", "{1}"\r?$' -f [regex]::Escape($projectName), [regex]::Escape($projectGuid))) 'Project 38 solution registration must use the fixed project GUID and path'
 
@@ -100,9 +107,7 @@ foreach ($mapping in @(
     Assert-True ($solutionText -match ('(?im)^\s*{0}\.{1}\s*$' -f [regex]::Escape($projectGuid), $mapping)) "Project 38 solution mapping missing: $mapping"
 }
 
-$manifest = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'tools\readme_media_manifest.json') | ConvertFrom-Json
-Assert-True ([int]$manifest.expectedProjectCount -eq 38) 'manifest count must be 38'
-Assert-True (@($manifest.projects).Count -eq 38) 'manifest must contain 38 projects'
+Assert-True (@($manifest.projects).Count -eq $expectedProjectCount) "manifest must contain $expectedProjectCount projects, found $(@($manifest.projects).Count)"
 $project38Entries = @($manifest.projects | Where-Object number -eq '38')
 Assert-True ($project38Entries.Count -eq 1) 'manifest Project 38 entry missing'
 $project38 = $project38Entries[0]
@@ -634,7 +639,7 @@ Assert-DocumentationContract ($project38LinkIndex -gt $projectShortcutsIndex -an
 # manifest-selected detail READMEs, or a centered mascot block returns under
 # a renamed marker.
 $projectReadmePaths = @($manifest.projects | ForEach-Object { Join-Path $repoRoot "Dx11/$($_.directory)/README.md" })
-Assert-DocumentationContract ($projectReadmePaths.Count -eq 38) 'docs: branding scope must contain exactly 38 project READMEs'
+Assert-DocumentationContract ($projectReadmePaths.Count -eq $expectedProjectCount) "docs: branding scope must contain exactly $expectedProjectCount project READMEs"
 foreach ($projectReadmePath in $projectReadmePaths) {
     $projectReadmeText = Get-Content -Raw -LiteralPath $projectReadmePath
     Assert-DocumentationContract ($projectReadmeText -notmatch 'README-BRAND:(?:START|END)') "docs: README-BRAND marker returned: $projectReadmePath"

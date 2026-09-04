@@ -47,8 +47,13 @@ $solutionProjectNames = @(
         ForEach-Object { $_.Groups[1].Value } |
         Where-Object { $_ -ne 'Common' }
 )
-Assert-True ($solutionProjectNames.Count -eq 38) "solution must contain exactly 38 application projects, got $($solutionProjectNames.Count)"
-Assert-True (@($solutionProjectNames | Sort-Object -Unique).Count -eq 38) 'solution application projects must be unique'
+# Derived from the manifest rather than a literal; tools/tests/test_readme_media_manifest.ps1
+# pins that field to the directories on disk and to the solution.
+$manifest = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'tools\readme_media_manifest.json') | ConvertFrom-Json
+$expectedProjectCount = [int]$manifest.expectedProjectCount
+Assert-True ($expectedProjectCount -gt 0) 'manifest expectedProjectCount must be a positive number'
+Assert-True ($solutionProjectNames.Count -eq $expectedProjectCount) "solution must contain exactly $expectedProjectCount application projects, got $($solutionProjectNames.Count)"
+Assert-True (@($solutionProjectNames | Sort-Object -Unique).Count -eq $expectedProjectCount) 'solution application projects must be unique'
 foreach ($solutionProjectName in $solutionProjectNames) {
     Assert-True ($solutionProjectName -match '^[A-Za-z0-9_]+$') "invalid solution project name: $solutionProjectName"
 }

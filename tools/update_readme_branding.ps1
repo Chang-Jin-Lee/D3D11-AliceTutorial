@@ -16,19 +16,24 @@ $solutionProjectNames = @(
         ForEach-Object { $_.Groups[1].Value } |
         Where-Object { $_ -ne 'Common' }
 )
-if ($solutionProjectNames.Count -ne 38) { throw "solution must contain exactly 38 application projects, got $($solutionProjectNames.Count)" }
-if (@($solutionProjectNames | Sort-Object -Unique).Count -ne 38) { throw 'solution application projects must be unique' }
+# The project count comes from the manifest this script is already reading, so adding a
+# project does not require editing this tool. The guard below still refuses to run whenever
+# the solution and the manifest disagree, which is the failure this check exists to catch.
+$expectedProjectCount = [int]$data.expectedProjectCount
+if ($expectedProjectCount -le 0) { throw "manifest expectedProjectCount must be a positive number, got $expectedProjectCount" }
+if ($solutionProjectNames.Count -ne $expectedProjectCount) { throw "solution must contain exactly $expectedProjectCount application projects, got $($solutionProjectNames.Count)" }
+if (@($solutionProjectNames | Sort-Object -Unique).Count -ne $expectedProjectCount) { throw 'solution application projects must be unique' }
 foreach ($solutionProjectName in $solutionProjectNames) {
     if ($solutionProjectName -notmatch '^\d{2}_[A-Za-z0-9_]+$') { throw "invalid solution application project name: $solutionProjectName" }
 }
 
 $manifestProjects = @($data.projects)
-if ([int]$data.expectedProjectCount -ne 38 -or $manifestProjects.Count -ne 38) { throw 'manifest project count mismatch' }
+if ($manifestProjects.Count -ne $expectedProjectCount) { throw "manifest project count mismatch: expected $expectedProjectCount, found $($manifestProjects.Count)" }
 $manifestDirectories = @($manifestProjects | ForEach-Object { [string]$_.directory })
 foreach ($directory in $manifestDirectories) {
     if ($directory -notmatch '^\d{2}_[A-Za-z0-9_]+$') { throw "unsafe project directory: $directory" }
 }
-if (@($manifestDirectories | Sort-Object -Unique).Count -ne 38) { throw 'manifest project directories must be unique' }
+if (@($manifestDirectories | Sort-Object -Unique).Count -ne $expectedProjectCount) { throw 'manifest project directories must be unique' }
 $sortedManifestDirectories = @($manifestDirectories | Sort-Object -CaseSensitive)
 $sortedSolutionProjectNames = @($solutionProjectNames | Sort-Object -CaseSensitive)
 if (($sortedManifestDirectories -join "`n") -cne ($sortedSolutionProjectNames -join "`n")) {

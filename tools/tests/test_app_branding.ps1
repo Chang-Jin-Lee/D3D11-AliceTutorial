@@ -55,10 +55,15 @@ $solutionProjectNames = @(
         Where-Object { $_ -ne 'Common' }
 )
 
-Assert-True ([int]$manifest.expectedProjectCount -eq 38) 'expectedProjectCount must be 38'
-Assert-True (@($manifest.projects).Count -eq 38) 'manifest must contain 38 projects'
-Assert-True ($solutionProjectNames.Count -eq 38) "solution must contain exactly 38 application projects, got $($solutionProjectNames.Count)"
-Assert-True (@($solutionProjectNames | Sort-Object -Unique).Count -eq 38) 'solution application projects must be unique'
+# The count comes from the manifest rather than a literal so adding a project is a one-field
+# edit. tools/tests/test_readme_media_manifest.ps1 pins that field to the directories on disk
+# and the solution, so it cannot drift unnoticed. These assertions still fail loudly whenever
+# the solution and the manifest disagree with each other.
+$expectedProjectCount = [int]$manifest.expectedProjectCount
+Assert-True ($expectedProjectCount -gt 0) 'expectedProjectCount must be a positive number'
+Assert-True (@($manifest.projects).Count -eq $expectedProjectCount) "manifest must contain $expectedProjectCount projects, found $(@($manifest.projects).Count)"
+Assert-True ($solutionProjectNames.Count -eq $expectedProjectCount) "solution must contain exactly $expectedProjectCount application projects, got $($solutionProjectNames.Count)"
+Assert-True (@($solutionProjectNames | Sort-Object -Unique).Count -eq $expectedProjectCount) 'solution application projects must be unique'
 foreach ($solutionProjectName in $solutionProjectNames) {
     Assert-True ($solutionProjectName -match '^\d{2}_[A-Za-z0-9_]+$') "invalid solution application project name: $solutionProjectName"
 }
@@ -66,7 +71,7 @@ $manifestDirectories = @($manifest.projects | ForEach-Object { [string]$_.direct
 foreach ($directory in $manifestDirectories) {
     Assert-True ($directory -match '^\d{2}_[A-Za-z0-9_]+$') "unsafe project directory: $directory"
 }
-Assert-True (@($manifestDirectories | Sort-Object -Unique).Count -eq 38) 'manifest project directories must be unique'
+Assert-True (@($manifestDirectories | Sort-Object -Unique).Count -eq $expectedProjectCount) 'manifest project directories must be unique'
 $sortedManifestDirectories = @($manifestDirectories | Sort-Object -CaseSensitive)
 $sortedSolutionProjectNames = @($solutionProjectNames | Sort-Object -CaseSensitive)
 Assert-True (($sortedManifestDirectories -join "`n") -ceq ($sortedSolutionProjectNames -join "`n")) 'manifest project directories must exactly match TutorialApp.sln application projects'
@@ -109,7 +114,7 @@ Assert-True ($rootReadme -notmatch 'alice-tutorial-logo\.png') 'root README logo
 
 $readmes = @($manifest.projects | ForEach-Object { Join-Path $repoRoot "Dx11/$($_.directory)/README.md" })
 
-Assert-True ($readmes.Count -eq 38) 'expected 38 project READMEs'
+Assert-True ($readmes.Count -eq $expectedProjectCount) "expected $expectedProjectCount project READMEs, got $($readmes.Count)"
 foreach ($path in $readmes) {
     $content = Get-Content -Raw -LiteralPath $path
     Assert-True ($content -notmatch 'README-BRAND:(?:START|END)') "project README brand markers must be absent: $path"

@@ -16,7 +16,7 @@ try {
     $solutionLines = @('Project("{TYPE}") = "Common", "Common\Common.vcxproj", "{COMMON}"')
     $solutionLines += @($projectDirectories | ForEach-Object { "Project(`"{TYPE}`") = `"$_`", `"$_\$_.vcxproj`", `"{PROJECT}`"" })
     [IO.File]::WriteAllText((Join-Path $fixture 'Dx11\TutorialApp.sln'), ($solutionLines -join "`r`n") + "`r`n", [Text.UTF8Encoding]::new($false))
-    @{ expectedProjectCount = 38; projects = @($projectDirectories | ForEach-Object { @{ directory = $_ } }) } |
+    @{ expectedProjectCount = @($projectDirectories).Count; projects = @($projectDirectories | ForEach-Object { @{ directory = $_ } }) } |
         ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $fixture 'tools\manifest.json') -Encoding utf8NoBOM
 
     [IO.File]::WriteAllText((Join-Path $fixture 'README.md'), "# Root`r`n`r`n> Root quote`r`n", [Text.UTF8Encoding]::new($false))
@@ -110,7 +110,7 @@ try {
     New-Item -ItemType Directory -Force -Path (Join-Path $fixture 'Dx11\99_External') | Out-Null
     [IO.File]::WriteAllText((Join-Path $fixture 'Dx11\99_External\README.md'), "# External`n", [Text.UTF8Encoding]::new($false))
     foreach ($case in $negativeCases) {
-        @{ expectedProjectCount = 38; projects = @($case.Directories | ForEach-Object { @{ directory = $_ } }) } |
+        @{ expectedProjectCount = @($case.Directories).Count; projects = @($case.Directories | ForEach-Object { @{ directory = $_ } }) } |
             ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $fixture 'tools\manifest.json') -Encoding utf8NoBOM
         [IO.File]::WriteAllText((Join-Path $fixture 'README.md'), "# Root`n`nRoot body`n", [Text.UTF8Encoding]::new($false))
         $beforeInvalidManifest = [IO.File]::ReadAllBytes((Join-Path $fixture 'README.md'))

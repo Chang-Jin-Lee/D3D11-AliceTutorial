@@ -10,9 +10,32 @@ $manifest = Get-ReadmeMediaManifest -ManifestPath 'tools/readme_media_manifest.j
 $errors = @(Test-ReadmeMediaManifest -Manifest $manifest -RepoRoot $repoRoot)
 
 Assert-True ($errors.Count -eq 0) ($errors -join "`n")
-Assert-True ($manifest.expectedProjectCount -eq 38) 'production manifest expectedProjectCount must be 38'
-Assert-True (@($manifest.projects).Count -eq 38) 'manifest must contain 38 projects'
-Assert-True (-not (@($manifest.projects.directory) -contains '16_pmxWithMotion')) 'duplicate project must stay excluded'
+
+# The manifest's expectedProjectCount is the single source of truth for how many applications
+# this repository has. Every other suite derives from it rather than repeating a literal, so
+# adding a project means editing the manifest, not hunting seventeen assertion sites.
+#
+# That only stays safe while something independent pins the manifest to reality. These three
+# checks are that anchor: the declared count must match the manifest's own project array, the
+# numbered directories actually on disk, and the applications registered in the solution. A
+# manifest edit that silently drops or duplicates a project fails here.
+$expectedProjectCount = [int]$manifest.expectedProjectCount
+Assert-True ($expectedProjectCount -gt 0) 'manifest expectedProjectCount must be a positive number'
+Assert-True (@($manifest.projects).Count -eq $expectedProjectCount) "manifest must contain $expectedProjectCount projects, found $(@($manifest.projects).Count)"
+
+$numberedDirectories = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'Dx11') -Directory |
+    Where-Object { $_.Name -match '^\d{2}_' } | ForEach-Object { $_.Name })
+Assert-True ($numberedDirectories.Count -eq $expectedProjectCount) "numbered project directories on disk ($($numberedDirectories.Count)) must match the manifest count ($expectedProjectCount)"
+
+$solutionText = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'Dx11\TutorialApp.sln')
+$solutionApps = @([regex]::Matches($solutionText, '(?m)^Project\("[^"]+"\) = "([^"]+)", "([^"]+\.vcxproj)"') |
+    ForEach-Object { $_.Groups[1].Value } | Where-Object { $_ -ne 'Common' })
+Assert-True ($solutionApps.Count -eq $expectedProjectCount) "solution applications ($($solutionApps.Count)) must match the manifest count ($expectedProjectCount)"
+
+$manifestDirectorySet = @($manifest.projects | ForEach-Object { [string]$_.directory })
+Assert-True ((@($numberedDirectories | Sort-Object) -join ',') -ceq (@($manifestDirectorySet | Sort-Object) -join ',')) 'numbered project directories on disk must be exactly the manifest project directories'
+
+Assert-True (-not (@($manifest.projects.directory) -contains '16_pmxWithMotion')) 'removed duplicate project must not be re-added'
 Assert-True ($manifest.captureWidth -eq 1600 -and $manifest.captureHeight -eq 900) 'PNG size contract mismatch'
 Assert-True ($manifest.gifWidth -eq 800 -and $manifest.gifHeight -eq 450) 'GIF size contract mismatch'
 Assert-True ($manifest.infoWidth -eq 1600 -and $manifest.infoHeight -eq 640) 'info image size contract mismatch'

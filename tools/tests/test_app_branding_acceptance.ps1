@@ -36,7 +36,7 @@ function New-BaseFixture([string]$Path, [string]$AcceptanceScript, [string]$Repo
     $solutionLines = @('Project("{TYPE}") = "Common", "Common\Common.vcxproj", "{COMMON}"')
     $solutionLines += @($Directories | ForEach-Object { "Project(`"{TYPE}`") = `"$_`", `"$_\$_.vcxproj`", `"{PROJECT}`"" })
     [IO.File]::WriteAllText((Join-Path $Path 'Dx11\TutorialApp.sln'), ($solutionLines -join "`r`n") + "`r`n", [Text.UTF8Encoding]::new($false))
-    @{ expectedProjectCount = 38; projects = @($Directories | ForEach-Object { @{ directory = $_ } }) } |
+    @{ expectedProjectCount = @($Directories).Count; projects = @($Directories | ForEach-Object { @{ directory = $_ } }) } |
         ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $Path 'tools\readme_media_manifest.json') -Encoding utf8NoBOM
     [IO.File]::WriteAllText((Join-Path $Path 'README.md'), "# Fixture`n`nBody`n", [Text.UTF8Encoding]::new($false))
     foreach ($directory in $Directories | Sort-Object -Unique) {
@@ -78,7 +78,7 @@ try {
             Mutate = {
                 param($path)
                 $directories = @($canonicalDirectories[0..36]) + @($canonicalDirectories[0])
-                @{ expectedProjectCount = 38; projects = @($directories | ForEach-Object { @{ directory = $_ } }) } |
+                @{ expectedProjectCount = @($directories).Count; projects = @($directories | ForEach-Object { @{ directory = $_ } }) } |
                     ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $path 'tools\readme_media_manifest.json') -Encoding utf8NoBOM
             }
         },
@@ -88,7 +88,7 @@ try {
             Mutate = {
                 param($path)
                 $directories = @($canonicalDirectories[0..36]) + @('99_External')
-                @{ expectedProjectCount = 38; projects = @($directories | ForEach-Object { @{ directory = $_ } }) } |
+                @{ expectedProjectCount = @($directories).Count; projects = @($directories | ForEach-Object { @{ directory = $_ } }) } |
                     ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $path 'tools\readme_media_manifest.json') -Encoding utf8NoBOM
                 New-Item -ItemType Directory -Force -Path (Join-Path $path 'Dx11\99_External') | Out-Null
                 Write-CanonicalReadme (Join-Path $path 'Dx11\99_External\README.md')
