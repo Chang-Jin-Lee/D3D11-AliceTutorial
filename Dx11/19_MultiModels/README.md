@@ -12,22 +12,14 @@
 
 ## 19. fbx, obj, pmx MultiModels (19_MultiModels)
 
-- 내용 : 여러 모델을 동시에 렌더하는 예제입니다
+- 내용: 여러 모델을 동시에 렌더링하는 예제입니다.
 - 주요 구현
-  - 17번 프로젝트에서 완성한 모델 렌더 로직에서 모델을 그리기 위한 ModelEntry를 정의합니다.
-  - 그 ModelEntry를 vector를 사용해 그려냅니다
+  - 17번의 모델 렌더링 로직을 모델별 `ModelEntry`로 묶습니다.
+  - 모델의 버퍼·재질·트랜스폼을 벡터로 관리하고 순회하며 그립니다.
 
-| MultiModels - Phong  | MultiModels - Blinn Phong  |
-|---|---|
-| <div align="center"><img src="../../docs/media/readme/19-MultiModels.png" width="450"/></div> | <div align="center"><img src="../../docs/media/readme/19-MultiModels.png" width="450"/></div> |
+## 확인해 볼 것
 
-| MultiModels - No Lighting |
-|---|
-| <div align="center"><img src="../../docs/media/readme/19-MultiModels.png" width="600"/></div> |
-
-| MultiModels - Lambert | MultiModels - TextureOnly  |
-|---|---|
-| <div align="center"><img src="../../docs/media/readme/19-MultiModels.png" width="450"/></div> | <div align="center"><img src="../../docs/media/readme/19-MultiModels.png" width="450"/></div> |
+모델 하나의 위치·회전·스케일을 바꿨을 때 다른 모델이 영향을 받지 않는지 확인합니다. 여러 모델에 같은 셰이더를 사용해도 드로우마다 각 모델의 상수 버퍼와 텍스처를 바인딩해야 합니다.
 
 <!-- README-RUNTIME:START -->
 ## 실행 화면

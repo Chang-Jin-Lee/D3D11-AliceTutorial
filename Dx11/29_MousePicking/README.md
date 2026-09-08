@@ -21,11 +21,6 @@
 - 어려웠던 점
   - 구현 난이도는 쉽지만, 충돌에서의 로직과 매우 유사해서 수학식을 세우는 데 시간이 걸렸음
 
-
-| 마우스로 선택한 모습 |
-|---|
-| <div align="center"><img src="../../docs/media/readme/29-MousePicking.png" width="600"/></div> |
-
 <!-- README-RUNTIME:START -->
 ## 실행 화면
 

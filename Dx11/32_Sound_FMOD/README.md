@@ -12,11 +12,7 @@
 
 ### 32. FMOD + 애니메이션 동기화
 
-## Screenshot
 
-| README capture |
-|---|
-| <img src="../../docs/media/readme/32-Sound-FMOD.png" width="600"/> |
 
 - 목적 
   - 이후 시네마틱 카메라 연출과 애니메이션과 사운드를 하나로 통합하기 위함
@@ -31,10 +27,10 @@
 
 - FMOD SDK 위치
   - 헤더: `third_party/FMOD/inc`  
-  - 라이브러리: `third_party/FMOD/x64`
+  - 라이브러리: `third_party/FMOD/64x`
 - 프로젝트 설정 (32_Sound_FMOD만)
   - C/C++ → 추가 포함 디렉터리: `third_party/FMOD/inc`  
-  - Linker → 추가 라이브러리 디렉터리: `third_party/FMOD/x64`  
+  - Linker → 추가 라이브러리 디렉터리: `third_party/FMOD/64x`
   - `SoundManager.h / SoundManager.cpp` 파일을 프로젝트에 추가
 
 ---

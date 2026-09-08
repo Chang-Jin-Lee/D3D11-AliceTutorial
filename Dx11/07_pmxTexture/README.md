@@ -29,7 +29,7 @@
   - 카메라: RMB 드래그 회전(Yaw/Pitch), WASD 이동, Q/E 상승·하강, 마우스 휠 돌리(뷰 방향)
   - ImGui: System Info + Model Info(Vertices/Indices/Triangles/Subsets/Materials/Textures unique/fallback, Model Path, Texture Folder)
 - 프로젝트: `07_pmxTexture/`
-- 리소스 예시: `Resource/fbx/Public/MyAlice/Player/SampleModel.glb`, 텍스처 폴더 `SampleModel.fbm/`
+- 기본 리소스: `Resource/fbx/Public/MyAlice/Player/SampleModel.glb`. 텍스처가 GLB 내부에 포함되어 있어 별도의 `SampleModel.fbm/` 폴더는 필요하지 않습니다. `.fbm` 폴더 탐색은 외부 텍스처를 사용하는 FBX의 폴백 경로입니다.
 
 <p align="center">
   <img src="../../docs/media/readme/07-pmxTexture.png" width="60%" />

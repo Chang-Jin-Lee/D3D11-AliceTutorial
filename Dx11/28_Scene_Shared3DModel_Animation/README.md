@@ -10,26 +10,20 @@
 <p align="center"><img src="../../docs/media/readme/info/28-Scene-Shared3DModel-Animation-info.png" width="100%" /></p>
 <!-- README-INFO:END -->
 
-## 28.  scene shared3d model
+## 28. Scene Shared3D Model
 
-- 내용 : 애셋 매니저를 만든 예제입니다
+- 내용: 같은 모델의 메시·텍스처를 여러 인스턴스가 공유하도록 에셋 매니저를 구성한 예제입니다.
 - 주요 구현
-  - fbx 데이터를 로드할때 에셋 매니저에서 캐시 데이터가 있는지 확인합니다.
-  - 만약 있다면 shared_ptr, weak_ptr 구조로 데이터를 반환합니다.
-  - 캐시를 저장할때는 두 가지 방법 중 하나를 선택해야합니다.
-  - 모델을 계속해서 로드해도 VRAM이 증가하지 않습니다. 즉 데이터를 공유합니다.
-  - 1. 경로 기반 키
-  - 2. 데이터 기반 키
-  - 현재 코드는 데이터 기반 키로 되어 있으며 FBX 파일만을 캐시하고 있습니다
-  - 또한 씬 전환 후에 IDXGIDevice3::Trim() 함수로  드라이버에게 VRAM/DRAM/pagefile.sys에서 리소스 제거를 요청합니다
-  
-| 여러 모델, 애니메이션 |
-|---|
-| <div align="center"><img src="../../docs/media/readme/28-Scene-Shared3DModel-Animation.png" width="600"/></div> |
+  - 모델 파일의 바이트를 해시한 데이터 기반 키로 캐시를 조회합니다.
+  - 캐시는 `weak_ptr`, 사용 중인 인스턴스는 `shared_ptr`로 수명을 관리합니다.
+  - 캐시가 유효하면 메시·텍스처 GPU 리소스를 재사용합니다. 트랜스폼·애니메이션 상태 같은 인스턴스별 데이터는 별도로 필요합니다.
+  - 이 경로는 `FbxModel` 계열의 공유 모델을 관리합니다. 실제로는 Assimp가 읽는 GLB 캐릭터도 이 경로를 사용합니다.
 
-| 씬 B | 씬 A |
-|---|---|
-| <div align="center"><img src="../../docs/media/readme/28-Scene-Shared3DModel-Animation.png" width="600"/></div> | <div align="center"><img src="../../docs/media/readme/28-Scene-Shared3DModel-Animation.png" width="600"/></div> |
+## 확인해 볼 것
+
+같은 모델을 여러 번 추가하면서 공유 메시·텍스처 수와 메모리 사용량을 살펴보세요. 리소스 공유는 중복 로딩을 줄이지만, 모든 CPU/GPU 메모리 증가를 없애는 것은 아닙니다.
+
+씬 전환에서는 `IDXGIDevice3::Trim()`으로 드라이버가 내부의 사용하지 않는 메모리를 정리할 기회를 줍니다. 앱이 보유한 리소스 참조를 해제하는 것과는 별개이며, 즉시 VRAM 사용량이 특정 값으로 떨어지는 것을 보장하지 않습니다.
 
 <!-- README-RUNTIME:START -->
 ## 실행 화면

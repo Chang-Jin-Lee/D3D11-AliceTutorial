@@ -18,10 +18,6 @@
   - ImGui로 본 구조를 보여줍니다
   - 해당 모델에 대한 통계치를 계산해서 보여줍니다
 
-| Skinned With Bone Structure |
-|---|
-| <div align="center"><img src="../../docs/media/readme/24-Skinned-With-Bone-Structure.png" width="600"/></div> |
-
 <!-- README-RUNTIME:START -->
 ## 실행 화면
 

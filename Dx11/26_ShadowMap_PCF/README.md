@@ -12,27 +12,19 @@
 
 ## 26. ShadowMap PCF (26_ShadowMap_PCF)
 
-- 내용 : ShadowMap을 보여주는 예제 입니다.
+- 내용: 광원에서 본 깊이와 카메라에서 본 픽셀의 깊이를 비교해 그림자를 만드는 예제입니다.
 - 주요 구현
-  - 깊이 텍스쳐 (DSV, SRV 겸용임)를 생성합니다
-  - Output Merger에 DSV만 바인딩 합니다. RTV는 none으로 둡니다
-  - vertex shader에서 월드 -> 라이팅의 뷰 - 프로젝션 변환을 하고 깊이를 기록합니다
-  - 메인 패스(제 프로젝트에서는 쉐이더 코드들이 모아져 있는 부분)에서 t4에 Shadow 맵 SRV와 s1와 샘플러를 바인딩합니다.
-  - pixel shader에서 라이트를 공간 좌표로 Shadow map을 샘플링하고 상수버퍼를 통해 값들은 전달합니다
-  
-- 주의할 점
-  - 기준 점을 잘 찾아야 합니다. 모델의 원점에서 보통 하게 되는데, 이때 uv 좌표를 잘못 설정하면 빛 방향으로 그림자가 나오게 됩니다. 그림자가 반대로 생긴다는 이야기입니다
+  - 깊이 텍스처에 DSV와 SRV를 만들고, 그림자 패스에서는 RTV 없이 DSV만 바인딩합니다.
+  - 정점을 월드 → 광원의 뷰 → 투영 공간으로 변환해 깊이를 기록합니다.
+  - 메인 패스에서 Shadow Map SRV를 `t4`, 샘플러를 `s1`에 연결합니다.
+  - 픽셀의 광원 공간 좌표를 Shadow Map UV·깊이로 변환해 저장된 깊이와 비교합니다.
+  - PCF는 주변 깊이 비교 결과를 평균해 그림자 경계를 부드럽게 만듭니다.
 
-| 그림자가 반대로 생긴 사진 |
-|---|
-| <div align="center"><img src="../../docs/media/readme/26-ShadowMap-PCF.png" width="600"/></div> |
+## 확인해 볼 것
 
+그림자가 반대로 나오거나 어긋나면 광원 방향의 부호, 광원 뷰·투영 행렬, perspective divide, NDC에서 텍스처 UV로 바꿀 때의 Y 방향을 함께 확인합니다. 모델 원점을 바꾸는 것만으로 해결되는 문제는 아닙니다.
 
-</br>
-
-| 그림자가 제대로 그려진 사진 | 그림자가 제대로 그려진 사진2 | 
-|---|---|
-| <div align="center"><img src="../../docs/media/readme/26-ShadowMap-PCF.png" width="600"/></div> | <div align="center"><img src="../../docs/media/readme/26-ShadowMap-PCF.png" width="600"/></div> |
+같은 장면에서 bias와 PCF 반경을 바꿔 보세요. bias가 너무 작으면 자기 그림자 줄무늬가, 너무 크면 물체에서 떨어진 그림자가 생길 수 있습니다. 아래 캡처는 현재 실행 화면 한 종류입니다.
 
 <!-- README-RUNTIME:START -->
 ## 실행 화면

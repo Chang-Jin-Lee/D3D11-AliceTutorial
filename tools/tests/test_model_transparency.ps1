@@ -36,7 +36,8 @@ function Invoke-CleanNativeProcess {
         }
         $startInfo.Environment[[string]$entry.Key] = [string]$entry.Value
     }
-    $startInfo.Environment['PATH'] = $pathValue
+    $assimpRuntime = Join-Path $WorkingDirectory 'Dx11\third_party\assimp\bin\msvc'
+    $startInfo.Environment['PATH'] = $assimpRuntime + ';' + $pathValue
 
     $process = [Diagnostics.Process]::Start($startInfo)
     $process.WaitForExit()

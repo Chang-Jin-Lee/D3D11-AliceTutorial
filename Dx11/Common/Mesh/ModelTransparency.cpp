@@ -97,6 +97,59 @@ namespace ModelTextureProcessing
         if (destinationWidth != expectedWidth || destinationHeight != expectedHeight)
             return false;
 
+        // Odd dimensions do not have exact 2x2 footprints. Integrate the area
+        // covered by each output texel so the last row/column is not discarded.
+        // Coordinates are scaled by the destination size to keep fractional
+        // overlaps exact (e.g. the middle texel in a 5-to-2 reduction is shared).
+        if ((sourceWidth > 1 && sourceWidth % 2 != 0)
+            || (sourceHeight > 1 && sourceHeight % 2 != 0))
+        {
+            const std::uint64_t area = static_cast<std::uint64_t>(sourceWidth) * sourceHeight;
+            for (std::uint32_t y = 0; y < destinationHeight; ++y)
+            {
+                const std::uint64_t top = static_cast<std::uint64_t>(y) * sourceHeight;
+                const std::uint64_t bottom = top + sourceHeight;
+                const auto firstY = static_cast<std::uint32_t>(top / destinationHeight);
+                const auto endY = static_cast<std::uint32_t>(
+                    (bottom + destinationHeight - 1) / destinationHeight);
+                for (std::uint32_t x = 0; x < destinationWidth; ++x)
+                {
+                    const std::uint64_t left = static_cast<std::uint64_t>(x) * sourceWidth;
+                    const std::uint64_t right = left + sourceWidth;
+                    const auto firstX = static_cast<std::uint32_t>(left / destinationWidth);
+                    const auto endX = static_cast<std::uint32_t>(
+                        (right + destinationWidth - 1) / destinationWidth);
+                    std::uint64_t alphaSum = 0;
+                    std::uint64_t colorSums[3] = {};
+                    for (std::uint32_t sy = firstY; sy < endY; ++sy)
+                    {
+                        const std::uint64_t texelTop = static_cast<std::uint64_t>(sy) * destinationHeight;
+                        const std::uint64_t height = std::min(bottom, texelTop + destinationHeight)
+                            - std::max(top, texelTop);
+                        for (std::uint32_t sx = firstX; sx < endX; ++sx)
+                        {
+                            const std::uint64_t texelLeft = static_cast<std::uint64_t>(sx) * destinationWidth;
+                            const std::uint64_t width = std::min(right, texelLeft + destinationWidth)
+                                - std::max(left, texelLeft);
+                            const auto* sample = source + (static_cast<size_t>(sy) * sourceWidth + sx) * 4;
+                            const std::uint64_t weightedAlpha = width * height * sample[3];
+                            alphaSum += weightedAlpha;
+                            for (int channel = 0; channel < 3; ++channel)
+                                colorSums[channel] += weightedAlpha * sample[channel];
+                        }
+                    }
+                    auto* output = destination + (static_cast<size_t>(y) * destinationWidth + x) * 4;
+                    for (int channel = 0; channel < 3; ++channel)
+                    {
+                        output[channel] = alphaSum == 0 ? 0 : static_cast<std::uint8_t>(
+                            (colorSums[channel] + alphaSum / 2) / alphaSum);
+                    }
+                    output[3] = static_cast<std::uint8_t>((alphaSum + area / 2) / area);
+                }
+            }
+            return true;
+        }
+
         for (std::uint32_t y = 0; y < destinationHeight; ++y)
         {
             const std::uint32_t y0 = sourceHeight > 1 ? y * 2 : 0;

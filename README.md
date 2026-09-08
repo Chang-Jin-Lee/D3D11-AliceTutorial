@@ -1,8 +1,9 @@
 # D3D11-AliceTutorial
 
 
-이 저장소는 [DirectX SDK Samples - Direct3D11 Tutorials](https://github.com/walbourn/directx-sdk-samples/tree/main/Direct3D11Tutorials) 을 기반으로  
-D3D 그래픽스를 학습하면서 정리한 튜토리얼 프로젝트입니다.
+이 저장소는 [DirectX SDK Samples - Direct3D11 Tutorials](https://github.com/walbourn/directx-sdk-samples/tree/main/Direct3D11Tutorials)를 출발점으로, DirectX 11 그래픽스 기본기를 직접 코딩하며 정리한 튜토리얼 프로젝트입니다. 사각형 하나를 그리는 것부터 모델 로딩, 조명, 애니메이션, PBR, 툰 셰이딩까지 단계별로 확장했습니다.
+
+캐릭터 예제에는 직접 만든 VRM 캐릭터를 glTF/GLB로 내보낸 모델을 사용합니다. 피부·머리카락·의상을 같은 조명에서 비교할 수 있고, 치마의 반투명 레이스는 알파 테스트, 블렌딩, 깊이 버퍼의 차이를 살펴보기 좋은 예시입니다.
 
 - 환경: Windows 11, Visual Studio 2022
 - 플랫폼: Win32 Desktop (Direct3D 11.0)
@@ -13,9 +14,22 @@ D3D 그래픽스를 학습하면서 정리한 튜토리얼 프로젝트입니다
 | <div align="center">[<img src="https://github.com/user-attachments/assets/3aafc53e-d6ae-492d-8680-b240c19f1f92" width="450"/>](https://www.youtube.com/playlist?list=PLbPdrhrt0AJgCSKYyzjAjHwpQ_Yt4uBMx)<br/></div> | <div align="center">[<img src="https://github.com/user-attachments/assets/64a50e8e-5580-4e76-97d1-b500f9c5a8a2" width="230"/>](https://velog.io/@whoamicj/series/DirectX11)<br/></div> |
 
 
+## 학습 흐름
+
+| 단계 | 살펴볼 내용 |
+|---|---|
+| 01–08 | 정점·인덱스 버퍼, 좌표 변환, 텍스처, 모델 로딩, ImGui |
+| 09–17 | 조명, 스카이박스, Phong/Blinn–Phong, 노멀 매핑. 11번은 Live2D 연동 |
+| 18–24 | 스키닝·Rigid 애니메이션, 다중 모델, 깊이와 알파, 본 구조 |
+| 25–29 | 툰 셰이딩·외곽선, 그림자, 디버그 드로우, 리소스 공유, 마우스 피킹 |
+| 30–35 | PBR·IBL·톤매핑·Deferred. 32–33번은 사운드·카메라 연동 |
+| 36–38 | 통합 데모, 노드 UI 실험, PBR과 스타일라이즈드 셰이딩 비교 |
+
+처음에는 번호 순서대로 실행하고, 각 README의 구현 내용과 실행 화면을 함께 보면 됩니다. 다음 주제 후보는 [39번 제안: 반투명 레이스와 Weighted Blended OIT](docs/project39-transparency-proposal.md)에 정리했습니다.
+
 ## 프로젝트 바로가기
 
-각 프로젝트 README에서 새 실행 스크린샷과 짧은 GIF를 함께 확인할 수 있습니다.
+각 프로젝트 README에서 실행 스크린샷과 짧은 GIF를 함께 확인할 수 있습니다.
 
 - 이미지를 클릭하거나, 아래 각 번호/이름을 클릭해도 해당 디렉토리로 이동합니다
 
@@ -63,7 +77,7 @@ D3D 그래픽스를 학습하면서 정리한 튜토리얼 프로젝트입니다
 
 ## 대표 데모
 
-[`36_AdvancedAnim_Sound_Click`](Dx11/36_AdvancedAnim_Sound_Click)입니다. 모델 로딩, PBR/IBL, 톤매핑, 디퍼드 렌더링 위에 애니메이션 블렌딩, 레이어, IK, 소켓, FMOD 3D 사운드, ImGui 디버그 UI, 멀티스레드 로딩을 담은 최종 데모입니다.
+[`36_AdvancedAnim_Sound_Click`](Dx11/36_AdvancedAnim_Sound_Click)은 모델 로딩, PBR/IBL, 톤매핑, 애니메이션 블렌딩·레이어, FMOD 3D 사운드, ImGui, 멀티스레드 로딩을 모은 통합 데모입니다. 기본 장면은 Forward 경로를 사용합니다. Deferred의 패스 구성은 35번에서, 캐릭터의 PBR·툰 셰이딩 비교는 38번에서 확인할 수 있습니다.
 
 | Screenshot | GIF |
 |---|---|
@@ -73,7 +87,7 @@ D3D 그래픽스를 학습하면서 정리한 튜토리얼 프로젝트입니다
 |---|---|
 | 실행 | `Dx11/TutorialApp.sln` 열기 -> `36_AdvancedAnim_Sound_Click` 시작 프로젝트 -> `x64` 빌드 |
 | 렌더링 | 포트폴리오 Forward 경로, Shadow, PBR, IBL, Tone Mapping (`35_DeferredRendering`에 Deferred 단계) |
-| 애니메이션 | Blend, Additive, Layer, IK, Socket |
+| 애니메이션 | 기본 장면: 클립 크로스페이드·상체 레이어. Additive·IK·Socket 관련 구현도 포함하며 CCD IK는 기본 타임라인에서 실행하지 않음 |
 | 사운드/UI | FMOD 3D Sound, SoundBox, ImGui Debug Panels |
 | 구조 | `Dx11/Common` 공통 코드 + `35_DeferredRendering` 렌더링 단계 + `36_AdvancedAnim_Sound_Click` 통합 데모 |
 
@@ -91,7 +105,7 @@ Dx11/36_AdvancedAnim_Sound_Click/    대표 통합 데모
 
 ## 빌드 방식
 
-- 권장 환경: Windows 11, Visual Studio 2022 이상, Windows SDK, MSVC C++ workload
+- 권장 환경: Windows 11, Visual Studio 2022 이상, Windows SDK, C++를 사용한 데스크톱 개발 워크로드와 MSVC v143 도구 집합
 - 솔루션: `Dx11/TutorialApp.sln`
 - 기본 플랫폼: `x64`
 - vcpkg는 사용하지 않습니다. 필요한 외부 의존성은 `Dx11/third_party` 아래의 repo-local 파일을 참조합니다.
@@ -102,12 +116,16 @@ Dx11/36_AdvancedAnim_Sound_Click/    대표 통합 데모
 git submodule update --init --recursive
 ```
 
+솔루션을 연 뒤 실행할 번호의 프로젝트를 **시작 프로젝트로 설정**하고 `Debug | x64`로 빌드한 다음 F5로 실행합니다. `Win32 Desktop`은 데스크톱 앱 API를 뜻하며, 여기서 사용하는 빌드 플랫폼은 64비트 `x64`입니다. 리소스 경로는 프로젝트의 디버깅 작업 디렉터리인 `Dx11/bin`을 기준으로 합니다.
+
 ## 모델 포맷
 
 - 기존: `.fbx`, `.obj`, `.pmx`
 - 추가: `.gltf`, `.glb`
 - glTF/glb는 별도 로더를 새로 만든 것이 아니라, 기존 `FbxModel` 계열의 Assimp 경로로 로드합니다.
 - glTF PBR 재질을 위해 base-color 텍스처는 `aiTextureType_BASE_COLOR`를 먼저 확인하고, 없을 때 기존 diffuse 경로로 fallback합니다.
+- 기본 캐릭터는 `Dx11/Resource/fbx/Public/MyAlice/Player/SampleModel.glb`입니다. `.glb`는 glTF의 바이너리 컨테이너이며 이 모델의 텍스처는 파일 안에 포함되어 있습니다.
+- VRM에서 내보낸 메시·스켈레톤·재질을 사용하며, VRM 전용 MToon·Spring Bone까지 자동 재현하는 로더는 아닙니다. 예제별 셰이더와 알파 처리 범위는 각 README를 참고하세요.
 
 ## 주의사항
 - 수학 라이브러리인 DirectXMath 사용
@@ -123,12 +141,11 @@ git submodule update --init --recursive
   - 압축 파일과 설치되는 12개 DDS를 크기와 SHA-256으로 검증하며, 실패한 임시 파일은 자동 정리합니다.
   - 네트워크를 사용할 수 없으면 앱은 종료하지 않고 직접광 기반의 중립 배경으로 실행됩니다. README 캡처는 누락되거나 손상된 IBL로 잘못된 이미지를 발행하지 않도록 사전검사에서 중단됩니다.
   - 수동 검사: `pwsh -NoProfile -File tools/verify_skybox_assets.ps1 -SkyboxRoot Dx11/Resource/Skybox -SetName All`
-- 캐릭터
-  - https://drive.google.com/file/d/1A5OncTPxGswntuw-VTPKlqF8Gsq01n7K/view?usp=sharing
+- 기본 캐릭터: [SampleModel.glb](Dx11/Resource/fbx/Public/MyAlice/Player/SampleModel.glb). 직접 만든 VRM 캐릭터를 내보낸 파일을 저장소에 포함했습니다.
 
 ## 참고 자료
 - [Direct3D 11 Tutorials (GitHub)](https://github.com/walbourn/directx-sdk-samples/tree/main/Direct3D11Tutorials)  
-- [MSDN Direct3D 11 Programming Guide](http://msdn.microsoft.com/en-us/library/windows/apps/ff729718.aspx)  
+- [Direct3D 11 Programming Guide](https://learn.microsoft.com/en-us/windows/win32/direct3d11/dx-graphics-overviews)
 - [DirectXMath](https://learn.microsoft.com/en-us/windows/win32/dxmath/pg-xnamath-intro)  
 - [DirectXTK](https://github.com/microsoft/DirectXTK) / [DirectXTex](https://github.com/microsoft/DirectXTex)  
 

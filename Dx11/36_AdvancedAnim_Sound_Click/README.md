@@ -24,15 +24,12 @@ https://github.com/Chang-Jin-Lee/D3D11-AliceAnimation
 - IK
 - Socket
 
-현재 포트폴리오 화면은 공개 `SampleModel.glb` 네 인스턴스가 서로 다른 클립을 재생하며, 12초마다 다음 클립 조합으로 크로스페이드합니다. 각 조합의 4~7초 구간에는 0번 캐릭터의 상체 레이어를 적용합니다. CCD IK는 이 결정론적 쇼케이스 타임라인에는 포함하지 않습니다.
+기본 장면에서는 직접 만든 VRM 캐릭터를 GLB로 내보낸 `SampleModel.glb` 네 인스턴스가 서로 다른 클립을 재생하며, 12초마다 다음 클립 조합으로 크로스페이드합니다. 각 조합의 4~7초 구간에는 0번 캐릭터의 상체 레이어를 적용합니다. CCD IK는 이 기본 타임라인에는 포함하지 않습니다.
 
-| Screenshot | GIF |
-|---|---|
-| <img src="../../docs/media/readme/36-AdvancedAnim-Sound-Click.png" width="420"/> | <img src="../../docs/media/readme/36-advanced-anim-sound-click.gif" width="420"/> |
 
 ## 구현 내용
 
-- 공개 배포 가능한 VRoid 캐릭터 모델을 사용합니다.
+- 캐릭터의 메시·재질은 직접 만든 VRM에서 내보낸 GLB를 사용합니다.
 - 외부 FBX 애니메이션 클립을 glTF/glb 캐릭터의 스켈레톤 이름에 매칭합니다.
 - Unreal 기준 FBX 위치 키를 glTF/glb 기준 미터/Y-up 좌표계로 변환해 루트/골반 트랜스폼이 튀지 않게 보정합니다.
 - FMOD 3D 사운드, ImGui 디버그 패널, 멀티스레드 리소스 로딩을 함께 확인할 수 있습니다.
@@ -41,6 +38,12 @@ https://github.com/Chang-Jin-Lee/D3D11-AliceAnimation
 - Deferred Rendering은 이 포트폴리오 구도의 조명·합성을 보존하기 위해 Forward로 고정하며, 일반 실행의 Controls와 Deferred 패널에 비활성 사유를 표시합니다.
 - 공개 glTF 캐릭터의 미터 단위를 이 장면의 월드 구성에 맞춰 명시적으로 `80` 스케일로 변환합니다. 네 캐릭터를 담기 위해 카메라가 약 285 월드 단위로 멀어진 만큼 기본 이동 속도는 `40`이며, `Controls`에서 다시 조절할 수 있습니다.
 - Sample IBL 파일은 시작할 때 크기와 SHA-256을 확인합니다. 누락·손상 시 공식 Release에서 다시 설치하고, 오프라인이면 직접광 기반의 중립 배경으로 계속 실행합니다.
+
+## 반투명 재질에서 확인할 것
+
+glTF의 `OPAQUE`·`MASK` 재질을 먼저 그리고 `BLEND` 재질은 알파 블렌딩과 깊이 쓰기 OFF 상태로 그립니다. 눈 주변의 디테일처럼 투명 배경을 가진 텍스처는 알파 가중 밉맵을 사용해 축소될 때 검은 테두리가 섞이는 현상을 줄입니다.
+
+이 분류는 카메라 거리 순 정렬과는 다릅니다. 현재 36번은 `BLEND` 서브셋의 선언 순서를 유지하므로, 레이스나 여러 캐릭터의 반투명 표면이 서로 겹치는 모든 경우를 해결하지는 않습니다. 이 차이를 비교하는 후속 주제가 [39번 OIT 제안](../../docs/project39-transparency-proposal.md)입니다.
 
 <!-- README-RUNTIME:START -->
 ## 실행 화면

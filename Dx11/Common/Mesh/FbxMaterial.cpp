@@ -523,7 +523,7 @@ bool FbxMaterialLoader::Load(ID3D11Device* device, const aiScene* scene, const s
 
 	// 1x1 화이트/블랙 텍스처 생성 (폴백 및 기본값)
 	CreateSolidColorSRV(device, 0xFFFFFFFF, &m_->white);   // RGBA(1,1,1,1)
-	CreateSolidColorSRV(device, 0x000000FF, &m_->black);   // RGBA(0,0,0,1)
+	CreateSolidColorSRV(device, 0xFF000000, &m_->black);   // RGBA(0,0,0,1), little-endian bytes
 
 	const size_t matCount = scene->mNumMaterials;
 	m_->baseColorSRVs.assign(matCount, nullptr);

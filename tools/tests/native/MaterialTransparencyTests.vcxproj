@@ -33,15 +33,31 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
-      <AdditionalIncludeDirectories>$(RepoRoot)Dx11\Common\Mesh;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(RepoRoot)Dx11\Common\Mesh;$(RepoRoot)Dx11\Common;$(RepoRoot)Dx11\third_party\assimp\include;$(RepoRoot)Dx11\third_party\DirectXTK\include;$(RepoRoot)Dx11\third_party\DirectXTK\include\directxtk;$(RepoRoot)Dx11\third_party\imgui;$(RepoRoot)Dx11\third_party\imgui\backends;$(RepoRoot)Dx11\third_party\imgui\misc\cpp;$(RepoRoot)Dx11\third_party\stb;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
+      <AdditionalLibraryDirectories>$(RepoRoot)Dx11\third_party\assimp\lib\msvc;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>assimp-vc143-mt.lib;d3d11.lib;dxgi.lib;dxguid.lib;d3dcompiler.lib;windowscodecs.lib;ole32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="MaterialTransparencyTests.cpp" />
+    <ClCompile Include="MaterialTransparencyTests.cpp">
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
     <ClCompile Include="$(RepoRoot)Dx11\Common\Mesh\ModelTransparency.cpp" />
+    <ClCompile Include="$(RepoRoot)Dx11\Common\Mesh\FbxMaterial.cpp">
+      <WarningLevel>Level3</WarningLevel>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <ClCompile Include="$(RepoRoot)Dx11\Common\Helper.cpp">
+      <WarningLevel>Level3</WarningLevel>
+      <TreatWarningAsError>false</TreatWarningAsError>
+    </ClCompile>
+    <ClCompile Include="$(RepoRoot)Dx11\third_party\DirectXTK\src\WICTextureLoader.cpp" />
+    <ClCompile Include="$(RepoRoot)Dx11\third_party\DirectXTK\src\DDSTextureLoader.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

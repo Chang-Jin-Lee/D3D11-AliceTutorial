@@ -12,11 +12,7 @@
 
 # 30. PBR BRDF (Physically Based Rendering)
 
-## Screenshot
 
-| README capture |
-|---|
-| <img src="../../docs/media/readme/30-PBR-BRDF.png" width="600"/> |
 
 ## PBR을 사용하는 이유
 
@@ -72,13 +68,13 @@ BRDF = (D × G × F) / (4 × (N·V) × (N·L))
   - 비금속: 알베도(산란 색상)
 - Metalness (0~1): 금속 재질인 정도
 - Roughness (0~1): 표면의 거칠기
-- Ambient Occlusion: 그림자가 생기는 정도
+- Ambient Occlusion: 주변 구조에 의해 환경광이 가려지는 정도를 근사하는 값. 광원에서 만드는 Shadow Map과는 별개입니다.
 
 ### 3. 감마 보정 (Gamma Correction)
 
-사람의 눈은 밝기를 선형적으로 느끼지 않고 로그 형태로 느낍니다. 따라서:
+조명과 색의 합성은 선형 공간에서 계산해야 합니다. 이 예제의 `pow` 식은 sRGB 전달 함수를 감마 2.2로 근사한 것입니다.
 
-- 텍스처 로딩 시: sRGB 텍스처를 선형 공간으로 변환
+- 베이스 컬러 샘플을 조명 계산에 사용하기 전: sRGB 값을 선형 공간으로 근사 변환
   ```
   Linear = pow(sRGB, 2.2)
   ```
@@ -87,7 +83,7 @@ BRDF = (D × G × F) / (4 × (N·V) × (N·L))
   sRGB = pow(Linear, 1/2.2)
   ```
 
-이렇게 하면 사람의 눈에 자연스럽게 보입니다.
+정확한 sRGB 변환은 구간별 함수를 사용합니다. `_SRGB` SRV/RTV로 하드웨어 변환을 사용할 때는 같은 변환을 셰이더에서 중복 적용하지 않아야 합니다. 노멀·금속성·거칠기처럼 색이 아닌 데이터에는 sRGB 변환을 적용하지 않습니다.
 
 ### 4. 구현 세부사항
 
@@ -129,8 +125,8 @@ BRDF = (D × G × F) / (4 × (N·V) × (N·L))
 
 1. ImGui의 Shading Mode를 "PBR"로 선택합니다.
 2. Material / PBR 섹션에서 각 모델별로 PBR 파라미터를 조절합니다.
-3. 텍스처가 있는 경우, 텍스처의 G 채널(Roughness), B 채널(Metalness)도 사용됩니다.
-4. 감마 값은 기본값(2.2)을 유지하는 것을 권장합니다. 조명이 어두울 때만 약간 조절합니다.
+3. 현재 셰이더는 diffuse 텍스처의 G/B를 roughness/metalness에도 사용합니다. 이는 일반 베이스 컬러 텍스처를 glTF 재질 맵처럼 해석하는 제한이 있으므로, 실제 재질 비교에서는 텍스처 사용 설정과 입력값을 함께 확인해야 합니다. glTF의 G/B 규칙은 **별도의 metallic-roughness 텍스처**에 적용됩니다.
+4. 감마는 출력 변환을 이해하기 위한 실험값입니다. 조명이 어두운 원인은 광원·재질·환경광에서 확인하고, HDR 노출과 톤매핑은 34번에서 다룹니다.
 
 ## 참고 자료
 

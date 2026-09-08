@@ -16,10 +16,6 @@
 - 주요 구현
   - 18번 프로젝트에서 만든 애니메이션을 벡터로 담아 실행합니다
 
-| MultiModels With Animations |
-|---|
-| <div align="center"><img src="../../docs/media/readme/21-MultiModels-With-Animations.png" width="600"/></div> |
-
 <!-- README-RUNTIME:START -->
 ## 실행 화면
 

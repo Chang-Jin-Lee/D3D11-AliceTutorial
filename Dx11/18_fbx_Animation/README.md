@@ -12,32 +12,16 @@
 
 ## 18. fbx Animation (18_fbx_Animation)
 
-- 내용 : 본 구조가 있는 캐릭터 fbx 파일에 내장되어 있는 애니메이션을 재생하는 예제입니다.
+- 내용: 본 구조가 있는 캐릭터의 내장 애니메이션을 재생하는 예제입니다.
 - 주요 구현
-  - 본 구조를 정의합니다
-  - 트랜스폼의 부모-자식 관계를 정의하고 각 트랜스폼에 맞게 SRT 적용, MVP를 적용합니다.
-  - CPU에서 그리게 되면 매우 느려지기 때문에, 쉐이더에게 그리도록 해야합니다.
-  - 버텍스가 매우 많은 모델도 그려낼 수 있도록 본 버퍼의 최대 개수를 1023개로 설정했습니다.
+  - 본 계층과 부모·자식 관계를 읽고 애니메이션의 위치·회전·스케일을 평가합니다.
+  - CPU에서 본 변환 팔레트를 갱신하고, 버텍스 셰이더에서 본 인덱스와 가중치로 정점을 스키닝합니다.
+  - 스키닝한 정점에 월드·뷰·투영 변환을 적용합니다.
+  - 본 팔레트의 용량과 정점 개수는 별개입니다. 팔레트 용량을 늘리는 것은 사용할 수 있는 본 개수를 늘리는 것이며, 정점 처리량을 직접 늘리는 설정은 아닙니다.
 
+## 확인해 볼 것
 
-| fbx Bone Structure |
-|---|
-| <div align="center"><img src="../../docs/media/readme/18-fbx-Animation.png" width="400"/></div> |
-
-
-| fbx Animation - Phong  | fbx Animation - Blinn Phong  |
-|---|---|
-| <div align="center">[<img src="../../docs/media/readme/18-fbx-Animation.png" width="450"/>]()<br/></div> | <div align="center">[<img src="../../docs/media/readme/18-fbx-Animation.png" width="450"/>]()<br/></div> |
-
-
-| fbx Animation - Lambert | fbx Animation - TextureOnly  |
-|---|---|
-| <div align="center">[<img src="../../docs/media/readme/18-fbx-Animation.png" width="450"/>]()<br/></div> | <div align="center">[<img src="../../docs/media/readme/18-fbx-Animation.png" width="450"/>]()<br/></div> |
-
-
-| fbx Animation - No Lighting |
-|---|
-| <div align="center"><img src="../../docs/media/readme/18-fbx-Animation.png" width="600"/></div> |
+애니메이션을 멈춘 상태와 재생 상태를 비교하고, 본의 변환이 연결된 정점에 어떻게 반영되는지 살펴보세요. 같은 포즈에서 셰이딩 모드를 바꾸면 스키닝과 조명 계산의 역할도 구분할 수 있습니다.
 
 <!-- README-RUNTIME:START -->
 ## 실행 화면

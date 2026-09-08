@@ -18,21 +18,11 @@
   - Specular에서 N Dot H가 1에 가까운 구간을 강조하게 했습니다
   - 본을 그리는 패스를 렌더한 뒤, 멀티 패스에서 정점을 뷰-공간 XY로 바깥쪽으로 키웁니다.
   - 이후에 “백페이스”만 렌더합니다. 깊이는 읽기만 해서 실루엣만 남기고 앞면 색은 보이지 않게 합니다.
-  - 프로젝트가 렉이 걸린다면 App::OnInitialize() 함수 내부의 fbx 파일 로드와 밑의 모델들 데이터 수정 하는 부분을 삭제하면 됩니다.
+  - 실행이 느리면 동시에 표시하는 모델 수를 줄이고, 외곽선 패스가 추가하는 드로우 비용을 비교해 봅니다.
 
+## 확인해 볼 것
 
-| All Shader Collection |
-|---|
-| <div align="center"><img src="../../docs/media/readme/25-ToonShading-Outline.png" width="1600"/></div> |
-
-
-| Unlit | Lambert  | BlinnPhong |  
-|---|---|---|
-| <div align="center"><img src="../../docs/media/readme/25-ToonShading-Outline.png" width="450"/></div> | <div align="center"><img src="../../docs/media/readme/25-ToonShading-Outline.png" width="450"/></div> | <div align="center"><img src="../../docs/media/readme/25-ToonShading-Outline.png" width="450"/></div> |
-
-Phong | TextureOnly | ToonShading | ToonShading + outline |
-|---|---|---|---|
-|  <div align="center"><img src="../../docs/media/readme/25-ToonShading-Outline.png" width="550"/></div> | <div align="center"><img src="../../docs/media/readme/25-ToonShading-Outline.png" width="450"/></div> | <div align="center"><img src="../../docs/media/readme/25-ToonShading-Outline.png" width="450"/></div> | <div align="center"><img src="../../docs/media/readme/25-ToonShading-Outline.png" width="450"/></div> |
+같은 모델·조명에서 ToonShading과 외곽선 ON/OFF를 비교합니다. 아래 실행 화면은 기본 장면이며, 셰이더별 비교 이미지를 기록하려면 각 모드를 별도로 캡처해야 합니다.
 
 <!-- README-RUNTIME:START -->
 ## 실행 화면

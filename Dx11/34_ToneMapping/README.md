@@ -18,10 +18,6 @@
   - 톤매핑 파라미터 조정
   - 캐릭터와 테스트 오브젝트를 같은 장면에서 확인
 
-| Screenshot |
-|---|
-| <img src="../../docs/media/readme/34-ToneMapping.png" width="600"/> |
-
 <!-- README-RUNTIME:START -->
 ## 실행 화면
 

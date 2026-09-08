@@ -12,75 +12,16 @@
 
 ## 17. fbx_pmx_obj (17_fbx_pmx_obj_WithPhong)
 
-- 내용 : Phong Shading을 사용하고 fbx, pmx, obj 모델을 로드하여 렌더링하는 프로젝트입니다.
+- 내용: FBX, PMX, OBJ 모델을 같은 조명·셰이더 경로로 렌더링하는 예제입니다. 현재 기본 장면에는 glTF/GLB 캐릭터도 사용합니다.
 - 주요 구현
-  - assimp에서 모델 파일 안에 텍스처가 있는지 확인합니다. 만약 있다면 그 텍스처를 사용합니다.
-  - 없다면 모델에 정의되어 있는 텍스처 경로를 탐색합니다.
-  - 메시는 scene->mMeshes[node->mMeshes[mi]]; 에 접근해서 메시 데이터를 가져옵니다
-  - TBN의 Tangent값은 assimp 안에 있는 mTangents 값을 사용합니다
-  - TBN의 Bitangents값은 assimp 안에 있는 mBitangents값을 사용합니다
-  - TBN의 Normal값은 assimp 안에 있는 mNormals값을 사용합니다
-  - 각 노드의 position 데이터는 mVertices에서 가져옵니다.
-  - 마지막으로 쉐이더에게 값을 전달하면 됩니다.
- 
+  - Assimp에서 임베디드 텍스처를 먼저 확인하고, 없으면 모델에 기록된 외부 텍스처 경로를 탐색합니다.
+  - `scene->mMeshes[node->mMeshes[mi]]`에서 노드가 참조하는 메시를 가져옵니다.
+  - 메시 정점 위치는 `mVertices`, TBN은 `mTangents`, `mBitangents`, `mNormals`에서 가져옵니다. 노드의 변환 행렬과 정점 위치는 별개의 데이터입니다.
+  - 서브셋별 텍스처를 바인딩하고 셰이더로 전달합니다.
 
-| fbx - Phong  | fbx - Blinn Phong  |
-|--------------|--------------------|
-| <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> | <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> |
+## 확인해 볼 것
 
-| fbx - Lambert | fbx - TextureOnly  |
-|--------------|-------------------|
-| <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> | <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> |
-
- 
-## In blender
-
-| blender - no light  | blender - Sun Light  |
-|---|---|
-| <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> | <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> |
- 
-## PMX
-
-| pmx - Phong  | pmx - Blinn Phong  |
-|---|---|
-| <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> | <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> |
-
-| pmx - Lambert | pmx - TextureOnly  |
-|---|---|
-| <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> | <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> |
-
-
-## FBX
-
-| fbx - Phong  | fbx - Blinn Phong  |
-|---|---|
-| <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> | <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> |
-
-| fbx - Lambert | fbx - TextureOnly  |
-|---|---|
-| <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> | <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> |
-
-
-| fbx - Phong  | fbx - Blinn Phong  |
-|--------------|--------------------|
-| <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> | <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> |
-
-| fbx - Lambert | fbx - TextureOnly  |
-|--------------|-------------------|
-| <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> | <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> |
-
-
-
-
-## OBJ
-
-| obj - Phong  | obj - Blinn Phong  |
-|---|---|
-| <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> | <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> |
-
-| obj - Lambert | obj - TextureOnly  |
-|---|---|
-| <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> | <div align="center">[<img src="../../docs/media/readme/17-fbx-pmx-obj-WithPhong.png" width="450"/>]()<br/></div> |
+같은 모델·카메라·조명에서 Phong, Blinn–Phong, Lambert, Unlit, TextureOnly를 바꿔 보세요. 실행 화면은 기본 장면의 캡처이며, 포맷별·셰이더별 비교를 기록할 때는 각 조건에서 따로 캡처해야 합니다.
 
 <!-- README-RUNTIME:START -->
 ## 실행 화면
