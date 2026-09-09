@@ -23,9 +23,9 @@
 | 18–24 | 스키닝·Rigid 애니메이션, 다중 모델, 깊이와 알파, 본 구조 |
 | 25–29 | 툰 셰이딩·외곽선, 그림자, 디버그 드로우, 리소스 공유, 마우스 피킹 |
 | 30–35 | PBR·IBL·톤매핑·Deferred. 32–33번은 사운드·카메라 연동 |
-| 36–38 | 통합 데모, 노드 UI 실험, PBR과 스타일라이즈드 셰이딩 비교 |
+| 36–39 | 통합 데모, 노드 UI 실험, 스타일라이즈드 셰이딩, 반투명 OIT 비교 |
 
-처음에는 번호 순서대로 실행하고, 각 README의 구현 내용과 실행 화면을 함께 보면 됩니다. 다음 주제 후보는 [39번 제안: 반투명 레이스와 Weighted Blended OIT](docs/project39-transparency-proposal.md)에 정리했습니다.
+처음에는 번호 순서대로 실행하고, 각 README의 구현 내용과 실행 화면을 함께 보면 됩니다. 39번에서는 [반투명 레이스와 Weighted Blended OIT](Dx11/39_Transparency_OIT/README.md)를 비교하며, 처음 제안한 배경은 [제안 문서](docs/project39-transparency-proposal.md)에 남겼습니다.
 
 ## 프로젝트 바로가기
 
@@ -69,9 +69,9 @@
 |---|---|---|---|
 | <div align="center">[<img src="docs/media/readme/33-Sound-Animation-Camera-Motion.png" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/Dx11/33_Sound_Animation_Camera_Motion)</div> | <div align="center">[<img src="docs/media/readme/34-ToneMapping.png" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/Dx11/34_ToneMapping)</div> | <div align="center">[<img src="docs/media/readme/35-DeferredRendering.png" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/Dx11/35_DeferredRendering)</div> | <div align="center">[<img src="docs/media/readme/36-AdvancedAnim-Sound-Click.png" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/Dx11/36_AdvancedAnim_Sound_Click)</div> |
 
-| [37. imgui-node-editor demo](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/Dx11/37_Blueprint) | [38. Stylized Toon PBR](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/Dx11/38_StylizedToonPBR) |
-|---|---|
-| <div align="center">[<img src="docs/media/readme/37-Blueprint.png" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/Dx11/37_Blueprint)</div> | <div align="center">[<img src="docs/media/readme/38-StylizedToonPBR.png" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/Dx11/38_StylizedToonPBR)</div> |
+| [37. imgui-node-editor demo](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/Dx11/37_Blueprint) | [38. Stylized Toon PBR](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/Dx11/38_StylizedToonPBR) | [39. Transparency OIT](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/Dx11/39_Transparency_OIT) |
+|---|---|---|
+| <div align="center">[<img src="docs/media/readme/37-Blueprint.png" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/Dx11/37_Blueprint)</div> | <div align="center">[<img src="docs/media/readme/38-StylizedToonPBR.png" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/Dx11/38_StylizedToonPBR)</div> | <div align="center">[<img src="docs/media/readme/39-Transparency-OIT.png" width="200"/>](https://github.com/Chang-Jin-Lee/D3D11-AliceTutorial/tree/main/Dx11/39_Transparency_OIT)</div> |
 
 ---
 

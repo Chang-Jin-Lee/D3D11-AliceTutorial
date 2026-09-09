@@ -170,6 +170,15 @@ function Test-ReadmeMediaNumber {
     }
 }
 
+function Get-ReadmeCaptureVirtualKeyCodes {
+    # One allowlist shared by manifest validation and targeted Win32 dispatch.
+    return @{
+        W = 0x57; A = 0x41; S = 0x53; D = 0x44
+        '1' = 0x31; '2' = 0x32; '3' = 0x33
+        L = 0x4C; R = 0x52; O = 0x4F; C = 0x43
+    }
+}
+
 function Test-ReadmeMediaAction {
     param(
         [object] $Action,
@@ -193,6 +202,7 @@ function Test-ReadmeMediaAction {
 
     $validGifPhases = @('startup', 'runtime')
     $validActionTypes = @('wait', 'click', 'keyDown', 'keyUp')
+    $validKeyCodes = Get-ReadmeCaptureVirtualKeyCodes
     if ($Action.type -notin $validActionTypes) {
         $null = $Errors.Add("unsupported action type: $Number")
         return
@@ -222,13 +232,13 @@ function Test-ReadmeMediaAction {
             if (-not (Test-ReadmeMediaManifestProperty -Object $Action -Name 'key')) {
                 $null = $Errors.Add("malformed key action: $Number")
             }
-            if ($Action.key -notmatch '^[WASD]$') { $null = $Errors.Add("unsupported key: $Number") }
+            if (-not $validKeyCodes.ContainsKey([string]$Action.key)) { $null = $Errors.Add("unsupported key: $Number") }
         }
         'keyUp' {
             if (-not (Test-ReadmeMediaManifestProperty -Object $Action -Name 'key')) {
                 $null = $Errors.Add("malformed key action: $Number")
             }
-            if ($Action.key -notmatch '^[WASD]$') { $null = $Errors.Add("unsupported key: $Number") }
+            if (-not $validKeyCodes.ContainsKey([string]$Action.key)) { $null = $Errors.Add("unsupported key: $Number") }
         }
     }
 }

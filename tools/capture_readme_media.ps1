@@ -87,7 +87,7 @@ $MK_LBUTTON = 0x0001
 # still lands on its own k * frameIntervalMs mark.
 $ClickButtonHoldMs = 40
 $PngSignature = [byte[]](0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
-$VirtualKeyCodes = @{ W = 0x57; A = 0x41; S = 0x53; D = 0x44 }
+$VirtualKeyCodes = Get-ReadmeCaptureVirtualKeyCodes
 
 function Test-PngOutput {
     param([string]$Path)

@@ -179,6 +179,44 @@ Release-CaptureKeys -CaptureSession $session -PressedKeys $pressedKeys -MessageS
 Assert-True ($pressedKeys.Count -eq 0) 'pressed-key cleanup did not drain tracked keys'
 Assert-True (@($messageLog | Where-Object { $_.Message -eq [ReadmeCaptureWin32]::WM_KEYUP -and $_.WParam -eq [IntPtr]0x44 }).Count -eq 1) 'pressed-key cleanup did not emit key-up'
 
+# Project39's mode/experiment keys must pass the same validator used by the CLI
+# and emit real Win32 key codes through the existing targeted-message seam.
+$lessonKeyCodes = [ordered]@{ '1' = 0x31; '2' = 0x32; '3' = 0x33; L = 0x4C; R = 0x52; O = 0x4F; C = 0x43 }
+foreach ($entry in $lessonKeyCodes.GetEnumerator()) {
+    $key = [string]$entry.Key
+    $keyManifest = $mediaManifest | ConvertTo-Json -Depth 32 | ConvertFrom-Json
+    $keyManifest.projects[0] | Add-Member -NotePropertyName gifActions -NotePropertyValue @(
+        [pscustomobject]@{ atMs = 0; type = 'keyDown'; key = $key },
+        [pscustomobject]@{ atMs = 125; type = 'keyUp'; key = $key }
+    ) -Force
+    $keyErrors = @(Test-ReadmeMediaManifest -Manifest $keyManifest -RepoRoot $repoRoot)
+    Assert-True ($keyErrors.Count -eq 0) "lesson key $key must validate: $($keyErrors -join '; ')"
+
+    $messageLog.Clear()
+    Invoke-CaptureAction -CaptureSession $session -Action $keyManifest.projects[0].gifActions[0] -PressedKeys $pressedKeys -MessageSink $messageSink
+    Assert-True ($pressedKeys.Contains($key)) "lesson key $key down must be tracked"
+    Invoke-CaptureAction -CaptureSession $session -Action $keyManifest.projects[0].gifActions[1] -PressedKeys $pressedKeys -MessageSink $messageSink
+    Assert-True ($pressedKeys.Count -eq 0) "lesson key $key up must clear its tracked press"
+    Assert-True ($messageLog.Count -eq 2) "lesson key $key must emit one down/up pair"
+    Assert-True ($messageLog[0].Handle -eq $session.Handle -and $messageLog[1].Handle -eq $session.Handle) "lesson key $key must target the capture window"
+    Assert-True ($messageLog[0].Message -eq [ReadmeCaptureWin32]::WM_KEYDOWN -and $messageLog[1].Message -eq [ReadmeCaptureWin32]::WM_KEYUP) "lesson key $key must preserve down/up ordering"
+    Assert-True ($messageLog[0].WParam -eq [IntPtr]$entry.Value -and $messageLog[1].WParam -eq [IntPtr]$entry.Value) "lesson key $key has the wrong virtual-key code"
+
+    # Interrupted capture must release the added keys just like existing WASD.
+    $messageLog.Clear()
+    Invoke-CaptureAction -CaptureSession $session -Action $keyManifest.projects[0].gifActions[0] -PressedKeys $pressedKeys -MessageSink $messageSink
+    Release-CaptureKeys -CaptureSession $session -PressedKeys $pressedKeys -MessageSink $messageSink
+    Assert-True ($pressedKeys.Count -eq 0 -and $messageLog.Count -eq 2 -and
+        $messageLog[1].Message -eq [ReadmeCaptureWin32]::WM_KEYUP -and
+        $messageLog[1].WParam -eq [IntPtr]$entry.Value) "lesson key $key must be released after an interrupted capture"
+}
+foreach ($unsupportedKey in @('Q', '4', 'F12', 'LL', '')) {
+    $keyManifest.projects[0].gifActions[0].key = $unsupportedKey
+    $keyManifest.projects[0].gifActions[1].key = $unsupportedKey
+    $keyErrors = @(Test-ReadmeMediaManifest -Manifest $keyManifest -RepoRoot $repoRoot)
+    Assert-True (@($keyErrors | Where-Object { $_ -like 'unsupported key:*' }).Count -eq 2) "unsupported key '$unsupportedKey' must fail both action validations"
+}
+
 $tempRoot = Join-Path $env:TEMP ('D3D11-readme-capture-test-' + [Guid]::NewGuid().ToString('N'))
 $tempRuntime = Join-Path $repoRoot ('Dx11\capture-test-runtime-' + [Guid]::NewGuid().ToString('N'))
 $tempManifest = Join-Path $tempRoot 'manifest.json'

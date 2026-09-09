@@ -1,7 +1,7 @@
 <!-- README-NAV-TOP:START -->
 <div align="center">
 
-[이전](../37_Blueprint/README.md) | [메인](../../README.md) | [상위](../) | 다음
+[이전](../37_Blueprint/README.md) | [메인](../../README.md) | [상위](../) | [다음](../39_Transparency_OIT/README.md)
 
 </div>
 <!-- README-NAV-TOP:END -->
@@ -48,7 +48,7 @@
 
 불투명·알파 마스크 재질을 먼저 그리고, 반투명 서브셋은 중심의 뷰 깊이로 뒤에서 앞으로 정렬합니다. `SampleModel`의 일부 레이스 재질에는 별도의 `BLEND` 오버라이드를 적용합니다. 이는 glTF의 `MASK` 규칙 자체를 바꾸는 것이 아니라 이 캐릭터를 위한 예제 설정입니다.
 
-외곽선을 남겨야 하는 일부 레이스는 낮은 알파값을 버린 뒤 깊이와 노멀에도 기록합니다. 이 방식은 외곽선을 위한 절충이므로, 교차하는 삼각형이나 겹친 반투명 층의 정확한 합성을 보장하지 않습니다. 깊이만 저장하는 그림자 맵 역시 중간 투과율을 표현하지 않습니다. 이 한계를 따로 비교해 보는 다음 주제로 [39번 OIT](../../docs/project39-transparency-proposal.md)를 제안합니다.
+외곽선을 남겨야 하는 일부 레이스는 낮은 알파값을 버린 뒤 깊이와 노멀에도 기록합니다. 이 방식은 외곽선을 위한 절충이므로, 교차하는 삼각형이나 겹친 반투명 층의 정확한 합성을 보장하지 않습니다. 깊이만 저장하는 그림자 맵 역시 중간 투과율을 표현하지 않습니다. 이 한계는 다음 예제인 [39번 Transparency OIT](../39_Transparency_OIT/README.md)에서 따로 비교합니다.
 
 ## 조작
 
@@ -106,7 +106,7 @@
 <!-- README-NAV-BOTTOM:START -->
 <div align="center">
 
-[이전](../37_Blueprint/README.md) | [메인](../../README.md) | [상위](../) | 다음
+[이전](../37_Blueprint/README.md) | [메인](../../README.md) | [상위](../) | [다음](../39_Transparency_OIT/README.md)
 
 </div>
 <!-- README-NAV-BOTTOM:END -->

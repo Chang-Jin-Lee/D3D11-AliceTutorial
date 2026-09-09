@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files"><UniqueIdentifier>{B386EE51-899F-4087-A8C3-511E7A386339}</UniqueIdentifier></Filter>
+    <Filter Include="Header Files"><UniqueIdentifier>{DD644F1A-A567-4EF8-8297-ED9F71AB0039}</UniqueIdentifier></Filter>
+    <Filter Include="Shaders"><UniqueIdentifier>{014B3977-478F-4A1A-ABF0-E2F65221C639}</UniqueIdentifier></Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="App.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="SceneTransparency.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="OitPipeline.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="WinMain.cpp"><Filter>Source Files</Filter></ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="App.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="SceneTransparency.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="OitPipeline.h"><Filter>Header Files</Filter></ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <CopyFileToFolders Include="39_Surface.hlsl"><Filter>Shaders</Filter></CopyFileToFolders>
+    <CopyFileToFolders Include="39_Resolve.hlsl"><Filter>Shaders</Filter></CopyFileToFolders>
+    <CopyFileToFolders Include="39_Transparency.fxh"><Filter>Shaders</Filter></CopyFileToFolders>
+  </ItemGroup>
+</Project>

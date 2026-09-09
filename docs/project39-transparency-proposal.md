@@ -1,6 +1,6 @@
 # 39번 제안: 반투명 레이스와 Weighted Blended OIT
 
-현재 38번까지의 흐름에서 다음 주제로 **Weighted Blended Order-Independent Transparency**를 제안합니다. 프로젝트 이름 후보는 `39_Transparency_OIT`입니다. 이 문서는 후속 예제 제안이며, 아직 솔루션에 추가된 프로젝트는 아닙니다.
+38번 다음 주제로 제안했던 **Weighted Blended Order-Independent Transparency**를 [39번 Transparency OIT](../Dx11/39_Transparency_OIT/README.md)로 구현했습니다. 이 문서는 구현 전 제안의 배경과 비교 기준을 기록합니다.
 
 ## 이 캐릭터로 배우기 좋은 이유
 
