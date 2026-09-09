@@ -400,6 +400,21 @@ namespace
             "one OIT layer must equal analytical straight-alpha OVER");
     }
 
+    bool TestHdrInputClamp(Fixture& fixture)
+    {
+        fixture.BeginOpaque({ 0.0f, 0.0f, 0.0f, 1.0f });
+        fixture.BeginTransparency(Mode::WeightedOit);
+        fixture.DrawOit({ 100.0f, -2.0f, 4.0f, 0.5f }, 0.4f, 0.0f);
+        fixture.EndTransparency();
+        fixture.Resolve();
+        // A single layer avoids overflow; expected RGB is clamp(input, 0, 8) * 0.5.
+        bool passed = Expect(ColorNear(fixture.ReadLinear(), { 4.0f, 0.0f, 2.0f, 1.0f }, 0.003f),
+            "one HDR layer must clamp both color bounds and preserve the in-range channel");
+        passed &= Expect(Near(fixture.ReadRevealage(), 0.5f, 0.002f),
+            "HDR color clamping must not change source alpha revealage");
+        return passed;
+    }
+
     bool TestOrderIndependenceAndSortedControl(Fixture& fixture)
     {
         const Color background{ 0.0f, 0.0f, 0.0f, 1.0f };
@@ -619,6 +634,7 @@ int wmain(int argc, wchar_t** argv)
     passed &= TestGpuTimings(fixture);
     passed &= TestEmptyTransparency(fixture);
     passed &= TestSingleLayer(fixture);
+    passed &= TestHdrInputClamp(fixture);
     passed &= TestOrderIndependenceAndSortedControl(fixture);
     passed &= TestDepthAndAlphaRules(fixture);
     passed &= TestResizeAndDebugPresentation(fixture);
@@ -626,6 +642,6 @@ int wmain(int argc, wchar_t** argv)
     if (!passed)
         return 1;
 
-    std::cout << "OIT pipeline WARP pixel tests passed: 7 scenarios.\n";
+    std::cout << "OIT pipeline WARP pixel tests passed: 8 scenarios.\n";
     return 0;
 }
