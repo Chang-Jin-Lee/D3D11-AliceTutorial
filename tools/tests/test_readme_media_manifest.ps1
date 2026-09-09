@@ -42,7 +42,7 @@ Assert-True ($manifest.infoWidth -eq 1600 -and $manifest.infoHeight -eq 640) 'in
 
 $captureModeProjects = @($manifest.projects | Where-Object { $_.readmeCaptureMode } | ForEach-Object { $_.number })
 $expectedCaptureModeProjects = @(
-    '06','07','11','12','13','15','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','38'
+    '06','07','11','12','13','15','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','38','39'
 )
 Assert-True (($captureModeProjects -join ',') -ceq ($expectedCaptureModeProjects -join ',')) `
     "README capture-mode project selection changed: $($captureModeProjects -join ',')"

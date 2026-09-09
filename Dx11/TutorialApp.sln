@@ -80,6 +80,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "37_Blueprint", "37_Blueprin
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "38_StylizedToonPBR", "38_StylizedToonPBR\38_StylizedToonPBR.vcxproj", "{4B6A5522-0C57-41E0-A222-6AA813BBCE5C}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "39_Transparency_OIT", "39_Transparency_OIT\39_Transparency_OIT.vcxproj", "{D925C03C-9331-47A7-98D5-17975AF40F39}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -400,6 +402,12 @@ Global
 		{4B6A5522-0C57-41E0-A222-6AA813BBCE5C}.Release|x64.Build.0 = Release|x64
 		{4B6A5522-0C57-41E0-A222-6AA813BBCE5C}.Release|x86.ActiveCfg = Release|Win32
 		{4B6A5522-0C57-41E0-A222-6AA813BBCE5C}.Release|x86.Build.0 = Release|Win32
+		{D925C03C-9331-47A7-98D5-17975AF40F39}.Debug|x64.ActiveCfg = Debug|x64
+		{D925C03C-9331-47A7-98D5-17975AF40F39}.Debug|x64.Build.0 = Debug|x64
+		{D925C03C-9331-47A7-98D5-17975AF40F39}.Debug|x86.ActiveCfg = Debug|x64
+		{D925C03C-9331-47A7-98D5-17975AF40F39}.Release|x64.ActiveCfg = Release|x64
+		{D925C03C-9331-47A7-98D5-17975AF40F39}.Release|x64.Build.0 = Release|x64
+		{D925C03C-9331-47A7-98D5-17975AF40F39}.Release|x86.ActiveCfg = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

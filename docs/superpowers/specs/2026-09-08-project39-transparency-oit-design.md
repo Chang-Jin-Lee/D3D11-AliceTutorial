@@ -57,7 +57,7 @@ public:
 
 BeginOpaque/BeginTransparency는 OM과 viewport를 설정한다. App/test는 이어서 자신의 IA·VS·PS·RS·CB·texture/sampler를 설정한다. Resolve/Present는 fullscreen draw의 IA·VS·PS·RS·depth/blend와 SRV를 설정하고 마지막에 SRV를 해제한다. Resolve는 매 프레임 호출한다. 출력 RTV는 내부 텍스처와 다른 리소스여야 한다. Initialize/Resize는 실패를 반환한다. Resize 전에 호출자가 이전 OM/SRV 바인딩을 해제한다.
 
-## 検証と公開資料
+## 검증과 공개 자료
 
 WARP 픽셀 테스트는 실제 OitPipeline과 공유 HLSL을 사용해 빈 투명 패스, 단층의 해석적 결과, 다른 색 두 층의 순서 역전과 Revealage, opaque에 의한 가림, alpha 0의 색·깊이 무변경, 리사이즈, Accumulation/Revealage 디버그 표시를 검증한다. Sorted 순서를 뒤집으면 색이 바뀌는 대조 실험도 포함한다. FP16 오차를 허용하며 소스 문자열 정규식 검사로 대체하지 않는다.
 

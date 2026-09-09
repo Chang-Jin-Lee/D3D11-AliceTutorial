@@ -4,7 +4,7 @@
   "defaultDelayMs": 2500,
   "defaultWidth": 1280,
   "defaultHeight": 720,
-  "expectedProjectCount": 38,
+  "expectedProjectCount": 39,
   "captureWidth": 1600,
   "captureHeight": 900,
   "gifWidth": 800,
@@ -53,6 +53,7 @@
     {"number":"35","name":"Deferred Rendering","directory":"35_DeferredRendering","exe":"35_DeferredRendering.exe","image":"35-DeferredRendering.png","gif":"35-DeferredRendering.gif","infoImage":"info/35-DeferredRendering-info.png","delayMs":2500,"readmeCaptureMode":true,"skyboxIblSet":"Sample","title":"Deferred Rendering","summary":"G-Buffer와 디퍼드 라이팅 패스를 구현합니다.","tags":["Deferred","G-Buffer","Lighting"],"gifPhase":"runtime","gifActions":[{"atMs":400,"type":"keyDown","key":"D"},{"atMs":1100,"type":"keyUp","key":"D"},{"atMs":2200,"type":"keyDown","key":"A"},{"atMs":2900,"type":"keyUp","key":"A"}]},
     {"number":"36","name":"Animation+","directory":"36_AdvancedAnim_Sound_Click","exe":"36_AdvancedAnim_Sound_Click.exe","image":"36-AdvancedAnim-Sound-Click.png","gif":"36-advanced-anim-sound-click.gif","infoImage":"info/36-AdvancedAnim-Sound-Click-info.png","delayMs":7000,"readmeCaptureMode":true,"readmeBackbufferCapture":true,"skyboxIblSet":"Sample","title":"Advanced Animation And Sound","summary":"블렌드·레이어·IK·소켓과 3D 사운드를 통합합니다.","tags":["Animation","IK","FMOD","ImGui"],"gifPhase":"runtime","gifSeconds":13,"gifActions":[{"atMs":0,"type":"click","x":0.5,"y":0.5}],"preCaptureActions":[{"type":"click","x":0.5,"y":0.5},{"type":"wait","durationMs":1500}],"rootFeaturedGif":true},
     {"number":"37","name":"imgui-node-editor demo","directory":"37_Blueprint","exe":"37_Blueprint.exe","image":"37-Blueprint.png","gif":"37-Blueprint.gif","infoImage":"info/37-Blueprint-info.png","delayMs":2000,"gifPresentationPan":true,"title":"Blueprint Node Editor","summary":"imgui-node-editor로 노드 기반 도구 UI를 구성합니다.","tags":["Node Editor","ImGui","Tooling"],"gifPhase":"startup"},
-    {"number":"38","name":"Stylized Toon PBR","directory":"38_StylizedToonPBR","exe":"38_StylizedToonPBR.exe","image":"38-StylizedToonPBR.png","gif":"38-StylizedToonPBR.gif","infoImage":"info/38-StylizedToonPBR-info.png","delayMs":3000,"readmeCaptureMode":true,"title":"Stylized Toon PBR","summary":"재질별 Hybrid Toon-PBR와 외곽선 비용을 비교합니다.","tags":["Toon PBR","Outline","GPU Profiling","Character"],"gifPhase":"runtime","gifActions":[{"atMs":0,"type":"keyDown","key":"D"},{"atMs":125,"type":"keyUp","key":"D"}]}
+    {"number":"38","name":"Stylized Toon PBR","directory":"38_StylizedToonPBR","exe":"38_StylizedToonPBR.exe","image":"38-StylizedToonPBR.png","gif":"38-StylizedToonPBR.gif","infoImage":"info/38-StylizedToonPBR-info.png","delayMs":3000,"readmeCaptureMode":true,"title":"Stylized Toon PBR","summary":"재질별 Hybrid Toon-PBR와 외곽선 비용을 비교합니다.","tags":["Toon PBR","Outline","GPU Profiling","Character"],"gifPhase":"runtime","gifActions":[{"atMs":0,"type":"keyDown","key":"D"},{"atMs":125,"type":"keyUp","key":"D"}]},
+    {"number":"39","name":"Transparency OIT","directory":"39_Transparency_OIT","exe":"39_Transparency_OIT.exe","image":"39-Transparency-OIT.png","gif":"39-Transparency-OIT.gif","infoImage":"info/39-Transparency-OIT-info.png","delayMs":3000,"readmeCaptureMode":true,"title":"Transparency OIT","summary":"정렬 알파 블렌딩과 Weighted Blended OIT의 순서 의존성을 비교합니다.","tags":["Transparency","Weighted OIT","MRT","Character"],"gifPhase":"runtime","gifActions":[{"atMs":0,"type":"keyDown","key":"O"},{"atMs":3000,"type":"keyUp","key":"O"}],"preCaptureActions":[{"type":"keyDown","key":"L"},{"type":"wait","durationMs":125},{"type":"keyUp","key":"L"}]}
   ]
 }

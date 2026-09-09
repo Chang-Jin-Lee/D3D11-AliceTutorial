@@ -2,6 +2,8 @@
 
 Generated: 2026-08-25 00:11:52
 
+Project 39 capture results appended from the verified runtime capture on 2026-09-08.
+
 | Project | Attempt | Exe | Output | Status | Dimensions | Bytes | Notes |
 |---|---:|---|---|---|---|---:|---|
 | 01 | 1 | 01_RenderingQuadangle.exe | docs/media/readme/01-RenderingQuadangle.png | Success | 1600x900 | 186550 | PNG captured |
@@ -80,3 +82,5 @@ Generated: 2026-08-25 00:11:52
 | 37 | 1 | 37_Blueprint.exe | docs/media/readme/37-Blueprint.gif | Success | 800x450 | 1397691 | GIF generated from the captured PNG with the reproducible presentation-pan stage |
 | 38 | 1 | 38_StylizedToonPBR.exe | docs/media/readme/38-StylizedToonPBR.png | Success | 1600x900 | 219860 | PNG captured |
 | 38 | 1 | 38_StylizedToonPBR.exe | docs/media/readme/38-StylizedToonPBR.gif | Success | 800x450 | 599395 | GIF captured; source frames collected in 3944 ms |
+| 39 | 1 | 39_Transparency_OIT.exe | docs/media/readme/39-Transparency-OIT.png | Success | 1600x900 | 174213 | PNG captured |
+| 39 | 1 | 39_Transparency_OIT.exe | docs/media/readme/39-Transparency-OIT.gif | Success | 800x450 | 761344 | GIF captured; source frames collected in 3941 ms |
