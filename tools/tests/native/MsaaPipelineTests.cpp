@@ -9,6 +9,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <d3d11.h>
@@ -23,6 +24,7 @@ namespace
 using Coverage40::Mode;
 using Coverage40::MsaaPipeline;
 using Coverage40::SurfaceRule;
+using Coverage40::GpuTimings;
 using Microsoft::WRL::ComPtr;
 
 constexpr float kLinearTolerance = 0.003f;
@@ -590,6 +592,97 @@ bool TestConfigurationTransitions(Fixture& fixture)
     return passed;
 }
 
+bool ExpectConfiguredTiming(const GpuTimings& timing, Mode mode,
+    UINT width, UINT height, bool resolveApplicable)
+{
+    bool passed = true;
+    passed &= Expect(!timing.valid,
+        "Configure must invalidate the previously published GPU timing");
+    passed &= Expect(timing.resolveApplicable == resolveApplicable,
+        "Configure must report whether Resolve timing applies");
+    passed &= Expect(timing.mode == mode,
+        "Configure must attach the current mode to GPU timing state");
+    passed &= Expect(timing.width == width && timing.height == height,
+        "Configure must attach the current dimensions to GPU timing state");
+    return passed;
+}
+
+bool ObserveCurrentTiming(Fixture& fixture, Mode mode, UINT width, UINT height,
+    bool resolveApplicable)
+{
+    for (int frame = 0; frame < 120; ++frame)
+    {
+        fixture.Begin({ 0.05f, 0.1f, 0.15f, 1.0f });
+        fixture.Finish();
+        fixture.Context()->Flush();
+        std::this_thread::yield();
+
+        const GpuTimings& timing = fixture.Pipeline().Timings();
+        if (!timing.valid)
+            continue;
+
+        bool passed = true;
+        passed &= Expect(timing.available,
+            "a valid GPU timing must remain available");
+        passed &= Expect(timing.resolveApplicable == resolveApplicable,
+            "a valid GPU timing must preserve Resolve applicability");
+        passed &= Expect(timing.mode == mode,
+            "a valid GPU timing must belong to the current mode");
+        passed &= Expect(timing.width == width && timing.height == height,
+            "a valid GPU timing must belong to the current dimensions");
+        passed &= Expect(std::isfinite(timing.sceneMs) && timing.sceneMs >= 0.0,
+            "scene GPU milliseconds must be finite and non-negative");
+        passed &= Expect(std::isfinite(timing.resolveMs) && timing.resolveMs >= 0.0,
+            "Resolve GPU milliseconds must be finite and non-negative");
+        if (!resolveApplicable)
+        {
+            passed &= Expect(timing.resolveMs == 0.0,
+                "1x GPU timing must report zero Resolve milliseconds for N/A display");
+        }
+        return passed;
+    }
+
+    return Expect(false,
+        "created GPU timing queries must produce a valid result within 120 frames");
+}
+
+bool TestGpuTimingReadinessAndTransitions(Fixture& fixture)
+{
+    bool passed = true;
+    fixture.ConfigureSize(16, 16, Mode::AlphaTest1x);
+    passed &= ExpectConfiguredTiming(fixture.Pipeline().Timings(),
+        Mode::AlphaTest1x, 16, 16, false);
+
+    const bool queriesCreated = fixture.Pipeline().Timings().available;
+    if (!queriesCreated)
+    {
+        fixture.ConfigureSize(16, 16, Mode::AlphaTest4x);
+        passed &= ExpectConfiguredTiming(fixture.Pipeline().Timings(),
+            Mode::AlphaTest4x, 16, 16, true);
+        std::cout << "SKIP: WARP does not provide the optional GPU timing queries; "
+            "target and pixel checks remain active.\n";
+        return passed;
+    }
+
+    passed &= ObserveCurrentTiming(fixture, Mode::AlphaTest1x, 16, 16, false);
+
+    fixture.ConfigureSize(16, 16, Mode::AlphaTest4x);
+    passed &= ExpectConfiguredTiming(fixture.Pipeline().Timings(),
+        Mode::AlphaTest4x, 16, 16, true);
+    passed &= ObserveCurrentTiming(fixture, Mode::AlphaTest4x, 16, 16, true);
+
+    fixture.ConfigureSize(16, 16, Mode::AlphaToCoverage4x);
+    passed &= ExpectConfiguredTiming(fixture.Pipeline().Timings(),
+        Mode::AlphaToCoverage4x, 16, 16, true);
+    passed &= ObserveCurrentTiming(fixture, Mode::AlphaToCoverage4x, 16, 16, true);
+
+    fixture.ConfigureSize(32, 32, Mode::AlphaToCoverage4x);
+    passed &= ExpectConfiguredTiming(fixture.Pipeline().Timings(),
+        Mode::AlphaToCoverage4x, 32, 32, true);
+    passed &= ObserveCurrentTiming(fixture, Mode::AlphaToCoverage4x, 32, 32, true);
+    return passed;
+}
+
 bool ReportScenario(const char* name, bool passed)
 {
     if (passed)
@@ -652,6 +745,8 @@ int wmain(int argc, wchar_t** argv)
         passed &= ReportScenario("UNORM presentation conversion", TestPresentConversion(fixture));
         passed &= ReportScenario("transactional configuration and 20 transitions",
             TestConfigurationTransitions(fixture));
+        passed &= ReportScenario("asynchronous GPU timing readiness and transitions",
+            TestGpuTimingReadinessAndTransitions(fixture));
         passed &= ReportScenario("D3D11 debug messages", fixture.CheckDebugMessages());
         if (!passed)
             return 1;
@@ -662,7 +757,7 @@ int wmain(int argc, wchar_t** argv)
         return 1;
     }
 
-    std::cout << "MSAA pipeline tests passed: 11 WARP pixel scenarios and "
-        "1 control-flow probe.\n";
+    std::cout << "MSAA pipeline tests passed: 11 WARP pixel scenarios, "
+        "1 GPU timing scenario, and 1 control-flow probe.\n";
     return 0;
 }

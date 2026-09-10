@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <string>
 
@@ -16,6 +18,14 @@ struct Capabilities
     std::wstring reason;
 };
 
+struct GpuTimings
+{
+    bool available{}, valid{}, resolveApplicable{};
+    Mode mode{ Mode::AlphaTest1x };
+    UINT width{}, height{};
+    double sceneMs{}, resolveMs{};
+};
+
 class MsaaPipeline
 {
 public:
@@ -29,6 +39,7 @@ public:
                  float exposure);
 
     const Capabilities& Support() const { return support_; }
+    const GpuTimings& Timings() const { return timings_; }
     Mode CurrentMode() const { return mode_; }
     UINT Width() const { return width_; }
     UINT Height() const { return height_; }
@@ -39,7 +50,35 @@ public:
     ID3D11Texture2D* LinearTexture() const;
 
 private:
+    struct TimingSlot
+    {
+        Microsoft::WRL::ComPtr<ID3D11Query> disjoint;
+        Microsoft::WRL::ComPtr<ID3D11Query> sceneBegin;
+        Microsoft::WRL::ComPtr<ID3D11Query> sceneEnd;
+        Microsoft::WRL::ComPtr<ID3D11Query> resolveBegin;
+        Microsoft::WRL::ComPtr<ID3D11Query> resolveEnd;
+        bool inFlight{};
+        bool sceneEnded{};
+        std::uint64_t generation{};
+        Mode mode{ Mode::AlphaTest1x };
+        UINT width{};
+        UINT height{};
+        bool resolveApplicable{};
+    };
+
+    static constexpr std::size_t kTimingSlotCount = 4;
+    static constexpr std::size_t kNoTimingSlot = kTimingSlotCount;
+
+    void InitializeTimingQueries(ID3D11Device* device);
+    void DisableTimings();
+    void PollTimings(ID3D11DeviceContext* context);
+    void UpdateTimingConfiguration(Mode mode, UINT width, UINT height);
+
     Capabilities support_;
+    GpuTimings timings_;
+    std::array<TimingSlot, kTimingSlotCount> timingSlots_{};
+    std::size_t activeTimingSlot_{ kNoTimingSlot };
+    std::uint64_t timingGeneration_{};
     Mode mode_{ Mode::AlphaTest1x };
     UINT width_{};
     UINT height_{};

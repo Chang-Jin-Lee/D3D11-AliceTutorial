@@ -89,6 +89,10 @@ bool MsaaPipeline::Initialize(ID3D11Device* device, const std::wstring& shaderDi
 {
     initialized_ = false;
     support_ = {};
+    timings_ = {};
+    timingSlots_ = {};
+    activeTimingSlot_ = kNoTimingSlot;
+    timingGeneration_ = 0;
     if (!device)
     {
         support_.reason = L"Initialize(device=null)";
@@ -275,6 +279,7 @@ bool MsaaPipeline::Initialize(ID3D11Device* device, const std::wstring& shaderDi
     depthDisabled_ = std::move(depthDisabled);
     presentRasterizer_ = std::move(rasterizer);
     presentConstants_ = std::move(constants);
+    InitializeTimingQueries(device);
     initialized_ = true;
     return true;
 }
@@ -291,6 +296,7 @@ bool MsaaPipeline::Configure(ID3D11Device* device, UINT width, UINT height, Mode
     if (complete && width == width_ && height == height_ && samples == Samples())
     {
         mode_ = mode;
+        UpdateTimingConfiguration(mode, width, height);
         return true;
     }
 
@@ -385,6 +391,7 @@ bool MsaaPipeline::Configure(ID3D11Device* device, UINT width, UINT height, Mode
     width_ = width;
     height_ = height;
     mode_ = mode;
+    UpdateTimingConfiguration(mode, width, height);
     return true;
 }
 
@@ -392,8 +399,37 @@ void MsaaPipeline::BeginFrame(ID3D11DeviceContext* context, const float clearCol
 {
     if (!context || !colorTarget_ || !depthTarget_)
         return;
+
+    PollTimings(context);
+    TimingSlot* timingSlot = nullptr;
+    if (timings_.available && activeTimingSlot_ == kNoTimingSlot)
+    {
+        for (std::size_t index = 0; index < timingSlots_.size(); ++index)
+        {
+            TimingSlot& slot = timingSlots_[index];
+            if (slot.inFlight)
+                continue;
+
+            slot.inFlight = true;
+            slot.sceneEnded = false;
+            slot.generation = timingGeneration_;
+            slot.mode = mode_;
+            slot.width = width_;
+            slot.height = height_;
+            slot.resolveApplicable = Samples() == 4;
+            activeTimingSlot_ = index;
+            timingSlot = &slot;
+            break;
+        }
+    }
+
     ID3D11RenderTargetView* target = colorTarget_.Get();
     context->OMSetRenderTargets(1, &target, depthTarget_.Get());
+    if (timingSlot)
+    {
+        context->Begin(timingSlot->disjoint.Get());
+        context->End(timingSlot->sceneBegin.Get());
+    }
     context->ClearRenderTargetView(target, clearColor);
     context->ClearDepthStencilView(depthTarget_.Get(), D3D11_CLEAR_DEPTH, 1.0f, 0);
     const D3D11_VIEWPORT viewport{ 0.0f, 0.0f, static_cast<float>(width_),
@@ -418,7 +454,18 @@ void MsaaPipeline::BeginSurface(ID3D11DeviceContext* context, SurfaceRule rule)
     context->OMSetDepthStencilState(depth, 0);
 }
 
-void MsaaPipeline::EndScene(ID3D11DeviceContext*) {}
+void MsaaPipeline::EndScene(ID3D11DeviceContext* context)
+{
+    if (!context || activeTimingSlot_ == kNoTimingSlot)
+        return;
+
+    TimingSlot& slot = timingSlots_[activeTimingSlot_];
+    if (!slot.sceneEnded)
+    {
+        context->End(slot.sceneEnd.Get());
+        slot.sceneEnded = true;
+    }
+}
 
 void MsaaPipeline::Resolve(ID3D11DeviceContext* context)
 {
@@ -427,8 +474,24 @@ void MsaaPipeline::Resolve(ID3D11DeviceContext* context)
     context->OMSetRenderTargets(0, nullptr, nullptr);
     if (Samples() == 4 && resolvedTexture_ && colorTexture_)
     {
+        if (activeTimingSlot_ != kNoTimingSlot)
+            context->End(timingSlots_[activeTimingSlot_].resolveBegin.Get());
         context->ResolveSubresource(resolvedTexture_.Get(), 0, colorTexture_.Get(), 0,
             kColorFormat);
+        if (activeTimingSlot_ != kNoTimingSlot)
+            context->End(timingSlots_[activeTimingSlot_].resolveEnd.Get());
+    }
+
+    if (activeTimingSlot_ != kNoTimingSlot)
+    {
+        TimingSlot& slot = timingSlots_[activeTimingSlot_];
+        if (!slot.sceneEnded)
+        {
+            context->End(slot.sceneEnd.Get());
+            slot.sceneEnded = true;
+        }
+        context->End(slot.disjoint.Get());
+        activeTimingSlot_ = kNoTimingSlot;
     }
 }
 
@@ -463,5 +526,135 @@ void MsaaPipeline::Present(ID3D11DeviceContext* context,
 ID3D11Texture2D* MsaaPipeline::LinearTexture() const
 {
     return Samples() == 1 ? colorTexture_.Get() : resolvedTexture_.Get();
+}
+
+void MsaaPipeline::InitializeTimingQueries(ID3D11Device* device)
+{
+    std::array<TimingSlot, kTimingSlotCount> slots{};
+    D3D11_QUERY_DESC disjointDescription{ D3D11_QUERY_TIMESTAMP_DISJOINT, 0 };
+    D3D11_QUERY_DESC timestampDescription{ D3D11_QUERY_TIMESTAMP, 0 };
+    for (TimingSlot& slot : slots)
+    {
+        if (FAILED(device->CreateQuery(&disjointDescription, &slot.disjoint)) ||
+            FAILED(device->CreateQuery(&timestampDescription, &slot.sceneBegin)) ||
+            FAILED(device->CreateQuery(&timestampDescription, &slot.sceneEnd)) ||
+            FAILED(device->CreateQuery(&timestampDescription, &slot.resolveBegin)) ||
+            FAILED(device->CreateQuery(&timestampDescription, &slot.resolveEnd)))
+        {
+            timings_.available = false;
+            return;
+        }
+    }
+
+    timingSlots_ = std::move(slots);
+    timings_.available = true;
+}
+
+void MsaaPipeline::DisableTimings()
+{
+    timings_.available = false;
+    timings_.valid = false;
+    timings_.sceneMs = 0.0;
+    timings_.resolveMs = 0.0;
+    timingSlots_ = {};
+    activeTimingSlot_ = kNoTimingSlot;
+}
+
+void MsaaPipeline::PollTimings(ID3D11DeviceContext* context)
+{
+    if (!timings_.available)
+        return;
+
+    for (std::size_t index = 0; index < timingSlots_.size(); ++index)
+    {
+        TimingSlot& slot = timingSlots_[index];
+        if (!slot.inFlight || index == activeTimingSlot_)
+            continue;
+
+        D3D11_QUERY_DATA_TIMESTAMP_DISJOINT disjoint{};
+        const HRESULT disjointStatus = context->GetData(slot.disjoint.Get(),
+            &disjoint, sizeof(disjoint), D3D11_ASYNC_GETDATA_DONOTFLUSH);
+        if (disjointStatus == S_FALSE)
+            continue;
+        if (FAILED(disjointStatus))
+        {
+            DisableTimings();
+            return;
+        }
+
+        UINT64 sceneBegin{};
+        const HRESULT sceneBeginStatus = context->GetData(slot.sceneBegin.Get(),
+            &sceneBegin, sizeof(sceneBegin), D3D11_ASYNC_GETDATA_DONOTFLUSH);
+        if (sceneBeginStatus == S_FALSE)
+            continue;
+        if (FAILED(sceneBeginStatus))
+        {
+            DisableTimings();
+            return;
+        }
+
+        UINT64 sceneEnd{};
+        const HRESULT sceneEndStatus = context->GetData(slot.sceneEnd.Get(),
+            &sceneEnd, sizeof(sceneEnd), D3D11_ASYNC_GETDATA_DONOTFLUSH);
+        if (sceneEndStatus == S_FALSE)
+            continue;
+        if (FAILED(sceneEndStatus))
+        {
+            DisableTimings();
+            return;
+        }
+
+        UINT64 resolveBegin{};
+        UINT64 resolveEnd{};
+        if (slot.resolveApplicable)
+        {
+            const HRESULT resolveBeginStatus = context->GetData(slot.resolveBegin.Get(),
+                &resolveBegin, sizeof(resolveBegin), D3D11_ASYNC_GETDATA_DONOTFLUSH);
+            if (resolveBeginStatus == S_FALSE)
+                continue;
+            if (FAILED(resolveBeginStatus))
+            {
+                DisableTimings();
+                return;
+            }
+
+            const HRESULT resolveEndStatus = context->GetData(slot.resolveEnd.Get(),
+                &resolveEnd, sizeof(resolveEnd), D3D11_ASYNC_GETDATA_DONOTFLUSH);
+            if (resolveEndStatus == S_FALSE)
+                continue;
+            if (FAILED(resolveEndStatus))
+            {
+                DisableTimings();
+                return;
+            }
+        }
+
+        slot.inFlight = false;
+        if (slot.generation != timingGeneration_ || disjoint.Disjoint ||
+            disjoint.Frequency == 0 || sceneEnd < sceneBegin ||
+            (slot.resolveApplicable && resolveEnd < resolveBegin))
+            continue;
+
+        const double millisecondsPerTick = 1000.0 /
+            static_cast<double>(disjoint.Frequency);
+        timings_.available = true;
+        timings_.valid = true;
+        timings_.resolveApplicable = slot.resolveApplicable;
+        timings_.mode = slot.mode;
+        timings_.width = slot.width;
+        timings_.height = slot.height;
+        timings_.sceneMs = static_cast<double>(sceneEnd - sceneBegin) *
+            millisecondsPerTick;
+        timings_.resolveMs = slot.resolveApplicable ?
+            static_cast<double>(resolveEnd - resolveBegin) * millisecondsPerTick : 0.0;
+    }
+}
+
+void MsaaPipeline::UpdateTimingConfiguration(Mode mode, UINT width, UINT height)
+{
+    ++timingGeneration_;
+    const bool available = timings_.available;
+    timings_ = { available, false, SampleCount(mode) == 4,
+        mode, width, height, 0.0, 0.0 };
 }
 }
