@@ -18,6 +18,7 @@
 #include <wrl/client.h>
 
 #include "MsaaPipeline.h"
+#include "AppFailure.h"
 
 namespace
 {
@@ -25,6 +26,7 @@ using Coverage40::Mode;
 using Coverage40::MsaaPipeline;
 using Coverage40::SurfaceRule;
 using Coverage40::GpuTimings;
+using Coverage40::ResizeFailureStage;
 using Microsoft::WRL::ComPtr;
 
 constexpr float kLinearTolerance = 0.003f;
@@ -133,6 +135,10 @@ public:
                 << pipeline_.Support().reason << L'\n';
             throw std::runtime_error("MsaaPipeline::Initialize failed");
         }
+
+        const auto appSurfacePath = shaderDirectory_ / L"40_Surface.hlsl";
+        CompileShader(appSurfacePath, "VSMain", "vs_5_0");
+        CompileShader(appSurfacePath, "PSMain", "ps_5_0");
 
         const auto surfacePath = repo / L"tools" / L"tests" / L"native" /
             L"MsaaTestSurface.hlsl";
@@ -704,6 +710,52 @@ bool TestOneSampleFailurePrecedesUnsupported4xSkip()
     return Expect(InitialTestOutcome(false, false) == 1,
         "a failed 1x pixel test must take precedence over an unavailable-4x skip");
 }
+
+bool TestResizeFailureClassification()
+{
+    struct Case
+    {
+        ResizeFailureStage stage;
+        HRESULT operationResult;
+        HRESULT deviceReason;
+        bool fatal;
+        HRESULT reportedResult;
+        const char* description;
+    };
+    const Case cases[]{
+        { ResizeFailureStage::ResizeBuffers, E_OUTOFMEMORY, S_OK, false,
+            E_OUTOFMEMORY, "ordinary ResizeBuffers allocation failure is recoverable" },
+        { ResizeFailureStage::GetBuffer, E_FAIL, S_OK, false,
+            E_FAIL, "ordinary GetBuffer failure is recoverable" },
+        { ResizeFailureStage::BackbufferTarget, E_INVALIDARG, S_OK, false,
+            E_INVALIDARG, "ordinary backbuffer RTV failure is recoverable" },
+        { ResizeFailureStage::PipelineConfigure, E_FAIL, S_OK, false,
+            E_FAIL, "ordinary pipeline Configure failure is recoverable" },
+        { ResizeFailureStage::ResizeBuffers, DXGI_ERROR_DEVICE_REMOVED,
+            DXGI_ERROR_DEVICE_HUNG, true, DXGI_ERROR_DEVICE_HUNG,
+            "ResizeBuffers device loss reports the removal reason" },
+        { ResizeFailureStage::GetBuffer, DXGI_ERROR_DEVICE_RESET, S_OK, true,
+            DXGI_ERROR_DEVICE_RESET, "GetBuffer device reset remains fatal" },
+        { ResizeFailureStage::BackbufferTarget, E_FAIL,
+            DXGI_ERROR_DEVICE_REMOVED, true, DXGI_ERROR_DEVICE_REMOVED,
+            "backbuffer RTV failure detects device loss from the device reason" },
+        { ResizeFailureStage::PipelineConfigure, E_FAIL,
+            DXGI_ERROR_DEVICE_RESET, true, DXGI_ERROR_DEVICE_RESET,
+            "Configure bool failure detects device loss from the device reason" },
+    };
+
+    bool passed = true;
+    for (const Case& test : cases)
+    {
+        const auto decision = Coverage40::ClassifyResizeFailure(test.stage,
+            test.operationResult, test.deviceReason);
+        passed &= Expect(decision.stage == test.stage, test.description);
+        passed &= Expect(decision.fatal == test.fatal, test.description);
+        passed &= Expect(decision.reportedResult == test.reportedResult,
+            test.description);
+    }
+    return passed;
+}
 }
 
 int wmain(int argc, wchar_t** argv)
@@ -718,6 +770,9 @@ int wmain(int argc, wchar_t** argv)
     {
         if (!ReportScenario("failed 1x result precedes unsupported-4x skip",
                 TestOneSampleFailurePrecedesUnsupported4xSkip()))
+            return 1;
+        if (!ReportScenario("resize failures distinguish device loss from recovery",
+                TestResizeFailureClassification()))
             return 1;
 
         Fixture fixture;
@@ -758,6 +813,6 @@ int wmain(int argc, wchar_t** argv)
     }
 
     std::cout << "MSAA pipeline tests passed: 11 WARP pixel scenarios, "
-        "1 GPU timing scenario, and 1 control-flow probe.\n";
+        "1 GPU timing scenario, and 2 control-flow probes.\n";
     return 0;
 }
