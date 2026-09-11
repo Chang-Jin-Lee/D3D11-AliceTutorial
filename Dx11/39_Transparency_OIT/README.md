@@ -1,7 +1,7 @@
 <!-- README-NAV-TOP:START -->
 <div align="center">
 
-[이전](../38_StylizedToonPBR/README.md) | [메인](../../README.md) | [상위](../) | 다음
+[이전](../38_StylizedToonPBR/README.md) | [메인](../../README.md) | [상위](../) | [다음](../40_MSAA_AlphaToCoverage/README.md)
 
 </div>
 <!-- README-NAV-TOP:END -->
@@ -128,7 +128,7 @@ pwsh -NoProfile -File tools/tests/test_scene_transparency.ps1
 <!-- README-NAV-BOTTOM:START -->
 <div align="center">
 
-[이전](../38_StylizedToonPBR/README.md) | [메인](../../README.md) | [상위](../) | 다음
+[이전](../38_StylizedToonPBR/README.md) | [메인](../../README.md) | [상위](../) | [다음](../40_MSAA_AlphaToCoverage/README.md)
 
 </div>
 <!-- README-NAV-BOTTOM:END -->
