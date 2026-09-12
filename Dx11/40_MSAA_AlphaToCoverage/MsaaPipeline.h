@@ -26,6 +26,9 @@ struct GpuTimings
     double sceneMs{}, resolveMs{};
 };
 
+bool TryAdvanceTimingPublication(std::uint64_t submissionSerial,
+    std::uint64_t& lastPublishedSerial);
+
 class MsaaPipeline
 {
 public:
@@ -60,6 +63,7 @@ private:
         bool inFlight{};
         bool sceneEnded{};
         std::uint64_t generation{};
+        std::uint64_t submissionSerial{};
         Mode mode{ Mode::AlphaTest1x };
         UINT width{};
         UINT height{};
@@ -79,6 +83,8 @@ private:
     std::array<TimingSlot, kTimingSlotCount> timingSlots_{};
     std::size_t activeTimingSlot_{ kNoTimingSlot };
     std::uint64_t timingGeneration_{};
+    std::uint64_t nextTimingSubmissionSerial_{};
+    std::uint64_t lastPublishedTimingSerial_{};
     Mode mode_{ Mode::AlphaTest1x };
     UINT width_{};
     UINT height_{};

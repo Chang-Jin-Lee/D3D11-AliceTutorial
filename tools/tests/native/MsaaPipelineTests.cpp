@@ -613,6 +613,28 @@ bool ExpectConfiguredTiming(const GpuTimings& timing, Mode mode,
     return passed;
 }
 
+enum class TimingScenarioOutcome
+{
+    Passed,
+    Skipped,
+    Failed,
+};
+
+struct TimingScenarioCounts
+{
+    unsigned passed{};
+    unsigned skipped{};
+};
+
+void RecordTimingScenarioOutcome(TimingScenarioOutcome outcome,
+    TimingScenarioCounts& counts)
+{
+    if (outcome == TimingScenarioOutcome::Passed)
+        ++counts.passed;
+    else if (outcome == TimingScenarioOutcome::Skipped)
+        ++counts.skipped;
+}
+
 bool ObserveCurrentTiming(Fixture& fixture, Mode mode, UINT width, UINT height,
     bool resolveApplicable)
 {
@@ -652,7 +674,7 @@ bool ObserveCurrentTiming(Fixture& fixture, Mode mode, UINT width, UINT height,
         "created GPU timing queries must produce a valid result within 120 frames");
 }
 
-bool TestGpuTimingReadinessAndTransitions(Fixture& fixture)
+TimingScenarioOutcome TestGpuTimingReadinessAndTransitions(Fixture& fixture)
 {
     bool passed = true;
     fixture.ConfigureSize(16, 16, Mode::AlphaTest1x);
@@ -665,9 +687,7 @@ bool TestGpuTimingReadinessAndTransitions(Fixture& fixture)
         fixture.ConfigureSize(16, 16, Mode::AlphaTest4x);
         passed &= ExpectConfiguredTiming(fixture.Pipeline().Timings(),
             Mode::AlphaTest4x, 16, 16, true);
-        std::cout << "SKIP: WARP does not provide the optional GPU timing queries; "
-            "target and pixel checks remain active.\n";
-        return passed;
+        return passed ? TimingScenarioOutcome::Skipped : TimingScenarioOutcome::Failed;
     }
 
     passed &= ObserveCurrentTiming(fixture, Mode::AlphaTest1x, 16, 16, false);
@@ -686,7 +706,7 @@ bool TestGpuTimingReadinessAndTransitions(Fixture& fixture)
     passed &= ExpectConfiguredTiming(fixture.Pipeline().Timings(),
         Mode::AlphaToCoverage4x, 32, 32, true);
     passed &= ObserveCurrentTiming(fixture, Mode::AlphaToCoverage4x, 32, 32, true);
-    return passed;
+    return passed ? TimingScenarioOutcome::Passed : TimingScenarioOutcome::Failed;
 }
 
 bool ReportScenario(const char* name, bool passed)
@@ -694,6 +714,20 @@ bool ReportScenario(const char* name, bool passed)
     if (passed)
         std::cout << "PASS: " << name << '\n';
     return passed;
+}
+
+bool ReportTimingScenario(const char* name, TimingScenarioOutcome outcome,
+    TimingScenarioCounts& counts)
+{
+    RecordTimingScenarioOutcome(outcome, counts);
+    if (outcome == TimingScenarioOutcome::Passed)
+        std::cout << "PASS: " << name << '\n';
+    else if (outcome == TimingScenarioOutcome::Skipped)
+    {
+        std::cout << "SKIP: " << name << ": WARP does not provide the optional "
+            "GPU timing queries; target and pixel checks remain active.\n";
+    }
+    return outcome != TimingScenarioOutcome::Failed;
 }
 
 int InitialTestOutcome(bool oneSamplePassed, bool runtimeSupports4x)
@@ -756,6 +790,41 @@ bool TestResizeFailureClassification()
     }
     return passed;
 }
+bool TestTimingPublicationRejectsOlderCompletion()
+{
+    std::uint64_t lastPublishedSerial = 0;
+    bool passed = true;
+    passed &= Expect(Coverage40::TryAdvanceTimingPublication(7,
+            lastPublishedSerial) && lastPublishedSerial == 7,
+        "the first completed timing submission must publish");
+    passed &= Expect(!Coverage40::TryAdvanceTimingPublication(3,
+            lastPublishedSerial) && lastPublishedSerial == 7,
+        "an older completed timing submission must not replace a newer result");
+    passed &= Expect(Coverage40::TryAdvanceTimingPublication(8,
+            lastPublishedSerial) && lastPublishedSerial == 8,
+        "a completion newer than the last publication must publish");
+    return passed;
+}
+
+bool TestSkippedTimingScenarioAccounting()
+{
+    TimingScenarioCounts counts{};
+    std::ostringstream output;
+    std::streambuf* originalOutput = std::cout.rdbuf(output.rdbuf());
+    const bool continues = ReportTimingScenario("optional query fixture",
+        TimingScenarioOutcome::Skipped, counts);
+    std::cout.rdbuf(originalOutput);
+
+    bool passed = true;
+    passed &= Expect(continues,
+        "an unavailable optional timing scenario must not fail other coverage");
+    passed &= Expect(counts.passed == 0 && counts.skipped == 1,
+        "an unavailable optional timing scenario must count as skipped, not passed");
+    passed &= Expect(output.str().find("SKIP:") != std::string::npos &&
+            output.str().find("PASS:") == std::string::npos,
+        "an unavailable optional timing scenario must print SKIP without generic PASS");
+    return passed;
+}
 }
 
 int wmain(int argc, wchar_t** argv)
@@ -766,6 +835,7 @@ int wmain(int argc, wchar_t** argv)
         return 2;
     }
 
+    TimingScenarioCounts timingCounts{};
     try
     {
         if (!ReportScenario("failed 1x result precedes unsupported-4x skip",
@@ -773,6 +843,15 @@ int wmain(int argc, wchar_t** argv)
             return 1;
         if (!ReportScenario("resize failures distinguish device loss from recovery",
                 TestResizeFailureClassification()))
+            return 1;
+        bool newControlProbesPassed = true;
+        newControlProbesPassed &= ReportScenario(
+            "timing publication rejects older completions",
+            TestTimingPublicationRejectsOlderCompletion());
+        newControlProbesPassed &= ReportScenario(
+            "skipped timing scenarios are not counted as passed",
+            TestSkippedTimingScenarioAccounting());
+        if (!newControlProbesPassed)
             return 1;
 
         Fixture fixture;
@@ -800,8 +879,8 @@ int wmain(int argc, wchar_t** argv)
         passed &= ReportScenario("UNORM presentation conversion", TestPresentConversion(fixture));
         passed &= ReportScenario("transactional configuration and 20 transitions",
             TestConfigurationTransitions(fixture));
-        passed &= ReportScenario("asynchronous GPU timing readiness and transitions",
-            TestGpuTimingReadinessAndTransitions(fixture));
+        passed &= ReportTimingScenario("asynchronous GPU timing readiness and transitions",
+            TestGpuTimingReadinessAndTransitions(fixture), timingCounts);
         passed &= ReportScenario("D3D11 debug messages", fixture.CheckDebugMessages());
         if (!passed)
             return 1;
@@ -813,6 +892,8 @@ int wmain(int argc, wchar_t** argv)
     }
 
     std::cout << "MSAA pipeline tests passed: 11 WARP pixel scenarios, "
-        "1 GPU timing scenario, and 2 control-flow probes.\n";
+        << "GPU timing scenarios passed: " << timingCounts.passed
+        << "; skipped: " << timingCounts.skipped
+        << "; control-flow probes: 4.\n";
     return 0;
 }

@@ -9,6 +9,15 @@
 
 namespace Coverage40
 {
+bool TryAdvanceTimingPublication(std::uint64_t submissionSerial,
+    std::uint64_t& lastPublishedSerial)
+{
+    if (submissionSerial <= lastPublishedSerial)
+        return false;
+    lastPublishedSerial = submissionSerial;
+    return true;
+}
+
 namespace
 {
 using Microsoft::WRL::ComPtr;
@@ -413,6 +422,7 @@ void MsaaPipeline::BeginFrame(ID3D11DeviceContext* context, const float clearCol
             slot.inFlight = true;
             slot.sceneEnded = false;
             slot.generation = timingGeneration_;
+            slot.submissionSerial = ++nextTimingSubmissionSerial_;
             slot.mode = mode_;
             slot.width = width_;
             slot.height = height_;
@@ -633,6 +643,9 @@ void MsaaPipeline::PollTimings(ID3D11DeviceContext* context)
         if (slot.generation != timingGeneration_ || disjoint.Disjoint ||
             disjoint.Frequency == 0 || sceneEnd < sceneBegin ||
             (slot.resolveApplicable && resolveEnd < resolveBegin))
+            continue;
+        if (!TryAdvanceTimingPublication(slot.submissionSerial,
+                lastPublishedTimingSerial_))
             continue;
 
         const double millisecondsPerTick = 1000.0 /

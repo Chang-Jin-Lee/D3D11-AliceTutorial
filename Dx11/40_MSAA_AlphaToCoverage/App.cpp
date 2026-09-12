@@ -859,7 +859,7 @@ void App::RenderHud()
             comparisonReason_.c_str());
     else
         ImGui::TextWrapped("Lace guard verified: material 4, full name, authored MASK; cutoff %.3f.",
-            settings_.laceCutoff);
+            materials_[4].cutoff);
     if (!configurationError_.empty())
         ImGui::TextColored(ImVec4(1.0f, 0.65f, 0.25f, 1.0f), "%s",
             configurationError_.c_str());

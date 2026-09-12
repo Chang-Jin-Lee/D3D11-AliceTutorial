@@ -30,6 +30,8 @@ MSAA는 삼각형의 기하 경계를 여러 샘플에서 평가합니다. 반�
 
 원본 레이스는 glTF `MASK` 재질입니다. 재질 인덱스 4, 전체 이름 `N00_002_01_Tops_01_CLOTH_02 (Instance)`, 원본 `MASK`가 모두 맞을 때만 비교 처리를 적용합니다. 조건이 어긋나면 다른 재질을 대신 고르지 않고 원본 처리와 비활성 이유를 표시합니다.
 
+HUD의 lace guard 문구는 재질에 기록된 원본 cutoff를 표시하고, `Lace cutoff` 슬라이더는 Alpha Test 비교에 쓰는 현재 값을 표시합니다. 비교 값을 바꿔도 원본 값 표시는 바뀌지 않습니다.
+
 Alpha Test는 선택한 cutoff로 자른 뒤 불투명하게 쓰고, A2C는 cutoff로 이진화하지 않은 중간 알파를 출력합니다. 따라서 A2C 화면은 원본 MASK를 그대로 보존한 결과가 아니라 학습을 위한 비교입니다. 알파 0은 두 경로 모두 버립니다. 눈처럼 원래 `BLEND`인 재질은 모든 모드에서 뒤에서 앞으로 정렬하고 straight-alpha OVER, 깊이 쓰기 OFF로 그리며 A2C를 적용하지 않습니다.
 
 ## 멀티샘플 타깃과 조작
@@ -78,6 +80,8 @@ Alpha Test는 선택한 cutoff로 자른 뒤 불투명하게 쓰고, A2C는 cuto
 앱 연결과 draw 구성은 [App.cpp](App.cpp), 재질 선택과 정렬은 [CoverageScene.cpp](CoverageScene.cpp), 멀티샘플 타깃·상태·Resolve는 [MsaaPipeline.cpp](MsaaPipeline.cpp)에 있습니다. [표면 셰이더](40_Surface.hlsl)와 [공유 알파 함수](40_AlphaCoverage.fxh)는 앱과 WARP 픽셀 테스트가 같은 알파 규칙을 사용하도록 연결합니다.
 
 저장소 루트에서 `tools/tests/test_coverage_scene.ps1`로 재질·정렬·메모리 산식을, `tools/tests/test_msaa_pipeline.ps1`로 앱 파이프라인과 HLSL의 픽셀·Resolve·상태 복원·전환·측정 동작을 검사할 수 있습니다. 이전 예제의 `tools/tests/test_oit_pipeline.ps1`와 `tools/tests/test_scene_transparency.ps1`도 회귀 검사에 포함됩니다.
+
+비동기 GPU 측정은 제출 순번이 이미 표시한 결과보다 새로울 때만 HUD에 게시합니다. 선택적 타이밍 쿼리를 만들 수 없는 환경에서는 해당 시나리오를 실패나 통과로 바꾸지 않고 `SKIP`으로 분리해 요약합니다.
 
 - GPU 시간은 장면 구간과 4x Resolve 구간만 측정합니다. 최종 화면 변환, ImGui, swap-chain Present, CPU·드라이버 대기는 포함하지 않으며 1x Resolve는 실행하지 않아 `N/A`입니다. 화면에 보이는 값만으로 고정 성능 순위를 정하지 않습니다.
 - 메모리 값은 `W×H×12`(1x), `W×H×(4×12+8)`(4x) 바이트로 계산한 활성 색상·깊이·Resolve 타깃의 논리적 저장량입니다. 백버퍼, 모델, 텍스처, 드라이버 정렬·압축, 모드 전환 중 임시 자원은 제외하므로 VRAM 사용량이 아닙니다.
