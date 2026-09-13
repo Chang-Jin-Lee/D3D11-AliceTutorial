@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files"><UniqueIdentifier>{9465EC92-CBC3-4817-8707-445140DE3340}</UniqueIdentifier></Filter>
+    <Filter Include="Header Files"><UniqueIdentifier>{61325053-A553-4B20-92F9-B558D7312840}</UniqueIdentifier></Filter>
+    <Filter Include="Shaders"><UniqueIdentifier>{5161D654-C3F8-4474-B497-B7B6D177F840}</UniqueIdentifier></Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="App.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="CoverageScene.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="MsaaPipeline.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="WinMain.cpp"><Filter>Source Files</Filter></ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="App.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="AppFailure.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="CoverageScene.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="MsaaPipeline.h"><Filter>Header Files</Filter></ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <CopyFileToFolders Include="40_Surface.hlsl"><Filter>Shaders</Filter></CopyFileToFolders>
+    <CopyFileToFolders Include="40_Present.hlsl"><Filter>Shaders</Filter></CopyFileToFolders>
+    <CopyFileToFolders Include="40_AlphaCoverage.fxh"><Filter>Shaders</Filter></CopyFileToFolders>
+  </ItemGroup>
+</Project>

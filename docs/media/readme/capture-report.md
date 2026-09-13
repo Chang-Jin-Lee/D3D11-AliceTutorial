@@ -4,6 +4,8 @@ Generated: 2026-08-25 00:11:52
 
 Project 39 capture results appended from the verified runtime capture on 2026-09-08.
 
+Project 40 capture results appended from the verified runtime capture on 2026-09-11.
+
 | Project | Attempt | Exe | Output | Status | Dimensions | Bytes | Notes |
 |---|---:|---|---|---|---|---:|---|
 | 01 | 1 | 01_RenderingQuadangle.exe | docs/media/readme/01-RenderingQuadangle.png | Success | 1600x900 | 186550 | PNG captured |
@@ -84,3 +86,18 @@ Project 39 capture results appended from the verified runtime capture on 2026-09
 | 38 | 1 | 38_StylizedToonPBR.exe | docs/media/readme/38-StylizedToonPBR.gif | Success | 800x450 | 599395 | GIF captured; source frames collected in 3944 ms |
 | 39 | 1 | 39_Transparency_OIT.exe | docs/media/readme/39-Transparency-OIT.png | Success | 1600x900 | 174213 | PNG captured |
 | 39 | 1 | 39_Transparency_OIT.exe | docs/media/readme/39-Transparency-OIT.gif | Success | 800x450 | 761344 | GIF captured; source frames collected in 3941 ms |
+| 40 | 1 | 40_MSAA_AlphaToCoverage.exe | docs/media/readme/40-MSAA-AlphaToCoverage.png | Success | 1600x900 | 284361 | PNG captured |
+| 40 | 1 | 40_MSAA_AlphaToCoverage.exe | docs/media/readme/40-MSAA-AlphaToCoverage.gif | Success | 800x450 | 2784575 | GIF captured; source frames collected in 3996 ms |
+
+## Project 40 final review recapture — 2026-09-12
+
+The original Project 40 rows above are retained as historical capture evidence. These files were regenerated from the rebuilt Release executable after the authored-cutoff HUD provenance fix; the official publisher wrote its report to task scratch before the approved outputs were copied here.
+
+| Output | Status | Dimensions | Bytes | Notes |
+|---|---|---|---:|---|
+| docs/media/readme/40-MSAA-AlphaToCoverage.png | Success | 1600x900 | 284336 | Default Alpha Test 1x PNG; authored guard cutoff 0.500 |
+| docs/media/readme/40-MSAA-AlphaToCoverage.gif | Success | 800x450 | 2730869 | 32-frame, 4.010 s runtime orbit; source frames collected in 3987 ms |
+| docs/media/readme/40-MSAA-AlphaToCoverage-alpha-test-1x-lace.png | Success | 1600x900 | 284340 | Same-pose Alpha Test 1x comparison |
+| docs/media/readme/40-MSAA-AlphaToCoverage-alpha-test-4x-lace.png | Success | 1600x900 | 294223 | Same-pose Alpha Test 4x comparison |
+| docs/media/readme/40-MSAA-AlphaToCoverage-a2c-4x-lace.png | Success | 1600x900 | 443307 | Same-pose A2C 4x comparison |
+| docs/media/readme/info/40-MSAA-AlphaToCoverage-info.png | Success | 1600x640 | 323352 | Regenerated from the current representative PNG |
